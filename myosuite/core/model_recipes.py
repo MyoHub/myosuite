@@ -93,34 +93,41 @@ def materialize_recipe_xml(
     Args:
         name: Recipe name registered via ``@model_recipe``.
         dest: Output path. Default: an OS temp directory
-            (``<tempdir>/myosuite_recipes/<name>.xml``); required with *edit_fn*.
+            (``<tempdir>/myosuite_recipes/<name>_<digest>.xml``, named by its
+            content); required with *edit_fn*.
         edit_fn: In-place edit of the recipe spec, applied as an env applies
             its ``edit_fn`` kwarg (see :func:`build_from_recipe`).
 
     Returns:
-        Absolute path to the written file.
+        Absolute path to the written file. The write is atomic, so processes
+        materializing the recipe at once all get a complete file.
 
     Raises:
-        ValueError: If *edit_fn* is given without *dest* (the default path
-            holds the unedited recipe).
+        ValueError: If *edit_fn* is given without *dest* (default files hold
+            unedited recipes).
     """
     if edit_fn is not None and dest is None:
         raise ValueError("edit_fn needs an explicit dest.")
     import myo_sim  # type: ignore[import-untyped]
     from myo_sim.build.compose import sanitize_spec_xml  # type: ignore[import-untyped]
 
+    from myosuite.utils.asset_path_resolver import write_atomic
+
     model, spec = build_from_recipe(name, edit_fn=edit_fn)
-    xml = sanitize_spec_xml(
+    data = sanitize_spec_xml(
         spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
-    )
+    ).encode("utf-8")
 
     out = dest
     if out is None:
+        import hashlib
         import tempfile
 
-        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}.xml"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(xml, encoding="utf-8")
+        # Named by content: processes share one file, and a different version's
+        # recipe never overwrites a file another process is loading.
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}_{digest}.xml"
+    write_atomic(out, data)
     return out.resolve()
 
 
@@ -136,26 +143,12 @@ def _elbow_sarcopenia(b: ModelBuilder) -> ModelBuilder:
     return b.attach_fragment("elbow").apply_sarcopenia(force_scale=0.5)
 
 
-# The shipped motor finger (20/5/5/10/10) is too weak to reach its target poses: trained
-# policies stay at 0% success with x1 and x2 and reach 100% with x4.
-_MOTOR_FINGER_GEAR_SCALE = 4.0
-
-
-def _scale_motor_gears(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-    """Scale the gear of every motor of the finger model."""
-    for actuator in spec.actuators:
-        actuator.gear = np.asarray(actuator.gear) * _MOTOR_FINGER_GEAR_SCALE
-    return spec
-
-
 @model_recipe("motor_finger")
 def _motor_finger(b: ModelBuilder) -> ModelBuilder:
-    """Tendon-motor finger (``motorfinger_v0.xml``) with the stronger motor gears."""
+    """Tendon-motor finger (``motorfinger_v0.xml``)."""
     from myosuite.envs.myo.assets._resolve import resolve_finger_xml
 
-    return ModelBuilder.from_xml_file(
-        resolve_finger_xml("motorfinger_v0.xml")
-    ).apply_transform(_scale_motor_gears)
+    return ModelBuilder.from_xml_file(resolve_finger_xml("motorfinger_v0.xml"))
 
 
 def _calibrate_compose_arm_root(spec: mujoco.MjSpec) -> mujoco.MjSpec:

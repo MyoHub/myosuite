@@ -9,9 +9,9 @@ Composes existing helpers: :func:`load_teacher_runner`,
 :class:`AgentShadowMap`, and :func:`aim_heading_xy`. Does not change the
 scored FBVs observation (546-d).
 
-``amathislab/mm-10m-2`` was trained on musclemimic_models 1.0.5. Set
-``MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`` before ``make_env`` so the
-ChaseTag body matches the teacher.
+``amathislab/mm-10m-2`` was trained on musclemimic_models 1.0.5 and runs on that body as a
+shadow model. The scored FBVs env builds myo_sim's ``myofullbody`` and ignores
+``MYOSUITE_MUSCLEMIMIC_MODELS_VERSION``, so the teacher's body differs from the scored one.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from myosuite.integrations.musclemimic.two_agent_scene import (
     write_clip_pose,
 )
 from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
-from myosuite.terms.multiplayer.heading import (
+from myosuite.integrations.musclemimic.steering import (
     COMPASS_LABELS,
     COMPASS_STEP,
     aim_heading_xy,
@@ -48,11 +48,10 @@ from myosuite.terms.multiplayer.heading import (
     clamp_arena_xy,
     compass_index,
     compass_label,
-    heading_yaw,
-    role_heading_xy,
     step_compass,
     wall_repulsion,
 )
+from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
 
 AGENTS: tuple[str, str] = ("agent_0", "agent_1")
 PREFIX: dict[str, str] = {"agent_0": "a0_", "agent_1": "a1_"}

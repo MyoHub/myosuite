@@ -13,6 +13,7 @@ backend-aware factory.
 from __future__ import annotations
 
 import dataclasses
+import importlib
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
 
 # Internal store: env_id -> registration metadata
 _ENV_REGISTRY: dict[str, dict[str, Any]] = {}
+# MJX twins of register_task(..., backends={"mjx"}): env_id -> (task_config, overrides)
+_MJX_TASKS: dict[str, tuple[TaskConfig, dict[str, Any]]] = {}
 _MJ_INSTABILITY_WRAPPER_ENTRY_POINT = (
     "myosuite.envs.wrappers:MjInstabilityTerminationWrapper"
 )
@@ -89,6 +92,7 @@ def register_env(
     wrap_mj_instability_termination: bool = True,
     time_limit: bool = True,
     mjlab_task_kwargs: bool = False,
+    models: tuple[str, ...] = (),
     **kwargs: Any,
 ) -> None:
     """Register an environment for the CPU (Gymnasium) path.
@@ -111,6 +115,8 @@ def register_env(
             then only recorded here.
         mjlab_task_kwargs: Whether the mjlab twin supports constructor overrides
             through ``EnvConfig.task_kwargs`` when rebuilt from the CPU registration.
+        models: Body models the task runs on (``EnvConfig.model``, passed to the env
+            as its ``model`` kwarg); empty for a task with one fixed model.
         **kwargs: Additional keyword arguments forwarded to gym.register().
 
     Example:
@@ -130,6 +136,7 @@ def register_env(
         "max_episode_steps": max_episode_steps,
         "backend_configs": backend_configs or {},
         "mjlab_task_kwargs": mjlab_task_kwargs,
+        "models": tuple(models),
         "additional_wrappers": kwargs["additional_wrappers"],
     }
     gym_max_episode_steps = max_episode_steps if time_limit else None
@@ -267,36 +274,14 @@ def _register_task_mjx(
 ) -> None:
     """Register a TaskConfig-based env on the MJX backend.
 
+    Only records the task; :func:`make_env` imports JAX/MJX when it builds the env.
+
     Args:
         env_id: Gymnasium env id to use for MJX registration.
         task_config: Task specification.
         features: Wrapper specs of the registration (see :func:`mjx_feature_overrides`).
     """
-    try:
-        from mujoco_playground import registry as pg_registry
-        from myosuite.envs.myo.backends.mjx.mjx_modular_env import (
-            MjxModularTaskEnv,
-            modular_task_config,
-        )
-    except ImportError:
-        return  # MJX extras not installed; skip silently
-
-    cfg = modular_task_config(task_config)
-    defaults = mjx_feature_overrides(features) or {}
-
-    def _cfg_fn() -> Any:
-        return cfg
-
-    def _env_cls(
-        config: Any, config_overrides: dict[str, Any] | None = None
-    ) -> MjxModularTaskEnv:
-        # The env rebuilds its config from task_config; overrides apply on top.
-        return MjxModularTaskEnv(
-            task_config, config_overrides={**defaults, **(config_overrides or {})}
-        )
-
-    if env_id not in pg_registry._envs:  # type: ignore[attr-defined]
-        pg_registry.register_environment(env_id, _env_cls, _cfg_fn)
+    _MJX_TASKS.setdefault(env_id, (task_config, mjx_feature_overrides(features) or {}))
 
 
 def _register_task_variants(
@@ -373,8 +358,10 @@ def make_env(
         backend: One of "cpu", "mjx", or "mjlab"; default: ``EnvConfig.backend``
             ("cpu" for a plain id).
         **overrides: Backend-specific options, merged over ``EnvConfig.backend_options``
-            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``
-            etc. on mjlab, ``config_overrides`` on "mjx".
+            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``,
+            ``seed`` etc. on mjlab, ``config_overrides`` on "mjx".
+            ``ctrl_dt`` and a string ``model`` set the :class:`EnvConfig` fields of that
+            name; any other ``model`` value is passed on as an env constructor kwarg.
 
     Returns:
         An environment instance appropriate for the backend.
@@ -396,6 +383,13 @@ def make_env(
     config = env_id if isinstance(env_id, EnvConfig) else EnvConfig(env_id=env_id)
     # A config edited after construction may hold classes or pairs: normalize again.
     config = dataclasses.replace(config, features=normalize_features(config.features))
+    # EnvConfig fields given as keywords; a non-string ``model`` (e.g. an MjModel) stays
+    # a constructor kwarg of the env
+    if isinstance(overrides.get("model"), str):
+        config = dataclasses.replace(config, model=overrides.pop("model"))
+    if "ctrl_dt" in overrides:
+        config = dataclasses.replace(config, ctrl_dt=overrides.pop("ctrl_dt"))
+    config = _with_model(config)
     backend = backend or config.backend
     if backend == "cpu":
         return _make_cpu(config, overrides)
@@ -405,6 +399,24 @@ def make_env(
         return _make_mjlab(config, overrides)
     else:
         raise ValueError(f"Unknown backend: {backend!r}. Choose from: cpu, mjx, mjlab")
+
+
+def _with_model(config: EnvConfig) -> EnvConfig:
+    """Move ``EnvConfig.model`` into the task kwargs of an id registered with models."""
+    if config.model is None:
+        return config
+    models = _ENV_REGISTRY.get(config.env_id, {}).get("models", ())
+    if config.model not in models:
+        raise ValueError(
+            f"{config.env_id} does not run on model {config.model!r}"
+            + (
+                f"; choose from {list(models)}"
+                if models
+                else " (it has one fixed model)"
+            )
+        )
+    task_kwargs = {**config.task_kwargs, "model": config.model}
+    return dataclasses.replace(config, task_kwargs=task_kwargs, model=None)
 
 
 def _substeps(ctrl_dt: float, timestep: float) -> int:
@@ -447,19 +459,32 @@ def _make_mjx(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             "The experimental mjx backend supports only SarcopeniaWrapper in "
             "EnvConfig.features."
         )
-    try:
-        from mujoco_playground import registry as pg_registry
-    except ImportError as e:
-        raise ImportError(
-            "MJX backend requires mujoco_playground. "
-            "Install with: pip install myosuite[mjx]"
-        ) from e
     options = {**feature_options, **config.backend_options, **overrides}
     if config.num_envs is not None:
         options["num_envs"] = config.num_envs
     if config.ctrl_dt is not None:
         options["ctrl_dt"] = config.ctrl_dt
-    return pg_registry.load(config.env_id, config_overrides=options or None)
+    if config.env_id in _MJX_TASKS:
+        task_config, defaults = _MJX_TASKS[config.env_id]
+        modular = _import_mjx("myosuite.envs.myo.backends.mjx.mjx_modular_env")
+        return modular.MjxModularTaskEnv(
+            task_config, config_overrides={**defaults, **options} or None
+        )
+    # The hand-written MJX envs (``Mjx*-v0``).
+    return _import_mjx("myosuite.envs.myo.backends.mjx").make(
+        config.env_id, config_overrides=options or None
+    )
+
+
+def _import_mjx(module: str) -> Any:
+    """Import a module of the MJX backend, naming the extra if JAX/MJX is missing."""
+    try:
+        return importlib.import_module(module)
+    except ImportError as e:
+        raise ImportError(
+            "The mjx backend requires JAX and MuJoCo MJX. "
+            "Install with: pip install myosuite[mjx]"
+        ) from e
 
 
 def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
@@ -486,12 +511,17 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     if config.num_envs is not None:
         options["num_envs"] = config.num_envs
     env_id = config.env_id
+    seed = options.pop("seed", None)
 
-    if hasattr(mjlab.envs, "make") and not (
-        config.features
-        or config.task_kwargs
-        or config.max_episode_steps is not None
-        or config.ctrl_dt is not None
+    if (
+        hasattr(mjlab.envs, "make")
+        and seed is None
+        and not (
+            config.features
+            or config.task_kwargs
+            or config.max_episode_steps is not None
+            or config.ctrl_dt is not None
+        )
     ):
         return mjlab.envs.make(env_id, **options)
 
@@ -548,5 +578,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
         except Exception:
             device = "cpu"
+    if seed is not None:
+        cfg.seed = int(seed)
     env_cls = getattr(cfg, "env_cls", ManagerBasedRlEnv)
     return env_cls(cfg, device=device, **options)

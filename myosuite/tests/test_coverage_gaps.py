@@ -91,17 +91,23 @@ class _FakeAccessorWithModel(_FakeAccessor):
 # ---------------------------------------------------------------------------
 
 
-def _make_fatigue_model(n: int) -> CumulativeFatigue:  # noqa: F821
-    """Build a CumulativeFatigue with n uniform muscle actuators (no real MjModel needed)."""
+def _mock_muscle_model(n: int) -> MagicMock:
+    """A stand-in MjModel with n muscle actuators (tau 10/40 ms)."""
     import mujoco
-    from myosuite.core.muscle_conditions import CumulativeFatigue
 
     mock = MagicMock()
     mock.opt.timestep = 0.002
     mock.nu = n
     mock.actuator_dyntype = np.full(n, mujoco.mjtDyn.mjDYN_MUSCLE)
     mock.actuator_dynprm = np.tile([0.01, 0.04] + [0.0] * 8, (n, 1))
-    return CumulativeFatigue(mock, use_uniform_params=True)
+    return mock
+
+
+def _make_fatigue_model(n: int, **kwargs: Any) -> CumulativeFatigue:  # noqa: F821
+    """Build a CumulativeFatigue with n uniform muscle actuators (no real MjModel needed)."""
+    from myosuite.core.muscle_conditions import CumulativeFatigue
+
+    return CumulativeFatigue(_mock_muscle_model(n), use_uniform_params=True, **kwargs)
 
 
 def _fatigue_stepper(backend: str, n: int) -> Any:
@@ -118,8 +124,102 @@ def _fatigue_stepper(backend: str, n: int) -> Any:
     )
 
 
+def _fatigue_state_stepper(backend: str, n: int) -> Any:
+    """Return ``step(TL, dt) -> (MA, MR, MF)`` for the numpy or torch model (uniform F, R, r)."""
+    if backend == "numpy":
+        f = _make_fatigue_model(n)
+        return lambda tl, dt: tuple(x.copy() for x in f.compute_act(tl.copy(), dt=dt))
+    torch = pytest.importorskip("torch")
+    from myosuite.core.muscle_conditions import _UNIFORM_PARAMS, TorchFatigueState
+
+    t = TorchFatigueState(1, n, **{k: _UNIFORM_PARAMS[k] for k in "FRr"})
+
+    def step(tl: np.ndarray, dt: float) -> tuple[np.ndarray, ...]:
+        t.step(torch.tensor(tl[None], dtype=torch.float32), dt)
+        return tuple(x[0].double().numpy() for x in (t.MA, t.MR, t.MF))
+
+    return step
+
+
 # Control steps of the registered myoFati* envs (10, 20 and 25 ms).
 _FATIGUE_CTRL_DTS = (0.01, 0.02, 0.025)
+
+
+# (MA, MF, TL) covering each controller regime and the switches between them, for
+# the elbow parameters: activation, deactivation past TL, rest, a negative command,
+# MR-limited recruitment ending (MF falls below 1 - TL) and starting (endurance).
+_EXACT_STEP_CASES = np.array(
+    [
+        [0.0, 0.0, 0.4],
+        [0.6, 0.1, 0.2],
+        [0.5, 0.3, 0.5],
+        [0.4, 0.2, 0.0],
+        [0.3, 0.5, -0.5],
+        [0.05, 0.9, 0.15],
+        [0.1, 0.3, 0.9],
+        [0.45, 0.5, 0.48],
+        [0.0, 0.0, 0.7],
+    ]
+)
+_ELBOW = {"F": 0.01086, "R": 0.00225, "r": 4.93, "tauact": 0.01, "taudeact": 0.04}
+
+
+def _exact_step(
+    backend: str,
+    ma: np.ndarray,
+    mf: np.ndarray,
+    tl: np.ndarray,
+    dt: float,
+    **params: Any,
+) -> tuple[np.ndarray, ...]:
+    """``three_cc_r_step`` with the elbow parameters on numpy, torch or jax (float32)."""
+    from myosuite.core.muscle_conditions import three_cc_r_step
+
+    kw = {k: np.broadcast_to(v, ma.shape) for k, v in {**_ELBOW, **params}.items()}
+    if backend == "numpy":
+        return three_cc_r_step(np, ma, mf, tl, dt=dt, **kw)
+    if backend == "jax":
+        jax = pytest.importorskip("jax")
+        jnp = jax.numpy
+        j = lambda x: jnp.asarray(np.asarray(x), dtype=jnp.float32)  # noqa: E731
+        # jit with dt traced, as the MJX FatigueWrapper calls it
+        step = jax.jit(lambda a, f, c, d, p: three_cc_r_step(jnp, a, f, c, dt=d, **p))
+        out = step(j(ma), j(mf), j(tl), j(dt), {k: j(v) for k, v in kw.items()})
+        return tuple(np.asarray(x, dtype=np.float64) for x in out)
+    torch = pytest.importorskip("torch")
+    t = lambda x: torch.tensor(np.asarray(x), dtype=torch.float32)  # noqa: E731
+    kw = {k: t(v) for k, v in kw.items()}
+    out = three_cc_r_step(torch, t(ma), t(mf), t(tl), dt=dt, **kw)
+    return tuple(x.double().numpy() for x in out)
+
+
+def _frozen_rate_reference(ma: float, mf: float, tl: float, dt: float) -> np.ndarray:
+    """``(MA, MR, MF)`` from solve_ivp of the 3CC-r ODE, LD and LR frozen at ``ma``."""
+    from scipy.integrate import solve_ivp
+
+    from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
+
+    p = _ELBOW
+    ld = 1.0 / (p["tauact"] * (0.5 + 1.5 * ma))
+    lr = (0.5 + 1.5 * ma) / p["taudeact"]
+    rho = p["R"] * (p["r"] if tl <= FATIGUE_REST_THRESHOLD else 1.0)
+
+    def rhs(_: float, y: np.ndarray) -> list[float]:
+        a, f = y
+        c = lr * (tl - a) if a >= tl else ld * min(tl - a, 1.0 - a - f)
+        return [c - p["F"] * a, p["F"] * a - rho * f]
+
+    def empty(_: float, y: np.ndarray) -> float:  # MA reaches 0 under TL < 0
+        return y[0] if tl < 0 else 1.0
+
+    empty.terminal = True  # type: ignore[attr-defined]
+    sol = solve_ivp(
+        rhs, (0.0, dt), [ma, mf], method="LSODA", rtol=1e-11, atol=1e-13, events=empty
+    )
+    a, f = sol.y[:, -1]
+    if sol.status == 1:  # MA stays at 0, MF decays
+        a, f = 0.0, f * np.exp(-rho * (dt - sol.t[-1]))
+    return np.array([a, 1.0 - a - f, f])
 
 
 def _rest_protocol(n: int = 3) -> np.ndarray:
@@ -128,17 +228,20 @@ def _rest_protocol(n: int = 3) -> np.ndarray:
     return np.tile(np.tile(block, 2)[:, None], (1, n))
 
 
-def _rest_protocol_trace(backend: str, loads: np.ndarray, dt: float = 0.02) -> dict:
+def _rest_protocol_trace(
+    backend: str, loads: np.ndarray, dt: float = 0.02, **kwargs: Any
+) -> dict:
     """MA, MF before and after each step of the uniform-parameter model.
 
     Starts with MF = 0.3 so that the recovery rate is visible from the start.
+    ``kwargs`` go to the model's constructor (e.g. ``rest_threshold``).
     """
     from myosuite.core.muscle_conditions import _UNIFORM_PARAMS, TorchFatigueState
 
     n = loads.shape[1]
     mf0 = np.full(n, 0.3)
     if backend == "numpy":
-        cpu = _make_fatigue_model(n)
+        cpu = _make_fatigue_model(n, **kwargs)
         cpu.reset(fatigue_reset_vec=mf0)
 
         def step(tl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -148,7 +251,9 @@ def _rest_protocol_trace(backend: str, loads: np.ndarray, dt: float = 0.02) -> d
         state = (cpu.MA.copy(), cpu.MF.copy())
     else:
         torch = pytest.importorskip("torch")
-        gpu = TorchFatigueState(1, n, **{k: _UNIFORM_PARAMS[k] for k in "FRr"})
+        gpu = TorchFatigueState(
+            1, n, **{k: _UNIFORM_PARAMS[k] for k in "FRr"}, **kwargs
+        )
         gpu.reset(fatigue_reset_vec=mf0)
 
         def step(tl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -165,7 +270,11 @@ def _rest_protocol_trace(backend: str, loads: np.ndarray, dt: float = 0.02) -> d
 
 
 def _effective_recovery_multiplier(trace: dict) -> np.ndarray:
-    """``rR / R`` of each step, from ``dMF = (F MA - rR MF) dt``."""
+    """``rR / R`` of each step, from ``dMF = (F MA - rR MF) dt``.
+
+    The step integrates MF over the changing MA, so this holds where MA is
+    (nearly) constant over the step.
+    """
     ma, mf = trace["MA"], trace["MF"]
     dmf_dt = np.diff(mf, axis=0) / trace["dt"]
     return (trace["F"] * ma[:-1] - dmf_dt) / (trace["R"] * mf[:-1])
@@ -266,11 +375,12 @@ class TestCumulativeFatigue:
         loads = _rest_protocol()
         trace = _rest_protocol_trace(backend, loads)
         mult = _effective_recovery_multiplier(trace)
+        steady = np.abs(np.diff(trace["MA"], axis=0)) < 1e-4
         rest = loads == 0.0
         relaxing = (trace["MA"][:-1] >= loads) & ~rest
-        assert relaxing.sum() > 100, "protocol must relax under load"
-        np.testing.assert_allclose(mult[rest], trace["r"], rtol=0.05)
-        np.testing.assert_allclose(mult[~rest], 1.0, atol=0.3)
+        assert (relaxing & steady).sum() > 10, "protocol must relax under load"
+        np.testing.assert_allclose(mult[rest & steady], trace["r"], rtol=0.05)
+        np.testing.assert_allclose(mult[~rest & steady], 1.0, atol=0.3)
 
     @pytest.mark.parametrize("backend", ["numpy", "torch"])
     def test_near_zero_command_counts_as_rest(self, backend: str) -> None:
@@ -289,13 +399,6 @@ class TestCumulativeFatigue:
         np.testing.assert_allclose(
             _effective_recovery_multiplier(above)[30:], 1.0, atol=0.3
         )
-
-    def test_jax_rest_threshold_matches_core(self) -> None:
-        pytest.importorskip("jax")
-        from myosuite.core.muscle_conditions import FATIGUE_REST_THRESHOLD
-        from myosuite.physics import fatigue_jax
-
-        assert fatigue_jax._REST_THRESHOLD == FATIGUE_REST_THRESHOLD
 
     @pytest.mark.parametrize("backend", ["numpy", "torch"])
     def test_negative_command_counts_as_rest(self, backend: str) -> None:
@@ -316,6 +419,112 @@ class TestCumulativeFatigue:
         for k in ("MA", "MF"):
             np.testing.assert_allclose(gpu[k], cpu[k], atol=1e-5, err_msg=k)
 
+    def test_default_rest_threshold_is_the_module_constant(self) -> None:
+        pytest.importorskip("torch")
+        from myosuite.core.muscle_conditions import (
+            FATIGUE_REST_THRESHOLD,
+            TorchFatigueState,
+        )
+
+        assert FATIGUE_REST_THRESHOLD == 0.01
+        assert _make_fatigue_model(2).rest_threshold == FATIGUE_REST_THRESHOLD
+        assert TorchFatigueState(1, 2).rest_threshold == FATIGUE_REST_THRESHOLD
+        model = _mock_muscle_model(2)
+        gpu = TorchFatigueState.from_mj_model(model, 1, use_uniform_params=True)
+        assert gpu.rest_threshold == FATIGUE_REST_THRESHOLD
+        gpu = TorchFatigueState.from_mj_model(
+            model, 1, use_uniform_params=True, rest_threshold=0.2
+        )
+        assert gpu.rest_threshold == 0.2
+
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_rest_threshold_sets_what_counts_as_rest(self, backend: str) -> None:
+        """A 5 % command (e.g. noise on an estimated excitation) rests only with a
+        threshold at or above it; a zero threshold rests only TL <= 0."""
+        loads = np.full((100, 3), 0.05)
+        default = _rest_protocol_trace(backend, loads)
+        raised = _rest_protocol_trace(backend, loads, rest_threshold=0.05)
+        # skip the first steps, where MA still rises towards the command
+        np.testing.assert_allclose(
+            _effective_recovery_multiplier(default)[30:], 1.0, atol=0.3
+        )
+        np.testing.assert_allclose(
+            _effective_recovery_multiplier(raised)[30:], raised["r"], rtol=0.05
+        )
+        tiny = np.full((100, 3), 0.001)
+        zero = _rest_protocol_trace(backend, tiny, rest_threshold=0.0)
+        np.testing.assert_allclose(
+            _effective_recovery_multiplier(zero)[30:], 1.0, atol=0.3
+        )
+        rest = _rest_protocol_trace(backend, np.zeros((100, 3)), rest_threshold=0.0)
+        np.testing.assert_allclose(
+            _effective_recovery_multiplier(rest), rest["r"], rtol=0.05
+        )
+
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_set_rest_threshold_matches_constructor(self, backend: str) -> None:
+        loads = np.vstack([_rest_protocol(), np.full((300, 3), 0.04)])
+        built = _rest_protocol_trace(backend, loads, rest_threshold=0.05)
+        default = _rest_protocol_trace(backend, loads)
+        assert not np.allclose(built["MF"], default["MF"], atol=1e-3)
+
+        if backend == "numpy":
+            model = _make_fatigue_model(3)
+        else:
+            torch = pytest.importorskip("torch")
+            from myosuite.core.muscle_conditions import (
+                _UNIFORM_PARAMS,
+                TorchFatigueState,
+            )
+
+            model = TorchFatigueState(1, 3, **{k: _UNIFORM_PARAMS[k] for k in "FRr"})
+        model.set_RestThreshold(0.05)
+        assert model.rest_threshold == 0.05
+        model.reset(fatigue_reset_vec=np.full(3, 0.3))
+        mf = []
+        for tl in loads:
+            if backend == "numpy":
+                model.compute_act(tl.copy(), dt=0.02)
+                mf.append(model.MF.copy())
+            else:
+                model.step(torch.tensor(tl[None], dtype=torch.float32), 0.02)
+                mf.append(model.MF[0].double().numpy())
+        np.testing.assert_array_equal(np.array(mf), built["MF"][1:])
+
+    def test_custom_rest_threshold_cpu_matches_torch(self) -> None:
+        """CPU and torch agree when 4 % commands count as rest."""
+        pytest.importorskip("torch")
+        loads = np.tile(np.repeat([0.5, 0.04, 0.2, 0.0], 300)[:, None], (2, 3))
+        cpu = _rest_protocol_trace("numpy", loads, rest_threshold=0.05)
+        gpu = _rest_protocol_trace("torch", loads, rest_threshold=0.05)
+        for k in ("MA", "MF"):
+            np.testing.assert_allclose(gpu[k], cpu[k], atol=1e-5, err_msg=k)
+        default = _rest_protocol_trace("numpy", loads)
+        assert np.abs(cpu["MF"] - default["MF"]).max() > 1e-2
+
+    @pytest.mark.parametrize(
+        "value", [-0.01, 1.0, 2.0, np.nan, np.inf, np.array([0.01, 0.02])]
+    )
+    def test_invalid_rest_threshold_is_rejected(self, value: Any) -> None:
+        pytest.importorskip("torch")
+        from myosuite.core.muscle_conditions import (
+            FATIGUE_REST_THRESHOLD,
+            TorchFatigueState,
+        )
+
+        with pytest.raises(ValueError, match="rest_threshold"):
+            _make_fatigue_model(2, rest_threshold=value)
+        with pytest.raises(ValueError, match="rest_threshold"):
+            TorchFatigueState(1, 2, rest_threshold=value)
+        with pytest.raises(ValueError, match="rest_threshold"):
+            TorchFatigueState.from_mj_model(
+                _mock_muscle_model(2), 1, use_uniform_params=True, rest_threshold=value
+            )
+        for model in (_make_fatigue_model(2), TorchFatigueState(1, 2)):
+            with pytest.raises(ValueError, match="rest_threshold"):
+                model.set_RestThreshold(value)
+            assert model.rest_threshold == FATIGUE_REST_THRESHOLD
+
     def test_sustained_command_fatigue_matches_fine_step(self) -> None:
         # At the 20 ms control step MF must match the same ODE integrated at
         # the 2 ms physics step. Overshooting MA to TL used to select the
@@ -328,6 +537,83 @@ class TestCumulativeFatigue:
             for _ in range(10):
                 fine.compute_act(tl, dt=0.002)
         np.testing.assert_allclose(coarse.MF, fine.MF, rtol=0.02)
+
+    @pytest.mark.parametrize("dt", (*_FATIGUE_CTRL_DTS, 1.0, 60.0, 300.0))
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+    def test_step_is_exact_for_frozen_rates(self, backend: str, dt: float) -> None:
+        # One step of any length is the exact solution of the 3CC-r ODE with LD, LR
+        # held at their start values, through every regime switch inside the step.
+        ma0, mf0, tl = _EXACT_STEP_CASES.T
+        got = np.stack(_exact_step(backend, ma0, mf0, tl, dt))
+        want = np.stack(
+            [_frozen_rate_reference(*c, dt) for c in _EXACT_STEP_CASES], axis=1
+        )
+        # float64 matches to < 1e-9, float32 to ~1e-7
+        np.testing.assert_allclose(got, want, atol=1e-8 if backend == "numpy" else 1e-6)
+        assert np.all((got >= 0) & (got <= 1))
+        np.testing.assert_allclose(
+            got.sum(0), 1.0, atol=1e-12 if backend == "numpy" else 1e-6
+        )
+
+    @pytest.mark.parametrize("dt", (0.02, 1.0, 30.0))
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+    def test_step_keeps_the_regime_of_its_equilibrium(
+        self, backend: str, dt: float
+    ) -> None:
+        # A step starting just inside MF = 1 - TL stays in the regime that holds its
+        # equilibrium. The fast MA transient used to read as a slow-mode crossing: an
+        # MR-limited step switched to free recruitment at once (MA overshot to ~TL,
+        # MF was clipped), and a free step with a free equilibrium switched to limited.
+        cases = np.array(
+            [
+                [0.3776, 0.1 + 1e-6, 0.9],  # MR-limited, just past the boundary
+                [0.3776, 0.1 + 1e-4, 0.9],
+                [0.0, 0.4 + 1e-5, 0.6],
+                [0.149994, 0.85 - 1e-10, 0.15],  # free, F MA* < R (1 - TL); float64
+            ]
+        )
+        ma0, mf0, tl = cases.T
+        got = np.stack(_exact_step(backend, ma0, mf0, tl, dt))
+        want = np.stack([_frozen_rate_reference(*c, dt) for c in cases], axis=1)
+        np.testing.assert_allclose(got, want, atol=1e-8 if backend == "numpy" else 1e-6)
+
+    @pytest.mark.filterwarnings("error")
+    @pytest.mark.parametrize("dt", (0.02, 300.0))
+    @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+    def test_step_degenerate_rates_stay_finite(self, backend: str, dt: float) -> None:
+        # No fatigue (F = 0), no recovery (R = 0) and NaN commands (C = 0)
+        ma, mf = np.array([0.2, 0.2, 0.0, 0.3]), np.array([0.3, 0.3, 0.5, 0.2])
+        tl = np.array([0.6, 0.9, 0.95, np.nan])
+        for params in ({"F": 0.0}, {"R": 0.0}, {"F": 0.0, "R": 0.0}):
+            got = np.stack(_exact_step(backend, ma, mf, tl, dt, **params))
+            assert np.all((got >= 0) & (got <= 1)), params
+            np.testing.assert_allclose(got.sum(0), 1.0, atol=1e-6)
+        no_fatigue = _exact_step(backend, ma, mf, tl, dt, F=0.0)
+        recovered = mf[:3] * np.exp(-_ELBOW["R"] * dt)  # MF only recovers
+        np.testing.assert_allclose(no_fatigue[2][:3], recovered, rtol=1e-5)
+
+    @pytest.mark.parametrize("backend", ["numpy", "torch"])
+    def test_long_step_matches_control_steps(self, backend: str) -> None:
+        # One explicit step held the start-of-step MA for the whole interval:
+        # a 120 s rest passed in one call kept fatiguing the muscle (MF rose)
+        # instead of recovering it. The exact step integrates MA over the step;
+        # the rest differs from 20 ms steps only by the frozen LR (2e-4).
+        hold, rest = np.full(3, 0.4), np.zeros(3)
+        one_call = _fatigue_state_stepper(backend, 3)
+        control = _fatigue_state_stepper(backend, 3)
+        for _ in range(3000):  # 60 s at 40 %
+            one_call(hold, 0.02)
+            mf_hold = control(hold, 0.02)[2]
+        ma, mr, mf = one_call(rest, 120.0)
+        for _ in range(6000):
+            reference = control(rest, 0.02)
+        assert np.all(mf < mf_hold)
+        np.testing.assert_allclose(mf, reference[2], rtol=1e-3)
+        # MR = 1 - MA - MF, so the sum stays 1 to rounding.
+        np.testing.assert_allclose(
+            ma + mr + mf, 1.0, atol=1e-6 if backend == "torch" else 1e-12
+        )
+        assert np.all((ma >= 0) & (mr >= 0) & (mf >= 0))
 
     def test_per_muscle_params_ignore_attach_prefix_and_side_suffix(self) -> None:
         """Prefixed and side-suffixed muscle names get their group's F / R / r.
@@ -773,34 +1059,37 @@ class TestMakeEnvBackends:
     def test_make_env_mjx_import_error(self) -> None:
         from myosuite import make_env
 
-        with patch.dict("sys.modules", {"mujoco_playground": None}):
-            with pytest.raises(ImportError, match="mujoco_playground"):
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+            with pytest.raises(ImportError, match=r"myosuite\[mjx\]"):
                 make_env("NonExistent-v0", backend="mjx")
 
     def test_make_env_mjx_forwards_overrides(self) -> None:
-        """Keyword overrides reach mujoco_playground as config_overrides."""
+        """Keyword overrides reach the MJX backend's make() as config_overrides."""
         import types
 
         from myosuite import make_env
 
         calls: list[tuple[str, Any]] = []
 
-        def _load(
-            env_id: str, config: Any = None, config_overrides: Any = None
-        ) -> None:
-            calls.append((env_id, config_overrides))
+        def _make(env_name: str, config_overrides: Any = None) -> None:
+            calls.append((env_name, config_overrides))
 
-        registry = types.ModuleType("mujoco_playground.registry")
-        registry.load = _load  # type: ignore[attr-defined]
-        playground = types.ModuleType("mujoco_playground")
-        playground.registry = registry  # type: ignore[attr-defined]
-        with patch.dict(
-            "sys.modules",
-            {"mujoco_playground": playground, "mujoco_playground.registry": registry},
-        ):
+        backend = types.ModuleType("myosuite.envs.myo.backends.mjx")
+        backend.make = _make  # type: ignore[attr-defined]
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": backend}):
             make_env("Task-v0", backend="mjx", num_envs=8)
             make_env("Task-v0", backend="mjx")
         assert calls == [("Task-v0", {"num_envs": 8}), ("Task-v0", None)]
+
+    def test_register_task_mjx_needs_no_jax(self) -> None:
+        """register_task() records the MJX twin without importing the MJX backend."""
+        from myosuite.core import registry
+
+        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+            env_id = registry.register_task(
+                _MyoVariantTask(), env_id="NoJaxMjxTask-v0", backends={"mjx"}
+            )
+        assert registry._MJX_TASKS[env_id][1] == {}
 
     def test_make_env_mjlab_import_error(self) -> None:
         from myosuite import make_env

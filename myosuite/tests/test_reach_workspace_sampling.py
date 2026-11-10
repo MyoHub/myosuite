@@ -36,6 +36,7 @@ def test_table_is_deterministic_and_covers_most_of_the_box() -> None:
     b = reachable_target_points(u.model, sites, *_BOX, seed=0)
     np.testing.assert_array_equal(a, b)
     assert 20_000 < len(a)  # a large share of the joint space lands in the box
+    assert (np.ptp(a, axis=0) > 0.1).all()  # the targets spread over the box
 
 
 @pytest.mark.parametrize("env_id", _IDS)

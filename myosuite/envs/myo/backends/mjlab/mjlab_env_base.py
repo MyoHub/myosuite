@@ -76,6 +76,14 @@ class MjlabEnvAccessor(EnvAccessor):
         """Muscle activation state, shape ``(N, na)``."""
         return self._data.act
 
+    def muscle_force(self) -> torch.Tensor:
+        """Actuator forces of the scene in N, shape ``(N, nu)``."""
+        return self._data.actuator_force
+
+    def actuator_moment_sparse(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sparse actuator moments and row starts in the scene model's layout."""
+        return self._data.actuator_moment, self._data.moment_rowadr
+
     def site_xpos(self, site_ids: Any) -> torch.Tensor:
         """Cartesian positions of requested sites, shape ``(N, len, 3)``."""
         return self._data.site_xpos[:, site_ids, :]

@@ -22,6 +22,8 @@ import numpy as np
 import pytest
 
 from myosuite.core.trajectory_io import MotionClip
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
+from myosuite.tests.support.joint_couplings import joint_equality_residuals
 from myosuite.tests.support.optional_deps import (
     require_mjlab,
     require_mujoco_warp,
@@ -267,8 +269,44 @@ def test_rsi_writes_reference_world_root_velocity(
     np.testing.assert_allclose(root_vel_w.cpu().numpy(), np.stack(expected), atol=1e-4)
 
 
+def _assert_rsi_state(
+    model: Any, qpos: np.ndarray, qvel: np.ndarray, clip_qpos: np.ndarray
+) -> None:
+    """Full-body RSI state: the clip frame's joints, coupled joints on their polynomials."""
+    couplings = JointCouplings.from_model(model)
+    coupled = np.zeros(model.nq, dtype=bool)
+    coupled[couplings.dep_qpos] = coupled[couplings.locked_qpos] = True
+    free = ~coupled[7:]
+    np.testing.assert_array_equal(
+        qpos[7:][free], clip_qpos[7:][free].astype(np.float32)
+    )
+    pos, vel = joint_equality_residuals(model, qpos, qvel)
+    assert np.abs(pos).max() < 1e-6
+    assert np.abs(vel).max() < 1e-6
+
+
+def test_rsi_starts_on_the_joint_couplings(
+    fullbody_env: tuple[Any, MotionClip],
+) -> None:
+    """RSI writes the clip frame with its coupled joints on their polynomials.
+
+    The synthetic clip keeps the keyframe patella, 5 cm off its knee coupling,
+    and random velocities on every joint.
+    """
+    env, clip = fullbody_env
+    env.reset()
+    _, _, model, _ = _variant("fullbody")
+    assert np.abs(joint_equality_residuals(model, clip.qpos[0])[0]).max() > 0.05
+    sim = env.scene[_ENTITY["fullbody"]].data.data
+    for i, frame in enumerate(_clip_frames(env, clip)):
+        _assert_rsi_state(
+            model, sim.qpos[i].numpy(), sim.qvel[i].numpy(), clip.qpos[frame]
+        )
+
+
 def test_entity_default_state_is_the_model_keyframe() -> None:
-    """The entity's default state (reset without RSI) is the model keyframe.
+    """The entity's default state (reset without RSI) is the model keyframe, with
+    its coupled joints put on their polynomials (as the CPU reset).
 
     mjlab matches ``InitialStateCfg.joint_pos`` keys as regexes, so a bare
     ``knee_angle_r`` also set ``knee_angle_rotation2_r`` & co. to its angle.
@@ -290,8 +328,12 @@ def test_entity_default_state_is_the_model_keyframe() -> None:
     env = _make_env("fullbody", None, num_envs=1, mj_model=keyed)
     env.reset()
     data = env.scene[_ENTITY["fullbody"]].data
-    key_qpos = keyed.key_qpos[0].astype(np.float32)
-    key_qvel = keyed.key_qvel[0].astype(np.float32)
+    key_qpos, key_qvel = keyed.key_qpos[0].copy(), keyed.key_qvel[0].copy()
+    project_joint_couplings(JointCouplings.from_model(keyed), key_qpos, key_qvel)
+    pos, vel = joint_equality_residuals(keyed, key_qpos, key_qvel)
+    assert max(np.abs(pos).max(), np.abs(vel).max()) < 1e-12
+    key_qpos = key_qpos.astype(np.float32)
+    key_qvel = key_qvel.astype(np.float32)
     np.testing.assert_array_equal(data.default_joint_pos[0].numpy(), key_qpos[7:])
     np.testing.assert_array_equal(data.default_joint_vel[0].numpy(), key_qvel[6:])
     np.testing.assert_array_equal(data.joint_pos[0].numpy(), key_qpos[7:])
@@ -754,7 +796,8 @@ def _assert_envs_read_their_clips(
 ) -> None:
     """Targets and reference of every env are its own clip's frame (a NumPy gather).
 
-    *reset_ids*: envs just reset by RSI, whose joints must be on that frame.
+    *reset_ids*: envs just reset by RSI, whose joints must be on that frame (the
+    coupled ones on their polynomials).
     """
     from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
 
@@ -776,10 +819,15 @@ def _assert_envs_read_their_clips(
         expected = np.stack([getattr(c, name)[f] for c, f in rows])
         got = mimic._clip_ref(env, cache, f"ref_{name}").numpy()
         np.testing.assert_array_equal(got, expected.astype(np.float32))
+    sim = env.scene[entity].data.data
     for i in reset_ids:
         clip, frame = rows[i]
-        joints = env.scene[entity].data.data.qpos[i, 7:].numpy()
-        np.testing.assert_array_equal(joints, clip.qpos[frame, 7:].astype(np.float32))
+        _assert_rsi_state(
+            _variant("fullbody")[2],
+            sim.qpos[i].numpy(),
+            sim.qvel[i].numpy(),
+            clip.qpos[frame],
+        )
 
 
 def test_clip_bank_steps_are_sync_free_and_read_each_envs_clip() -> None:

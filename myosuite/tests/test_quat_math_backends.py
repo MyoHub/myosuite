@@ -176,3 +176,23 @@ def test_near_singular_cutoffs_agree_across_backends() -> None:
         quat_math_torch.quat2mat(torch.tensor(tiny)).double().numpy(),
         atol=1e-6,
     )
+
+
+@pytest.mark.parametrize("xp_name", ["numpy", "torch"])
+def test_quat_yaw_is_the_world_heading_of_the_body_x_axis(xp_name: str) -> None:
+    from myosuite.physics.quat import quat_yaw
+
+    rng = np.random.default_rng(0)
+    q = rng.normal(size=(64, 4))
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+    # ZYX yaw: heading of the rotated x-axis, from MuJoCo's rotation matrix.
+    mats = np.empty((len(q), 9))
+    for row, mat in zip(q, mats):
+        mujoco.mju_quat2Mat(mat, row)
+    expected = np.arctan2(mats[:, 3], mats[:, 0])
+    if xp_name == "torch":
+        torch = pytest.importorskip("torch")
+        got = quat_yaw(torch, torch.as_tensor(q)).numpy()
+    else:
+        got = quat_yaw(np, q)
+    np.testing.assert_allclose(got, expected, atol=1e-12)

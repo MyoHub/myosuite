@@ -16,9 +16,11 @@ import pytest
 
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.terms.cocontraction import (
     MomentArmIndex,
     WastedTorqueCfg,
+    muscle_moment_arms,
     wasted_torque_reward,
 )
 from myosuite.tests.support.optional_deps import (
@@ -59,8 +61,11 @@ _ANTAGONIST_XML = f"""
 class _Accessor:
     """Minimal accessor over sparse moment arrays (numpy or torch)."""
 
-    def __init__(self, xp: Any, force: Any, moment: Any, rowadr: Any) -> None:
+    def __init__(
+        self, xp: Any, force: Any, moment: Any, rowadr: Any, qpos: Any = None
+    ) -> None:
         self._xp, self._force, self._moment, self._rowadr = xp, force, moment, rowadr
+        self._qpos = qpos
 
     def array_module(self) -> Any:
         return self._xp
@@ -70,6 +75,9 @@ class _Accessor:
 
     def actuator_moment_sparse(self) -> tuple[Any, Any]:
         return self._moment, self._rowadr
+
+    def joint_pos(self) -> Any:
+        return self._qpos
 
 
 def _antagonist_state(act: tuple[float, float, float]) -> tuple[Any, Any]:
@@ -82,7 +90,7 @@ def _antagonist_state(act: tuple[float, float, float]) -> tuple[Any, Any]:
 
 def _cpu_wasted(model: Any, data: Any, joints: tuple[str, ...]) -> float:
     index = MomentArmIndex.from_model(model, joints)
-    acc = _Accessor(np, data.actuator_force, *_sparse(data))
+    acc = _Accessor(np, data.actuator_force, *_sparse(data), data.qpos)
     return float(wasted_torque_reward(acc, {}, moment_index=index)["wasted_torque"])
 
 
@@ -163,11 +171,114 @@ def _dense_reference(env: Any, cost: WastedTorqueCfg) -> float:
     mujoco.mju_sparse2dense(
         dense, d.actuator_moment, d.moment_rownnz, d.moment_rowadr, d.moment_colind
     )
-    dofs = [m.jnt_dofadr[m.joint(j).id] for j in cost.joints]
-    tau = dense[:, dofs] * d.actuator_force[:, None]
+    tangent = _finite_difference_tangent(m, d.qpos, cost.joints)
+    tau = (dense @ tangent) * d.actuator_force[:, None]
     return float(
         (np.abs(tau).sum(0) - np.abs(tau.sum(0))).sum() / mujoco.mj_getTotalmass(m)
     )
+
+
+def _finite_difference_tangent(
+    model: mujoco.MjModel, qpos: np.ndarray, joints: tuple[str, ...]
+) -> np.ndarray:
+    couplings = JointCouplings.from_model(model)
+    tangent = np.empty((model.nv, len(joints)))
+    for col, name in enumerate(joints):
+        adr = model.jnt_qposadr[model.joint(name).id]
+        minus, plus = qpos.copy(), qpos.copy()
+        minus[adr] -= 1e-6
+        plus[adr] += 1e-6
+        project_joint_couplings(couplings, minus)
+        project_joint_couplings(couplings, plus)
+        velocity = np.empty(model.nv)
+        mujoco.mj_differentiatePos(model, velocity, 2e-6, minus, plus)
+        tangent[:, col] = velocity
+    return tangent
+
+
+@pytest.mark.tier1
+def test_coupled_moments_match_length_finite_differences() -> None:
+    """A muscle crossing only a chained dependent still acts on its master."""
+    from myosuite.tests.test_joint_coupling import _XML
+
+    names = ("master", "dep", "chained", "locked", "loose")
+    tendons = "".join(
+        f'<fixed name="t{i}"><joint joint="{name}" coef="0.03"/></fixed>'
+        for i, name in enumerate(names)
+    )
+    actuators = "".join(
+        f'<muscle name="m{i}" tendon="t{i}" lengthrange="0.1 1" force="100"/>'
+        for i in range(len(names))
+    )
+    xml = _XML.replace(
+        "</mujoco>",
+        f"<tendon>{tendons}</tendon><actuator>{actuators}</actuator></mujoco>",
+    )
+    model = mujoco.MjModel.from_xml_string(xml)
+    data = mujoco.MjData(model)
+    data.qpos[0] += 0.2
+    project_joint_couplings(JointCouplings.from_model(model), data.qpos)
+    mujoco.mj_forward(model, data)
+    index = MomentArmIndex.from_model(model, ("master", "loose"))
+    assert index.actuator_ids.tolist() == [0, 1, 2, 4]
+    arms = muscle_moment_arms(np, *_sparse(data), index, data.qpos)
+    tangent = _finite_difference_tangent(model, data.qpos, ("master", "loose"))
+    np.testing.assert_allclose(arms, 0.03 * tangent[index.actuator_ids], atol=1e-10)
+    assert abs(arms[2, 0]) > 0.001
+    with pytest.raises(ValueError, match="independent"):
+        MomentArmIndex.from_model(model, ("dep",))
+    torch = pytest.importorskip("torch")
+    index_t = index.to_backend(torch.as_tensor)
+    actual = muscle_moment_arms(
+        torch,
+        torch.tensor(np.tile(data.actuator_moment, (2, 1))),
+        torch.tensor(np.tile(data.moment_rowadr, (2, 1))),
+        index_t,
+        torch.tensor(np.tile(data.qpos, (2, 1))),
+    )
+    np.testing.assert_allclose(
+        actual.numpy(), np.broadcast_to(arms, actual.shape), atol=1e-12
+    )
+
+
+@pytest.mark.tier1
+def test_fullbody_knee_moments_match_tendon_length_differences() -> None:
+    """The effective knee arms include tibia/patella motion, not just knee rotation."""
+    require_musclemimic_models()
+    env = make_env("myoMimicFullbody-v0").unwrapped
+    model, data = env.model, env.data
+    names = ("knee_angle_r", "knee_angle_l")
+    for name in names:
+        data.qpos[model.jnt_qposadr[model.joint(name).id]] = 0.5
+    couplings = JointCouplings.from_model(model)
+    project_joint_couplings(couplings, data.qpos)
+    mujoco.mj_forward(model, data)
+    index = MomentArmIndex.from_model(model, names)
+    actual = muscle_moment_arms(np, *_sparse(data), index, data.qpos)
+    expected = np.empty_like(actual)
+    for col, name in enumerate(names):
+        lengths = []
+        for delta in (-1e-6, 1e-6):
+            perturbed = mujoco.MjData(model)
+            perturbed.qpos[:] = data.qpos
+            perturbed.qpos[model.jnt_qposadr[model.joint(name).id]] += delta
+            project_joint_couplings(couplings, perturbed.qpos)
+            mujoco.mj_forward(model, perturbed)
+            lengths.append(perturbed.actuator_length[index.actuator_ids].copy())
+        expected[:, col] = (lengths[1] - lengths[0]) / 2e-6
+    np.testing.assert_allclose(actual, expected, atol=2e-7, rtol=2e-4)
+    partial = np.zeros((model.nu, model.nv))
+    mujoco.mju_sparse2dense(
+        partial,
+        data.actuator_moment,
+        data.moment_rownnz,
+        data.moment_rowadr,
+        data.moment_colind,
+    )
+    assert (
+        np.max(np.abs(actual - partial[index.actuator_ids][:, index.dof_ids])) > 0.001
+    )
+    env.close()
 
 
 @pytest.mark.tier1

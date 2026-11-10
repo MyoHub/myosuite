@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import torch
 from mjlab.managers.manager_base import ManagerTermBase
 
-from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
 from myosuite.terms.cocontraction import (
     MomentArmIndex,
     WastedTorqueCfg,
@@ -44,7 +44,13 @@ class wasted_torque(ManagerTermBase):  # noqa: N801  (mjlab term style)
             body_mass=cost.body_mass,
             name_prefix=f"{name}/",
         )
-        self._index = index.to_backend(lambda a: torch.as_tensor(a, device=env.device))
+        self._index = index.to_backend(
+            lambda a: torch.as_tensor(
+                a,
+                dtype=torch.float32 if a.dtype.kind == "f" else torch.int64,
+                device=env.device,
+            )
+        )
 
     def __call__(
         self,
@@ -52,8 +58,8 @@ class wasted_torque(ManagerTermBase):  # noqa: N801  (mjlab term style)
         entity_name: str,
         cfg: WastedTorqueCfg | None = None,
     ) -> torch.Tensor:
-        del cfg
-        accessor = MjlabEntityAccessor(env, entity_name)
+        del cfg, entity_name
+        accessor = MjlabEnvAccessor(env.sim.model, env.sim.data, env.step_dt)
         return wasted_torque_reward(accessor, {}, moment_index=self._index)[
             "wasted_torque"
         ]

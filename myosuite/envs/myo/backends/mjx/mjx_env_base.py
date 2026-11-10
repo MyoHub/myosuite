@@ -11,6 +11,10 @@ Provides:
   boilerplate (physics step, auto-reset, obs/reward assembly) and delegates
   task logic to subclass template methods.
 
+The env interface (config overrides, ``observation_size``, ``render``) follows
+``mujoco_playground`` 0.x's ``MjxEnv``; ``State`` and the physics step come from
+:mod:`~myosuite.envs.myo.backends.mjx.brax_env`.
+
 Subclasses must implement:
     ``setup_model(config)``
         Build ``self._mj_model``, ``self._mjx_model``, ``self._xml_path``, and
@@ -29,16 +33,19 @@ from __future__ import annotations
 
 import functools
 import warnings
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import jax
 import jax.numpy as jp
 import mujoco
+import numpy as np
+from ml_collections import config_dict
 from mujoco import mjx
-from mujoco_playground import State
-from mujoco_playground._src import mjx_env
 
 from myosuite.core.protocols import PhysicsPath
+from myosuite.envs.myo.backends.mjx import brax_env
+from myosuite.envs.myo.backends.mjx.brax_env import State
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
 EXPERIMENTAL_WARNING = (
@@ -178,7 +185,7 @@ def _obs_dict_to_vec(obs_dict: dict[str, jax.Array]) -> jax.Array:
 # ---------------------------------------------------------------------------
 
 
-class MyoMjxEnvBase(mjx_env.MjxEnv):
+class MyoMjxEnvBase:
     """Abstract base for MyoSuite MJX environments.
 
     Handles the ``reset()`` / ``step()`` boilerplate: model loading, data
@@ -198,9 +205,16 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
         ``_update_metrics(metrics, rwd_dict, step_count)`` — default: no-op
     """
 
-    def __init__(self, config, config_overrides=None) -> None:
+    def __init__(
+        self,
+        config: config_dict.ConfigDict,
+        config_overrides: dict[str, Any] | None = None,
+    ) -> None:
         _warn_experimental_once()
-        super().__init__(config, config_overrides)
+        # Locked: an override with an unknown key raises instead of adding it.
+        self._config = config.lock()
+        if config_overrides:
+            self._config.update_from_flattened_dict(config_overrides)
         self._mj_model: mujoco.MjModel | None = None
         self._mjx_model: mjx.Model | None = None
         self._xml_path: str = ""
@@ -405,7 +419,7 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
         Returns:
             Next ``State``.
         """
-        data = mjx_env.step(self._mjx_model, state.data, ctrl, self._n_substeps)
+        data = brax_env.step(self._mjx_model, state.data, ctrl, self._n_substeps)
 
         ctrl_dt = float(self._config.ctrl_dt)
         task_state = {
@@ -459,8 +473,53 @@ class MyoMjxEnvBase(mjx_env.MjxEnv):
         )
 
     # ------------------------------------------------------------------
-    # MjxEnv interface (required properties)
+    # Env interface (properties brax and the wrappers read)
     # ------------------------------------------------------------------
+
+    @property
+    def unwrapped(self) -> MyoMjxEnvBase:
+        """The env itself (wrappers return the innermost env)."""
+        return self
+
+    @property
+    def observation_size(self) -> int | Mapping[str, tuple[int, ...]]:
+        """Observation shapes, from an abstract ``reset`` (no compile)."""
+        obs = jax.eval_shape(self.reset, jax.random.PRNGKey(0)).obs
+        if isinstance(obs, Mapping):
+            return jax.tree_util.tree_map(lambda x: x.shape, obs)
+        return obs.shape[-1]
+
+    def render(
+        self,
+        trajectory: Sequence[State],
+        height: int = 240,
+        width: int = 320,
+        camera: str | None = None,
+        scene_option: mujoco.MjvOption | None = None,
+        modify_scene_fns: Sequence[Callable[[mujoco.MjvScene], None]] | None = None,
+    ) -> list[np.ndarray]:
+        """Render one frame per state of a single-env trajectory.
+
+        Args:
+            trajectory: States to render.
+            height: Image height in pixels.
+            width: Image width in pixels.
+            camera: Camera name; ``None`` uses the free camera.
+            scene_option: Visualisation options.
+            modify_scene_fns: Per-frame callbacks that edit the scene before rendering.
+
+        Returns:
+            One ``(height, width, 3)`` uint8 image per state.
+        """
+        return brax_env.render_array(
+            self.mj_model,
+            trajectory,
+            height,
+            width,
+            camera,
+            scene_option=scene_option,
+            modify_scene_fns=modify_scene_fns,
+        )
 
     @property
     def xml_path(self) -> str:

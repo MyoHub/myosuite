@@ -33,8 +33,8 @@ import numpy as np
 from brax.envs.base import Wrapper
 from ml_collections import config_dict, ConfigDict
 from mujoco import mjx
-from mujoco_playground._src import mjx_env
 
+from myosuite.envs.myo.backends.mjx.brax_env import State
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MyoMjxEnvBase
 from myosuite.physics.fatigue_jax import cumulative_fatigue_step
 from myosuite.utils.spec_processing import compile_with_options
@@ -267,7 +267,7 @@ class FatigueWrapper(Wrapper):
         self.fatigue_index_MR = jp.arange(_first + na, _first + na * 2)
         self.fatigue_index_MF = jp.arange(_first + na * 2, _first + na * 3)
 
-    def reset(self, rng: jax.Array) -> mjx_env.State:
+    def reset(self, rng: jax.Array) -> State:
         """Reset the environment and initialise fatigue state.
 
         Args:
@@ -293,7 +293,7 @@ class FatigueWrapper(Wrapper):
         state = state.replace(obs=self._add_fatigue_to_obs(state.obs, state.data))
         return state
 
-    def step(self, state: mjx_env.State, action: jax.Array) -> mjx_env.State:
+    def step(self, state: State, action: jax.Array) -> State:
         """Advance one step with fatigue dynamics applied.
 
         Args:

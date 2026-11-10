@@ -7,7 +7,8 @@
 Muscle ``m`` applies the torque ``tau_mj = actuator_moment[m, j] * actuator_force[m]`` about
 DOF ``j``. Antagonists cancel each other's torque, so the torque wasted at ``j`` is
 ``sum_m |tau_mj| - |sum_m tau_mj|``: zero when all muscles crossing ``j`` push the same way,
-positive under co-contraction. The cost sums this over a set of DOFs and divides by body mass
+positive under co-contraction. For coupled joints the moment arms include the chain-rule
+contributions of every dependent joint. The cost sums this over independent DOFs and divides by body mass
 (N·m/kg), as in the analysis of MyoSuite PR #573.
 
 MuJoCo stores ``actuator_moment`` sparse (rows ``moment_rowadr`` / ``moment_rownnz``, columns
@@ -28,6 +29,7 @@ import mujoco
 import numpy as np
 
 from myosuite.core.protocols import EnvAccessor
+from myosuite.physics.joint_coupling import JointCouplings, projected_joint_couplings
 
 FULLBODY_LEG_JOINTS: tuple[str, ...] = (
     "hip_flexion_r",
@@ -61,7 +63,7 @@ class WastedTorqueCfg:
     Attributes:
         weight: Penalty per N·m/kg, subtracted from the reward every control step. ``0`` logs
             the metric without changing the reward.
-        joints: Hinge or slide joints whose DOFs are scored.
+        joints: Independent hinge or slide joints whose DOFs are scored.
         body_mass: Normaliser in kg; ``None`` uses the model's total mass.
     """
 
@@ -76,11 +78,14 @@ class MomentArmIndex:
 
     Attributes:
         actuator_ids: Muscle actuators that cross at least one scored DOF, shape ``(n_m,)``.
-        offset: Position of each scored DOF in the muscle's moment row, shape ``(n_m, n_d)``;
+        offset: Position of each contributing DOF in the muscle's moment row, shape ``(n_m, n_s)``;
             ``0`` where the muscle does not cross the DOF (masked by ``valid``).
-        valid: Whether the muscle crosses the DOF, shape ``(n_m, n_d)``, float ``0`` / ``1``.
+        valid: Whether the muscle crosses the DOF, shape ``(n_m, n_s)``, float ``0`` / ``1``.
         body_mass: Normaliser in kg.
         dof_ids: Scored DOF addresses, shape ``(n_d,)`` (informational).
+        source_dof_ids: Scored DOFs and their coupled descendants, shape ``(n_s,)``.
+        velocity_basis: Unit velocities of the scored DOFs, shape ``(n_d, nv)``.
+        couplings: Shared projection metadata when dependent DOFs contribute.
     """
 
     actuator_ids: Any
@@ -88,6 +93,9 @@ class MomentArmIndex:
     valid: Any
     body_mass: float
     dof_ids: Any = field(default=None)
+    source_dof_ids: Any = field(default=None)
+    velocity_basis: Any = field(default=None)
+    couplings: JointCouplings | None = None
 
     @classmethod
     def from_model(
@@ -102,7 +110,7 @@ class MomentArmIndex:
 
         Args:
             model: Compiled model (CPU env model or ``env.sim.mj_model`` of an mjlab scene).
-            joints: Hinge or slide joint names.
+            joints: Independent hinge or slide joint names.
             body_mass: Normaliser in kg; ``None`` uses ``mj_getTotalmass(model)``.
             name_prefix: Prefix of the joint names in *model* (mjlab entity, e.g. ``"robot/"``).
 
@@ -110,7 +118,7 @@ class MomentArmIndex:
             The gather plan as numpy arrays.
 
         Raises:
-            ValueError: If a joint is missing or not 1-DOF, no muscle crosses the joints, or a
+            ValueError: If a joint is missing, dependent, locked or not 1-DOF, no muscle crosses the joints, or a
                 muscle uses a transmission other than a tendon or joint.
         """
         dof_ids = []
@@ -128,7 +136,24 @@ class MomentArmIndex:
             ):
                 raise ValueError(f"Joint {name!r} is not a hinge or slide joint.")
             dof_ids.append(int(model.jnt_dofadr[jid]))
-        dof_pos = {d: k for k, d in enumerate(dof_ids)}
+        couplings = JointCouplings.from_model(model)
+        dependent = set(couplings.dep_dof) | set(couplings.locked_dof)
+        if dependent.intersection(dof_ids):
+            raise ValueError("Score independent joints, not coupled or locked joints.")
+        basis = np.zeros((len(dof_ids), model.nv))
+        basis[np.arange(len(dof_ids)), dof_ids] = 1.0
+        contributes = np.zeros(model.nv, dtype=bool)
+        contributes[dof_ids] = True
+        start = 0
+        for end in couplings.level_ends:
+            contributes[couplings.dep_dof[start:end]] = contributes[
+                couplings.master_dof[start:end]
+            ]
+            start = end
+        source_dofs = np.flatnonzero(contributes)
+        if len(source_dofs) == len(dof_ids):
+            source_dofs = np.asarray(dof_ids, dtype=np.int64)
+        dof_pos = {int(d): k for k, d in enumerate(source_dofs)}
 
         actuators, offsets, valids = [], [], []
         for a in np.flatnonzero(
@@ -144,8 +169,8 @@ class MomentArmIndex:
                 raise ValueError(
                     f"Muscle {a} uses an unsupported transmission ({trn})."
                 )
-            off = np.zeros(len(dof_ids), dtype=np.int64)
-            ok = np.zeros(len(dof_ids), dtype=np.float32)
+            off = np.zeros(len(source_dofs), dtype=np.int64)
+            ok = np.zeros(len(source_dofs), dtype=np.float32)
             for slot, col in enumerate(cols):
                 if int(col) in dof_pos:
                     off[dof_pos[int(col)]] = slot
@@ -164,6 +189,9 @@ class MomentArmIndex:
                 mujoco.mj_getTotalmass(model) if body_mass is None else body_mass
             ),
             dof_ids=np.asarray(dof_ids, dtype=np.int64),
+            source_dof_ids=source_dofs,
+            velocity_basis=basis,
+            couplings=couplings if len(source_dofs) > len(dof_ids) else None,
         )
 
     def to_backend(self, convert: Callable[[Any], Any]) -> MomentArmIndex:
@@ -174,19 +202,31 @@ class MomentArmIndex:
             offset=convert(self.offset),
             valid=convert(self.valid),
             dof_ids=convert(self.dof_ids),
+            source_dof_ids=convert(self.source_dof_ids),
+            velocity_basis=convert(self.velocity_basis),
+            couplings=(
+                self.couplings.map_arrays(convert)
+                if self.couplings is not None
+                else None
+            ),
         )
 
 
 def muscle_moment_arms(
-    xp: Any, actuator_moment: Any, moment_rowadr: Any, index: MomentArmIndex
+    xp: Any,
+    actuator_moment: Any,
+    moment_rowadr: Any,
+    index: MomentArmIndex,
+    qpos: Any,
 ) -> Any:
-    """Dense moment arms of the indexed muscles about the indexed DOFs.
+    """Effective moment arms about independent DOFs, including coupled-joint motion.
 
     Args:
         xp: Array module (numpy or torch).
         actuator_moment: Sparse moment values, shape ``(..., nJmom)``.
         moment_rowadr: Row start per actuator, shape ``(..., nu)``.
         index: Gather plan with arrays of the same backend.
+        qpos: Positions in the compiled model's layout, shape ``(..., nq)``.
 
     Returns:
         Moment arms ``dL/dq`` (m for hinge DOFs), shape ``(..., n_m, n_d)``.
@@ -198,7 +238,18 @@ def muscle_moment_arms(
         vals = xp.take_along_dim(actuator_moment, flat.long(), dim=-1)
     else:
         vals = xp.take_along_axis(actuator_moment, flat, axis=-1)
-    return vals.reshape(idx.shape) * index.valid
+    arms = vals.reshape(idx.shape) * index.valid
+    if index.couplings is None:
+        return arms
+    batch = qpos.shape[:-1]
+    basis = index.velocity_basis
+    positions = xp.broadcast_to(
+        qpos[..., None, :], (*batch, basis.shape[0], qpos.shape[-1])
+    )
+    velocities = xp.broadcast_to(basis, (*batch, *basis.shape))
+    _, tangent = projected_joint_couplings(index.couplings, positions, velocities)
+    assert tangent is not None
+    return arms @ tangent[..., index.source_dof_ids].swapaxes(-1, -2)
 
 
 def wasted_muscle_torque(xp: Any, moment_arms: Any, force: Any) -> Any:
@@ -240,7 +291,7 @@ def wasted_torque_reward(
     del task_state, kwargs
     xp = accessor.array_module()
     moment, rowadr = accessor.actuator_moment_sparse()
-    arms = muscle_moment_arms(xp, moment, rowadr, moment_index)
+    arms = muscle_moment_arms(xp, moment, rowadr, moment_index, accessor.joint_pos())
     force = accessor.muscle_force()[..., moment_index.actuator_ids]
     wasted = wasted_muscle_torque(xp, arms, force) / moment_index.body_mass
     return {

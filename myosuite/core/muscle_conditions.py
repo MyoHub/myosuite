@@ -112,12 +112,223 @@ MUSCLE_FATIGUE_PARAMS: dict[str, dict[str, float]] = {
 }
 
 FATIGUE_REST_THRESHOLD = 0.01
-"""Commands ``TL <= FATIGUE_REST_THRESHOLD`` count as rest: recovery runs at ``r R``.
+"""Default rest threshold: commands ``TL <= FATIGUE_REST_THRESHOLD`` count as rest.
 
-Rakshit et al. (2021, Eq. 7) define rest as a zero command. A command through the muscle
-sigmoid never reaches zero (smallest value 0.00055), so a small threshold makes a relaxed
-muscle count as resting, as a muscle commanded to 0 does.
+At rest recovery runs at ``r R``. Rakshit et al. (2021, Eq. 7) define rest as a zero
+command. A command through the muscle sigmoid never reaches zero (smallest value
+0.00055), so a small threshold makes a relaxed muscle count as resting, as a muscle
+commanded to 0 does. ``CumulativeFatigue`` and ``TorchFatigueState`` take another
+value as ``rest_threshold``, e.g. above the noise floor of estimated excitations.
 """
+
+_TINY = 1e-20  # floor for rates and denominators (R = 0, F = 0, empty segments)
+
+
+def _rest_threshold(value: float) -> float:
+    """Validate a rest threshold: a finite scalar in ``[0, 1)``.
+
+    Raises:
+        ValueError: If *value* is not a scalar or lies outside ``[0, 1)`` (NaN included).
+    """
+    if np.ndim(value) != 0:
+        raise ValueError(
+            f"rest_threshold must be a scalar, got shape {np.shape(value)}"
+        )
+    threshold = float(value)
+    if not 0.0 <= threshold < 1.0:
+        raise ValueError(f"rest_threshold must lie in [0, 1), got {value!r}")
+    return threshold
+
+
+def _nonzero(xp: Any, x: Any) -> Any:
+    """``x`` with magnitudes below :data:`_TINY` replaced by ``_TINY``."""
+    return xp.where(xp.abs(x) > _TINY, x, _TINY)
+
+
+def _relax(
+    xp: Any, MA: Any, MF: Any, L: Any, TL: Any, F: Any, rho: Any, t: Any
+) -> tuple[Any, Any]:
+    """Exact ``(MA, MF)`` after ``t`` with ``C = L (TL - MA)`` (MA decoupled from MF).
+
+    Increments use ``expm1``: float32 would round ``e^{-rho t}`` close to 1.
+    """
+    k = L + F
+    MAs = L * TL / _nonzero(xp, k)
+    D = MA - MAs
+    em = xp.expm1(-rho * t)
+    kr = _nonzero(xp, k - rho)
+    dMF = MF * em + F * (-MAs * em / rho - D * (1.0 + em) * xp.expm1(-kr * t) / kr)
+    return MA + D * xp.expm1(-k * t), MF + dMF
+
+
+def _limited_modes(xp: Any, L: Any, F: Any, rho: Any) -> tuple[Any, ...]:
+    """Eigen-data of ``C = L MR = L (1 - MA - MF)``, a linear 2x2 system in (MA, MF).
+
+    Returns the equilibrium ``(MAe, MFe)``, ``s = lam2 - lam1`` and the fast and slow
+    eigenvalues ``lam1 ~ -L``, ``lam2 ~ -(F + rho)``.
+    """
+    det = _nonzero(xp, (L + F) * rho + L * F)
+    disc = (L + F - rho) ** 2 - 4.0 * L * F
+    s = _nonzero(xp, xp.sqrt(xp.where(disc > 0, disc, 0.0)))
+    lam1 = -0.5 * (L + F + rho + s)
+    lam2 = det / lam1  # product form avoids cancellation
+    return L * rho / det, L * F / det, s, lam1, lam2
+
+
+def _limited(
+    xp: Any, MA: Any, MF: Any, L: Any, F: Any, rho: Any, t: Any, modes: tuple
+) -> tuple[Any, Any]:
+    """Exact ``(MA, MF)`` after ``t`` with ``C = L MR``: ``e^{At} = g I + h A``."""
+    MAe, MFe, s, _, lam2 = modes
+    y1, y2 = MA - MAe, MF - MFe
+    em = xp.expm1(lam2 * t)
+    h = (1.0 + em) * -xp.expm1(-s * t) / s  # (e^{lam2 t} - e^{lam1 t}) / (lam2 - lam1)
+    g1 = em - lam2 * h  # g - 1
+    Ay1 = -(L + F) * y1 - L * y2
+    Ay2 = F * y1 - rho * y2
+    return MA + g1 * y1 + h * Ay1, MF + g1 * y2 + h * Ay2
+
+
+def _free_switch_time(
+    xp: Any, MA: Any, MF: Any, L: Any, TL: Any, thr: Any, F: Any, rho: Any
+) -> Any:
+    """Time the slow mode of MF reaches ``thr`` under ``C = L (TL - MA)`` (inf: never).
+
+    Past the fast transient, ``MF(t) = M + tau (F MA* - rho M)`` with
+    ``tau = (1 - e^{-rho t}) / rho`` and ``M = MF + F (MA - MA*) / (L + F - rho)``.
+    """
+    k = L + F
+    MAs = L * TL / _nonzero(xp, k)
+    M = MF + F * (MA - MAs) / _nonzero(xp, k - rho)
+    slope = F * MAs - rho * M
+    tau = xp.where(M < thr, (thr - M) / _nonzero(xp, slope), 0.0)
+    x = rho * xp.where(tau > 0, tau, 0.0)
+    t = -xp.log1p(-xp.where(x < 1.0 - 1e-6, x, 1.0 - 1e-6)) / rho
+    return xp.where((M >= thr) | ((slope > 0) & (x < 1.0)), t, xp.inf)
+
+
+def _bounded(xp: Any, MA: Any, MF: Any) -> tuple[Any, Any, Any]:
+    """``(MA, MR, MF)`` with rounding clipped: each in ``[0, 1]``, summing to one."""
+    MA = xp.where(MA > 0, xp.where(MA < 1, MA, 1.0), 0.0)
+    MF = xp.where(MF > 0, xp.where(MF < 1 - MA, MF, 1 - MA), 0.0)
+    return MA, 1.0 - MA - MF, MF
+
+
+def three_cc_r_step(
+    xp: Any,
+    MA: Any,
+    MF: Any,
+    TL: Any,
+    *,
+    F: Any,
+    R: Any,
+    r: Any,
+    tauact: Any,
+    taudeact: Any,
+    dt: float,
+    rest_threshold: float = FATIGUE_REST_THRESHOLD,
+) -> tuple[Any, Any, Any]:
+    """Exact 3CC-r step of any length ``dt`` under a constant command ``TL``.
+
+    Backend-agnostic (``xp`` is numpy, torch or jax.numpy) and vectorised without
+    host syncs; NumPy skips the split segments when no muscle needs them.
+    ``MR = 1 - MA - MF``. With the activation rates frozen at the start of the step
+    (``LD = 1 / (tauact (0.5 + 1.5 MA0))``, ``LR = (0.5 + 1.5 MA0) / taudeact``, as
+    in the earlier explicit step), each controller regime is a linear ODE in
+    ``(MA, MF)`` with a closed form:
+
+    - ``MA >= TL``: ``C = LR (TL - MA)``; MA relaxes to ``LR TL / (LR + F)`` and
+      ``MF(t) = MF0 e^{-rho t} + F int_0^t e^{-rho (t - s)} MA(s) ds``, i.e. fatigue
+      accrues with the time integral of MA, ``TL t + (MA0 - TL)(1 - e^{-L t}) / L``
+      for ``F, rho << L``, and decays exponentially. Ends when MA reaches
+      ``max(TL, 0)`` at ``ln((MA0 - MA*) / (TL - MA*)) / (LR + F)``.
+    - ``MA < TL``, ``MF < 1 - TL``: the same with ``LD``.
+    - ``MA < TL``, ``MF >= 1 - TL`` (MR limits, ``C = LD MR``): coupled 2x2 system,
+      solved with its two real eigenvalues ``-LD`` (fast) and ``-(F + rho)`` (slow).
+
+    ``C`` is continuous across ``MF = 1 - TL``, so the switch between the last two
+    regimes is placed where the slow mode crosses it (closed form; the neglected
+    fast transient changes the state at second order). A step has at most three
+    segments. ``rho = r R`` at rest (``TL <= rest_threshold``), else ``R``.
+    A NaN command keeps ``C = 0``, as the masks of the explicit step did.
+
+    The frozen rates are the remaining error against MuJoCo's MA-dependent rates:
+    after a large command jump MA leads them by up to ~0.2 within a 10-25 ms step,
+    and each transient shifts MF by ~1e-5 to 1e-4.
+
+    Args:
+        xp: Array module of the inputs.
+        MA: Active fraction.
+        MF: Fatigued fraction.
+        TL: Target load (command), broadcastable with ``MA``.
+        F: Fatigue rate [1/s].
+        R: Recovery rate [1/s].
+        r: Rest recovery multiplier.
+        tauact: Activation time constants [s].
+        taudeact: Deactivation time constants [s].
+        dt: Step length [s].
+        rest_threshold: Commands ``TL <= rest_threshold`` count as rest.
+
+    Returns:
+        ``(MA, MR, MF)`` after ``dt``, each in ``[0, 1]`` and summing to one.
+    """
+    rho = xp.where(TL <= rest_threshold, r * R, R)
+    rho = xp.where(rho > _TINY, rho, _TINY)
+    nan = xp.isnan(TL)
+    TL = xp.where(nan, 0.0, TL)
+    act = 0.5 + 1.5 * MA
+    LD = xp.where(nan, 0.0, 1.0 / (tauact * act))
+    LR = xp.where(nan, 0.0, act / taudeact)
+    TLc = xp.where(TL > 0, TL, 0.0)  # MA stops at 0 under a negative command
+    thr = 1.0 - TL  # MR runs out once MF >= 1 - TL
+    T = MA * 0.0 + dt
+
+    # 1) MA >= TL: deactivate until MA reaches max(TL, 0).
+    falling = MA >= TL
+    k1 = _nonzero(xp, LR + F)
+    gap = TLc - LR * TL / k1
+    ratio = (MA - LR * TL / k1) / _nonzero(xp, gap)
+    t_cross = xp.where(gap > 0, xp.log(xp.where(ratio > 1, ratio, 1.0)) / k1, xp.inf)
+    crosses = falling & (t_cross < T)
+    if xp is np:  # NumPy skips the split segments when no muscle needs them
+        t_a = _free_switch_time(xp, MA, MF, LD, TLc, thr, F, rho)
+        if not (crosses | ~falling & ((MF >= thr) | (t_a < T))).any():
+            L = xp.where(falling, LR, LD)
+            return _bounded(xp, *_relax(xp, MA, MF, L, TL, F, rho, T))
+    d1 = xp.where(falling, xp.where(crosses, t_cross, T), 0.0)
+    MA1, MF1 = _relax(xp, MA, MF, LR, TL, F, rho, d1)
+    MA1 = xp.where(crosses, TLc, MA1)
+    T2 = T - d1
+
+    # 2) MA < TL: free (A) or MR-limited (B) recruitment; they switch where the slow
+    # mode of MF crosses 1 - TL.
+    limited = MF1 >= thr
+    modes = _limited_modes(xp, LD, F, rho)
+    MAe, MFe, s, lam1, lam2 = modes
+    p2 = (F * (MA1 - MAe) - (rho + lam1) * (MF1 - MFe)) / s  # slow-mode part of MF
+    q = (thr - MFe) / _nonzero(xp, p2)
+    down = (q > 0) & (q < 1)
+    t_b = xp.log(xp.where(down, q, 1.0)) / lam2
+    t_b = xp.where(MFe + p2 < thr, 0.0, xp.where(down, t_b, xp.inf))
+    # C is continuous at MF = 1 - TL, so the regime holding the equilibrium is absorbing:
+    # a limited step whose equilibrium is limited never switches (near the boundary the
+    # fast transient would otherwise read as a crossing), nor a free step with a free one.
+    t_b = xp.where(MFe >= thr, xp.inf, t_b)
+    t_a = _free_switch_time(xp, MA1, MF1, LD, TLc, thr, F, rho)
+    t_a = xp.where(F * (LD * TLc / _nonzero(xp, LD + F)) < rho * thr, xp.inf, t_a)
+    t_sw = xp.where(limited, t_b, t_a)
+    d2 = xp.where(t_sw < T2, t_sw, T2)
+    d3 = T2 - d2
+
+    MA_a, MF_a = _relax(xp, MA1, MF1, LD, TLc, F, rho, d2)
+    MA_b, MF_b = _limited(xp, MA1, MF1, LD, F, rho, d2, modes)
+    MA2 = xp.where(limited, MA_b, MA_a)
+    MF2 = xp.where(limited, MF_b, MF_a)
+    MA_a, MF_a = _relax(xp, MA2, MF2, LD, TLc, F, rho, d3)
+    MA_b, MF_b = _limited(xp, MA2, MF2, LD, F, rho, d3, modes)
+    MA3 = xp.where(limited, MA_a, MA_b)
+    return _bounded(xp, MA3, xp.where(limited, MF_a, MF_b))
+
 
 _DEFAULT_F = MUSCLE_FATIGUE_PARAMS["Default"]["F"]
 _DEFAULT_R = MUSCLE_FATIGUE_PARAMS["Default"]["R"]
@@ -298,10 +509,11 @@ class CumulativeFatigue:
     ``dMR/dt = -C(t) + r(k, TL) x R x MF``,
     ``dMF/dt = F x MA - r(k, TL) x R x MF`` with
     ``r = k if TL = 0`` and ``r = 1 if TL > 0``.  Rest is
-    ``TL <= FATIGUE_REST_THRESHOLD`` (0.01): a command of (nearly) zero, plus the
-    negative commands of ``[-1, 1]`` control ranges, which MuJoCo's muscle dynamics
-    clamp to zero excitation.  The threshold lets a command mapped through the
-    muscle sigmoid, which never reaches exactly zero, rest.
+    ``TL <= rest_threshold`` (default :data:`FATIGUE_REST_THRESHOLD`, 0.01): a
+    command of (nearly) zero, plus the negative commands of ``[-1, 1]`` control
+    ranges, which MuJoCo's muscle dynamics clamp to zero excitation.  The threshold
+    lets a command mapped through the muscle sigmoid, which never reaches exactly
+    zero, rest.
 
     Args:
         mj_model: Compiled MuJoCo model.  Used to read muscle actuator
@@ -321,6 +533,13 @@ class CumulativeFatigue:
             JAX models in ``physics/fatigue_jax.py`` also use.
         muscles: Muscle actuators to track (ids or names), in the order the
             excitations are passed; default every muscle in model order.
+        rest_threshold: Commands ``TL <= rest_threshold`` count as rest, where the
+            recovery multiplier ``r`` applies. Raise it above the noise floor of
+            estimated (e.g. tracked) excitations so that a relaxed muscle rests.
+            Must lie in ``[0, 1)``.
+
+    Raises:
+        ValueError: If *rest_threshold* is outside ``[0, 1)``.
 
     Example:
         >>> fatigue = CumulativeFatigue(mj_model, frame_skip=5)
@@ -337,7 +556,9 @@ class CumulativeFatigue:
         seed: int | None = None,
         use_uniform_params: bool = False,
         muscles: Sequence[int | str] | None = None,
+        rest_threshold: float = FATIGUE_REST_THRESHOLD,
     ) -> None:
+        self._rest_threshold = _rest_threshold(rest_threshold)
         self._dt = float(mj_model.opt.timestep) * int(frame_skip)
         self.muscle_ids = _muscle_ids(mj_model, muscles)  # actuator ids, state order
         self._tauact, self._taudeact = _muscle_time_constants(mj_model, self.muscle_ids)
@@ -387,6 +608,8 @@ class CumulativeFatigue:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Advance fatigue state by one step and return updated compartments.
 
+        The step is exact for any ``dt`` under a constant command (:func:`three_cc_r_step`).
+
         Args:
             act: Target activation (commanded excitation), shape ``(na,)``.
             dt: Timestep in seconds.  Defaults to ``self._dt``.
@@ -397,48 +620,20 @@ class CumulativeFatigue:
         """
         _dt = dt if dt is not None else self._dt
         self.TL = act.copy()
-
-        # Activation/deactivation rates (MuJoCo Hill-type dynamics)
-        LD = 1.0 / (self._tauact * (0.5 + 1.5 * self._MA))
-        LR = (0.5 + 1.5 * self._MA) / self._taudeact
-        # Integrate the first-order approach to TL exactly over _dt: an
-        # explicit Euler step overshoots TL once L * _dt > 1 (LD = 200 /s at
-        # MA = 0 vs 10-25 ms control steps), driving MA above the command.
-        LD = -np.expm1(-LD * _dt) / _dt
-        LR = -np.expm1(-LR * _dt) / _dt
-
-        # Transfer rate C between MR and MA
-        C = np.zeros_like(self._MA)
-        mask = (self._MA < self.TL) & (self._MR > self.TL - self._MA)
-        C[mask] = LD[mask] * (self.TL[mask] - self._MA[mask])
-        mask = (self._MA < self.TL) & (self._MR <= self.TL - self._MA)
-        C[mask] = LD[mask] * self._MR[mask]
-        mask = self._MA >= self.TL
-        C[mask] = LR[mask] * (self.TL[mask] - self._MA[mask])
-
-        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
-        rR = np.where(self.TL <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R)
-
-        # Clip C to keep compartments in [0, 1]
-        C = np.clip(  # type: ignore[assignment]
-            C,
-            np.maximum(
-                -self._MA / _dt + self._F * self._MA,
-                (self._MR - 1.0) / _dt + rR * self._MF,
-            ),
-            np.minimum(
-                (1.0 - self._MA) / _dt + self._F * self._MA,
-                self._MR / _dt + rR * self._MF,
-            ),
+        MA, MR, MF = three_cc_r_step(
+            np,
+            self._MA,
+            self._MF,
+            self.TL,
+            F=self._F,
+            R=self._R,
+            r=self._r,
+            tauact=self._tauact,
+            taudeact=self._taudeact,
+            dt=_dt,
+            rest_threshold=self._rest_threshold,
         )
-
-        dMA = (C - self._F * self._MA) * _dt
-        dMR = (-C + rR * self._MF) * _dt
-        dMF = (self._F * self._MA - rR * self._MF) * _dt
-        self._MA += dMA
-        self._MR += dMR
-        self._MF += dMF
-
+        self._MA[:], self._MR[:], self._MF[:] = MA, MR, MF
         return self._MA, self._MR, self._MF
 
     def get_effort(self) -> float:
@@ -560,6 +755,10 @@ class CumulativeFatigue:
     def r(self) -> np.ndarray:
         return self._r
 
+    @property
+    def rest_threshold(self) -> float:
+        return self._rest_threshold
+
     # ------------------------------------------------------------------
     # Legacy coefficient setters
     # ------------------------------------------------------------------
@@ -572,6 +771,10 @@ class CumulativeFatigue:
 
     def set_RecoveryMultiplier(self, r: float | np.ndarray) -> None:
         self._r = r * np.ones(self.na) if np.isscalar(r) else np.asarray(r)  # type: ignore[assignment, operator]
+
+    def set_RestThreshold(self, rest_threshold: float) -> None:
+        """Set the command at or below which a muscle rests (see ``rest_threshold``)."""
+        self._rest_threshold = _rest_threshold(rest_threshold)
 
 
 # ---------------------------------------------------------------------------
@@ -597,8 +800,14 @@ class TorchFatigueState:
         device: Torch device string (e.g. ``"cpu"``, ``"cuda:0"``).
         F: Fatigue rate — scalar or array of length *n_muscles*.
         R: Recovery rate — scalar or array of length *n_muscles*.
-        r: Recovery multiplier, applied only at rest (``TL <= FATIGUE_REST_THRESHOLD``, Rakshit
+        r: Recovery multiplier, applied only at rest (``TL <= rest_threshold``, Rakshit
             et al. 2021, Eq. 7; see :class:`CumulativeFatigue`) — scalar or array.
+        tauact: Activation time constant [s] — scalar or array.
+        taudeact: Deactivation time constant [s] — scalar or array.
+        rest_threshold: Commands at or below it count as rest; in ``[0, 1)``.
+
+    Raises:
+        ValueError: If *rest_threshold* is outside ``[0, 1)``.
     """
 
     def __init__(
@@ -611,8 +820,11 @@ class TorchFatigueState:
         r: float | np.ndarray = _DEFAULT_r,
         tauact: float | np.ndarray = 0.01,
         taudeact: float | np.ndarray = 0.04,
+        rest_threshold: float = FATIGUE_REST_THRESHOLD,
     ) -> None:
         import torch  # noqa: PLC0415
+
+        self._rest_threshold = _rest_threshold(rest_threshold)
 
         def _to_tensor(v: float | np.ndarray) -> Any:
             arr = np.broadcast_to(np.asarray(v, dtype=np.float32), (n_muscles,)).copy()
@@ -642,6 +854,7 @@ class TorchFatigueState:
         sex: str | None = None,
         use_uniform_params: bool = False,
         muscles: Sequence[int | str] | None = None,
+        rest_threshold: float = FATIGUE_REST_THRESHOLD,
     ) -> TorchFatigueState:
         """Build a :class:`TorchFatigueState` from a compiled MuJoCo model.
 
@@ -659,12 +872,19 @@ class TorchFatigueState:
                 every muscle, as :class:`CumulativeFatigue` does.
             muscles: Muscle actuators to track (ids or names), in column order;
                 default every muscle in model order.
+            rest_threshold: Commands at or below it count as rest (see
+                :class:`CumulativeFatigue`); in ``[0, 1)``.
         """
         ids = _muscle_ids(mj_model, muscles)
         tauact, taudeact = _muscle_time_constants(mj_model, ids)
         na = int(tauact.size)
         if na == 0:
-            return cls(num_envs=num_envs, n_muscles=mj_model.nu, device=device)
+            return cls(
+                num_envs=num_envs,
+                n_muscles=mj_model.nu,
+                device=device,
+                rest_threshold=rest_threshold,
+            )
         if use_uniform_params:
             F_arr = np.full(na, _UNIFORM_PARAMS["F"])
             R_arr = np.full(na, _UNIFORM_PARAMS["R"])
@@ -680,6 +900,7 @@ class TorchFatigueState:
             r=r_arr,
             tauact=tauact,
             taudeact=taudeact,
+            rest_threshold=rest_threshold,
         )
 
     # ------------------------------------------------------------------
@@ -689,7 +910,7 @@ class TorchFatigueState:
     def step(self, excitation: Any, dt: float) -> Any:
         """Advance fatigue state by one control step.
 
-        Implements the same 3CC-r dynamics as :meth:`CumulativeFatigue.step`.
+        Same exact step as :meth:`CumulativeFatigue.compute_act` (:func:`three_cc_r_step`).
 
         Args:
             excitation: Muscle excitation tensor, shape ``(num_envs, n_muscles)``;
@@ -700,49 +921,32 @@ class TorchFatigueState:
             Active compartment ``MA`` (the effective muscle ctrl), same shape as
             *excitation*.
         """
+        excitation = excitation.to(self.MA.dtype)
         import torch  # noqa: PLC0415
 
-        excitation = excitation.to(self.MA.dtype)
-
-        # Activation/deactivation rates (MuJoCo Hill-type dynamics)
-        LD = 1.0 / (self._tauact * (0.5 + 1.5 * self.MA))
-        LR = (0.5 + 1.5 * self.MA) / self._taudeact
-        # Exact per-step rates, as in CumulativeFatigue.compute_act.
-        LD = -torch.expm1(-LD * dt) / dt
-        LR = -torch.expm1(-LR * dt) / dt
-
-        # Recovery rate: r * R only at rest (Rakshit et al. 2021, Eq. 7)
-        rising = self.MA < excitation
-        resting = self.MA >= excitation
-        rR = torch.where(
-            excitation <= FATIGUE_REST_THRESHOLD, self._r * self._R, self._R
+        self.MA, self.MR, self.MF = three_cc_r_step(
+            torch,
+            self.MA,
+            self.MF,
+            excitation,
+            F=self._F,
+            R=self._R,
+            r=self._r,
+            tauact=self._tauact,
+            taudeact=self._taudeact,
+            dt=dt,
+            rest_threshold=self._rest_threshold,
         )
-
-        # Transfer rate C (select, not mask-multiply: a NaN excitation then gives
-        # C = 0 as on CPU instead of NaN * 0 = NaN poisoning the state).
-        C = torch.where(
-            rising,
-            LD * torch.minimum(excitation - self.MA, self.MR),
-            torch.where(resting, LR * (excitation - self.MA), torch.zeros_like(LD)),
-        )
-        # Clip C to keep compartments in [0, 1]
-        C = torch.clamp(
-            C,
-            min=torch.maximum(
-                -self.MA / dt + self._F * self.MA, (self.MR - 1.0) / dt + rR * self.MF
-            ),
-            max=torch.minimum(
-                (1.0 - self.MA) / dt + self._F * self.MA, self.MR / dt + rR * self.MF
-            ),
-        )
-        dMA_dt = C - self._F * self.MA
-        dMF_dt = self._F * self.MA - rR * self.MF
-        dMR_dt = -C + rR * self.MF
-        self.MA = self.MA + dMA_dt * dt
-        self.MF = self.MF + dMF_dt * dt
-        self.MR = self.MR + dMR_dt * dt
         # Same as CPU CumulativeFatigue: the active compartment is the ctrl.
         return self.MA
+
+    @property
+    def rest_threshold(self) -> float:
+        return self._rest_threshold
+
+    def set_RestThreshold(self, rest_threshold: float) -> None:
+        """Set the command at or below which a muscle rests (see ``rest_threshold``)."""
+        self._rest_threshold = _rest_threshold(rest_threshold)
 
     # ------------------------------------------------------------------
     # Reset

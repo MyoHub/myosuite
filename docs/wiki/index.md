@@ -11,6 +11,7 @@
 | [cross-backend-contract.md](cross-backend-contract.md) | Before exporting a policy across backends |
 | [writing-term-functions.md](writing-term-functions.md) | Writing obs/reward/action term functions |
 | [training-guidelines.md](training-guidelines.md) | Before adding training/learning methods or dependencies |
+| [training/supermimic/README.md](../../training/supermimic/README.md) | Training, evaluating and fine-tuning with myoSuperMimic (a training project, not in the package) |
 | [agent-workflow.md](agent-workflow.md) | Required agent workflow and subagent strategy |
 | [log.md](log.md) | Append-only log of PRs to `dev` with new features / critical changes |
 

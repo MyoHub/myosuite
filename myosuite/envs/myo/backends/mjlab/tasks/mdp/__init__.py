@@ -14,6 +14,7 @@ from .events import (  # noqa: F401
     randomize_carry_weight,
     reset_joints_uniform_in_range,
     reset_to_cpu_state,
+    torch_joint_couplings,
     write_cpu_state,
 )
 from .observations import act, qpos, qpos_chains, qvel, qvel_chains  # noqa: F401
