@@ -14,7 +14,7 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
-from myosuite.physics.joint_coupling import JointCouplings
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -121,11 +121,16 @@ def write_cpu_state(
 
 
 class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
-    """CPU keyframe reset, optionally with per-joint noise.
+    """CPU keyframe reset, optionally with per-joint noise, on the joint couplings.
 
     With ``joint_noise=(lo, hi)`` the first ``qpos`` coordinate of every joint
     gets ``U(lo, hi)`` added and is clipped to the joint ``range`` (``[0, 0]``
-    for unlimited joints, as in MuJoCo), exactly as ``LegReachEnvV0``.
+    for unlimited joints, as in MuJoCo), exactly as ``LegReachEnvV0``. The
+    coupled joints are then put on their polynomials, as the CPU resets do.
+
+    ``couplings`` (required) are the
+    :class:`~myosuite.physics.joint_coupling.JointCouplings` of the CPU model,
+    whose layout ``qpos`` / ``qvel`` follow, or ``None`` to skip the projection.
     """
 
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedRlEnv) -> None:
@@ -134,6 +139,11 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
         idx = env.scene[p["asset_cfg"].name].indexing
         self._qpos = torch.tensor(p["qpos"], dtype=torch.float32, device=env.device)
         self._qvel = torch.tensor(p["qvel"], dtype=torch.float32, device=env.device)
+        self._couplings = (
+            None
+            if p["couplings"] is None
+            else torch_joint_couplings(p["couplings"], env.device)
+        )
         model = env.sim.mj_model
         entity_q = sorted(torch.cat([idx.free_joint_q_adr, idx.joint_q_adr]).tolist())
         base, members = entity_q[0], set(entity_q)
@@ -153,10 +163,12 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
         asset_cfg: SceneEntityCfg,
         qpos: tuple[float, ...],
         qvel: tuple[float, ...],
+        couplings: JointCouplings | None,
         joint_noise: tuple[float, float] | None = None,
     ) -> None:
         env_ids = normalize_mjlab_env_ids(env, env_ids)
         q = self._qpos.repeat(len(env_ids), 1)
+        qd = self._qvel.repeat(len(env_ids), 1)
         if joint_noise is not None and joint_noise[1] > joint_noise[0]:
             lo, hi = joint_noise
             noise = lo + (hi - lo) * torch.rand(
@@ -165,6 +177,6 @@ class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
             q[:, self._noise_adr] = torch.clamp(
                 q[:, self._noise_adr] + noise, self._lo, self._hi
             )
-        write_cpu_state(
-            env, asset_cfg.name, env_ids, q, self._qvel.repeat(len(env_ids), 1)
-        )
+        if self._couplings is not None:
+            project_joint_couplings(self._couplings, q, qd)
+        write_cpu_state(env, asset_cfg.name, env_ids, q, qd)

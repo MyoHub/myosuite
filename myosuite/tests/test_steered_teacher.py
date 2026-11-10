@@ -142,7 +142,8 @@ def test_write_rotated_clip_npz_turns_root_xy(tmp_path: Path) -> None:
     assert clip_natural_yaw(qpos, qvel) == pytest.approx(0.0, abs=1e-6)
 
 
-def test_write_rotated_clip_npz_never_unpickles(tmp_path: Path) -> None:
+def test_write_rotated_clip_npz_skips_pickled_arrays_unread(tmp_path: Path) -> None:
+    """Retargeted clips carry pickled metadata: it is dropped, never unpickled."""
     src = tmp_path / "pickled.npz"
     qpos = np.zeros((2, 7), dtype=np.float64)
     qpos[:, 3] = 1.0
@@ -153,9 +154,11 @@ def test_write_rotated_clip_npz_never_unpickles(tmp_path: Path) -> None:
         extra=np.array([_Tripwire()], dtype=object),
     )
     _UNPICKLED.clear()
-    with pytest.raises(ValueError, match="pickled object array"):
-        write_rotated_clip_npz(src, tmp_path / "out.npz", 0.0)
+    dst = write_rotated_clip_npz(src, tmp_path / "out.npz", 0.0)
     assert _UNPICKLED == []
+    with np.load(dst, allow_pickle=False) as out:
+        assert sorted(out.files) == ["qpos", "qvel"]
+        np.testing.assert_allclose(out["qpos"], qpos)
     np.load(src, allow_pickle=True)["extra"]
     assert _UNPICKLED == ["unpickled"]
 
@@ -228,6 +231,27 @@ def test_agent_shadow_map_roundtrip() -> None:
     assert sd.qpos[0] == pytest.approx(0.3)
     assert sd.qpos[1] == pytest.approx(-0.4)
     assert sd.qpos[7] == pytest.approx(0.25)
+
+
+def test_agent_shadow_map_resolves_fullbody_aliases() -> None:
+    """The musclemimic_models shadow's ``elbow_flex_r`` is FBVs' ``elbow_flexion_r``."""
+
+    def model(elbow: str, *prefixes: str) -> mujoco.MjModel:
+        bodies = "".join(
+            f'<body pos="0 {i} 1"><freejoint name="{p}root"/><geom size="0.05"/>'
+            f'<body pos="0 0 -0.2"><joint name="{p}{elbow}" axis="0 1 0"/>'
+            '<geom size="0.03"/></body></body>'
+            for i, p in enumerate(prefixes)
+        )
+        return mujoco.MjModel.from_xml_string(
+            f"<mujoco><worldbody>{bodies}</worldbody></mujoco>"
+        )
+
+    shadow = model("elbow_flex_r", "")
+    fbvs = model("elbow_flexion_r", "a0_", "a1_")
+    amap = build_agent_shadow_map(fbvs, shadow, "a1_", [])
+    a1 = mujoco.mj_name2id(fbvs, mujoco.mjtObj.mjOBJ_JOINT, "a1_elbow_flexion_r")
+    assert amap.qpos_pairs[-1] == (int(fbvs.jnt_qposadr[a1]), 7, 1)
 
 
 def test_write_clip_pose_keeps_xy_and_optional_yaw() -> None:

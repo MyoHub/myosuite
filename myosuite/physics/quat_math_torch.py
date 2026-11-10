@@ -36,7 +36,8 @@ def mul_quat(qa: torch.Tensor, qb: torch.Tensor) -> torch.Tensor:
 
 def neg_quat(quat: torch.Tensor) -> torch.Tensor:
     """Conjugate (inverse for unit quaternions)."""
-    return quat * quat.new_tensor([1.0, -1.0, -1.0, -1.0])
+    # no host constant: safe inside CUDA-graph capture
+    return torch.cat([quat[..., :1], -quat[..., 1:]], dim=-1)
 
 
 def quat2Vel(quat: torch.Tensor, dt: float = 1) -> tuple[torch.Tensor, torch.Tensor]:

@@ -708,6 +708,8 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
                 "asset_cfg": SceneEntityCfg(_CHASETAG_ENTITY_NAME),
                 "qpos": tuple(float(q) for q in model.key_qpos[0]),
                 "qvel": tuple(float(v) for v in model.key_qvel[0]),
+                # The CPU ChaseTagEnv reset does not project its couplings.
+                "couplings": None,
             },
         ),
         # After the agent reset: the spawn distance is measured from its new pose.

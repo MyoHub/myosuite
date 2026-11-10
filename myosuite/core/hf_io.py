@@ -116,24 +116,40 @@ def baseline_revisions() -> list[str]:
 def _download_at_revision(
     download: Callable[[str], Any], repo_id: str, revision: str | None
 ) -> Any | None:
-    """Run ``download(revision)`` for the release tags, then for ``main`` if none of them exists.
+    """Run ``download(revision)`` for the release tags, then for ``main`` if none of them exists
+    or none of them holds the file (a baseline added after the release's tag).
 
     Prints the repo revision that was used. Returns ``None`` (after printing why) on network,
     auth or repo errors.
     """
-    from huggingface_hub.errors import RevisionNotFoundError  # noqa: PLC0415
+    from huggingface_hub.errors import (  # noqa: PLC0415
+        EntryNotFoundError,
+        RevisionNotFoundError,
+    )
 
     wanted = [revision] if revision else baseline_revisions()
+    missing = "tag"  # what was missing at wanted[0]: the tag itself, or the file in it
     for rev in dict.fromkeys([*wanted, "main"]):
         try:
             result = download(rev)
         except RevisionNotFoundError:
             continue
+        except (
+            EntryNotFoundError
+        ):  # the tag exists but predates the file: try the next revision
+            if rev == wanted[0]:
+                missing = "file"
+            continue
         except Exception as err:  # noqa: BLE001  (network / auth / repo errors all mean "no baseline")
             print(f"Could not download from the {repo_id!r} Hugging Face repo: {err}")
             return None
         latest = ", using the latest" if rev == "main" else ""
-        note = "" if rev == wanted[0] else f" (tag {wanted[0]!r} not found{latest})"
+        what = (
+            f"tag {wanted[0]!r} not found"
+            if missing == "tag"
+            else f"not in tag {wanted[0]!r}"
+        )
+        note = "" if rev == wanted[0] else f" ({what}{latest})"
         print(f"Using baselines of {repo_id} at revision {rev!r}{note}")
         return result
     return None
