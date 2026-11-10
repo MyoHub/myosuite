@@ -94,10 +94,14 @@ jobs:
           fi
           # testmon tracks Python code only. Data files under myosuite/ (MJCF, meshes,
           # baselines), tutorials (tests read notebooks and checkpoints), dependencies,
-          # test plumbing or this workflow need the full suite.
-          if grep -E '^myosuite/' <<< "$changed" | grep -qvE '\.py$'; then
+          # test plumbing or this workflow need the full suite. Consume both sides
+          # of the pipe: grep -q can SIGPIPE its upstream under pipefail.
+          if grep -E '^myosuite/' <<< "$changed" | grep -vE '\.py$' > /dev/null; then
             echo "only_python=false" >> "$GITHUB_OUTPUT"
           elif grep -qE '^(tutorials/|pyproject\.toml|uv\.lock|myosuite/tests/conftest\.py|myosuite/tests/support/|\.github/workflows/python-app\.yml)' <<< "$changed"; then
+            echo "only_python=false" >> "$GITHUB_OUTPUT"
+          # Registration runs at import, before testmon starts recording coverage.
+          elif grep -qE '^myosuite/(.*/)?__init__\.py$|^myosuite/core/(registry|config)\.py$|^myosuite/envs/myo/backends/mjlab/(register[^/]*|mimic_mjlab_env|tasks/registration)\.py$|^myosuite/envs/myo/tasks/.*/specs/' <<< "$changed"; then
             echo "only_python=false" >> "$GITHUB_OUTPUT"
           else
             echo "only_python=true" >> "$GITHUB_OUTPUT"
@@ -171,16 +175,42 @@ jobs:
           # record: push to dev (the baseline for later PRs). Otherwise run everything.
           TESTMON: ${{ (github.base_ref == 'dev' && steps.changes.outputs.only_python == 'true' && steps.testmon.outputs.cache-matched-key != '') && 'select' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && matrix.group != 'all') && 'record' || 'off' }}
         run: |
+          set -euo pipefail
           echo "testmon: $TESTMON"
           case "$TESTMON" in
             select)
+              # These guards include import-time and subprocess behaviour testmon
+              # cannot observe. Keep them independent of its affected-test record.
+              uv run python -m pytest -o addopts= -p no:pytest-testmon -v -m "$SELECT" \
+                myosuite/tests/test_model_builder.py \
+                myosuite/tests/test_terms_cpu.py \
+                myosuite/tests/test_fragment_compat.py \
+                myosuite/tests/test_parity.py \
+                myosuite/tests/test_registry.py \
+                myosuite/tests/test_import_footprint.py \
+                myosuite/tests/test_mjlab_warning_filters.py \
+                myosuite/tests/test_train_mjlab.py
               # Exit code 5: no test is affected by the change.
-              uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" --testmon-forceselect || [ $? -eq 5 ] ;;
+              status=0
+              uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" --testmon-forceselect || status=$?
+              if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then exit "$status"; fi ;;
             record)
               uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" --testmon ;;
             *)
               uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" ;;
           esac
+
+      - name: Checkpoint testmon data
+        if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        run: |
+          uv run python - <<'PY'
+          import sqlite3
+
+          with sqlite3.connect("file:.testmondata?mode=rw", uri=True, timeout=0) as database:
+              busy, _, _ = database.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+              if busy:
+                  raise SystemExit("testmon WAL checkpoint is busy; refusing to cache incomplete data")
+          PY
 
       - name: Save testmon data
         if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
