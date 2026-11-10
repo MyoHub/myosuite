@@ -245,4 +245,11 @@ It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) 
 
 **Manifests and releases.** Every `checkpoints/<env_id>/` folder on the Hugging Face repo has a `manifest.json` with the env id, a hash of the env contract (observation and action shapes, control step), the MyoSuite version and commit, and the success rate above. When a downloaded checkpoint is used, MyoSuite compares that hash with the current env and warns if they differ, because the policy may then not work. The repo is tagged per release (`v3.0`, `v3.1`, ...), and per patch release where baselines changed (`v3.0.1`); `download_baseline_checkpoint` (one env) and `download_baseline_file` (a single file, such as the MuscleMimic policy) take the tag of your installed version, the patch tag first (`v3.0.1`, then `v3.0`; `MYOSUITE_BASELINES_REVISION` or the `revision` argument override it), and fall back to `main` when no tag exists; they print the revision they used. Write the manifests of a baselines checkout with `python scripts/write_checkpoint_manifests.py <dir>`.
 
+**Repository layout (planned for 3.2).** Every published file follows the structure the repo started with: a policy or
+model lives in `checkpoints/<id>/` with its `manifest.json`, and its evaluation video in `evals/eval_<id>.mp4`.
+`<id>` is the env id, or `<env_id>-<variant>` when one env has several published policies (as in
+`checkpoints/myoMimicFullbody-v0-walking_medium06/`). Files published for 3.1 in separate top-level folders
+(`onnx/`, `directional/`, `supermimic/`) move into this structure in 3.2; the `v3.1` / `v3.1.0` tags keep the 3.1
+paths for installs of that release.
+
 </sub>
