@@ -11,7 +11,7 @@ them on the configuration manifold, and :func:`inverse_dynamics` returns the
 generalized forces the model needs to follow them::
 
     from myosuite.core.trajectory_io import expand_motion_clip_to_model
-    from myosuite.methods.biomech.inverse_dynamics import clip_kinematics, inverse_dynamics
+    from myosuite.biomechanics.inverse_dynamics import clip_kinematics, inverse_dynamics
 
     qpos = expand_motion_clip_to_model(clip, model).qpos
     kin = clip_kinematics(model, qpos, 1 / clip.frequency_hz, lowpass_hz=6.0)

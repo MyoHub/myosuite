@@ -5,7 +5,7 @@
 
 """Live joint kinematics: positions, velocities and accelerations of a pose stream.
 
-:func:`~myosuite.methods.biomech.inverse_dynamics.clip_kinematics` filters a whole clip
+:func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics` filters a whole clip
 forward and backward, so it needs frames after the one it estimates. A live
 shadow model (e.g. muscle estimates beside a user study) gets one pose at a time;
 :class:`StreamingKinematics` fits a local polynomial to the last ``window`` poses

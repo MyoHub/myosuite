@@ -11,8 +11,8 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.methods.biomech.inverse_dynamics import clip_kinematics
-from myosuite.methods.biomech.streaming_kinematics import StreamingKinematics
+from myosuite.biomechanics.inverse_dynamics import clip_kinematics
+from myosuite.biomechanics.streaming_kinematics import StreamingKinematics
 from myosuite.tests.support.joint_couplings import joint_equality_residuals
 
 pytestmark = pytest.mark.tier1

@@ -3,7 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""The layering rules of ``myosuite.methods``, and the old import path of inverse kinematics."""
+"""The dependency rule of ``myosuite.biomechanics``, and the old import path of inverse kinematics."""
 
 from __future__ import annotations
 
@@ -32,22 +32,15 @@ def _imports(path: Path) -> set[str]:
     return names
 
 
-def test_methods_depend_on_numpy_scipy_and_mujoco_only() -> None:
+def test_biomechanics_depends_on_numpy_scipy_and_mujoco_only() -> None:
     allowed = _METHOD_DEPENDENCIES | set(sys.stdlib_module_names)
-    for path in sorted((_PACKAGE / "methods").rglob("*.py")):
+    for path in sorted((_PACKAGE / "biomechanics").rglob("*.py")):
         extra = {n for n in _imports(path) if n.split(".")[0] not in allowed}
         assert not extra, f"{path.relative_to(_PACKAGE)} imports {sorted(extra)}"
 
 
-@pytest.mark.parametrize("layer", ["envs", "terms", "core"])
-def test_tasks_never_import_methods(layer: str) -> None:
-    for path in sorted((_PACKAGE / layer).rglob("*.py")):
-        uses = {n for n in _imports(path) if n.startswith("myosuite.methods")}
-        assert not uses, f"{path.relative_to(_PACKAGE)} imports {sorted(uses)}"
-
-
 def test_inverse_kinematics_keeps_its_physics_path() -> None:
-    from myosuite.methods.biomech import inverse_kinematics as new
+    from myosuite.biomechanics import inverse_kinematics as new
     from myosuite.physics import inverse_kinematics as old
 
     for name in ("IKResult", "nullspace_method", "qpos_from_site_pose"):

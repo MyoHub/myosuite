@@ -13,7 +13,7 @@ import pytest
 
 from myosuite import make_env
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
-from myosuite.methods.biomech.static_optimization import (
+from myosuite.biomechanics.static_optimization import (
     StaticOptimizationConfig,
     StaticOptimizer,
 )

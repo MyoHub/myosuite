@@ -9,7 +9,7 @@ Every control step from ``t`` to ``t + T`` (Thelen, Anderson & Delp 2003):
 
 1. ``qacc* = qacc_ref + kv (qvel_ref - qvel) + kp (qpos_ref - qpos)``: the errors at
    ``t`` and, as feedforward, the reference's mean acceleration over the step.
-2. :class:`~myosuite.methods.biomech.static_optimization.StaticOptimizer` solves the state
+2. :class:`~myosuite.biomechanics.static_optimization.StaticOptimizer` solves the state
    for ``qacc*``. The simulation's ``qfrc_applied`` / ``xfrc_applied`` are known
    loads; each actuator is bounded by the activations its dynamics can reach
    within the step (as OpenSim bounds excitations); velocity-dependent forces
@@ -43,7 +43,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
-from myosuite.methods.biomech.static_optimization import (
+from myosuite.biomechanics.static_optimization import (
     StaticOptimizationConfig,
     StaticOptimizationResult,
     StaticOptimizer,
@@ -409,7 +409,7 @@ def computed_muscle_control(
         qpos: ``(T, nq)`` reference positions.
         qvel: ``(T, nv)`` reference velocities.
         qacc: ``(T, nv)`` reference accelerations, e.g. from
-            :func:`~myosuite.methods.biomech.inverse_dynamics.clip_kinematics`.
+            :func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics`.
         dt: Frame period [s].
         external_qfrc: Optional ``(T, nv)`` known external generalized forces,
             applied in the simulation (``qfrc_applied``) and known to the

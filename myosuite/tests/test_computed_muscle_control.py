@@ -18,14 +18,14 @@ import pytest
 from myosuite import make_env
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
-from myosuite.methods.biomech.computed_muscle_control import (
+from myosuite.biomechanics.computed_muscle_control import (
     ComputedMuscleControl,
     ComputedMuscleControlConfig,
     computed_muscle_control,
 )
-from myosuite.methods.biomech.inverse_dynamics import clip_kinematics
+from myosuite.biomechanics.inverse_dynamics import clip_kinematics
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
-from myosuite.methods.biomech.static_optimization import StaticOptimizationConfig
+from myosuite.biomechanics.static_optimization import StaticOptimizationConfig
 
 pytestmark = pytest.mark.tier1
 
