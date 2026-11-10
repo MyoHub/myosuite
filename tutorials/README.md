@@ -58,7 +58,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | 5.4 | [MuscleMimic Directional Locomotion](./5.4_MuscleMimic_Directional_Locomotion.ipynb) ([Colab](https://colab.research.google.com/drive/1lc64D9YS8mmqz00-p161syndTUbffrg2)) | — |
 | 5.5 | [MuscleMimic SAR](./5.5_MuscleMimic_SAR.ipynb) | as 5.1 |
 | 5.6 | [ChaseTag MyoChallenge](./5.6_ChaseTag_MyoChallenge.ipynb) ([Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/dev/tutorials/5.6_ChaseTag_MyoChallenge.ipynb)) — register, export 5.4 walker to ONNX, submit | — |
-| 5.7 | [ChaseTag 1v1 steered teacher](./5.7_ChaseTag_Steered_Teacher.ipynb) — play scored FBVs with `ChaseTagSteeredPair` | `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`; train/submit stays in 5.4 / 5.6 / [#578](https://github.com/MyoHub/myosuite/pull/578) |
+| 5.7 | [ChaseTag 1v1 steered teacher](./5.7_ChaseTag_Steered_Teacher.ipynb) — play scored FBVs with `ChaseTagSteeredPair` | `.[musclemimic]` + `orbax-checkpoint`, `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION=1.0.5`; train/submit stays in 5.4 / 5.6 / [#578](https://github.com/MyoHub/myosuite/pull/578) |
 
 Defaults that keep the notebooks quick: 3.3 and 3.4 use the first 80 trajectory frames
 (set `FULL_ID = True` for the full CSV); 5.2 trains 256 PPO steps (`MYOSUITE_FULL_MIMIC=1`

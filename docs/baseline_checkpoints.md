@@ -228,7 +228,7 @@ tutorial 5.5 were measured with the earlier defaults.
 
 <sub>
 
-**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo at revision `ed40fb4f0a53` (`myosuite.core.hf_io.download_baseline_file`) plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
+**`myoChallengeChaseTagFBVs-v0`** (the scored 1v1 game, CPU only). `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo (`myosuite.core.hf_io.download_baseline_file`) plays one player, 546 -> 354, in either role. It is a starting point: it reaches and tags a player that does nothing, but it often falls before the 10 s limit: at about 6.7 s as a chaser against itself. Measured with action noise 0.02 and 12 episodes per role, on myo_sim 0.2.4 and MuJoCo 3.11; myo_sim 0.2.3 and MuJoCo 3.17 gave the same tags and falls:
 
 | Match | Tags | Chaser falls | Mean length | Fell at (median) |
 |---|---:|---:|---:|---|
