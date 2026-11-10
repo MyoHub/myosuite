@@ -102,7 +102,19 @@ class ComputedMuscleControlResult:
 
 
 class ComputedMuscleControl:
-    """Computed muscle control of one model, step by step."""
+    """Computed muscle control of one model, step by step.
+
+    Known limitation (``actuator_actearly``): the mean activation over a control step
+    is taken after each physics step's activation update, which is what MuJoCo uses
+    for the force only with ``actearly``. Without it (MuJoCo's default, and every
+    myo_sim muscle), a physics step's force uses the activation before the update, so
+    the first physics step of each control step cannot be changed by the new
+    excitation. With several physics steps per control step this one-step actuation
+    delay stays small (the bundled tests track within their tolerances); with a single
+    physics step per control step the muscles cannot change their force at all and the
+    requested acceleration is not realised. Use ``n_substeps > 1`` or ``actearly``
+    actuators until the step accounts for the delay.
+    """
 
     def __init__(
         self, model: mujoco.MjModel, config: ComputedMuscleControlConfig | None = None

@@ -323,3 +323,34 @@ def test_rejects_unsupported_set_ups() -> None:
     unbounded = _FILTERS.replace('ctrlrange="-5 5" ', "")
     with pytest.raises(ValueError, match="need a ctrlrange"):
         ComputedMuscleControl(mujoco.MjModel.from_xml_string(unbounded))
+
+
+@pytest.mark.parametrize(
+    "actearly",
+    [
+        pytest.param(
+            False,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="known limitation: the step plans with the post-update activation; "
+                "without actearly the force lags one physics step (see ComputedMuscleControl)",
+            ),
+        ),
+        True,
+    ],
+)
+def test_one_physics_step_realises_the_requested_acceleration(actearly: bool) -> None:
+    """1-DoF elbow at 90 deg, one 2 ms step towards ``qpos + 0.01``: the realised
+    acceleration equals ``qacc*`` only when the force uses the updated activation."""
+    model = _elbow(1)
+    model.actuator_actearly[:] = int(actearly)
+    cmc, data = ComputedMuscleControl(model), mujoco.MjData(model)
+    zero = np.zeros(model.nv)
+    qpos = model.qpos0.copy()
+    qpos[0] = np.pi / 2
+    cmc.reset(data, qpos, zero, zero)
+    qvel0 = data.qvel.copy()
+    res = cmc.step(data, qpos + 0.01, zero, zero, n_substeps=1)
+    realised = (data.qvel - qvel0) / model.opt.timestep
+    assert np.abs(res.qacc_desired).max() > 1.0
+    np.testing.assert_allclose(realised, res.qacc_desired, rtol=1e-3, atol=1e-6)
