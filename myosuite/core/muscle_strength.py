@@ -179,9 +179,11 @@ def max_torque_terms(
         force; and the torque of the joints' own springs [N m].
     """
     joint = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, measurement.joint)
-    if joint < 0 or model.jnt_type[joint] not in (
-        mujoco.mjtJoint.mjJNT_HINGE,
-        mujoco.mjtJoint.mjJNT_SLIDE,
+    # Plain ints: tuple membership of a NumPy scalar in MuJoCo enums is False on
+    # some MuJoCo 3.17 wheels (Linux), so compare integer values.
+    if joint < 0 or int(model.jnt_type[joint]) not in (
+        int(mujoco.mjtJoint.mjJNT_HINGE),
+        int(mujoco.mjtJoint.mjJNT_SLIDE),
     ):
         raise ValueError(
             f"{measurement.joint!r} is not a hinge or slide joint of the model"
