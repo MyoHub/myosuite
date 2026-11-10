@@ -177,6 +177,10 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     """Fine-tuning from a baseline checkpoint (--agent.resume or finetune.py): load its networks, normalizers and
     optimizer states, but restart the iteration count, the learning-rate schedule and the training clock, and skip
     the world-model-only warm-up (the world model is trained)."""
+    accept_contract_mismatch: bool = False
+    """Load a checkpoint whose task contract (observation layout, actuators, model and version, timing) differs from
+    this env's. Off by default: equal widths do not make two observation layouts compatible. Set it only for an
+    intentional transfer, e.g. fine-tuning onto a new model version."""
 
     # ---- XMimic systems options (github.com/Sentient-X/xmimic): the same updates up to floating-point rounding ----
     kin_unbind: bool = True

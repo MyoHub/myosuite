@@ -91,7 +91,9 @@ exploration, evaluation-guided resets, BlinkMimic's probe graph.
 
 Checkpoints (`model_*.pt`) hold the deployed (averaged) policy, the live policy, world model, critic, all normalizers,
 optimizer states, the action map and the env settings they were trained with, so evaluation and fine-tuning match the
-control rate and observation without flags.
+control rate and observation without flags. They also store the resolved task contract (every observation term in
+order with its width, the actuators, the model and its version, the timing), and loading refuses a checkpoint trained
+on another contract; set `accept_contract_mismatch` for an intentional transfer.
 
 The graphed collector writes `ctrl`, `qpos`, `qvel` and `act` of the MuJoCo-Warp data and calls MuJoCo-Warp's `step`,
 `forward` and masked `reset_data` itself, so that one collection step, resets included, is captured as one CUDA graph

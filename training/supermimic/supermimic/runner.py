@@ -59,6 +59,7 @@ from supermimic.heads import (
 from supermimic.mirror import Mirror
 from supermimic.task import TaskView
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM
+from myosuite.envs.myo.tasks.mimic.tracking.models import model_version
 
 
 class AnalyticObsGroup:
@@ -1050,7 +1051,7 @@ class SuperMimicRunner:
               "opt_wm": self.opt_wm.state_dict(), "opt_pi": self.opt_pi.state_dict(), "opt_v": self.opt_v.state_dict(),
               "iteration": self.it, "wall_time": self.wall_offset, "sim_steps": self.sim_steps, "cfg": asdict(self.cfg),
               "ctrl": {"decay_at": self._decay_at, "nonfinite": int(self.nonfinite)},
-              "env": self.env_settings(), "action_map": self.pi.action_map.spec(),
+              "env": self.env_settings(), "contract": self.task_contract(), "action_map": self.pi.action_map.spec(),
               "saved_at": time.strftime("%Y-%m-%d %H:%M:%S")}  # fmt: skip
         if self.critic_targ is not self.critic:
             ck["critic_targ"] = self.critic_targ.state_dict()
@@ -1069,6 +1070,7 @@ class SuperMimicRunner:
         )
         # the policy's action map (identity; checkpoints from before action maps have none): another map would need
         # another policy head, so a mismatch is an error rather than a silent reinterpretation of the outputs
+        self._check_contract(ck)
         saved_map = ActionMap.from_spec(ck.get("action_map"), self.nm).spec()
         if saved_map != self.pi.action_map.spec():
             raise ValueError(
@@ -1138,6 +1140,43 @@ class SuperMimicRunner:
             self.it, self.wall_offset, self.sim_steps, self._decay_at = 0, 0.0, 0, None
             self.cfg.wm_only_iters = 0
         return ck
+
+    def task_contract(self) -> dict:
+        """What the policy's inputs and outputs mean: every observation group's terms in order with their widths, the
+        actuators in action order, the model and its version, and the timing. Stored in checkpoints, checked on load."""
+        om = self.uenv.observation_manager
+        obs = {g: [[n, list(d)] for n, d in zip(om._group_obs_term_names[g], om._group_obs_term_dim[g], strict=True)]
+               for g in om._group_obs_term_names}  # fmt: skip
+        model = self.cmd.cfg.model
+        return {"obs": obs, "actuators": list(self.cmd.info.muscle_names), "model": model,
+                "model_version": model_version(model), "step_dt": round(float(self.uenv.step_dt), 9),
+                "stride": self.cmd.stride, "lookahead": self.cmd.lookahead}  # fmt: skip
+
+    def _check_contract(self, ck: dict) -> None:
+        """Refuse a checkpoint trained on another task contract (unless accept_contract_mismatch). Checkpoints from
+        before contracts are checked on their stored observation widths."""
+        mine = self.task_contract()
+        saved = ck.get("contract")
+        if saved is None:
+            env = ck.get("env") or {}
+            saved_dims = {k: env[k] for k in ("obs_dim", "goal_dim") if k in env}
+            mine_dims = {"obs_dim": self.obs_policy.dim, "goal_dim": self.obs_goal.dim}
+            diff = [
+                f"{k}: {v} != {mine_dims[k]}"
+                for k, v in saved_dims.items()
+                if v != mine_dims[k]
+            ]
+        else:
+            diff = [
+                f"{k}: checkpoint {saved.get(k)!r} != env {mine[k]!r}"
+                for k in mine
+                if saved.get(k) != mine[k]
+            ]
+        if diff and not self.cfg.accept_contract_mismatch:
+            raise ValueError(
+                "checkpoint was trained on another task contract (set accept_contract_mismatch for an intentional "
+                "transfer):\n  " + "\n  ".join(diff)
+            )
 
     def env_settings(self) -> dict:
         """The env settings a policy depends on, stored in each checkpoint so evaluation can match them."""

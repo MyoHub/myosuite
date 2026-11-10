@@ -498,3 +498,40 @@ def test_train_checkpoint_resume_evaluate(clips: Path, tmp_path: Path) -> None:
     runner.load(str(last), load_cfg={"actor": True})
     res = evaluate(ev_env, runner)
     assert len(res["per_clip"]) == 3 and math.isfinite(res["norm_return"])
+
+
+def test_a_checkpoint_with_another_task_contract_is_rejected(
+    clips: Path, tmp_path: Path
+) -> None:
+    """Equal widths are not enough: a reordered observation (or another model version) is refused unless accepted."""
+    _, runner = _make(str(clips / "clip0.npz"))
+    runner.log_dir = str(tmp_path)
+    runner.save(str(tmp_path / "model.pt"))
+    runner.load(str(tmp_path / "model.pt"))
+    ck = torch.load(tmp_path / "model.pt", weights_only=False)
+    terms = ck["contract"]["obs"]["policy"]
+    terms[0], terms[1] = terms[1], terms[0]  # same widths in total, another order
+    torch.save(ck, tmp_path / "swapped.pt")
+    with pytest.raises(ValueError, match="obs"):
+        runner.load(str(tmp_path / "swapped.pt"))
+    terms[0], terms[1] = (
+        terms[1],
+        terms[0],
+    )  # back to the env's order: only the version differs now
+    ck["contract"]["model_version"] = "0.0.0"
+    torch.save(ck, tmp_path / "version.pt")
+    with pytest.raises(ValueError, match="model_version") as err:
+        runner.load(str(tmp_path / "version.pt"))
+    assert "obs" not in str(err.value)
+    runner.cfg.accept_contract_mismatch = True
+    runner.load(str(tmp_path / "swapped.pt"))
+    runner.cfg.accept_contract_mismatch = False
+    del ck[
+        "contract"
+    ]  # a checkpoint from before contracts: its stored widths still match
+    torch.save(ck, tmp_path / "old.pt")
+    runner.load(str(tmp_path / "old.pt"))
+    ck["env"]["obs_dim"] += 1
+    torch.save(ck, tmp_path / "old_wide.pt")
+    with pytest.raises(ValueError, match="obs_dim"):
+        runner.load(str(tmp_path / "old_wide.pt"))
