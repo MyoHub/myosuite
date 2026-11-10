@@ -17,8 +17,11 @@ keyframe, a clip frame, reset noise) that is off the polynomials is pulled back
 over the next steps, and until then ``actuator_moment`` describes a pose the
 coupled joints cannot reach.
 
-:func:`project_joint_couplings` puts every dependent joint on its polynomial, for
-NumPy arrays (CPU) or batched Torch tensors (mjlab).
+:func:`project_joint_couplings` puts every dependent joint on its polynomial, in
+place, for NumPy arrays (CPU) or batched Torch tensors (mjlab).
+:func:`projected_joint_couplings` returns the projected state as new arrays instead,
+so Torch autograd can differentiate through it (e.g. forward kinematics of a
+learned model's independent joints).
 """
 
 from __future__ import annotations
@@ -136,6 +139,36 @@ class JointCouplings:
             },
         )
 
+    def as_torch(self, device: Any = None, dtype: Any = None) -> JointCouplings:
+        """These couplings as Torch tensors: addresses as ``int64``, values as *dtype*.
+
+        Args:
+            device: Torch device of the tensors.
+            dtype: Floating dtype of the reference positions and coefficients
+                (default: Torch's default dtype), that of the states to project.
+
+        Returns:
+            The converted couplings.
+        """
+        import torch  # noqa: PLC0415
+
+        values = dtype or torch.get_default_dtype()
+
+        def convert(a: np.ndarray) -> Any:
+            kind = values if a.dtype.kind == "f" else torch.int64
+            return torch.as_tensor(a, dtype=kind, device=device)
+
+        return self.map_arrays(convert)
+
+
+def _polynomial(coef: Any, x: Any) -> tuple[Any, Any]:
+    """``p(x)`` and ``p'(x)`` of the quartics with coefficients ``coef`` (Horner's scheme)."""
+    value, slope = coef[:, 4], 4 * coef[:, 4]
+    for i in (3, 2, 1):
+        value = value * x + coef[:, i]
+        slope = slope * x + i * coef[:, i]
+    return value * x + coef[:, 0], slope
+
 
 def project_joint_couplings(
     couplings: JointCouplings, qpos: Any, qvel: Any | None = None
@@ -157,15 +190,56 @@ def project_joint_couplings(
         qvel[..., c.locked_dof] = 0.0
     start = 0
     for end in c.level_ends:
-        coef = c.coef[start:end]
         x = qpos[..., c.master_qpos[start:end]] - c.master_ref[start:end]
-        # Horner's scheme for p(x) and p'(x).
-        value, slope = coef[:, 4], 4 * coef[:, 4]
-        for i in (3, 2, 1):
-            value = value * x + coef[:, i]
-            slope = slope * x + i * coef[:, i]
-        value = value * x + coef[:, 0]
+        value, slope = _polynomial(c.coef[start:end], x)
         qpos[..., c.dep_qpos[start:end]] = c.dep_ref[start:end] + value
         if qvel is not None:
             qvel[..., c.dep_dof[start:end]] = slope * qvel[..., c.master_dof[start:end]]
         start = end
+
+
+def _with_columns(x: Any, index: Any, values: Any) -> Any:
+    """A copy of *x* with ``x[..., index] = values`` (out of place, differentiable in Torch)."""
+    if isinstance(x, np.ndarray):
+        out = x.copy()
+        out[..., index] = values
+        return out
+    values = values.expand(*x.shape[:-1], index.shape[0])
+    return x.index_copy(-1, index, values)
+
+
+def projected_joint_couplings(
+    couplings: JointCouplings, qpos: Any, qvel: Any | None = None
+) -> tuple[Any, Any | None]:
+    """The state with every coupled joint written from its master, as new arrays.
+
+    The same projection as :func:`project_joint_couplings`, pass by pass in the
+    couplings' topological order, but without writing into *qpos* or *qvel*: with
+    Torch tensors the result is differentiable in the masters (a dependent's input
+    value gets a zero gradient, it is overwritten).
+
+    Args:
+        couplings: Couplings whose arrays are of the backend, device and (floating)
+            dtype of *qpos* (see :meth:`JointCouplings.as_torch`).
+        qpos: Positions ``(..., nq)``, a NumPy array or Torch tensor.
+        qvel: Optional velocities ``(..., nv)`` of the same backend.
+
+    Returns:
+        ``(qpos, qvel)`` projected; ``qvel`` is ``None`` if none was given.
+    """
+    c = couplings
+    if len(c.locked_qpos):
+        qpos = _with_columns(qpos, c.locked_qpos, c.locked_value)
+        if qvel is not None:
+            qvel = _with_columns(qvel, c.locked_dof, 0 * c.locked_value)
+    start = 0
+    for end in c.level_ends:
+        x = qpos[..., c.master_qpos[start:end]] - c.master_ref[start:end]
+        value, slope = _polynomial(c.coef[start:end], x)
+        if qvel is not None:
+            qvel = _with_columns(
+                qvel, c.dep_dof[start:end], slope * qvel[..., c.master_dof[start:end]]
+            )
+        qpos = _with_columns(qpos, c.dep_qpos[start:end], c.dep_ref[start:end] + value)
+        start = end
+    return qpos, qvel

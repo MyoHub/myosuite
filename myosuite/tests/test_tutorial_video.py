@@ -9,8 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from myosuite.tests.support.optional_deps import require_ipython
 from myosuite.utils.video_io import show_video
+
+pytestmark = pytest.mark.tier2
 
 
 def test_show_video_missing_file_returns_empty_html() -> None:

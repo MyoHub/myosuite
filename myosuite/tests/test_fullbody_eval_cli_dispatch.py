@@ -15,6 +15,8 @@ import pytest
 
 from myosuite.integrations.musclemimic import fullbody_eval_cli as cli
 
+pytestmark = pytest.mark.tier2
+
 
 def test_path_dispatch_calls_native_runner(
     monkeypatch: pytest.MonkeyPatch,

@@ -12,6 +12,8 @@ import pytest
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 from myosuite import make_env
 
+pytestmark = pytest.mark.tier2
+
 
 @pytest.mark.parametrize(
     ("env_id", "compile_fn", "default_cfg_fn"),

@@ -21,6 +21,8 @@ from myosuite.core.hf_io import (
     parse_hf_ref,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def test_parse_hf_ref_with_subpath() -> None:
     """hf path parser splits repo id and subpath."""
@@ -371,3 +373,33 @@ def test_download_baseline_file_follows_the_same_tags(
         "v3.0.1",
         "v3.0",
     ]
+
+
+def test_download_baseline_file_falls_back_when_the_tag_lacks_the_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A baseline added after the release's tag is fetched from ``main`` (a missing file is like a missing tag)."""
+    from huggingface_hub.errors import EntryNotFoundError
+
+    target = tmp_path / "baseline.onnx"
+    asked: list[tuple[str, str]] = []
+
+    def fake_hf_hub_download(
+        repo_id: str, filename: str, *, repo_type: str, revision: str
+    ) -> str:
+        asked.append((filename, revision))
+        if revision == "v3.0":
+            raise EntryNotFoundError(f"{filename} not at {revision}")
+        if filename.endswith("manifest.json"):
+            raise EntryNotFoundError("no manifest")
+        return str(target)
+
+    monkeypatch.setattr(
+        "huggingface_hub.hf_hub_download", fake_hf_hub_download, raising=False
+    )
+    monkeypatch.setattr("myosuite.core.hf_io.baseline_revisions", lambda: ["v3.0"])
+
+    assert download_baseline_file("onnx/baseline.onnx") == target
+    assert asked[0] == ("onnx/baseline.onnx", "v3.0")
+    assert ("onnx/baseline.onnx", "main") in asked
+    assert "not in tag 'v3.0', using the latest" in capsys.readouterr().out
