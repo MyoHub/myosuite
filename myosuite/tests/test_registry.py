@@ -26,27 +26,6 @@ _ALL_ENV_IDS = sorted(
 )
 
 
-def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
-    """Skip (rather than fail) an env that needs a gated HuggingFace dataset.
-
-    Some envs (e.g. ChaseTagFBVs, FullBodyDirectional) download a reference
-    gait clip from a gated HF dataset (amathislab/musclemimic-retargeted) on
-    first reset/step. CI has no HF_TOKEN for an account that has accepted the
-    dataset's license, so this is an access-control limitation, not a code
-    bug -- treat it the same as an unavailable optional dependency.
-    """
-    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
-
-    if isinstance(exc, MissingMotionData):
-        pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
-    try:
-        from huggingface_hub.errors import HfHubHTTPError
-    except ImportError:
-        return
-    if isinstance(exc, HfHubHTTPError):
-        pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")
-
-
 def _obs_after_extra_forward(env: gym.Env) -> np.ndarray:
     """The env's obs vector after an extra ``mj_forward``; the data is restored.
 
