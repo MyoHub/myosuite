@@ -173,7 +173,8 @@ Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwarg
 | `max_episode_steps` | episode length limit | passed to `gym.make` | sets the twin's episode length |
 | `ctrl_dt` | control step in seconds (physics substeps follow) | sets `frame_skip = ctrl_dt / model timestep` | sets the twin's `decimation` to the same value |
 | `num_envs` | parallel envs | must be 1 | number of parallel envs |
-| `task_kwargs` | env constructor kwargs | passed to the env | registrations with `mjlab_task_kwargs=True` accept scene/task overrides (waypoint); other twins read the registration |
+| `task_kwargs` | env constructor kwargs | passed to the env | registrations with `mjlab_task_kwargs=True` accept scene/task overrides (waypoint, `myoMimic-v0`); other twins read the registration |
+| `model` | body model of a task registered with `models=` (`myoMimic-v0`) | passed as the env's `model` kwarg | the twin is rebuilt on that model |
 | `backend_options`, extra kwargs | options of one backend only | passed to `gym.make` (for example `render_mode`) | passed to the env (for example `device`) |
 
 - `ctrl_dt` must be a whole multiple of the model timestep (`ValueError` otherwise). The `ModularTaskEnv` ids take their
@@ -208,6 +209,7 @@ features of that registration or of the `EnvConfig`.
 | MyoChallenge Baoding, Bimanual, Relocate, Die Reorient, Soccer, OSL run | yes | no | - |
 | ChaseTag, single agent | yes | only `myoChallengeChaseTagFBP2-v0` | no |
 | Waypoint (`myoFullBodyWaypoint-v0`, `WaypointEnv`) | no | yes | no |
+| Motion tracking (`myoMimic-v0`, `MimicEnv`) | yes | yes | yes |
 | Table Tennis P0, P1, P2 | yes | yes | no |
 | ChaseTag against a scripted opponent (multi-agent) | no | no | - |
 | MuscleMimic (fullbody, bimanual, directional) | no | yes, registered separately (own implementation) | no |

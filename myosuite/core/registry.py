@@ -92,6 +92,7 @@ def register_env(
     wrap_mj_instability_termination: bool = True,
     time_limit: bool = True,
     mjlab_task_kwargs: bool = False,
+    models: tuple[str, ...] = (),
     **kwargs: Any,
 ) -> None:
     """Register an environment for the CPU (Gymnasium) path.
@@ -114,6 +115,8 @@ def register_env(
             then only recorded here.
         mjlab_task_kwargs: Whether the mjlab twin supports constructor overrides
             through ``EnvConfig.task_kwargs`` when rebuilt from the CPU registration.
+        models: Body models the task runs on (``EnvConfig.model``, passed to the env
+            as its ``model`` kwarg); empty for a task with one fixed model.
         **kwargs: Additional keyword arguments forwarded to gym.register().
 
     Example:
@@ -133,6 +136,7 @@ def register_env(
         "max_episode_steps": max_episode_steps,
         "backend_configs": backend_configs or {},
         "mjlab_task_kwargs": mjlab_task_kwargs,
+        "models": tuple(models),
         "additional_wrappers": kwargs["additional_wrappers"],
     }
     gym_max_episode_steps = max_episode_steps if time_limit else None
@@ -356,6 +360,8 @@ def make_env(
         **overrides: Backend-specific options, merged over ``EnvConfig.backend_options``
             and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``
             etc. on mjlab, ``config_overrides`` on "mjx".
+            ``ctrl_dt`` and a string ``model`` set the :class:`EnvConfig` fields of that
+            name; any other ``model`` value is passed on as an env constructor kwarg.
 
     Returns:
         An environment instance appropriate for the backend.
@@ -377,6 +383,13 @@ def make_env(
     config = env_id if isinstance(env_id, EnvConfig) else EnvConfig(env_id=env_id)
     # A config edited after construction may hold classes or pairs: normalize again.
     config = dataclasses.replace(config, features=normalize_features(config.features))
+    # EnvConfig fields given as keywords; a non-string ``model`` (e.g. an MjModel) stays
+    # a constructor kwarg of the env
+    if isinstance(overrides.get("model"), str):
+        config = dataclasses.replace(config, model=overrides.pop("model"))
+    if "ctrl_dt" in overrides:
+        config = dataclasses.replace(config, ctrl_dt=overrides.pop("ctrl_dt"))
+    config = _with_model(config)
     backend = backend or config.backend
     if backend == "cpu":
         return _make_cpu(config, overrides)
@@ -386,6 +399,24 @@ def make_env(
         return _make_mjlab(config, overrides)
     else:
         raise ValueError(f"Unknown backend: {backend!r}. Choose from: cpu, mjx, mjlab")
+
+
+def _with_model(config: EnvConfig) -> EnvConfig:
+    """Move ``EnvConfig.model`` into the task kwargs of an id registered with models."""
+    if config.model is None:
+        return config
+    models = _ENV_REGISTRY.get(config.env_id, {}).get("models", ())
+    if config.model not in models:
+        raise ValueError(
+            f"{config.env_id} does not run on model {config.model!r}"
+            + (
+                f"; choose from {list(models)}"
+                if models
+                else " (it has one fixed model)"
+            )
+        )
+    task_kwargs = {**config.task_kwargs, "model": config.model}
+    return dataclasses.replace(config, task_kwargs=task_kwargs, model=None)
 
 
 def _substeps(ctrl_dt: float, timestep: float) -> int:

@@ -41,6 +41,41 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks the AMASS KIT
+  motions retargeted onto the task model (by default MuscleMimic's 972 KIT training motions, `motion.clips="kit_train"`,
+  the clips its released checkpoints were trained on; any clip, directory or `.txt` list works too; read from the local retarget cache that `scripts/mimic/retarget_amass.py` fills from an AMASS download,
+  or from `$MYOSUITE_KIT_ROOT`) with myo_sim's
+  `myofullbody`. It is defined apart from the body model and the learning method:
+  - task: observations from a shared vocabulary (`myosuite.terms.mimic_track`, pure NumPy/torch functions a method can
+    also differentiate), MimicReward as the proposed dense reward, a failure rule (mean relative site deviation 1 m,
+    root position 1 m, root orientation 1 rad) and success metrics that do not depend on the control step
+    (`myosuite.envs.myo.tasks.mimic.tracking.metrics`: tracked-to-end, normalized return per second, MPJPE, joint
+    error, plus MuscleMimic's 0.5 m rule as an extra column; `unflagged` repeats them without the clips whose
+    metadata carries `quality_flags`);
+  - model: `EnvConfig.model` / `make_env(..., model=...)` picks the body of an id registered with
+    `register_env(models=...)` (`"myofullbody"` so far);
+  - method: typed presets (`MimicTaskCfg`, default `"supermimic"`) with dotted overrides through
+    `EnvConfig.task_kwargs={"preset": ..., "overrides": {...}}`; the control step is `EnvConfig.ctrl_dt` (default 0.02 s).
+
+  The mjlab twin reads the CPU registration (`register_cpu_twins`) and takes the muscle-command features.
+  `make_env` also accepts `model=` and `ctrl_dt=` as keywords. `myoMimicFullbody-v0` is unchanged.
+  Methods may replace the reward (`overrides={"reward_fn": fn}` with a pure `fn(state, ref, ctrl_dt)`, or a whole
+  `RewardCfg`); the proposed reward is then still reported (`info["task_reward"]`, the twin's `task_reward`).
+* **AMASS SMPL+H motions straight onto a body model** (`myosuite.biomechanics.smplh`, `.retarget_smplh`,
+  `.retarget`; `scripts/mimic/retarget_amass.py`). SMPL+H forward kinematics in NumPy (subject shape, gender-specific
+  model) and one explicit SMPL+H -> model table, calibrated on the model in SMPL's T-pose (GMR's approach, as MuscleMimic
+  used it): per-segment proportion scaling, limb orientation targets and a per-frame ground height from the subject's foot
+  contacts. A landmark IK solves each frame for the root and the independent joints only, so the joint couplings hold
+  exactly; joint limits are hard, and smoothing keeps frames continuous. Thighs, shanks, feet and forearms follow the
+  subject's segment directions between joint centres, so knee, ankle and elbow angles do not inherit SMPL+H's rest pose
+  (its knees are 4-6 deg flexed, the left more than the right); where the model couples a twist to a hinge (the knee),
+  the shank's axial twist is weighted down (anisotropic orientation targets); the elbows follow the source's
+  upper-arm/forearm angle in the model's own convention (per-frame posture priors). On the 1080 KIT clips on
+  myofullbody (myo_sim 0.2.4): no foot penetration, contact sliding 0.084 m/s (MuscleMimic's GMR clips: 0.093), the
+  knees at their 0 limit on 5.4% (left) and 1.7% (right) of frames, elbow flexion within 0.2 deg of the source's
+  (median). The source's knee range goes into each clip's metadata, and `--quality-flags` adds curation flags
+  (`quality_flags`). `myoMimic-v0` uses these clips and refuses clips fitted on another model or model version.
+
 * **`load_fbvs_player` / `export_fbvs_onnx`** in `myosuite.integrations.musclemimic.fbvs_player` wrap a tutorial 5.4 walker as a ChaseTag FBVs player (546 -> 354) and write the ONNX the MyoChallenge server runs; tutorial 5.6 uses them instead of an inline wrapper ([#617]).
 * **`decode_synergies(model, syn)`** in `myosuite.integrations.musclemimic.sar_extraction` maps SAR synergy activations back to muscle activations (the NumPy inverse of `encode_activations`); tutorial 5.5 uses it instead of its own decoder ([#616]).
 * **Rollout videos without hand-written render loops:** `myosuite.viz.rollout_video` adds `record_rollout(model, data, step, n_steps)` (renders after each step, stops early when `step` returns `False`), `tracking_camera` (follows the free root body) and `offscreen_size`; `MotionClip.to_mjdata(model, frame)` returns a posed, forwarded `MjData`. Tutorials 5.1 and 5.5 use them instead of their own render loops ([#613]).

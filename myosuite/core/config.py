@@ -164,6 +164,8 @@ class EnvConfig:
             :func:`myosuite.envs.wrappers.wrapper_spec`); stored as specs. Every backend
             runs them identically. All are off unless listed here or in the registration.
         task_kwargs: Task-specific constructor overrides (CPU env kwargs).
+        model: Body model of a task registered with several (``register_env(models=...)``,
+            e.g. ``myoMimic-v0``); ``None`` keeps the registered default.
         backend_options: Options of one backend only (``device``, ``render_mode``, ...);
             nothing portable belongs here.
     """
@@ -176,6 +178,7 @@ class EnvConfig:
     features: tuple[Any, ...] = ()
     task_kwargs: dict[str, Any] = field(default_factory=dict)
     backend_options: dict[str, Any] = field(default_factory=dict)
+    model: str | None = None
 
     def __post_init__(self) -> None:
         from myosuite.envs.wrappers import normalize_features  # noqa: PLC0415
