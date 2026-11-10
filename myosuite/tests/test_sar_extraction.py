@@ -15,12 +15,15 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pytest
+
+pytestmark = pytest.mark.tier2
 
 
 def _sklearn_available() -> bool:
     try:
-        import sklearn  # noqa: F401
         import joblib  # noqa: F401
+        import sklearn  # noqa: F401
 
         return True
     except ImportError:

@@ -45,6 +45,8 @@ from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: E40
     _make_elbow_env_cfg,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def _dummy_reward_a(env) -> object:
     """Arbitrary reward term: only its presence/weight is checked, not its value."""
