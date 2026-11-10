@@ -239,6 +239,17 @@ tutorial 5.5 were measured with the earlier defaults.
 
 It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) from a policy that descends from the behaviour-cloned tutorial 5.4 walker (`policy_bc_best.pt`, a student of MuscleMimic `amathislab/mm-10m-2`), so it is not trained from scratch on this body. Observations and actions match the game; only the dynamics of `myofullbody` were new to it. Policies trained on `musclemimic_models` do not carry over reliably: moving between releases 1.0.6 and 1.0.5 of that body already took a similar policy to 0 tags.
 
+**Tutorial files for ChaseTag and directional walking (myoSuperMimic, `myofullbody`).** Tutorials 5.4, 5.6 and 5.7 download these from the same repo; they come from `training/chasetag_teacher` and were trained only on the KIT clips of `myoMimic-v0`'s default list (MuscleMimic's 972 KIT training motions, retargeted onto `myofullbody`; AMASS licence). Matches as above, 48 episodes per match and side:
+
+| File | What | Tags a player that does nothing | Wins head-to-head vs the FBVs baseline |
+|---|---|---:|---:|
+| `supermimic/tracker_myofullbody_kit_30min.pt` | the myoSuperMimic tracker of the steered teacher (30-minute run; deployed policy only) | 92 % (teacher) | 71 % (teacher) |
+| `directional/walker_myofullbody.pt` | the tutorial 5.4 walker (DAgger, 528 -> 354), as a player through `export_chasetag_onnx` | 100 % | 64 % |
+| `onnx/chasetag_supermimic_student.onnx` | the DAgger student of the teacher (546 -> 354, yaw-canonicalised) | 98 % | 61 % |
+| `onnx/chasetag_supermimic_selfplay.onnx` | a self-play refinement of that student (tutorial 5.6's stronger start) | 100 % | 76 % |
+
+With tutorial 5.4's protocol (8 headings x 10 seeds from standing) the walker survives 91 % of the 2 s rollouts (alignment +0.85) and 85 % over 10 s (alignment +0.93).
+
 </sub>
 
 <sub>
