@@ -92,6 +92,20 @@ jobs:
           else
             echo "tutorials=false" >> "$GITHUB_OUTPUT"
           fi
+          # testmon tracks Python code only. Data files under myosuite/ (MJCF, meshes,
+          # baselines), tutorials (tests read notebooks and checkpoints), dependencies,
+          # test plumbing or this workflow need the full suite. Consume both sides
+          # of the pipe: grep -q can SIGPIPE its upstream under pipefail.
+          if grep -E '^myosuite/' <<< "$changed" | grep -vE '\.py$' > /dev/null; then
+            echo "only_python=false" >> "$GITHUB_OUTPUT"
+          elif grep -qE '^(tutorials/|pyproject\.toml|uv\.lock|myosuite/tests/conftest\.py|myosuite/tests/support/|\.github/workflows/python-app\.yml)' <<< "$changed"; then
+            echo "only_python=false" >> "$GITHUB_OUTPUT"
+          # Registration runs at import, before testmon starts recording coverage.
+          elif grep -qE '^myosuite/(.*/)?__init__\.py$|^myosuite/core/(registry|config)\.py$|^myosuite/envs/myo/backends/mjlab/(register[^/]*|mimic_mjlab_env|tasks/registration)\.py$|^myosuite/envs/myo/tasks/.*/specs/' <<< "$changed"; then
+            echo "only_python=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "only_python=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -133,7 +147,7 @@ jobs:
       - name: Install project and pytest
         run: |
           uv pip install -e ".[mjlab,rl]"
-          uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch ipython "musclemimic_models==1.0.6" usd-core
+          uv pip install pytest pytest-xvfb pytest-benchmark pytest-testmon ffmpeg torch ipython "musclemimic_models==1.0.6" usd-core
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
         if: ${{ runner.os != 'Linux' }}
@@ -141,11 +155,69 @@ jobs:
 
       # One process per job: with pytest-xdist, two workers already reach ~14 GB on
       # the mjlab tests (16 GB runners) and offscreen MuJoCo rendering can abort a worker.
+      # Affected-test selection (pytest-testmon) for the Linux 3.10 groups: every push
+      # to dev records which code each test runs; a PR into dev restores that record
+      # and runs only the tests whose code it changed.
+      - name: Restore testmon data
+        id: testmon
+        if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.base_ref == 'dev' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .testmondata
+          key: testmon-${{ matrix.group }}-${{ github.event.pull_request.base.sha }}
+          restore-keys: testmon-${{ matrix.group }}-
+
       - name: Pytest — full suite (tier 1–3, all backends; excludes @slow)
         if: ${{ runner.os == 'Linux' }}
         env:
           SELECT: ${{ matrix.group == 'cpu' && 'not slow and not mjlab' || matrix.group == 'mjlab' && 'not slow and mjlab' || 'not slow' }}
-        run: uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT"
+          # select: PR into dev with Python-only changes and a recorded baseline.
+          # record: push to dev (the baseline for later PRs). Otherwise run everything.
+          TESTMON: ${{ (github.base_ref == 'dev' && steps.changes.outputs.only_python == 'true' && steps.testmon.outputs.cache-matched-key != '') && 'select' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && matrix.group != 'all') && 'record' || 'off' }}
+        run: |
+          set -euo pipefail
+          echo "testmon: $TESTMON"
+          case "$TESTMON" in
+            select)
+              # These guards include import-time and subprocess behaviour testmon
+              # cannot observe. Keep them independent of its affected-test record.
+              uv run python -m pytest -o addopts= -p no:pytest-testmon -v -m "$SELECT" \
+                myosuite/tests/test_model_builder.py \
+                myosuite/tests/test_terms_cpu.py \
+                myosuite/tests/test_fragment_compat.py \
+                myosuite/tests/test_parity.py \
+                myosuite/tests/test_registry.py \
+                myosuite/tests/test_import_footprint.py \
+                myosuite/tests/test_mjlab_warning_filters.py \
+                myosuite/tests/test_train_mjlab.py
+              # Exit code 5: no test is affected by the change.
+              status=0
+              uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" --testmon-forceselect || status=$?
+              if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then exit "$status"; fi ;;
+            record)
+              uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" --testmon ;;
+            *)
+              uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" ;;
+          esac
+
+      - name: Checkpoint testmon data
+        if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        run: |
+          uv run python - <<'PY'
+          import sqlite3
+
+          with sqlite3.connect("file:.testmondata?mode=rw", uri=True, timeout=0) as database:
+              busy, _, _ = database.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+              if busy:
+                  raise SystemExit("testmon WAL checkpoint is busy; refusing to cache incomplete data")
+          PY
+
+      - name: Save testmon data
+        if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .testmondata
+          key: testmon-${{ matrix.group }}-${{ github.sha }}
 
       # @slow tests (benchmarks, long rollouts) only on the nightly run.
       - name: Pytest — slow tests (nightly)

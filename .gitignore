@@ -176,3 +176,6 @@ benchmarks/*
 docs/source/tutorials/checkpoints/*
 tutorials/**/*.zip
 *.out
+
+# pytest-testmon selection data (CI caches it per group)
+.testmondata*
