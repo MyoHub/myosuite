@@ -108,6 +108,8 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         self._failed = False
         self._excitation = np.zeros(m.nu)
         self._reset_clip: int | None = None
+        self._step_state: tuple[mt.TrackState, mt.TrackFeatures] | None = None
+        self._reuse_step_state = False
 
     # ------------------------------------------------------------------ motion
     @property
@@ -165,11 +167,19 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
 
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
         del accessor
-        s = self.track_state()
-        feats = mt.features(np, s)
+        s, feats = self._state_features()
         obs = {n: mt.observation(np, s, feats, n) for n in self.task.obs.policy}
         obs["goal"] = self._goal()
         return obs
+
+    def _state_features(self) -> tuple[mt.TrackState, mt.TrackFeatures]:
+        if self._step_state is not None:
+            return self._step_state
+        state = self.track_state()
+        pair = state, mt.features(np, state)
+        if self._reuse_step_state:
+            self._step_state = pair
+        return pair
 
     def transition_terms(
         self,
@@ -178,8 +188,8 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         current state against frame f + 1."""
         m = self.motion
         f1 = min(self._f + 1, int(m.clip_end[m.clip_id[self._f]]))
-        s = self.track_state()
-        feats, ref = mt.features(np, s), m.ref(f1)
+        s, feats = self._state_features()
+        ref = m.ref(f1)
         rewards = {
             n: float(mt.reward(np, s, feats, ref, n, k))
             for n, k in self._kernels.items()
@@ -257,16 +267,29 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         self.data.ctrl[:] = self._run_ctrl_stages(ctrl)
         self._step_physics()
         clip_end = bool(self._f + 1 >= int(m.clip_end[m.clip_id[self._f]]))
-        rwd = self.get_reward_dict({})
-        self._f += 1
-        self._steps += 1
-        self._disc_ret += self.task.reset.gamma ** (self._steps - 1) * rwd["dense"]
-        self._ret += rwd["dense"]
-        self._failed = bool(rwd["failed"])
-        self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
-        obs, reward, terminated, _, info = self._finalize_step(
-            self._get_obs_dict(self._accessor), rwd
+        # Custom hooks may edit the simulator or the state passed to a reward.
+        self._reuse_step_state = self.task.reward_fn is None and all(
+            getattr(getattr(self, name), "__func__", None) is getattr(MimicEnv, name)
+            for name in (
+                "track_state",
+                "transition_terms",
+                "get_reward_dict",
+                "_get_obs_dict",
+            )
         )
+        try:
+            rwd = self.get_reward_dict({})
+            self._f += 1
+            self._steps += 1
+            self._disc_ret += self.task.reset.gamma ** (self._steps - 1) * rwd["dense"]
+            self._ret += rwd["dense"]
+            self._failed = bool(rwd["failed"])
+            self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
+            obs_dict = self._get_obs_dict(self._accessor)
+        finally:
+            self._step_state = None
+            self._reuse_step_state = False
+        obs, reward, terminated, _, info = self._finalize_step(obs_dict, rwd)
         limit = self.task.episode_length_s
         timeout = limit is not None and self._steps * self._ctrl_dt >= limit - 1e-9
         info.update(frame=self._f, clip_end=clip_end)
