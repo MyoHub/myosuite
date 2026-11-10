@@ -21,6 +21,8 @@ from myosuite.viz.ghost_body_viz import (
     make_ghost_viz_fn,
 )
 
+pytestmark = pytest.mark.tier2
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 _T = 10

@@ -40,6 +40,9 @@ from myosuite.integrations.musclemimic.model_versions import (
 )
 from myosuite.terms.mimic_reward import MimicTrackingConfig
 
+NATIVE_FULLBODY_MODEL = "myofullbody"
+"""The myo_sim model the native full body is built from (``model_name`` overrides it)."""
+
 NATIVE_FULLBODY_FALLBACK_WARNING = (
     "musclemimic_models is not installed; using myo_sim's own myofullbody "
     "composition with the same mimic sites/finger removal/ctrlrange edits "
@@ -380,10 +383,12 @@ def build_mimic_fullbody_spec(
 
 
 @cached_spec(min_uses=1)
-def _native_fullbody_spec(disable_fingers: bool) -> mujoco.MjSpec:
-    """Native full-body spec, built once per ``disable_fingers`` (the only config input)."""
+def _native_fullbody_spec(
+    disable_fingers: bool, model_name: str = NATIVE_FULLBODY_MODEL
+) -> mujoco.MjSpec:
+    """Native full-body spec, built once per ``disable_fingers`` and myo_sim model."""
     return _build_native_mimic_fullbody_spec(
-        config_dict.create(disable_fingers=disable_fingers)
+        config_dict.create(disable_fingers=disable_fingers, model_name=model_name)
     )
 
 
@@ -391,17 +396,21 @@ def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.M
     """Build a myo_sim-native Mimic-compatible full-body MjSpec.
 
     See :func:`_build_native_mimic_fullbody_spec`. The spec is built once per
-    ``disable_fingers`` in a process; every call returns a private copy once it
-    is kept (see :func:`~myosuite.core.model_builder.cached_spec`).
+    ``disable_fingers`` and model in a process; every call returns a private copy
+    once it is kept (see :func:`~myosuite.core.model_builder.cached_spec`).
 
     Args:
         config: At least ``disable_fingers`` (see
-            :func:`default_mimic_fullbody_config`).
+            :func:`default_mimic_fullbody_config`); optionally ``model_name``, the
+            myo_sim model to load (default :data:`NATIVE_FULLBODY_MODEL`).
 
     Returns:
         Edited, uncompiled MjSpec.
     """
-    return _native_fullbody_spec(bool(config.disable_fingers))
+    return _native_fullbody_spec(
+        bool(config.disable_fingers),
+        str(config.get("model_name", NATIVE_FULLBODY_MODEL)),
+    )
 
 
 def _build_native_mimic_fullbody_spec(
@@ -431,7 +440,7 @@ def _build_native_mimic_fullbody_spec(
     """
     import myo_sim
 
-    spec = myo_sim.load_spec("myofullbody")
+    spec = myo_sim.load_spec(str(config.get("model_name", NATIVE_FULLBODY_MODEL)))
     if config.disable_fingers:
         # From the spec: compiling here would leave its sizes stale after the deletions,
         # and MjSpec.attach checks keyframes against those.

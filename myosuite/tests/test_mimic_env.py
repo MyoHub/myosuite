@@ -6,42 +6,21 @@
 
 from __future__ import annotations
 
-import pathlib
-
 import numpy as np
 import pytest
 
-_CLIP_REPO_ID = "amathislab/musclemimic-retargeted"
-_CLIP_FILENAME = "MyoFullBody/gmr/KIT/167/walking_medium06_poses.npz"
+from myosuite.tests.support.hf_clip import resolve_walk_clip
 
+_HF_CLIP = resolve_walk_clip()
+_CLIP_AVAILABLE = _HF_CLIP is not None
 
-def _resolve_clip_path() -> pathlib.Path | None:
-    """Resolve the default mimic clip path in a machine-agnostic way."""
-    try:
-        from huggingface_hub import hf_hub_download
-
-        return pathlib.Path(
-            hf_hub_download(
-                repo_id=_CLIP_REPO_ID,
-                filename=_CLIP_FILENAME,
-                repo_type="dataset",
-            )
-        )
-    except ImportError:
-        return None
-    except RuntimeError:
-        return None
-    except OSError:
-        return None
-
-
-_HF_CLIP = _resolve_clip_path()
-_CLIP_AVAILABLE = _HF_CLIP is not None and _HF_CLIP.is_file()
-
-pytestmark = pytest.mark.skipif(
-    not _CLIP_AVAILABLE,
-    reason="HuggingFace motion clip not in cache (run musclemimic-setup-demo-cache)",
-)
+pytestmark = [
+    pytest.mark.tier2,
+    pytest.mark.skipif(
+        not _CLIP_AVAILABLE,
+        reason="HuggingFace motion clip not in cache (run musclemimic-setup-demo-cache)",
+    ),
+]
 
 
 @pytest.fixture(scope="module")
