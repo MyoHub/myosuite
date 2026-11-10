@@ -28,7 +28,8 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     """Observation groups: ``policy`` is the decoder's proprioception history, ``goal`` the encoder's input."""
     command_name: str = "motion"
     soft_width: float = 0.05
-    """Width of the sigmoid that softens the task's failure rule on imagined states."""
+    """Width of the sigmoid that softens the task's failure rule on imagined states, relative to each threshold
+    (absolute for the full body, whose thresholds are 1 m and 1 rad)."""
     max_iterations: int = 320_000
     save_interval: int = 2000
     log_interval: int = 50

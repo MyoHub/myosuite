@@ -279,7 +279,11 @@ class SuperMimicRunner:
                 continue
             params = {k: v for k, v in tc.params.items() if k != "command_name"}
             self.fail_terms.append(
-                (analytic(tc.func), {**params, "soft_width": cfg.soft_width})
+                # the width relative to the threshold (the full body's thresholds are 1)
+                (
+                    analytic(tc.func),
+                    {**params, "soft_width": cfg.soft_width * params["threshold"]},
+                )
             )
         self.max_step_reward = self.cmd.max_step_reward
         self.reward_scale, self.reward_names = scale, list(rm._term_names)
