@@ -598,6 +598,7 @@ COUPLED_TWIN_IDS = (
     "myoLegStairTerrainWalk-v0",
     "myoLegStandRandom-v0",
     "myoLegWalk-v0",
+    "myoMimic-v0",
     "myoTorsoExoPoseFixed-v0",
     "myoTorsoPoseFixed-v0",
 )
@@ -627,9 +628,14 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
     """
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
-    cfg = load_env_cfg(env_id)
-    cfg.scene.num_envs = 4  # several draws of any reset noise
-    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData  # noqa: PLC0415
+
+    try:
+        cfg = load_env_cfg(env_id)
+        cfg.scene.num_envs = 4  # several draws of any reset noise
+        mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    except MissingMotionData as exc:  # myoMimic-v0 without its clips (CI)
+        pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
     cpu = make_env(env_id).unwrapped
     try:
         mj.reset()
