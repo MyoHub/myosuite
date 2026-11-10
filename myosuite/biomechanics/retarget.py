@@ -755,6 +755,44 @@ def default_cache_root(model_name: str, version: str) -> Path:
     )
 
 
+def find_cache_root(
+    model_name: str, version: str, fingerprint: str, probe: str
+) -> tuple[Path | None, list[Path]]:
+    """The cache folder holding clips that fit the installed body.
+
+    Folders keep the ``<model>-<version>`` name they were fitted under. A release of
+    the model package that leaves the body's kinematics alone (same
+    :func:`kinematic_fingerprint`) keeps its clips valid, so when the current version's
+    folder lacks *probe*, the sibling ``<model>-*`` folders are scanned (sorted) for
+    one whose *probe* clip carries *fingerprint* in its metadata.
+
+    Args:
+        model_name: Model name.
+        version: The installed model version (the myo_sim version).
+        fingerprint: The installed body's kinematic fingerprint.
+        probe: A clip path relative to the root (e.g. the first listed clip).
+
+    Returns:
+        ``(root, tried)``: the folder (``None`` if none fits) and every folder looked at.
+    """
+    cache = default_cache_root(model_name, version)
+    tried = [cache]
+    if (cache / probe).is_file():
+        return cache, tried
+    for sib in sorted(cache.parent.glob(f"{model_name}-*")):
+        if sib == cache or not sib.is_dir():
+            continue
+        tried.append(sib)
+        clip = sib / probe
+        if clip.is_file():
+            meta = read_refit_meta(clip) or {}
+            if (meta.get("model"), meta.get("model_fingerprint")) == (
+                model_name, fingerprint,
+            ):  # fmt: skip
+                return sib, tried
+    return None, tried
+
+
 def save_refit(
     path: str | Path, model: mujoco.MjModel, qpos: np.ndarray, frequency: float,
     meta: dict[str, Any],
@@ -791,13 +829,22 @@ def read_refit_meta(path: str | Path) -> dict[str, Any] | None:
         return json.loads(str(d[REFIT_META_KEY]))
 
 
-def check_refit_meta(path: str | Path, model_name: str, version: str) -> None:
-    """Refuse a clip without refit metadata, or refitted on another model or version.
+def check_refit_meta(
+    path: str | Path, model_name: str, version: str, fingerprint: str | None = None
+) -> None:
+    """Refuse a clip without refit metadata, refitted on another model, or on a body
+    whose kinematics differ.
+
+    A clip carrying ``model_fingerprint`` is accepted when it equals *fingerprint*,
+    whatever version it was fitted under. A clip without one (fitted before the
+    fingerprint was recorded), or a check without *fingerprint*, falls back to the
+    version. Either mismatch names the myo_sim version the clip was fitted for.
 
     Args:
         path: Clip ``.npz``.
         model_name: The env's model name.
-        version: The env's model version (e.g. the myo_sim version).
+        version: The env's model version (the installed myo_sim version).
+        fingerprint: The env body's :func:`kinematic_fingerprint`.
 
     Raises:
         ValueError: On missing metadata or a mismatch.
@@ -805,11 +852,161 @@ def check_refit_meta(path: str | Path, model_name: str, version: str) -> None:
     meta = read_refit_meta(path)
     if meta is None:
         raise ValueError(f"{path}: not a refitted clip (no {REFIT_META_KEY})")
-    got = (meta.get("model"), meta.get("model_version"))
-    if got != (model_name, version):
+    got, got_v = meta.get("model"), meta.get("model_version")
+    if got != model_name:
         raise ValueError(
-            f"{path}: refitted on {got[0]} {got[1]}, the env runs {model_name} {version}"
+            f"{path}: refitted on {got} {got_v}, the env runs {model_name} {version}"
         )
+    got_fp = meta.get("model_fingerprint")
+    script = "scripts/mimic/retarget_amass.py"
+    if fingerprint is not None and got_fp is not None:
+        if got_fp == fingerprint:
+            return
+        why = (f"its body (kinematic fingerprint {got_fp}) differs from the installed "
+               f"one ({fingerprint})")  # fmt: skip
+        fix = f"retarget the clips again ({script})"
+    elif got_v == version:
+        return
+    else:
+        why = "the clip carries no kinematic fingerprint to show that the body is unchanged"
+        fix = (f"with myo_sim {got_v} installed, record the fingerprint "
+               f"({script} --stamp-fingerprint <clip folder>)")  # fmt: skip
+    raise ValueError(
+        f"{path}: refitted on {model_name} from myo_sim {got_v}, but myo_sim {version} "
+        f"is installed and {why}. Install myo_sim=={got_v}, or {fix}."
+    )
+
+
+def kinematic_fingerprint(
+    m: mujoco.MjModel,
+    landmark_bodies: Sequence[str],
+    feet: Sequence[Sequence[str]],
+) -> str:
+    """Hash of everything that makes a refitted clip valid for a compiled body.
+
+    A clip stores qpos fitted to the body's geometry, so the hash covers:
+
+    * joints, in qpos order: name, type, ``jnt_qposadr``, body, anchor (``jnt_pos``),
+      axis, limited flag and range; and ``qpos0``;
+    * the body tree: name, parent and ``pos``/``quat`` offset of every body;
+    * the coupling equalities: every active ``mjEQ_JOINT`` with its two joint names and
+      polynomial coefficients;
+    * the landmark bodies (the retargeting targets' carriers): world position and
+      orientation in the default pose;
+    * the foot collision geoms (the soles the ground height is fitted to): name, body,
+      type, size, pos and quat.
+
+    Dynamics that leave a clip's meaning alone (masses, inertia, muscles, tendons,
+    actuators, contact solver parameters, colours) are left out, as are the source's
+    inputs (recorded separately, e.g. ``smplh_map_version``). Floats are rounded to
+    1e-6 (integers of micro-units), so MuJoCo versions and platforms agree.
+
+    Args:
+        m: The compiled body.
+        landmark_bodies: Bodies carrying the landmark and orientation targets.
+        feet: Body groups whose collision geoms are the soles.
+
+    Returns:
+        The first 16 hex digits of the SHA-256 of a sorted-key JSON serialisation.
+    """
+
+    def r(x: Any) -> list[int]:
+        return (
+            np.rint(np.asarray(x, np.float64) * 1e6).astype(np.int64).ravel().tolist()
+        )
+
+    def name(obj: mujoco.mjtObj, i: int) -> str | None:
+        return mujoco.mj_id2name(m, obj, int(i)) if i >= 0 else None
+
+    J, B = mujoco.mjtObj.mjOBJ_JOINT, mujoco.mjtObj.mjOBJ_BODY
+    joints = sorted(range(m.njnt), key=lambda j: int(m.jnt_qposadr[j]))
+    d = mujoco.MjData(m)
+    mujoco.mj_kinematics(m, d)
+    foot_ids = {m.body(b).id for side in feet for b in side}
+    doc = {
+        "joints": [
+            [name(J, j), int(m.jnt_type[j]), int(m.jnt_qposadr[j]),
+             name(B, m.jnt_bodyid[j]), r(m.jnt_pos[j]), r(m.jnt_axis[j]),
+             int(m.jnt_limited[j]), r(m.jnt_range[j])]
+            for j in joints
+        ],
+        "qpos0": r(m.qpos0),
+        "bodies": [
+            [name(B, b), int(m.body_parentid[b]), r(m.body_pos[b]), r(m.body_quat[b])]
+            for b in range(m.nbody)
+        ],
+        "couplings": [
+            [name(J, m.eq_obj1id[e]), name(J, m.eq_obj2id[e]), r(m.eq_data[e, :5])]
+            for e in range(m.neq)
+            if m.eq_type[e] == mujoco.mjtEq.mjEQ_JOINT and m.eq_active0[e]
+        ],
+        "landmarks": [
+            [b, r(d.xpos[m.body(b).id]), r(d.xquat[m.body(b).id])]
+            for b in sorted(set(landmark_bodies))
+        ],
+        "feet": [
+            [m.geom(g).name, name(B, m.geom_bodyid[g]), int(m.geom_type[g]),
+             r(m.geom_size[g]), r(m.geom_pos[g]), r(m.geom_quat[g])]
+            for g in range(m.ngeom)
+            if m.geom_bodyid[g] in foot_ids
+            and (m.geom_contype[g] or m.geom_conaffinity[g])
+        ],
+    }  # fmt: skip
+    blob = json.dumps(doc, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def stamp_fingerprint(
+    path: str | Path, model_name: str, version: str, fingerprint: str
+) -> bool:
+    """Record *fingerprint* in a clip's metadata without refitting it.
+
+    Only a clip refitted on *model_name* at *version* (the installed one, whose body
+    *fingerprint* describes) is stamped; every array is rewritten unchanged and the
+    qpos is checked byte for byte before the file is replaced.
+
+    Args:
+        path: Clip ``.npz``.
+        model_name: Model name.
+        version: The installed model version (the myo_sim version).
+        fingerprint: The installed body's :func:`kinematic_fingerprint`.
+
+    Returns:
+        ``True`` if the clip was stamped, ``False`` if it already carried *fingerprint*.
+
+    Raises:
+        ValueError: For a clip without refit metadata, of another model or version, or
+            carrying another fingerprint.
+    """
+    path = Path(path)
+    meta = read_refit_meta(path)
+    if meta is None:
+        raise ValueError(f"{path}: not a refitted clip (no {REFIT_META_KEY})")
+    if (meta.get("model"), meta.get("model_version")) != (model_name, version):
+        raise ValueError(
+            f"{path}: refitted on {meta.get('model')} {meta.get('model_version')}, "
+            f"not on the installed {model_name} {version}"
+        )
+    if "model_fingerprint" in meta:
+        if meta["model_fingerprint"] == fingerprint:
+            return False
+        raise ValueError(
+            f"{path}: already carries fingerprint {meta['model_fingerprint']}"
+        )
+    meta["model_fingerprint"] = fingerprint
+    with np.load(path, allow_pickle=False) as d:
+        arrays = {k: d[k] for k in d.files}
+    arrays[REFIT_META_KEY] = np.array(json.dumps(meta, sort_keys=True))
+    tmp = path.with_suffix(".tmp.npz")
+    np.savez_compressed(tmp, **arrays)
+    with np.load(tmp, allow_pickle=False) as d:
+        q = d["qpos"]
+        same = q.dtype == arrays["qpos"].dtype and q.shape == arrays["qpos"].shape
+        if not (same and q.tobytes() == arrays["qpos"].tobytes()):
+            tmp.unlink()
+            raise RuntimeError(f"{path}: qpos changed on rewrite; left untouched")
+    tmp.replace(path)
+    return True
 
 
 def refit_clip(
@@ -822,6 +1019,7 @@ def refit_clip(
     config: RefitConfig | None = None,
     thresholds: RefitThresholds | None = None,
     ik: LandmarkIK | None = None,
+    model_fingerprint: str | None = None,
 ) -> tuple[np.ndarray, float, dict[str, Any]]:
     """Fit one clip onto the model and validate it.
 
@@ -835,9 +1033,11 @@ def refit_clip(
         config: Solver options.
         thresholds: Validation limits.
         ik: A solver to reuse (built from *model*, *lmap*, *config* otherwise).
+        model_fingerprint: The body's :func:`kinematic_fingerprint` (metadata).
 
     Returns:
-        ``(qpos, frequency, meta)``; ``meta`` holds the source, its hash, the model,
+        ``(qpos, frequency, meta)``; ``meta`` holds the source, its hash, the model
+        (name, version and fingerprint),
         the landmark map version, solver stats and :func:`validate_refit`'s metrics.
     """
     import time  # noqa: PLC0415
@@ -855,6 +1055,7 @@ def refit_clip(
         "source_sha256": file_sha256(src),
         "model": model_name,
         "model_version": model_version,
+        **({"model_fingerprint": model_fingerprint} if model_fingerprint else {}),
         "landmark_map": lmap.name,
         "landmark_map_version": lmap.version,
         "solver": asdict(ik.config),
@@ -910,10 +1111,13 @@ __all__ = [
     "check_refit_meta",
     "default_cache_root",
     "file_sha256",
+    "find_cache_root",
+    "kinematic_fingerprint",
     "model_tag",
     "read_refit_meta",
     "refit_clip",
     "save_refit",
+    "stamp_fingerprint",
     "summarize",
     "twist_asymmetry",
     "validate_refit",

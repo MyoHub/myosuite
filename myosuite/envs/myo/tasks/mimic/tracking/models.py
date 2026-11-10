@@ -164,6 +164,27 @@ def model_version(name: str) -> str:
 
 
 @functools.lru_cache(maxsize=4)
+def kinematic_fingerprint(name: str) -> str:
+    """Kinematic fingerprint of model *name*'s body: what its clips are valid for.
+
+    :func:`~myosuite.biomechanics.retarget.kinematic_fingerprint` of
+    :func:`compiled_body` (joints, body tree, coupling equalities, foot collision
+    geoms), with the landmark bodies and feet of the model's SMPL+H map. Clips whose
+    metadata carries it load whatever myo_sim version they were fitted under.
+    """
+    from myosuite.biomechanics.retarget import (  # noqa: PLC0415
+        kinematic_fingerprint as fingerprint,
+    )
+    from myosuite.biomechanics.retarget_smplh import (  # noqa: PLC0415
+        SMPLH_MAPS,
+        landmark_bodies,
+    )
+
+    smap = SMPLH_MAPS[model_cfg(name).name]
+    return fingerprint(compiled_body(name), landmark_bodies(smap), smap.feet)
+
+
+@functools.lru_cache(maxsize=4)
 def compiled_scene(name: str, self_collisions: bool = True) -> mujoco.MjModel:
     """Compiled :func:`scene_spec` (cached; copy before editing)."""
     return scene_spec(model_cfg(name), self_collisions).compile()

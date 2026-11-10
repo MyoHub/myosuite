@@ -369,10 +369,11 @@ def write_synthetic_clip(
 ) -> None:  # fmt: skip
     """A clip for tests: the default pose moving along x at *speed* (and up at *climb*),
     each independent joint oscillating by *amp* of its half range at 1 Hz, sampled at
-    100 Hz, with the metadata of a clip fitted on *model_name* (its current version)."""
+    100 Hz, with the metadata of a clip fitted on *model_name* (its current version and
+    kinematic fingerprint)."""
     from myosuite.biomechanics.retarget import REFIT_META_KEY  # noqa: PLC0415
 
-    from .models import model_version  # noqa: PLC0415
+    from .models import kinematic_fingerprint, model_version  # noqa: PLC0415
 
     fps = 100.0
     t = np.arange(int(seconds * fps) + 1) / fps
@@ -386,7 +387,8 @@ def write_synthetic_clip(
         qpos[:, adr] = np.clip(m.qpos0[adr] + wave, lo, hi)
     names = np.array([m.joint(j).name for j in range(m.njnt)])
     meta = {"source": "synthetic", "model": model_name,
-            "model_version": model_version(model_name)}  # fmt: skip
+            "model_version": model_version(model_name),
+            "model_fingerprint": kinematic_fingerprint(model_name)}  # fmt: skip
     np.savez(
         Path(path), qpos=qpos, joint_names=names, jnt_type=m.jnt_type, frequency=fps,
         **{REFIT_META_KEY: np.array(json.dumps(meta))},
@@ -411,18 +413,24 @@ def load_motion_lib(
         The library (NumPy; do not modify).
 
     Raises:
-        ValueError: For a clip fitted on another model or model version, or a clip
-            without that metadata.
+        ValueError: For a clip fitted on another model, on a body with other
+            kinematics (another fingerprint; without one: another myo_sim version), or
+            a clip without that metadata.
     """
     from myosuite.biomechanics.retarget import check_refit_meta  # noqa: PLC0415
 
     from . import resolve_clips  # noqa: PLC0415
-    from .models import compiled_scene, model_cfg, model_version  # noqa: PLC0415
+    from .models import (  # noqa: PLC0415
+        compiled_scene,
+        kinematic_fingerprint,
+        model_cfg,
+        model_version,
+    )
 
     files = motion_files(*resolve_clips(clips, root, model))
-    version = model_version(model)
+    version, fingerprint = model_version(model), kinematic_fingerprint(model)
     for f in files:
-        check_refit_meta(f, model, version)
+        check_refit_meta(f, model, version, fingerprint)
     return build_motion_lib(
         files, compiled_scene(model, self_collisions),
         model_cfg(model).tracked_bodies, dt, bin_s,

@@ -717,6 +717,15 @@ def smplh_source(
     return SMPLHSource(smap, cal, body_models, **kwargs), cal.lmap
 
 
+def landmark_bodies(smap: SMPLHMap) -> tuple[str, ...]:
+    """Model bodies the map places targets on: the points' carriers and calibration
+    bodies, the orientation bodies and their long-axis ends, and the hinge segments."""
+    names = {b for p in smap.points for b in (p.body, *p.model)}
+    names |= {b for o in smap.orientations for b in (o.body, o.axis_to) if b}
+    names |= {b for h in smap.hinges for b in h.model}
+    return tuple(sorted(names))
+
+
 def map_dict(smap: SMPLHMap) -> dict[str, Any]:
     """JSON-serialisable form of a table."""
     return asdict(smap)
@@ -733,6 +742,7 @@ __all__ = [
     "SMPLHSource",
     "calibrate",
     "knee_flexion",
+    "landmark_bodies",
     "map_dict",
     "smplh_source",
 ]

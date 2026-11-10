@@ -18,6 +18,13 @@ as MuscleMimic's KIT clips do. ``--quality-flags`` merges a curation file
 clip gets ``quality_flags`` (empty when unflagged). The report directory gets ``retarget_summary.json``,
 ``retarget_summary.md`` and one JSON line per clip; flagged clips are listed there, not
 dropped silently. The AMASS data and SMPL+H models are not part of MyoSuite.
+
+Every clip records the body's kinematic fingerprint (``model_fingerprint``), so it keeps
+loading under myo_sim releases that leave the body's kinematics alone. Clips fitted
+before the fingerprint was recorded get it without a refit (qpos untouched), with the
+myo_sim version they were fitted on installed:
+
+    python scripts/mimic/retarget_amass.py --stamp-fingerprint ~/.cache/myosuite/mimic/myofullbody-<version>
 """
 
 from __future__ import annotations
@@ -71,7 +78,10 @@ def _init(model_name: str, version: str, body_models: str, trim: int) -> None:
     import warnings  # noqa: PLC0415
 
     warnings.filterwarnings("ignore")
-    from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body  # noqa: PLC0415
+    from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
+        compiled_body,
+        kinematic_fingerprint,
+    )
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
     from myosuite.biomechanics import retarget_smplh as rs  # noqa: PLC0415
 
@@ -79,6 +89,7 @@ def _init(model_name: str, version: str, body_models: str, trim: int) -> None:
     src, lmap = rs.smplh_source(model, body_models, rs.SMPLH_MAPS[model_name],
                                 trim=(trim, trim))  # fmt: skip
     _STATE.update(rt=rt, model=model, lmap=lmap, name=model_name, version=version,
+                  fingerprint=kinematic_fingerprint(model_name),
                   ik=rt.LandmarkIK(model, lmap), source=src)  # fmt: skip
 
 
@@ -103,24 +114,29 @@ def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
     try:
         if Path(dst).exists():
             meta = rt.read_refit_meta(dst)
+            if meta and "model_fingerprint" in meta:
+                same_body = meta["model_fingerprint"] == s["fingerprint"]
+            else:  # fitted before the fingerprint was recorded
+                same_body = bool(meta) and meta.get("model_version") == s["version"]
             if (
-                meta
+                same_body
                 and meta.get("source_sha256") == rt.file_sha256(src)
-                and (meta.get("model_version"), meta.get("landmark_map_version"))
-                == (s["version"], lmap.version)
+                and meta.get("landmark_map_version") == lmap.version
                 and meta.get("solver") == dataclasses.asdict(s["ik"].config)
                 and (meta.get("smplh_map_version"), meta.get("trim"))
                 == (s["source"].smap.version, list(s["source"].trim))
             ):
+                curation = {"model_fingerprint": s["fingerprint"], **curation}
                 if any(meta.get(k) != v for k, v in curation.items()):
-                    meta.update(curation)  # curation changed: rewrite the metadata only
+                    meta.update(curation)  # curation or fingerprint new: metadata only
                     with np.load(dst) as d:
                         qpos, freq = d["qpos"], float(d["frequency"])
                     rt.save_refit(dst, model, qpos, freq, meta)
                 return {"meta": meta, "skipped": True}
         qpos, freq, meta = rt.refit_clip(
-            src, model, s["name"], s["version"], lmap, s["source"], ik=s["ik"]
-        )
+            src, model, s["name"], s["version"], lmap, s["source"], ik=s["ik"],
+            model_fingerprint=s["fingerprint"],
+        )  # fmt: skip
         meta["source"] = label  # dataset-relative, no local paths in shared files
         meta.update(curation)
         rt.save_refit(dst, model, qpos, freq, meta)
@@ -194,10 +210,46 @@ def _markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def stamp(root: Path, model_name: str) -> int:
+    """Record the installed body's fingerprint in every refitted clip under *root*
+    (qpos untouched); returns the number of clips refused."""
+    import myo_sim  # noqa: PLC0415
+
+    from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
+    from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
+        kinematic_fingerprint,
+    )
+
+    version, fp = str(myo_sim.__version__), kinematic_fingerprint(model_name)
+    counts = {"stamped": 0, "already": 0}
+    refused = []
+    for f in sorted(root.rglob("*.npz")):
+        if f.name.endswith(".tmp.npz"):
+            continue
+        try:
+            counts["stamped" if rt.stamp_fingerprint(f, model_name, version, fp)
+                   else "already"] += 1  # fmt: skip
+        except ValueError as err:
+            refused.append(str(err))
+    print(f"{model_name} myo_sim {version}, fingerprint {fp}: {counts['stamped']} "
+          f"stamped, {counts['already']} already stamped, {len(refused)} refused")  # fmt: skip
+    for msg in refused:
+        print("  " + msg)
+    return len(refused)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Retarget a directory or list of AMASS clips; returns the number of failed clips."""
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("input", help="AMASS directory or .txt list of *_poses.npz")
+    p.add_argument(
+        "input", nargs="?", help="AMASS directory or .txt list of *_poses.npz"
+    )
+    p.add_argument(
+        "--stamp-fingerprint",
+        default="",
+        metavar="DIR",
+        help="only record the body's kinematic fingerprint in the clips under DIR",
+    )
     p.add_argument("--model", default="myofullbody")
     p.add_argument(
         "--out-root",
@@ -216,8 +268,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument(
         "--body-models",
-        required=True,
-        help="folder with {male,female,neutral}/model.npz (SMPL+H)",
+        default="",
+        help="folder with {male,female,neutral}/model.npz (SMPL+H); needed to retarget",
     )
     p.add_argument(
         "--trim",
@@ -231,6 +283,10 @@ def main(argv: list[str] | None = None) -> int:
         help="JSON {clip label: metadata fields} merged into the clips (curation)",
     )
     args = p.parse_args(argv)
+    if args.stamp_fingerprint:
+        return stamp(Path(args.stamp_fingerprint).expanduser(), args.model)
+    if not (args.input and args.body_models):
+        p.error("input and --body-models are needed to retarget")
 
     import myo_sim  # noqa: PLC0415
 
