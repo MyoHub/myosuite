@@ -171,6 +171,6 @@ def test_kit_lists_and_root_override(monkeypatch, tmp_path) -> None:
                 if ln.strip() and not ln.startswith("#")]  # fmt: skip
 
     monkeypatch.setenv(tr.KIT_ROOT_ENV, str(tmp_path))
-    for name, n in (("kit_train", 972), ("kit_test", 108)):
+    for name, n in (("kit_all", 1080), ("kit_train", 972), ("kit_test", 108)):
         path, root = tr.resolve_clips(name)
         assert root == str(tmp_path) and len(clips(path)) == n

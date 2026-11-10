@@ -30,8 +30,9 @@ class MotionCfg:
     """Reference motion.
 
     Attributes:
-        clips: A clip (``.npz``), a directory, a ``.txt`` list, or ``"kit_train"`` /
-            ``"kit_test"`` (MuscleMimic's KIT split, 972 / 108 clips).
+        clips: A clip (``.npz``), a directory, a ``.txt`` list, ``"kit_all"`` (all
+            1080 KIT clips, for a policy to release or reuse), or ``"kit_train"`` /
+            ``"kit_test"`` (MuscleMimic's KIT split, 972 / 108 clips, for benchmarks).
         root: Directory the paths of a list start from (default for the KIT names:
             ``$MYOSUITE_KIT_ROOT``, the local retarget cache or the download, see
             :func:`~myosuite.envs.myo.tasks.mimic.tracking.kit_root`; else the
@@ -39,7 +40,7 @@ class MotionCfg:
         bin_s: Length of the reset bins in seconds.
     """
 
-    clips: str = "kit_train"
+    clips: str = "kit_all"
     root: str = ""
     bin_s: float = 1.0
 
