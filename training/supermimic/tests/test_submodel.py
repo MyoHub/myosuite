@@ -193,3 +193,88 @@ def test_fixed_base_learns_and_evaluates(toy: tuple[str, Path], tmp_path: Path) 
         and math.isfinite(res["tip_err_cm"])
         and math.isfinite(res["mpjpe_mm"])
     )
+
+
+@pytest.mark.parametrize("graph", [False, True], ids=["eager", "collector"])
+def test_noise_free_envs_collect_the_deterministic_policy(
+    toy: tuple[str, Path], graph: bool
+) -> None:
+    """noise_free_frac: the first envs act with the policy's own action, the others explore; their episodes are logged
+    as det_ret / det_len."""
+    from supermimic.collector import STATS
+
+    model, d = toy
+    _, r = _make(model, str(d / "clips.txt"), num_envs=8, env_edit=_short_episodes, noise_free_frac=0.25,
+                 action_noise=0.2, collect_graph=graph)  # fmt: skip
+    assert r.det_mask.tolist() == [True] * 2 + [False] * 6 and r.stat_keys == STATS + (
+        "det_ret",
+        "det_len",
+    )
+    with torch.no_grad():  # a constant policy
+        for w in r.pi.parameters():
+            if w.dim() == 2:
+                w.zero_()
+    r.init_collection()
+    st: dict = {k: [] for k in r.stat_keys}
+    r.collect(20, st)
+    a = r.buffer.data["a"][:20].float()
+    # a zero policy (constant action): the deterministic envs execute it exactly, the others explore around it
+    const = torch.sigmoid(r.pi.dec[-1].bias).detach()
+    torch.testing.assert_close(
+        a[:, :2], const.expand(20, 2, -1), atol=2e-3, rtol=0
+    )  # float16 buffer
+    assert (a[:, 2:] - const).abs().mean() > 0.02
+    det_rows = [float(x) for x in st["det_ret"] if x == x]
+    assert det_rows and all(0.0 <= x <= 1.5 for x in det_rows)
+
+
+def test_noise_free_actions_are_the_policy_mean() -> None:
+    """explore_actions: the masked rows are the clamped action, the others drawn around it."""
+    from types import SimpleNamespace
+
+    from supermimic.runner import SuperMimicRunner
+
+    r = SimpleNamespace(cfg=SimpleNamespace(action_noise=0.2, action_noise_dist="beta"),
+                        noise_t=torch.tensor(0.2), det_mask=torch.tensor([True, False, False]))  # fmt: skip
+    a = torch.full((3, 50), 0.3)
+    out = SuperMimicRunner.explore_actions(r, a)
+    assert (
+        torch.equal(out[0], a[0])
+        and not torch.equal(out[1], a[1])
+        and (out >= 0).all()
+        and (out <= 1).all()
+    )
+    r.det_mask = None
+    assert not torch.equal(SuperMimicRunner.explore_actions(r, a)[0], a[0])
+
+
+def test_budget_schedules(toy: tuple[str, Path], tmp_path: Path) -> None:
+    """budget_schedules: the learning rate and the action noise follow a cosine over the time budget (3 % and
+    action_noise_final at its end); without it the iteration schedule is unchanged."""
+    import csv
+
+    model, d = toy
+    _, plain = _make(model, str(d / "clip0.npz"))
+    assert plain.budget_progress(10.0) is None and plain.noise_t is None
+    assert plain.lr_at(0) == plain.cfg.lr
+    _, r = _make(model, str(d / "clip0.npz"), budget_schedules=True, max_hours=1.0, action_noise=0.1,
+                 action_noise_final=0.02, wm_only_iters=1)  # fmt: skip
+    c = r.cfg
+    assert (
+        r.budget_progress(0.0) == 0.0
+        and r.budget_progress(1800.0) == 0.5
+        and r.budget_progress(7200.0) == 1.0
+    )
+    assert math.isclose(r.lr_at(5, 0.0), c.lr) and math.isclose(
+        r.lr_at(5, 1.0), 0.03 * c.lr
+    )
+    assert math.isclose(r.lr_at(5, 0.5), c.lr * (0.03 + 0.97 * 0.5))
+    assert math.isclose(r.noise_at(0.0), 0.1) and math.isclose(r.noise_at(1.0), 0.02)
+    r.log_dir = str(tmp_path)
+    r.learn(num_learning_iterations=3)
+    rows = list(csv.DictReader(open(tmp_path / "train_log.csv")))
+    assert rows and all(0.02 <= float(row["action_noise"]) <= 0.1 for row in rows)
+    assert all(float(row["lr"]) <= c.lr for row in rows)
+    assert math.isclose(
+        float(r.noise_t), r.noise_at(r.budget_progress(0.0) or 0.0), rel_tol=0.05
+    )

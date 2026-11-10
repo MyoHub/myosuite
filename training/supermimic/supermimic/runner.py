@@ -317,6 +317,17 @@ class SuperMimicRunner:
                 flush=True,
             )
         self.collector = None  # collect_graph: the thin simulator wrapper (collector.py), built by learn()
+        # noise_free_frac: the envs that collect without noise; budget_schedules: the noise level as a device tensor
+        # (filled every iteration, read by captured collection steps)
+        n_det = round(cfg.noise_free_frac * u.num_envs)
+        self.det_mask = (
+            (torch.arange(u.num_envs, device=device) < n_det) if n_det > 0 else None
+        )
+        self.noise_t = (torch.tensor(float(cfg.action_noise), device=device)
+                        if cfg.budget_schedules or self.det_mask is not None else None)  # fmt: skip
+        self.stat_keys = STATS + (
+            ("det_ret", "det_len") if self.det_mask is not None else ()
+        )
         # per-component floors on the error normalization (pos, rot, lin vel, ang vel, q, qd increments)
         f = lambda n, v: torch.full((n,), v)  # noqa: E731
         self.err_floor = torch.cat(
@@ -563,8 +574,36 @@ class SuperMimicRunner:
             ):
                 pt.lerp_(p, 1 - self.cfg.critic_target_alpha)
 
-    def lr_at(self, it: int) -> float:
+    def explore_actions(self, a: torch.Tensor) -> torch.Tensor:
+        """Collection's exploration noise on the policy's actions (noise_free_frac envs: none)."""
         c = self.cfg
+        if self.noise_t is None:
+            return networks.explore(a, c.action_noise, c.action_noise_dist)
+        noisy = networks.explore(a, self.noise_t, c.action_noise_dist)
+        if self.det_mask is None:
+            return noisy
+        return torch.where(
+            self.det_mask.unsqueeze(-1), a.clamp(0.0, 1.0).to(noisy.dtype), noisy
+        )
+
+    def budget_progress(self, elapsed_s: float) -> float | None:
+        """budget_schedules: the share of the time budget spent (None: the schedules run over iterations)."""
+        c = self.cfg
+        if not (c.budget_schedules and c.max_hours > 0):
+            return None
+        return min(1.0, elapsed_s / (c.max_hours * 3600))
+
+    def noise_at(self, progress: float) -> float:
+        """budget_schedules: the action noise at a share of the time budget (cosine from action_noise to the final)."""
+        c = self.cfg
+        return c.action_noise_final + (c.action_noise - c.action_noise_final) * 0.5 * (
+            1 + math.cos(math.pi * progress)
+        )
+
+    def lr_at(self, it: int, progress: float | None = None) -> float:
+        c = self.cfg
+        if progress is not None:  # budget_schedules: cosine over the time budget
+            return c.lr * (0.03 + 0.97 * 0.5 * (1 + math.cos(math.pi * progress)))
         if it >= c.lr_decay_iters:
             return c.lr * 0.03
         return c.lr * (
@@ -798,7 +837,7 @@ class SuperMimicRunner:
             for _ in range(n_steps):
                 out = self.collector.step()
                 self.sim_steps += N
-                for k in STATS:
+                for k in self.stat_keys:
                     v = out[k].clone()
                     if record is not None:
                         v.record_stream(record)
@@ -812,7 +851,7 @@ class SuperMimicRunner:
             self.pi.obs_norm.update(obs["policy"])
             self.pi.goal_norm.update(obs["goal"])
             a = self.pi(obs["policy"], obs["goal"])
-            a = networks.explore(a, self.cfg.action_noise, self.cfg.action_noise_dist)
+            a = self.explore_actions(a)
             obs, rew, dones, _ = self.env.step(a)
             S1 = cmd.read_state()
             done = dones.bool()
@@ -840,6 +879,14 @@ class SuperMimicRunner:
                 )
                 stats["term"].append(u.reset_terminated[ids].float().sum())
                 stats["done"].append(float(len(ids)))
+                if self.det_mask is not None:
+                    det = self.det_mask[ids]
+                    if det.any():
+                        Td = T[det]
+                        stats["det_ret"].append(
+                            (self.ep_ret[ids][det] / (Td * self.max_step_reward)).mean()
+                        )
+                        stats["det_len"].append(Td.mean())
                 self.ep_ret[ids] = 0.0
                 obs_dict, _ = u.reset(env_ids=ids)
                 obs = TensorDict(obs_dict, batch_size=[N])
@@ -955,7 +1002,7 @@ class SuperMimicRunner:
         ), "SuperMimic records terminal states: the training env needs auto_reset=False"
         self.init_collection()
         logger = self._make_logger()
-        stats = {k: [] for k in STATS}
+        stats = {k: [] for k in self.stat_keys}
         self.collect(max(c.warmup_steps, c.wm_window + self.hist + 1), stats)
         if c.cuda_graph:
             # captured sampling reads the buffer's write head and fill level on the device, so the updates are captured
@@ -985,7 +1032,10 @@ class SuperMimicRunner:
         }
         start_it = self.it
         for it in range(start_it, start_it + num_learning_iterations):
-            lr = self.lr_at(it)
+            progress = self.budget_progress(time.time() - t_start)
+            lr = self.lr_at(it, progress)
+            if progress is not None:
+                self.noise_t.fill_(self.noise_at(progress))
             pi_mult = c.pi_lr_mult  # lr_decay_ret: ramps to 1 after the trigger
             if self._decay_at is not None:
                 pi_mult = c.pi_lr_mult + (1.0 - c.pi_lr_mult) * min(
@@ -1030,6 +1080,13 @@ class SuperMimicRunner:
                             f"lr_decay_ret: {why} at it {self.it}: policy LR x{c.pi_lr_mult} -> x1 over {c.lr_decay_len} its",
                             flush=True,
                         )
+                if self.det_mask is not None:
+                    row["det_ret"], row["det_len"] = (
+                        mean(stats["det_ret"]),
+                        mean(stats["det_len"]),
+                    )
+                if progress is not None:
+                    row["action_noise"] = self.noise_at(progress)
                 if c.state_grad_clip > 0:
                     row["pi_state_clip"] = mean(agg["clip"])
                 if stats["r_terms"]:

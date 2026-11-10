@@ -107,7 +107,8 @@ def explore(a: torch.Tensor, sigma: float, dist: str = "gaussian") -> torch.Tens
     folds): the Gaussian's step sizes, never outside the box and no mass piled on 0 or 1. Not mean-preserving either:
     at a = 0.02 the executed excitation averages 0.081 (clipping: 0.051), and 24 % of the draws exceed a + 0.1
     (clipping: 16 %, Beta: 1.4 %)."""
-    if sigma <= 0:
+    tensor = torch.is_tensor(sigma)  # a device tensor (a schedule): no host-side checks
+    if not tensor and sigma <= 0:
         return a.clamp(0.0, 1.0)
     if dist == "gaussian":
         return (a + sigma * torch.randn_like(a)).clamp(0.0, 1.0)
@@ -118,7 +119,7 @@ def explore(a: torch.Tensor, sigma: float, dist: str = "gaussian") -> torch.Tens
         return (1.0 - (1.0 - x).abs()).clamp(0.0, 1.0)
     assert dist == "beta", dist
     k = 1.0 / (4.0 * sigma * sigma) - 1.0
-    assert k > 0, "beta noise needs action_noise < 0.5"
+    assert tensor or k > 0, "beta noise needs action_noise < 0.5"
     a = a.float().clamp(0.0, 1.0)
     x = torch._standard_gamma((k * a).clamp(min=1e-6))
     y = torch._standard_gamma((k * (1.0 - a)).clamp(min=1e-6))
