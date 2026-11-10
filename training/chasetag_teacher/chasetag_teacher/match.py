@@ -156,9 +156,17 @@ def play(env: Any, players: dict[str, Player], seed: int, task: str, noise: floa
     return Bout(task, end, float(info["elapsed_s"]), float(info["score"]), fell, log)
 
 
-def make() -> Any:
-    """The scored 1v1 env."""
-    return make_env(ENV_ID)
+def make(**kwargs: Any) -> Any:
+    """The scored 1v1 env, without the gait/steering shaping reward (bouts score, they do not train; with its
+    weights at 0 the env needs no gait clip). ``kwargs`` go to ``make_env`` (e.g. ``render_mode``)."""
+    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
+        ChaseTagVsFullbodySteeredTaskConfig,
+    )
+
+    cfg = ChaseTagVsFullbodySteeredTaskConfig(
+        w_gait_jpos=0.0, w_gait_jvel=0.0, w_steering=0.0
+    )
+    return make_env(ENV_ID, task_config=cfg, **kwargs)
 
 
 def player_scores(
