@@ -10,7 +10,7 @@ subject to::
 
     AM^T (g * a + b) + r + J_eq^T lam = tau
 
-``tau`` is the inverse dynamics (:mod:`myosuite.methods.biomech.inverse_dynamics`), ``AM``
+``tau`` is the inverse dynamics (:mod:`myosuite.biomechanics.inverse_dynamics`), ``AM``
 the actuator moment arms, and ``g`` and ``b`` each actuator's force per unit
 activation and its activation-independent (passive) force, taken from MuJoCo's own
 actuator model at the frame's state: for muscles, force-length-velocity with a
@@ -61,7 +61,7 @@ import osqp
 from scipy import sparse
 
 from myosuite.core.muscle_conditions import _peak_force
-from myosuite.methods.biomech.inverse_dynamics import required_qfrc
+from myosuite.biomechanics.inverse_dynamics import required_qfrc
 
 # Constraint forces are optimised in units of this force [N m or N].
 _CONSTRAINT_SCALE = 100.0
@@ -451,7 +451,7 @@ def static_optimization(
         qpos: ``(T, nq)`` positions.
         qvel: ``(T, nv)`` velocities.
         qacc: ``(T, nv)`` accelerations, e.g. from
-            :func:`~myosuite.methods.biomech.inverse_dynamics.clip_kinematics`.
+            :func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics`.
         external_qfrc: Optional ``(T, nv)`` known external generalized forces.
         config: Weights and tolerances.
 
