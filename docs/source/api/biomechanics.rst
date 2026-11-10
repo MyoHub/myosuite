@@ -32,3 +32,9 @@ Computed muscle control
 
 .. automodule:: myosuite.biomechanics.computed_muscle_control
    :members:
+
+Uncertainty bands
+-----------------
+
+.. automodule:: myosuite.biomechanics.uncertainty
+   :members:
