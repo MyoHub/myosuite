@@ -4,7 +4,7 @@ A policy only works on the observations, actions and control step it was trained
 *contract* records exactly those; its short hash is stored in ``manifest.json`` next to the
 checkpoint and compared with the current env when a downloaded checkpoint is used.
 
-A policy trained through an action map (``myosuite.methods.synergies``) does not command one
+A policy trained through an action map (:mod:`myosuite.utils.action_map`) does not command one
 action per muscle. Its checkpoint records the map under :data:`ACTION_MAP_FIELD` (in the
 checkpoint's ``infos`` and, if written, in ``manifest.json``); :func:`action_map_kind` finds
 it, so plain loaders can refuse such checkpoints without importing any method.
@@ -28,9 +28,10 @@ MANIFEST_NAME = "manifest.json"
 SCHEMA_VERSION = 1
 # Action map a checkpoint needs: ``{"manifest": {"kind": ..., ...}, "env_steps": ...}``.
 ACTION_MAP_FIELD = "action_map"
-# Checkpoints written before ACTION_MAP_FIELD: ``infos`` key / env.yaml class -> kind.
+# Checkpoints written before ACTION_MAP_FIELD: ``infos`` key -> kind.
 _LEGACY_INFOS_KEYS = {"dynsyn": "dynsyn"}
-_LEGACY_ENV_CLASSES = {"DynSynActionCfg": "dynsyn"}
+# Earlier DynSyn-only action term in ``params/env.yaml``: its class and a key only it has.
+_LEGACY_ENV_CLASS, _LEGACY_ENV_KEY = "DynSynActionCfg", "start_steps"
 
 
 class CfgLoader(yaml.SafeLoader):
@@ -200,6 +201,21 @@ def check_contract(env_id: str, checkpoint_dir: str | Path) -> bool:
     return False
 
 
+def env_yaml_action_term(env: dict[str, Any]) -> dict[str, Any] | None:
+    """The action-map term of a run's ``params/env.yaml`` (read with :class:`CfgLoader`).
+
+    Returns:
+        The term's fields (``action_map``, ``step_offset``, ...; the earlier DynSyn-only
+        term: ``groups``, ``start_steps``, ...), or ``None`` if the run used no map.
+    """
+    for term in (env.get("actions") or {}).values():
+        if isinstance(term, dict) and (
+            ACTION_MAP_FIELD in term or {_LEGACY_ENV_KEY, "groups"} <= term.keys()
+        ):
+            return term
+    return None
+
+
 def action_map_kind(infos: dict[str, Any], checkpoint: str | Path) -> str | None:
     """Kind of the action map a checkpoint was trained through, if any.
 
@@ -221,14 +237,12 @@ def action_map_kind(infos: dict[str, Any], checkpoint: str | Path) -> str | None
     if manifest is not None and ACTION_MAP_FIELD in manifest:
         return manifest[ACTION_MAP_FIELD]["kind"]
     env_yaml = folder / "params" / "env.yaml"
-    if env_yaml.is_file():
-        text = env_yaml.read_text(errors="replace")
-        for cls, kind in _LEGACY_ENV_CLASSES.items():
-            if cls in text:
-                return kind
-        if "ActionMapActionCfg" in text:
-            actions = (yaml.load(text, Loader=CfgLoader) or {}).get("actions", {})
-            for term in actions.values():
-                if isinstance(term, dict) and ACTION_MAP_FIELD in term:
-                    return term[ACTION_MAP_FIELD]["kind"]
-    return None
+    if not env_yaml.is_file():
+        return None
+    text = env_yaml.read_text(errors="replace")
+    if ACTION_MAP_FIELD not in text and _LEGACY_ENV_CLASS not in text:
+        return None  # skip parsing the env.yaml of plain runs
+    term = env_yaml_action_term(yaml.load(text, Loader=CfgLoader) or {})
+    if term is None:
+        return None
+    return term[ACTION_MAP_FIELD]["kind"] if ACTION_MAP_FIELD in term else "dynsyn"

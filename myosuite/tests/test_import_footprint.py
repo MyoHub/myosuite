@@ -68,11 +68,10 @@ def test_import_myosuite_skips_heavy_modules() -> None:
     assert _loaded_after("import myosuite", heavy) == []
 
 
-def test_import_synergies_skips_torch() -> None:
-    """``myosuite.methods.synergies`` (maps, CPU wrapper) loads neither torch nor mjlab."""
-    heavy = ("myosuite.methods.synergies.checkpoint", "torch", "mjlab")
-    code = "import myosuite.methods.synergies, myosuite.methods.exploration"
-    assert _loaded_after(code, heavy) == []
+def test_import_action_map_skips_torch() -> None:
+    """``myosuite.utils.action_map`` (maps, CPU wrapper) loads neither torch nor mjlab."""
+    heavy = ("torch", "mjlab", "myosuite.utils.rslrl_policy")
+    assert _loaded_after("import myosuite.utils.action_map", heavy) == []
 
 
 @pytest.mark.parametrize(

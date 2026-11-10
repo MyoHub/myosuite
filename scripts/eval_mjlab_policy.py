@@ -29,9 +29,9 @@ Muscle-command features (the ones the checkpoint was trained with, see
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \
         --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
 
-A checkpoint trained through an action map (e.g. DynSyn, ``train_mjlab.py --dynsyn-groups``)
-is evaluated with the map of its training run, at its training progress, read from the
-checkpoint (see ``myosuite.methods.synergies``).
+A checkpoint trained through an action map (e.g. DynSyn muscle synergies, trained with
+``training/dynsyn``) is evaluated with the map of its training run, at its training
+progress, read from the checkpoint (see ``myosuite.utils.action_map``).
 
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
@@ -913,7 +913,7 @@ def evaluate_cpu(
     env_config = EnvConfig(cfg.env_id, features=features)
     envs = [make_env(env_config) for _ in range(n_envs)]
     if trained is not None:
-        from myosuite.methods.synergies.base import ActionMapWrapper  # noqa: PLC0415
+        from myosuite.utils.action_map import ActionMapWrapper  # noqa: PLC0415
 
         envs = [
             ActionMapWrapper(
@@ -1013,7 +1013,7 @@ def evaluate_mjlab(
     env_cfg.scene.num_envs = n_envs
     env_cfg.seed = cfg.seed
     if trained is not None:
-        from myosuite.methods.synergies.base import (  # noqa: PLC0415
+        from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (  # noqa: PLC0415
             apply_trained_action_map,
         )
 
@@ -1088,22 +1088,14 @@ def main() -> None:
     print(f"\n\ncheckpoint: {checkpoint}  backend: {cfg.backend}  env: {cfg.env_id}")
     if features:
         print("features: " + ", ".join(spec.name for spec in features))
-    from myosuite.methods.synergies.checkpoint import (  # noqa: PLC0415
-        trained_action_map,
-    )
-    from myosuite.methods.synergies.dynsyn import DynSyn  # noqa: PLC0415
+    from myosuite.utils.action_map import trained_action_map  # noqa: PLC0415
 
     trained = trained_action_map(checkpoint)
     if trained is not None:
-        action_map = trained.action_map
-        if isinstance(action_map, DynSyn):
-            print(
-                f"DynSyn: {len(action_map.groups.groups)} groups, correction bound "
-                f"{action_map.amplitude(trained.env_steps):.4g} (as trained, after "
-                f"{trained.env_steps:.4g} env steps)"
-            )
-        else:
-            print(f"Action map: {action_map.kind} ({action_map.action_dim} actions)")
+        print(
+            f"Action map: {trained.action_map.kind} ({trained.action_map.action_dim} "
+            f"actions, as trained after {trained.env_steps:.4g} env steps)"
+        )
     if cfg.backend == "cpu":
         evaluate_cpu(cfg, checkpoint, features, trained)
     else:

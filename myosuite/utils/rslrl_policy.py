@@ -105,7 +105,7 @@ def load_rslrl_policy(
         checkpoint: ``model_*.pt`` from an mjlab training run.
         action_dim: Action dimension of the env the policy will drive.
         action_map_applied: The env applies the action map the run was trained
-            through (see :mod:`myosuite.methods.synergies`).
+            through (see :mod:`myosuite.utils.action_map`).
 
     Returns:
         The policy in eval mode on CPU.
@@ -120,8 +120,8 @@ def load_rslrl_policy(
     if kind is not None and not action_map_applied:
         raise ValueError(
             f"{checkpoint} was trained through the {kind!r} action map: its actions are "
-            "not one action per muscle. Load it through myosuite.methods.synergies "
-            "(load_policy), or evaluate it with scripts/eval_mjlab_policy.py."
+            "not one action per muscle. Load it with myosuite.utils.action_map.load_policy, "
+            "or evaluate it with scripts/eval_mjlab_policy.py."
         )
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})

@@ -51,18 +51,6 @@ class TrainConfig:
     """Multiplies the weight of every reward term (e.g. ``0.1`` shrinks returns and the
     value loss, as in the myoInteract tasks). Applied on top of
     ``--env.scale-rewards-by-dt``; ``1.0`` leaves the task's rewards unchanged."""
-    dynsyn_groups: str | None = None
-    """DynSyn (He et al., ICML 2024): muscle groups from ``scripts/dynsyn_groups.py``. The policy
-    then commands one action per group plus a bounded correction per muscle. ``--agent.resume`` or
-    ``--wandb-run-path`` of a DynSyn run continues with the groups and schedule its checkpoint
-    stores, without this flag."""
-    dynsyn_start_steps: float = 5e7
-    """Environment steps (all envs together) before DynSyn's per-muscle corrections start."""
-    dynsyn_ramp_steps: float = 1e8
-    """Environment steps over which the correction bound grows to ``dynsyn_max_amplitude``."""
-    dynsyn_max_amplitude: float = 0.1
-    """Largest relative correction of a muscle's group action, before the task's sigmoid (0: groups
-    only, one action per group)."""
     stop_on_success: bool = True
     """Stop the run as soon as the logged ``Episode_Metrics/success`` rate of an
     iteration exceeds ``--success-threshold``; a checkpoint of that iteration is stored
@@ -138,77 +126,15 @@ def deterministic_success(runner: MjlabOnPolicyRunner, eval_env) -> float:
     return float(np.mean(finished)) if finished else 0.0
 
 
-def _make_eval_env(
-    cfg: TrainConfig, device: str, train_env: ManagerBasedRlEnv
-) -> RslRlVecEnvWrapper:
+def _make_eval_env(cfg: TrainConfig, device: str) -> RslRlVecEnvWrapper:
     """A small separate env (own seed) for the deterministic success check."""
-    from myosuite.methods.synergies.base import action_map_term
-
     eval_cfg = copy.deepcopy(cfg.env)
     eval_cfg.scene.num_envs = DETERMINISTIC_EVAL_ENVS
     eval_cfg.seed = cfg.env.seed + 1
-    eval_env = ManagerBasedRlEnv(cfg=eval_cfg, device=device)
-    term = action_map_term(eval_env)
-    if term is not None:  # the training's progress, not its own steps
-        term.schedule_source = action_map_term(train_env)
-    return RslRlVecEnvWrapper(eval_env, clip_actions=cfg.agent.clip_actions)
-
-
-def _resolve_dynsyn(cfg: TrainConfig, resume_path: Path | None, rank: int) -> None:
-    """Apply DynSyn to ``cfg.env``: a resumed run's own action map, or the ``--dynsyn-*`` flags.
-
-    The resumed run's map comes from its checkpoint (or, for older runs, its
-    ``params/env.yaml``), so a W&B download resumes with it too.
-
-    Raises:
-        ValueError: ``--dynsyn-groups`` contradicts the checkpoint that is resumed.
-    """
-    from myosuite.methods.synergies.base import (
-        apply_action_map,
-        apply_trained_action_map,
+    return RslRlVecEnvWrapper(
+        ManagerBasedRlEnv(cfg=eval_cfg, device=device),
+        clip_actions=cfg.agent.clip_actions,
     )
-    from myosuite.methods.synergies.checkpoint import trained_action_map
-    from myosuite.methods.synergies.dynsyn import DynSyn, DynSynGroups
-
-    trained = trained_action_map(resume_path) if resume_path is not None else None
-    groups = DynSynGroups.load(cfg.dynsyn_groups) if cfg.dynsyn_groups else None
-    if trained is not None:
-        trained_map = trained.action_map
-        if groups is not None and (
-            not isinstance(trained_map, DynSyn)
-            or groups.groups != trained_map.groups.groups
-        ):
-            raise ValueError(
-                f"--dynsyn-groups differs from the groups of {resume_path}."
-            )
-        apply_trained_action_map(cfg.env, trained)
-        if rank == 0:
-            bound = (
-                f"; correction bound {trained_map.amplitude(trained.env_steps):.4g}"
-                if isinstance(trained_map, DynSyn)
-                else ""
-            )
-            print(
-                f"[INFO] {trained_map.kind} action map from {resume_path.parent}{bound} "
-                f"after {trained.env_steps:.4g} env steps."
-            )
-    elif groups is not None:
-        if resume_path is not None:
-            raise ValueError(
-                f"{resume_path} was trained without DynSyn: its actions are per muscle, "
-                "so --dynsyn-groups cannot continue it."
-            )
-        apply_action_map(
-            cfg.env,
-            DynSyn(
-                groups,
-                cfg.dynsyn_start_steps,
-                cfg.dynsyn_ramp_steps,
-                cfg.dynsyn_max_amplitude,
-            ),
-        )
-        if rank == 0:
-            print(f"[INFO] DynSyn action groups from {cfg.dynsyn_groups}.")
 
 
 def stop_on_success(
@@ -362,6 +288,10 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
                 "docs/source/quickstart_ml.rst."
             )
 
+    env = ManagerBasedRlEnv(
+        cfg=cfg.env, device=device, render_mode="rgb_array" if cfg.video else None
+    )
+
     log_root_path = log_dir.parent  # Go up from specific run dir to experiment dir.
 
     resume_path: Path | None = None
@@ -384,12 +314,6 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
             resume_path = resume_checkpoint(
                 log_root_path, task_id, cfg.agent.load_run, cfg.agent.load_checkpoint
             )
-
-    _resolve_dynsyn(cfg, resume_path, rank)
-
-    env = ManagerBasedRlEnv(
-        cfg=cfg.env, device=device, render_mode="rgb_array" if cfg.video else None
-    )
 
     # Only record videos on rank 0 to avoid multiple workers writing to the same files.
     if cfg.video and rank == 0:
@@ -416,11 +340,6 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         runner_kwargs["registry_name"] = registry_name
 
     runner = runner_cls(env, agent_cfg, str(log_dir), device, **runner_kwargs)
-    from myosuite.methods.synergies.base import (  # noqa: PLC0415
-        track_action_map_in_checkpoints,
-    )
-
-    track_action_map_in_checkpoints(runner)
 
     add_wandb_tags(cfg.agent.wandb_tags)
     runner.add_git_repo_to_log(__file__)
@@ -438,7 +357,7 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
             print("[WARNING] --stop-on-success is ignored with several GPUs.")
         else:
             make_eval_env = (
-                (lambda: _make_eval_env(cfg, device, env.unwrapped))
+                (lambda: _make_eval_env(cfg, device))
                 if cfg.success_deterministic
                 else None
             )
