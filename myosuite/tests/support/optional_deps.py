@@ -65,3 +65,31 @@ def require_mujoco_warp(*, min_version: str = "3.7.0") -> None:
 def require_ipython() -> None:
     """Skip when IPython is not installed (notebook/tutorial helpers)."""
     pytest.importorskip("IPython")
+
+
+def skip_if_hf_gated(env_id: str, exc: Exception) -> None:
+    """Skip (rather than fail) an env that needs a gated Hugging Face dataset.
+
+    Some envs (e.g. ChaseTagFBVs, FullBodyDirectional) download a reference
+    gait clip from a gated HF dataset (amathislab/musclemimic-retargeted) on
+    first reset/step. CI has no HF_TOKEN for an account that has accepted the
+    dataset's license, so this is an access-control limitation, not a code
+    bug: treat it as an unavailable optional dependency.
+
+    Also skips an env whose motion clips are not on the machine
+    (``MissingMotionData``: ``myoMimic-v0``'s retargeted clips need the AMASS licence).
+
+    Args:
+        env_id: The env being tested.
+        exc: The exception its construction, reset or step raised.
+    """
+    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
+
+    if isinstance(exc, MissingMotionData):
+        pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
+    try:
+        from huggingface_hub.errors import HfHubHTTPError
+    except ImportError:
+        return
+    if isinstance(exc, HfHubHTTPError):
+        pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")

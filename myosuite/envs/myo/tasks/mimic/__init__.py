@@ -11,6 +11,7 @@ This suite owns canonical Mimic IDs and their legacy aliases:
 - ``myoMuscleMimicBimanual-v0`` (legacy alias)
 - ``myoMuscleMimicFullbody-v0`` (legacy alias)
 - ``myoFullBodyWaypoint-v0`` (random ordered waypoints on flat ground)
+- ``myoMimic-v0`` (multi-clip motion tracking, :mod:`.tracking`)
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from __future__ import annotations
 import math
 
 import myosuite.core.registry as _registry
+from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
 from myosuite.envs.waypoint import WaypointTaskCfg
 from myosuite.terms.waypoint import WaypointRouteCfg
 
@@ -86,4 +88,15 @@ _registry.register_env(
         "task": FULLBODY_WAYPOINT_TASK,
         "frame_skip": 5,
     },
+)
+
+# The env truncates itself at the task's time limit; TimeLimit only backs it up (300 s
+# at the shortest control step, one 2 ms physics step).
+_registry.register_env(
+    env_id=MIMIC_ENV_ID,
+    entry_point="myosuite.envs.myo.tasks.mimic.tracking.env:MimicEnv",
+    max_episode_steps=150_000,
+    mjlab_task_kwargs=True,
+    models=("myofullbody",),
+    kwargs={"frame_skip": 10, "preset": "supermimic", "model": "myofullbody"},
 )

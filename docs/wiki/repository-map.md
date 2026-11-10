@@ -11,6 +11,7 @@ docs/wiki/         # this developer wiki
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
 training/          # method projects with their own pyproject.toml, outside the package (chasetag_teacher, dynsyn); see training-guidelines.md
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
+training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, supermimic/)
 .github/           # CI and release workflows
 ```
 
@@ -42,12 +43,13 @@ envs/myo/tasks/          # CPU implementations (MyoGymnasiumEnv)
 │   ├── arm/ hand/ leg/ torso/ full_body/   # MyoGymnasiumEnv subclasses: pose.py, reach.py, ...
 │   └── specs/, leg/specs/  # TaskConfig data-driven references (elbow pose, leg directional → cpu + mjx)
 ├── challenge/              # chasetag, relocate, reorient, soccer, tabletennis, ...
-└── mimic/                  # MuscleMimic CPU tasks
+└── mimic/                  # MuscleMimic CPU tasks; tracking/ = myoMimic-v0 (task cfg, models, motion lib, metrics)
 
 envs/myo/backends/       # GPU implementations (same env_id as the CPU task)
 ├── mjlab/                # MuJoCo-Warp ManagerBasedRlEnvCfg (supported)
 │   ├── tasks/            # twins of the CPU envs, built from the CPU registration:
-│   │                     #   cpu_reference.py, registration.py, pose/ reach/ leg/ mdp/ (terms, MyoAction)
+│   │                     #   cpu_reference.py, registration.py, pose/ reach/ leg/ waypoint/
+│   │                     #   mimic_tracking/ (myoMimic-v0), mdp/ (terms, MyoAction)
 │   ├── register_mjlab_*.py   # special-purpose tasks (Table Tennis, ChaseTag, Mimic)
 │   └── configs/, mjlab_task_builder.py   # shared config and TaskConfig builders
 └── mjx/                  # JAX/brax env classes (experimental; not guaranteed long-term)
@@ -69,6 +71,7 @@ guaranteed long-term.)
 | Add/change model composition | `myosuite/core/model_builder.py`, `model_recipes.py` |
 | Add/change a term function | `myosuite/terms/base_*.py` |
 | Add/change biomechanics math | `myosuite/physics/` |
+| Biomechanics tools for motion data and rollouts (retargeting, SMPL+H, muscle effort) | `myosuite/biomechanics/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/tasks/<family>/` (twins of CPU envs), `register_mjlab_*.py` (special tasks) |
 | Muscle noise, fatigue, reafferentation, sarcopenia | `envs/wrappers.py`, `envs/muscle_stages.py`; on mjlab `backends/mjlab/tasks/mdp/actions.py` |

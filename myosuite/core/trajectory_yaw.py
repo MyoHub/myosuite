@@ -51,23 +51,20 @@ def _rotate_cvel(cvel: np.ndarray, yaw: float) -> np.ndarray:
 
 
 def _load_clip_npz(path: Path) -> dict[str, Any]:
-    """Load a motion NPZ without unpickling object arrays."""
-    try:
-        with np.load(path, allow_pickle=False) as npz:
-            data = {key: np.array(npz[key], copy=True) for key in npz.files}
-    except ValueError as err:
-        if "allow_pickle" not in str(err):
-            raise
-        raise ValueError(
-            f"{path} contains a pickled object array; motion files are "
-            "loaded without pickle."
-        ) from err
-    for key, arr in data.items():
-        if arr.dtype.hasobject:
-            raise ValueError(
-                f"{key!r} in {path} is an object array; motion files cannot "
-                "contain pickled metadata."
-            )
+    """Load the plain arrays of a motion NPZ; pickled object arrays are left out.
+
+    Retargeted clips (``amathislab/musclemimic-retargeted``) carry a pickled
+    ``metadata`` entry. NumPy refuses it before unpickling anything, so the
+    entry is skipped instead of loaded.
+    """
+    data: dict[str, Any] = {}
+    with np.load(path, allow_pickle=False) as npz:
+        for key in npz.files:
+            try:
+                data[key] = np.array(npz[key], copy=True)
+            except ValueError as err:
+                if "allow_pickle" not in str(err):
+                    raise
     return data
 
 
