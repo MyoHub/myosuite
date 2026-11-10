@@ -10,7 +10,7 @@ docs/source/       # Sphinx documentation (quickstarts, environment reference, A
 docs/wiki/         # this developer wiki
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
-training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, supermimic/)
+training/          # self-contained training projects outside the package, one per method (supermimic/, musclemimic/, chasetag_supermimic/)
 .github/           # CI and release workflows
 ```
 

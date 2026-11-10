@@ -82,6 +82,13 @@ All notable changes to this project are documented in this file.
   with the task's pure terms through its own differentiable kinematics, muscle geometry and activation dynamics.
   Install: `pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/supermimic"` (pulls in
   `myosuite[mjlab]`); usage and results in `training/supermimic/README.md`.
+* **`training/chasetag_supermimic/`, a ChaseTag player from a myoSuperMimic tracker** (experimental; import name
+  `chasetag_supermimic`, not part of the `myosuite` package). The tracker plays one `myoChallengeChaseTagFBVs-v0`
+  player on the CPU, steered toward or away from the opponent by a reference that plays KIT locomotion clips under a
+  yaw transform with motion-matching transitions; DAgger distils it into a 546 -> 354 student that reads the
+  observation canonicalised to the player's own yaw (exactly invariant to rotations of the scene) and exports one ONNX
+  with the canonicalisation inside. No clips or checkpoints are shipped: retarget AMASS with
+  `scripts/mimic/retarget_amass.py` and train a tracker with `training/supermimic`. Preliminary results in its README.
 * **`projected_joint_couplings`** (`myosuite.physics.joint_coupling`): the joint-coupling projection out of place,
   differentiable with Torch, in `JointCouplings`' topological order; `JointCouplings.as_torch`.
 * **`build_native_mimic_fullbody_spec` takes `model_name`** (default `"myofullbody"`), the myo_sim full body to build.
@@ -92,7 +99,7 @@ All notable changes to this project are documented in this file.
 * **`load_fbvs_player` / `export_fbvs_onnx`** in `myosuite.integrations.musclemimic.fbvs_player` wrap a tutorial 5.4 walker as a ChaseTag FBVs player (546 -> 354) and write the ONNX the MyoChallenge server runs; tutorial 5.6 uses them instead of an inline wrapper ([#617]).
 * **`decode_synergies(model, syn)`** in `myosuite.integrations.musclemimic.sar_extraction` maps SAR synergy activations back to muscle activations (the NumPy inverse of `encode_activations`); tutorial 5.5 uses it instead of its own decoder ([#616]).
 * **Rollout videos without hand-written render loops:** `myosuite.viz.rollout_video` adds `record_rollout(model, data, step, n_steps)` (renders after each step, stops early when `step` returns `False`), `tracking_camera` (follows the free root body) and `offscreen_size`; `MotionClip.to_mjdata(model, frame)` returns a posed, forwarded `MjData`. Tutorials 5.1 and 5.5 use them instead of their own render loops ([#613]).
-* **Role-aware ChaseTag 1v1 teacher player.** `ChaseTagSteeredPair` walks `amathislab/mm-10m-2` on the existing 8-bin walk clips. Both agents look at each other; the chaser walks toward the opponent and the runner walks away. Headings turn off the ±6 m fence (and root XY is clamped) so walkers stay inside the arena. Tutorial [5.7](tutorials/5.7_ChaseTag_Steered_Teacher.ipynb) plays it; `training/chasetag_teacher` writes 546→354 pairs for the 5.4 / 5.6 / FBVs-train stack ([#579](https://github.com/MyoHub/myosuite/pull/579), [#578](https://github.com/MyoHub/myosuite/pull/578)). Scored FBVs observation (546-d) is unchanged. `mm-10m-2` needs musclemimic_models 1.0.5.
+* **Role-aware ChaseTag 1v1 teacher player.** `ChaseTagSteeredPair` walks `amathislab/mm-10m-2` on the existing 8-bin walk clips. Both agents look at each other; the chaser walks toward the opponent and the runner walks away. Headings turn off the ±6 m fence (and root XY is clamped) so walkers stay inside the arena. Tutorial [5.7](tutorials/5.7_ChaseTag_Steered_Teacher.ipynb) plays it; `musclemimic_training.chasetag_pairs` (`training/musclemimic`) writes 546→354 pairs for the 5.4 / 5.6 / FBVs-train stack ([#579](https://github.com/MyoHub/myosuite/pull/579), [#578](https://github.com/MyoHub/myosuite/pull/578)). Scored FBVs observation (546-d) is unchanged. `mm-10m-2` needs musclemimic_models 1.0.5.
 * **Configurable fatigue rest threshold:** `CumulativeFatigue`, `TorchFatigueState` and `TorchFatigueState.from_mj_model` take `rest_threshold=` (and `set_RestThreshold`), the command at or below which 3CC-r applies the rest-recovery multiplier `r`. With noisy excitations estimated from body tracking, a threshold above the noise floor lets a relaxed muscle rest. It must lie in `[0, 1)`; the default stays `FATIGUE_REST_THRESHOLD = 0.01`, so every registered env is unchanged. The experimental JAX step keeps 0.01.
 * **Fatigue on a subset of muscles:** `CumulativeFatigue`, `TorchFatigueState.from_mj_model` and `FatigueWrapper` take `muscles=` (actuator names or ids). Only those muscles fatigue, with their usual per-group F/R/r; the other excitations pass unchanged. A non-muscle actuator raises `ValueError`. The default (`None`, every muscle in model order) behaves as before. mjlab twins follow the CPU wrapper through the new `MyoActionCfg.fatigue_muscles`.
 * **`myoFullBodyWaypoint-v0`: ordered waypoints for the MyoFullBody, on the CPU and on mjlab.** A random 4-waypoint
@@ -111,6 +118,17 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+* **The MuscleMimic training tools moved to `training/musclemimic/`** (`myosuite-musclemimic`, import name
+  `musclemimic_training`), following `docs/wiki/training-guidelines.md`. Moved: `activation_collector`,
+  `bc_directional_collector`, `steered_teacher` and `steering` from `myosuite.integrations.musclemimic`, and the fitting
+  half of `sar_extraction` (`compute_vaf_curve`, `select_n_synergies`, `extract_synergies`, now
+  `musclemimic_training.sar_fitting`). The old import paths are removed; tutorials 5.4, 5.5 and 5.7 install the
+  project where they collect or play the teacher. MyoSuite keeps the envs, playback and inference:
+  `sar_extraction` keeps `SynergyModel`, `encode_activations`, `decode_synergies`, `save_synergy_model` and
+  `load_synergy_model`; the 528-d directional observation is `myosuite.envs.myo.tasks.mimic.directional_obs`
+  (was `bc_directional_collector._directional_obs`); `aim_heading_xy`, `wall_repulsion`, `clamp_arena_xy` and the arena
+  constants are in `myosuite.terms.multiplayer.heading`; `load_teacher_runner` is in
+  `myosuite.integrations.musclemimic.fullbody_local_policy`. No registered env changes.
 * **`myoFingerReachRandom-v0` and `motorFingerReachRandom-v0` targets on MuJoCo 3.12 and newer.** The table of reachable targets checked joint types with a comparison that is always false from MuJoCo 3.12, so no joint was sampled and every target sat at the fingertip's start. Both envs, on the CPU and in mjlab, now sample the full table on every version.
 * **`mujoco<4` and `mujoco-warp<4`.** MuJoCo 4 changes how spatial tendons use side sites, which moves some muscle paths in the models, so this release stays on MuJoCo 3.
 * **The `[mjx]` extra no longer installs `playground`.** `playground` 1.0 (2026-11-06) is a rewrite on PyTorch, `reaf-sim` and MuJoCo Warp with no JAX/MJX API, and its JAX line stays at 0.2.0. The MJX backend now carries the few pieces of 0.x it used: `State`, the substep loop and the brax auto-reset wrapper. So it works with `playground` 0.x, 1.0 or none installed.

@@ -60,3 +60,14 @@ don't get an entry here.
   and each episode starts from `mj_resetData` plus `policy_runner.reset()`.
 - Why: bridged policies drove every muscle at half excitation and dropped the left arm. SAR synergies were fit on
   clip tails with state carried over between episodes. Re-collect cached activations and re-extract synergy models.
+
+## [2026-11-10] breaking | MuscleMimic training tools out of the package (branch: feat/training-musclemimic)
+
+- `activation_collector`, the SAR fitting (`sar_fitting`), `bc_directional_collector`, `steering` and
+  `steered_teacher` moved from `myosuite.integrations.musclemimic` to `training/musclemimic` (import name
+  `musclemimic_training`); the old import paths are gone. The envs, playback, inference and the SAR model I/O stay.
+- Helpers the envs and terms used moved first: `directional_obs` (`envs/myo/tasks/mimic/directional_obs.py`), the arena
+  heading (`terms/multiplayer/heading.py`), `load_teacher_runner` (`fullbody_local_policy.py`).
+- `training/chasetag_teacher` is replaced by `training/chasetag_supermimic` (a ChaseTag player from a myoSuperMimic
+  tracker, DAgger into a yaw-canonicalised 546 -> 354 student); its pair writer is `musclemimic_training.chasetag_pairs`.
+- Why: training code follows `docs/wiki/training-guidelines.md`; the package keeps the task contract.

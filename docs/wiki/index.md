@@ -12,6 +12,8 @@
 | [writing-term-functions.md](writing-term-functions.md) | Writing obs/reward/action term functions |
 | [training-guidelines.md](training-guidelines.md) | Before adding training/learning methods or dependencies |
 | [training/supermimic/README.md](../../training/supermimic/README.md) | Training, evaluating and fine-tuning with myoSuperMimic (a training project, not in the package) |
+| [training/musclemimic/README.md](../../training/musclemimic/README.md) | MuscleMimic training tools: SAR activation collection and fitting, BC data, the ChaseTag steered teacher |
+| [training/chasetag_supermimic/README.md](../../training/chasetag_supermimic/README.md) | A ChaseTag player from a myoSuperMimic tracker, distilled into a 546 -> 354 student |
 | [agent-workflow.md](agent-workflow.md) | Required agent workflow and subagent strategy |
 | [log.md](log.md) | Append-only log of PRs to `dev` with new features / critical changes |
 

@@ -7,6 +7,9 @@ walker, and the ChaseTag steered teacher of tutorial 5.7.
 This is a self-contained training project (`training/musclemimic/`, import name `musclemimic_training`), not part of
 the installable `myosuite` package; see `docs/wiki/training-guidelines.md`. MyoSuite never imports it.
 
+The MuscleMimic envs themselves stay in MyoSuite; they will be unified in the multi-clip tracking task `myoMimic-v0`.
+These tools use MyoSuite's MuscleMimic integration as it is today.
+
 ## Attribution
 
 The code in this project is MyoSuite code (header `Copyright (c) MyoSuite Authors`); it does not copy upstream code.
