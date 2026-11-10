@@ -38,7 +38,7 @@ MIMIC_ENV_ID = "myoMimic-v0"
 DATASET_ENV = "MYOSUITE_MIMIC_DATASET"
 """Environment variable naming a Hugging Face dataset of retargeted clips, laid out as
 ``<model>/<version>/KIT/...`` (optional)."""
-KIT_CLIP_SETS = {"kit_all": "all", "kit_train": "train", "kit_test": "test"}
+KIT_CLIP_SETS = {"kit_train": "train"}
 KIT_ROOT_ENV = "MYOSUITE_KIT_ROOT"
 """Environment variable naming a local folder of retargeted clips (the root of the
 packaged lists)."""
@@ -49,17 +49,18 @@ class MissingMotionData(FileNotFoundError):
 
 
 def kit_split(split: str) -> Path:
-    """The packaged clip list of MuscleMimic's KIT split, or of all KIT clips.
+    """The packaged default clip list: MuscleMimic's KIT training motions (972 clips),
+    the clips its released checkpoints were trained on. Held-out or other lists
+    belong to the training projects that use them (``training/<method>/``).
 
     Args:
-        split: ``"all"`` (1080 clips), ``"train"`` (972 clips) or ``"test"`` (108
-            held-out clips).
+        split: ``"train"``.
 
     Returns:
         The ``.txt`` list; its paths are relative to the clip root.
     """
-    if split not in ("all", "train", "test"):
-        raise ValueError(f"split must be 'all', 'train' or 'test', not {split!r}")
+    if split != "train":
+        raise ValueError(f"only the 'train' list is packaged, not {split!r}")
     return Path(str(files(__name__) / "data" / f"kit_{split}.txt"))
 
 
