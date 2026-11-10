@@ -376,17 +376,25 @@ the host holds no second copy of the bank. To fit more motion:
   storage (opt-in, not bit-identical):
   - `store_qvel=False` drops the qvel bank (-39 %) and derives the reference qvel
     with `mj_differentiatePos` from the previous frame (forward at a clip's first
-    frame). That is how the MuscleMimic clips store qvel (exactly, on the 10 clips
-    checked); check other data first: `qvel_derivation_error(clips, model, ctrl_dt)`
-    (a forward difference is off by about 20 % RMS of the joint speed).
+    frame). This can differ from stored velocities: check every dataset first
+    with `qvel_derivation_error(clips, model, ctrl_dt)` (maximum absolute error).
   - `dtype="float16"` halves the rest: sites as a float32 per-frame centroid plus
     float16 offsets (sub-millimetre for full-body sites), qpos columns larger than 4
     (a travelled root position) in float32 and the rest in float16 (at most 2e-3),
     qvel in float16 (relative 5e-4). The measured error is `source.storage_error`.
   - Both together keep qpos in float32 (a derived qvel would amplify float16 qpos
     error by `2 / ctrl_dt`, about 0.1 rad/s): 470 instead of 912 bytes per frame
-    (15 GiB for 95 h), the size of `float16` alone but with exact qpos and qvel
-    within 5e-5 on the MuscleMimic clips. This is the recommended lean setting.
+    (15 GiB for 95 h), the size of `float16` alone but with exact qpos. Keep
+    `store_qvel=True` when the stored reference velocities must be preserved.
+
+The pinned `KIT/167/walking_medium06` clip at dataset revision
+`c3327a8013bf5213d0afe736f68b6393da10d84a`, expanded on
+`musclemimic_models` 1.0.6 at 100 Hz, differs from the MuJoCo backward difference
+by a maximum of **5.431122 rad/s** and RMS **0.079889 rad/s** over all velocity
+entries. Excluding the first frame still gives maximum 2.254896 and RMS
+0.066603 rad/s. These are differences from the stored reference, separate from
+float16 storage error. The derived bank is checked against `mj_differentiatePos`;
+it does not reproduce this clip's stored qvel.
 
 ```python
 from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (

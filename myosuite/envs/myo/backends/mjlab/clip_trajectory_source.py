@@ -62,8 +62,8 @@ class ClipBankCfg:
             bank and derives the reference qvel from consecutive qpos frames as
             MuJoCo's ``mj_differentiatePos`` over ``ctrl_dt``: the backward
             difference ``qpos[t-1] -> qpos[t]`` (forward at a clip's first
-            frame), the convention of the MuscleMimic clips. Check a dataset
-            with :func:`qvel_derivation_error` first.
+            frame). Stored velocities may use smoothing or another convention;
+            check every dataset with :func:`qvel_derivation_error` first.
     """
 
     dtype: Literal["float32", "float16"] = "float32"

@@ -5,8 +5,8 @@
 """Device storage of a multi-clip bank (``ClipBankCfg``): exact by default, opt-in lean.
 
 The clips drive a free root, a ball joint and a hinge; their qvel is MuJoCo's
-``mj_differentiatePos`` from the previous frame (forward at the first one), the
-convention of the MuscleMimic clips that ``store_qvel=False`` reproduces. The root
+``mj_differentiatePos`` from the previous frame (forward at the first one), which
+``store_qvel=False`` reproduces. Real stored velocities may differ. The root
 travels 20 m, so float16 storage must keep the root position in float32 and the
 sites around a centroid.
 """
@@ -200,9 +200,8 @@ def test_float16_with_derived_qvel_keeps_qpos_exact(clips, model) -> None:
         np.testing.assert_allclose(got, clip_qvel, atol=2e-3, rtol=1e-4)
 
 
-def test_the_musclemimic_clip_stores_the_backward_difference() -> None:
-    """The retargeted MuscleMimic clips store qvel as the backward difference that
-    ``store_qvel=False`` derives (a forward one is off by ~20 % RMS of joint speed)."""
+def test_derived_qvel_on_a_pinned_musclemimic_clip() -> None:
+    """Derived qvel matches MuJoCo, but not this clip's stored velocities."""
     from myosuite.tests.support.optional_deps import require_musclemimic_models
 
     require_musclemimic_models()
@@ -213,11 +212,10 @@ def test_the_musclemimic_clip_stores_the_backward_difference() -> None:
             repo_id="amathislab/musclemimic-retargeted",
             filename="MyoFullBody/gmr/KIT/167/walking_medium06_poses.npz",
             repo_type="dataset",
+            revision="c3327a8013bf5213d0afe736f68b6393da10d84a",
         )
-    except (ImportError, OSError, RuntimeError):
-        pytest.skip(
-            "MuscleMimic motion clip not available (gated Hugging Face dataset)"
-        )
+    except Exception as exc:
+        pytest.skip(f"MuscleMimic clip unavailable ({type(exc).__name__}): {exc}")
     from ml_collections import config_dict
 
     from myosuite.integrations.musclemimic.fullbody_model import (
@@ -226,10 +224,62 @@ def test_the_musclemimic_clip_stores_the_backward_difference() -> None:
     )
 
     cfg = config_dict.create(**dict(default_mimic_fullbody_config()))
+    cfg.model_version = "1.0.6"
     full = build_mimic_fullbody_spec(cfg)[0].compile()
     clip = load_motion_clip(Path(path), full.nq, full.nv)
     clip = expand_motion_clip_to_model(clip, full)
-    assert qvel_derivation_error([clip], full, float(cfg.ctrl_dt)) < 1e-6
+    expected = np.zeros_like(clip.qvel)
+    for frame in range(len(expected)):
+        a, b = (frame - 1, frame) if frame else (0, 1)
+        mujoco.mj_differentiatePos(
+            full, expected[frame], float(cfg.ctrl_dt), clip.qpos[a], clip.qpos[b]
+        )
+    source = MultiClipTrajectorySource(
+        clips=(clip,),
+        tracked_site_ids=np.arange(clip.site_xpos.shape[1]),
+        ctrl_dt=float(cfg.ctrl_dt),
+        bank_cfg=ClipBankCfg(store_qvel=False),
+        joint_layout=ClipJointLayout.from_model(full),
+    )
+    source.update(torch.zeros(len(expected), dtype=torch.long))
+    got = source.ref_qvel_at_frames(torch.arange(len(expected))).numpy()
+    np.testing.assert_allclose(got, expected, atol=2e-3, rtol=1e-4)
+
+    error = expected - clip.qvel
+    max_error = float(np.abs(error).max())
+    rms_error = float(np.sqrt(np.mean(error**2)))
+    np.testing.assert_allclose(
+        [max_error, rms_error], [5.431122065, 0.079889123], atol=1e-6, rtol=1e-5
+    )
+    assert qvel_derivation_error([clip], full, float(cfg.ctrl_dt)) == max_error
+
+
+@pytest.mark.parametrize("failure", ["network", "gated"])
+def test_real_clip_download_failure_skips(monkeypatch, failure: str) -> None:
+    """Optional network and licence failures skip instead of failing the suite."""
+    from myosuite.tests.support.optional_deps import require_musclemimic_models
+
+    require_musclemimic_models()
+    hub = pytest.importorskip("huggingface_hub")
+    httpx = pytest.importorskip("httpx")
+    if failure == "network":
+        error = httpx.ConnectError("offline")
+    else:
+        from huggingface_hub.errors import GatedRepoError
+
+        error = GatedRepoError(
+            "licence required",
+            response=httpx.Response(
+                403, request=httpx.Request("GET", "https://huggingface.co/test")
+            ),
+        )
+
+    def fail_download(*args: object, **kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(hub, "hf_hub_download", fail_download)
+    with pytest.raises(pytest.skip.Exception, match=type(error).__name__):
+        test_derived_qvel_on_a_pinned_musclemimic_clip()
 
 
 @pytest.mark.parametrize("convention", ["forward", "central"])
