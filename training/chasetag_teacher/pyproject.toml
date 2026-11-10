@@ -1,14 +1,27 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "chasetag-teacher"
 version = "0.1.0"
-description = "Collect 546→354 ChaseTag pairs from ChaseTagSteeredPair"
-requires-python = ">=3.10"
-# Imports myosuite.integrations.musclemimic.steered_teacher; install MyoSuite from the same checkout first.
-dependencies = ["numpy", "myosuite[musclemimic]"]
+description = "A ChaseTag FBVs player from a myoSuperMimic tracker, distilled into a 546 -> 354 student (DAgger)"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = "Apache-2.0"
+# Plays MyoSuite's myoChallengeChaseTagFBVs-v0 and reuses the myoSuperMimic tracker (training/supermimic);
+# install MyoSuite and myosuite-supermimic from the same checkout or branch first.
+dependencies = [
+    "myosuite[mjlab]",
+    "myosuite-supermimic",
+    "torch>=2.13",
+    "numpy",
+    "onnx",
+    "onnxruntime",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
 
 [tool.setuptools.packages.find]
 include = ["chasetag_teacher*"]
