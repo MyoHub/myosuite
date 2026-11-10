@@ -334,7 +334,7 @@ def _chasetag_obs_act(env: ManagerBasedRlEnv) -> torch.Tensor:
 
 
 def _chasetag_rotate_by_neg_yaw(xy: torch.Tensor, yaw: torch.Tensor) -> torch.Tensor:
-    """Rotate planar vectors ``(N, 2)`` by ``-yaw``, as ``_directional_obs``."""
+    """Rotate planar vectors ``(N, 2)`` by ``-yaw``, as ``directional_obs``."""
     c, s = torch.cos(-yaw), torch.sin(-yaw)
     x, y = xy.unbind(dim=1)
     return torch.stack([c * x - s * y, s * x + c * y], dim=1)
@@ -354,7 +354,7 @@ def _chasetag_obs_heading_cmd(env: ManagerBasedRlEnv) -> torch.Tensor:
 
 
 def _chasetag_obs_orientation(env: ManagerBasedRlEnv) -> torch.Tensor:
-    """``[roll, pitch, wx_b, wy_b, wz, vz]`` of ``_directional_obs``. Shape (N, 6)."""
+    """``[roll, pitch, wx_b, wy_b, wz, vz]`` of ``directional_obs``. Shape (N, 6)."""
     qpos, qvel = _chasetag_root(env)
     w, x, y, z = qpos[:, 3:7].unbind(dim=1)
     roll = torch.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))

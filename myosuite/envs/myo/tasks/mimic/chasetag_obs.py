@@ -6,14 +6,14 @@
 empirically better-performing alternative that reuses the directional
 policy's own heading channel instead.
 
-**Not the same contract as** :class:`~myosuite.integrations.musclemimic.bc_directional_collector`
+**Not the same contract as** :func:`~myosuite.envs.myo.tasks.mimic.directional_obs.directional_obs`
 / ``MuscleMimicFullbodyDirectionalEnv``'s pure-locomotion obs. The 537-dim
 layout is the observation of ``myoChallengeChaseTagFBP2-v0`` on both backends:
 the CPU ``ChaseTagEnv`` builds it with :func:`chasetag_obs_blocks` (obs keys
 :data:`CHASETAG_OBS_KEYS`) and the mjlab twin registers one observation term
 per block, in the same order.
 
-The design is strictly additive: the existing 528-dim ``_directional_obs``
+The design is strictly additive: the existing 528-dim ``directional_obs``
 block (``qpos_local(82) + qvel_local(82) + act(354) + root_vel_body(2) +
 heading_cmd(2) + orientation(6)``) is reproduced byte-identically as a
 leading prefix — unmodified, so the pretrained ``bc_directional_v2``
@@ -34,7 +34,7 @@ run-to-run variance**: across 4 independently BC-trained checkpoints with
 near-identical training/validation loss, this ``chasetag_obs`` approach gave
 chase-tag survival times spanning 66-147 steps (std ~35). Simply computing
 ``heading_theta`` as the angle toward (CHASE) or away from (EVADE) the
-opponent and feeding it through the *already-trained* ``_directional_obs``
+opponent and feeding it through the *already-trained* ``directional_obs``
 heading channel (see :func:`chasetag_heading_directional_obs` below) cut
 that spread to 80-111 steps (std ~10-26) at N=50 seeds per checkpoint,
 because it keeps the policy entirely within its trained input distribution
@@ -56,13 +56,11 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
-from myosuite.integrations.musclemimic.bc_directional_collector import (
-    _directional_obs,
-)
+from myosuite.envs.myo.tasks.mimic.directional_obs import directional_obs
 from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
 from myosuite.terms.opponent_relative_obs import relative_pose_obs
 
-#: Fixed heading passed to ``_directional_obs`` — chase-tag has no external
+#: Fixed heading passed to ``directional_obs`` — chase-tag has no external
 #: heading command, so the 2-dim heading_cmd sub-block is always [1, 0].
 _NO_HEADING_COMMAND_THETA = 0.0
 
@@ -105,10 +103,10 @@ def chasetag_heading_directional_obs(
 
     Returns:
         Float32 array of shape ``(528,)`` -- identical layout to
-        :func:`~myosuite.integrations.musclemimic.bc_directional_collector._directional_obs`.
+        :func:`~myosuite.envs.myo.tasks.mimic.directional_obs.directional_obs`.
     """
     heading = role_heading_xy(data.qpos[:2], opponent_pos_xy, pursue=not evade)
-    return _directional_obs(model, data, heading_yaw(heading))
+    return directional_obs(model, data, heading_yaw(heading))
 
 
 def chasetag_obs(
@@ -133,7 +131,7 @@ def chasetag_obs(
             :func:`myosuite.terms.multiplayer.chase_tag_vs_obs.role_obs`).
 
     Returns:
-        Float32 array of shape ``(537,)``: the 528-dim ``_directional_obs``
+        Float32 array of shape ``(537,)``: the 528-dim ``directional_obs``
         prefix (byte-identical to a direct call with the same fixed
         ``heading_theta``), followed by the 7-dim opponent-relative block and
         the 2-dim role one-hot.
@@ -163,10 +161,10 @@ def chasetag_obs_blocks(
         role_onehot: Chaser/runner one-hot, shape ``(2,)``.
 
     Returns:
-        Float32 blocks: the six ``_directional_obs`` blocks (fixed heading
+        Float32 blocks: the six ``directional_obs`` blocks (fixed heading
         ``[1, 0]``), the 7-dim opponent-relative block and the 2-dim role.
     """
-    directional = _directional_obs(model, data, _NO_HEADING_COMMAND_THETA)
+    directional = directional_obs(model, data, _NO_HEADING_COMMAND_THETA)
     sizes = (model.nq - 7, model.nv - 6, model.na, 2, 2, 6)
     blocks = dict(
         zip(CHASETAG_OBS_KEYS[:6], np.split(directional, np.cumsum(sizes)[:-1]))

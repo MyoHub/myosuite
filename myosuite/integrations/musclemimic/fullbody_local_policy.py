@@ -1093,6 +1093,47 @@ def read_checkpoint_config_metadata(checkpoint_root: Path) -> dict[str, Any]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def load_teacher_runner(
+    checkpoint_root: Path,
+    model: mujoco.MjModel,
+    clip: MotionClip,
+    *,
+    stochastic: bool = False,
+    seed: int = 0,
+    frame_skip: int = 5,
+) -> LocalPolicyRunner:
+    """Load an ``amathislab/mm-10m-2``-style checkpoint for local CPU rollout.
+
+    Args:
+        checkpoint_root: Local directory containing the downloaded Orbax
+            checkpoint (``train_state/``, ``config/metadata``, ...).
+        model: Compiled MuscleMimic full-body model (see
+            ``compile_mimic_fullbody_mjmodel``).
+        clip: Motion clip the obs adapter's goal features are built against.
+        stochastic: Whether to sample from the policy's action distribution
+            (False = deterministic mean action).
+        seed: RNG seed (only used if ``stochastic=True``).
+        frame_skip: Physics substeps per control step.
+
+    Returns:
+        A ready-to-step :class:`LocalPolicyRunner`.
+    """
+    artifacts = load_local_policy_artifacts(checkpoint_root)
+    metadata = read_checkpoint_config_metadata(checkpoint_root)
+    goal_params = fullbody_obs_adapter_params_from_metadata(metadata)
+    history = fullbody_history_settings_from_metadata(metadata)
+    obs_adapter = FullbodyObsAdapter(model, clip, goal_params)
+    return LocalPolicyRunner(
+        artifacts=artifacts,
+        stochastic=stochastic,
+        seed=seed,
+        frame_skip=frame_skip,
+        obs_adapter=obs_adapter,
+        len_obs_history=history["len_obs_history"],
+        split_goal=history["split_goal"],
+    )
+
+
 @dataclass
 class OnnxPolicyRunner:
     """Inference runner backed by an ONNX model instead of Orbax/numpy weights.
@@ -1268,6 +1309,7 @@ __all__ = [
     "fullbody_obs_adapter_params_from_metadata",
     "has_local_policy_artifacts",
     "load_local_policy_artifacts",
+    "load_teacher_runner",
     "read_checkpoint_config_metadata",
     "running_mean_std_update",
     "StandaloneBCPolicy",

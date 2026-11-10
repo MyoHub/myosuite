@@ -29,10 +29,10 @@ from myosuite.core.trajectory_yaw import (
     pingpong_frame,
     write_rotated_clip_npz,
 )
-from myosuite.integrations.musclemimic.bc_directional_collector import (
+from myosuite.integrations.musclemimic.fullbody_local_policy import (
+    LocalPolicyRunner,
     load_teacher_runner,
 )
-from myosuite.integrations.musclemimic.fullbody_local_policy import LocalPolicyRunner
 from myosuite.integrations.musclemimic.two_agent_scene import (
     AgentShadowMap,
     build_agent_shadow_map,
@@ -43,15 +43,18 @@ from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
 from myosuite.integrations.musclemimic.steering import (
     COMPASS_LABELS,
     COMPASS_STEP,
-    aim_heading_xy,
     body_yaw,
-    clamp_arena_xy,
     compass_index,
     compass_label,
     step_compass,
+)
+from myosuite.terms.multiplayer.heading import (
+    aim_heading_xy,
+    clamp_arena_xy,
+    heading_yaw,
+    role_heading_xy,
     wall_repulsion,
 )
-from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
 
 AGENTS: tuple[str, str] = ("agent_0", "agent_1")
 PREFIX: dict[str, str] = {"agent_0": "a0_", "agent_1": "a1_"}

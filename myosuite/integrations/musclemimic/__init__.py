@@ -18,9 +18,8 @@ Upstream: https://github.com/amathislab/musclemimic
   ``musclemimic`` package required.
 
 The names below and the submodules are imported on first access (PEP 562), so
-importing one submodule (e.g. ``bc_directional_collector`` for the ChaseTag
-observation) does not import the others (``fullbody_native_playback`` pulls in
-``scipy.spatial``).
+importing one submodule (e.g. ``fbvs_player`` for the ChaseTag player) does not
+import the others (``fullbody_native_playback`` pulls in ``scipy.spatial``).
 """
 
 from __future__ import annotations

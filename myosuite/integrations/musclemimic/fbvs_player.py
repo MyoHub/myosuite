@@ -5,7 +5,7 @@
 """Turn a tutorial 5.4 directional walker into a ChaseTag FBVs player (546 -> 354).
 
 :class:`FbvsDirectionalAdapter` maps an FBVs player's 546-d observation to the
-528-d directional observation (``_directional_obs``) with the heading pointed
+528-d directional observation (``directional_obs``) with the heading pointed
 at the opponent (chaser) or away from it (runner), as
 :func:`~myosuite.envs.myo.tasks.mimic.chasetag_obs.chasetag_heading_directional_obs`.
 :func:`export_fbvs_onnx` wraps a walker checkpoint with it and writes the ONNX

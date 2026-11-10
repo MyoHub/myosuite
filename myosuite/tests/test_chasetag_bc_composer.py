@@ -21,7 +21,7 @@ pytestmark = pytest.mark.tier1
 
 
 def test_chasetag_obs_prefix_is_byte_identical_to_directional_obs() -> None:
-    """First 528 dims of ``chasetag_obs`` must exactly match ``_directional_obs``."""
+    """First 528 dims of ``chasetag_obs`` must exactly match ``directional_obs``."""
     from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
         compile_fullbody_chasetag_model,
     )
@@ -29,9 +29,7 @@ def test_chasetag_obs_prefix_is_byte_identical_to_directional_obs() -> None:
         CHASETAG_OBS_DIM,
         chasetag_obs,
     )
-    from myosuite.integrations.musclemimic.bc_directional_collector import (
-        _directional_obs,
-    )
+    from myosuite.envs.myo.tasks.mimic.directional_obs import directional_obs
 
     model, _spec, _label = compile_fullbody_chasetag_model()
     data = mujoco.MjData(model)
@@ -47,7 +45,7 @@ def test_chasetag_obs_prefix_is_byte_identical_to_directional_obs() -> None:
     assert obs.dtype == np.float32
     assert np.isfinite(obs).all()
 
-    direct = _directional_obs(model, data, 0.0)
+    direct = directional_obs(model, data, 0.0)
     assert np.array_equal(obs[:528], direct), "leading 528 dims must be byte-identical"
 
     opponent_block = obs[528:535]
