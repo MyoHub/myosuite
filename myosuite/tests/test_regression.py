@@ -22,6 +22,7 @@ import pytest
 
 from myosuite.utils import gym
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 
 pytestmark = pytest.mark.tier1
@@ -99,7 +100,7 @@ def test_env_smoke(env_id: str) -> None:
 
         assert isinstance(info, dict), f"{env_id}: step() info must be a dict"
     except Exception as exc:
-        _skip_if_hf_gated(env_id, exc)
+        skip_if_hf_gated(env_id, exc)
         raise
     finally:
         env.close()

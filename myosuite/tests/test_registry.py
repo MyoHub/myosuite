@@ -16,6 +16,7 @@ import pytest
 
 from myosuite.envs.gymnasium_env import CpuEnvAccessor
 from myosuite.utils import gym
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
@@ -90,7 +91,7 @@ def test_env_resets_and_steps(env_id: str) -> None:
     try:
         env = gym.make(env_id)
     except Exception as exc:
-        _skip_if_hf_gated(env_id, exc)
+        skip_if_hf_gated(env_id, exc)
         raise
 
     try:
@@ -116,7 +117,7 @@ def test_env_resets_and_steps(env_id: str) -> None:
             if terminated or truncated:
                 env.reset()
     except Exception as exc:
-        _skip_if_hf_gated(env_id, exc)
+        skip_if_hf_gated(env_id, exc)
         raise
     finally:
         env.close()

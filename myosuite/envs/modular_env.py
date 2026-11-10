@@ -472,6 +472,7 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             # below starts from a physically valid pose instead of the
             # all-zero default.
             mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._run_reset_stages()
         self._task_state = self.reset_task(self.np_random)

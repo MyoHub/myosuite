@@ -13,6 +13,8 @@ import pytest
 from myosuite.core.model_builder import build_from_recipe
 from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
 
+pytestmark = pytest.mark.tier2
+
 _METACARPALS = ("secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r")
 
 
