@@ -143,8 +143,30 @@ class StreamingKinematics:
         out = ref.copy()
         mujoco.mj_integratePos(self.model, out, coef[0], 1.0)
         qvel = coef[1] / span
+        qacc = 2.0 * coef[2] / span**2
         if self._couplings is not None:
             project_joint_couplings(self._couplings, out, qvel)
-        return KinematicState(
-            time=self._times[e], qpos=out, qvel=qvel, qacc=2.0 * coef[2] / span**2
-        )
+            _project_coupled_acceleration(self._couplings, out, qvel, qacc)
+        return KinematicState(time=self._times[e], qpos=out, qvel=qvel, qacc=qacc)
+
+
+def _project_coupled_acceleration(
+    c: JointCouplings, qpos: np.ndarray, qvel: np.ndarray, qacc: np.ndarray
+) -> None:
+    """Write coupled joints' accelerations from their masters, in place (chain rule).
+
+    A dependent ``y = y0 + p(x - x0)`` has ``y'' = p'(x - x0) x'' + p''(x - x0) x'^2``;
+    locked joints get zero. Passes follow the couplings' topological order, so a master
+    that is itself coupled is written first. *qpos* and *qvel* must already be projected.
+    """
+    qacc[c.locked_dof] = 0.0
+    start = 0
+    for end in c.level_ends:
+        rows = slice(start, end)
+        x = qpos[c.master_qpos[rows]] - c.master_ref[rows]
+        k = c.coef[rows]
+        slope = k[:, 1] + 2 * k[:, 2] * x + 3 * k[:, 3] * x**2 + 4 * k[:, 4] * x**3
+        curvature = 2 * k[:, 2] + 6 * k[:, 3] * x + 12 * k[:, 4] * x**2
+        v, a = qvel[c.master_dof[rows]], qacc[c.master_dof[rows]]
+        qacc[c.dep_dof[rows]] = slope * a + curvature * v**2
+        start = end

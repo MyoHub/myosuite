@@ -195,3 +195,26 @@ def test_reset_and_invalid_inputs(model: mujoco.MjModel) -> None:
     ):
         with pytest.raises(ValueError):
             StreamingKinematics(model, **kwargs)
+
+
+_QUADRATIC_COUPLING = """
+<mujoco><worldbody><body><joint name="a" axis="0 1 0"/>
+  <geom type="capsule" fromto="0 0 0 .2 0 0" size=".02" mass="1"/>
+  <body pos=".2 0 0"><joint name="b" axis="0 1 0"/>
+    <geom type="capsule" fromto="0 0 0 .2 0 0" size=".02" mass="1"/></body></body></worldbody>
+  <equality><joint joint1="b" joint2="a" polycoef="0 0 10 0 0"/></equality>
+</mujoco>"""
+
+
+def test_coupled_accelerations_follow_the_chain_rule() -> None:
+    """For ``b = 10 a^2`` with ``a = t^2``: ``b'' = 20 (a'^2 + a a'') = 0`` at ``t = 0``, not
+    the independently fitted ``b''`` of ``b = 10 t^4``."""
+    model = mujoco.MjModel.from_xml_string(_QUADRATIC_COUPLING)
+    stream = StreamingKinematics(model, window=11, lag=5)
+    state = None
+    for t in np.linspace(-0.25, 0.25, 11):
+        state = stream.push(float(t), np.array([t**2, 10 * t**4]))
+    assert state is not None and abs(state.time) < 1e-12
+    np.testing.assert_allclose(state.qacc, [2.0, 0.0], atol=1e-9)
+    a, va, aa = state.qpos[0], state.qvel[0], state.qacc[0]
+    np.testing.assert_allclose(state.qacc[1], 20 * (va**2 + a * aa), atol=1e-9)
