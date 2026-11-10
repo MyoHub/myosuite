@@ -58,6 +58,10 @@ All notable changes to this project are documented in this file.
     `EnvConfig.task_kwargs={"preset": ..., "overrides": {...}}`; the control step is `EnvConfig.ctrl_dt` (default 0.02 s).
 
   The mjlab twin reads the CPU registration (`register_cpu_twins`) and takes the muscle-command features.
+  Clips are matched to the body by a kinematic fingerprint (`models.kinematic_fingerprint`: joints, body tree,
+  coupling polynomials, landmark bodies and foot collision geoms), so they keep loading under myo_sim releases that
+  leave the body's kinematics alone; on a mismatch the error names the myo_sim version the clips were fitted for.
+  `retarget_amass.py --stamp-fingerprint DIR` adds the fingerprint to clips fitted without it (qpos untouched).
   `make_env` also accepts `model=` and `ctrl_dt=` as keywords. `myoMimicFullbody-v0` is unchanged.
   Methods may replace the reward (`overrides={"reward_fn": fn}` with a pure `fn(state, ref, ctrl_dt)`, or a whole
   `RewardCfg`); the proposed reward is then still reported (`info["task_reward"]`, the twin's `task_reward`).
