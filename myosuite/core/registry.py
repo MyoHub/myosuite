@@ -360,7 +360,8 @@ def make_env(
         **overrides: Backend-specific options, merged over ``EnvConfig.backend_options``
             and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``,
             ``seed`` etc. on mjlab, ``config_overrides`` on "mjx".
-            ``model`` and ``ctrl_dt`` set the :class:`EnvConfig` fields of that name.
+            ``ctrl_dt`` and a string ``model`` set the :class:`EnvConfig` fields of that
+            name; any other ``model`` value is passed on as an env constructor kwarg.
 
     Returns:
         An environment instance appropriate for the backend.
@@ -382,9 +383,12 @@ def make_env(
     config = env_id if isinstance(env_id, EnvConfig) else EnvConfig(env_id=env_id)
     # A config edited after construction may hold classes or pairs: normalize again.
     config = dataclasses.replace(config, features=normalize_features(config.features))
-    for name in ("model", "ctrl_dt"):  # EnvConfig fields given as keywords
-        if name in overrides:
-            config = dataclasses.replace(config, **{name: overrides.pop(name)})
+    # EnvConfig fields given as keywords; a non-string ``model`` (e.g. an MjModel) stays
+    # a constructor kwarg of the env
+    if isinstance(overrides.get("model"), str):
+        config = dataclasses.replace(config, model=overrides.pop("model"))
+    if "ctrl_dt" in overrides:
+        config = dataclasses.replace(config, ctrl_dt=overrides.pop("ctrl_dt"))
     config = _with_model(config)
     backend = backend or config.backend
     if backend == "cpu":
