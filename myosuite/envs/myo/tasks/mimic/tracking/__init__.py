@@ -43,6 +43,10 @@ KIT_ROOT_ENV = "MYOSUITE_KIT_ROOT"
 packaged lists)."""
 
 
+class MissingMotionData(FileNotFoundError):
+    """The task's motion clips are not on this machine (they need the AMASS licence)."""
+
+
 def kit_split(split: str) -> Path:
     """The packaged clip list of MuscleMimic's KIT split.
 
@@ -87,7 +91,7 @@ def kit_root(model: str = "myofullbody") -> Path:
     fills it from an AMASS download), else the dataset ``$MYOSUITE_MIMIC_DATASET``.
 
     Raises:
-        FileNotFoundError: If none of them holds the clips.
+        MissingMotionData: If none of them holds the clips.
     """
     if os.environ.get(KIT_ROOT_ENV):
         return Path(os.environ[KIT_ROOT_ENV])
@@ -103,7 +107,7 @@ def kit_root(model: str = "myofullbody") -> Path:
         return cache
     if os.environ.get(DATASET_ENV):
         return download_retargeted_clips(os.environ[DATASET_ENV], model, version)
-    raise FileNotFoundError(
+    raise MissingMotionData(
         f"no KIT clips for {model} {version}: run scripts/mimic/retarget_amass.py on "
         f"the AMASS KIT motions (fills {cache}), or set {KIT_ROOT_ENV}"
     )

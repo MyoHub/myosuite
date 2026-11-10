@@ -34,6 +34,10 @@ def _skip_if_hf_gated(env_id: str, exc: Exception) -> None:
     dataset's license, so this is an access-control limitation, not a code
     bug -- treat it the same as an unavailable optional dependency.
     """
+    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
+
+    if isinstance(exc, MissingMotionData):
+        pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
     try:
         from huggingface_hub.errors import HfHubHTTPError
     except ImportError:
