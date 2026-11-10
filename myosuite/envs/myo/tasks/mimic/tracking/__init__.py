@@ -16,7 +16,8 @@ method:
 * model: a body adapter (:mod:`.models`; myo_sim's ``myofullbody`` so far), chosen with
   ``EnvConfig.model``;
 * method: presets (:mod:`.config`) select a method's MDP choices (``"supermimic"``,
-  the default); methods live in ``myosuite.methods``. A method may train on its own
+  the default); training methods live outside the package, in ``training/<method>/``.
+  A method may train on its own
   reward (``overrides={"reward_fn": fn}``, ``fn(state, ref, ctrl_dt)``, or a whole
   ``RewardCfg`` as ``overrides={"reward": ...}``); the proposed reward is still reported
   (``info["task_reward"]`` on the CPU, the twin command's ``task_reward`` and its
@@ -96,7 +97,7 @@ def kit_root(model: str = "myofullbody") -> Path:
     """
     if os.environ.get(KIT_ROOT_ENV):
         return Path(os.environ[KIT_ROOT_ENV])
-    from myosuite.methods.biomech.retarget import default_cache_root  # noqa: PLC0415
+    from myosuite.biomech.retarget import default_cache_root  # noqa: PLC0415
 
     from .models import model_version  # noqa: PLC0415
 

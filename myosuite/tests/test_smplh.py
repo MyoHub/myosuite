@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""SMPL+H forward kinematics (``myosuite.methods.biomech.smplh``) on a synthetic model.
+"""SMPL+H forward kinematics (``myosuite.biomech.smplh``) on a synthetic model.
 
 The SMPL+H files are licensed and not in the repo; a random model with the SMPL+H tree
 checks the kinematics. (Checked once against ``smplx.lbs`` on AMASS KIT clips: 7e-9 m.)
@@ -16,7 +16,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.methods.biomech.smplh import SMPLH, axis_angle_to_matrix
+from myosuite.biomech.smplh import SMPLH, axis_angle_to_matrix
 
 pytestmark = pytest.mark.tier2
 

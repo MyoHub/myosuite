@@ -321,7 +321,7 @@ def build_motion_lib(
     Returns:
         The library.
     """
-    from myosuite.methods.biomech.retarget import read_refit_meta  # noqa: PLC0415
+    from myosuite.biomech.retarget import read_refit_meta  # noqa: PLC0415
 
     if not files:
         raise ValueError("no motion clips")
@@ -370,7 +370,7 @@ def write_synthetic_clip(
     """A clip for tests: the default pose moving along x at *speed* (and up at *climb*),
     each independent joint oscillating by *amp* of its half range at 1 Hz, sampled at
     100 Hz, with the metadata of a clip fitted on *model_name* (its current version)."""
-    from myosuite.methods.biomech.retarget import REFIT_META_KEY  # noqa: PLC0415
+    from myosuite.biomech.retarget import REFIT_META_KEY  # noqa: PLC0415
 
     from .models import model_version  # noqa: PLC0415
 
@@ -414,7 +414,7 @@ def load_motion_lib(
         ValueError: For a clip fitted on another model or model version, or a clip
             without that metadata.
     """
-    from myosuite.methods.biomech.retarget import check_refit_meta  # noqa: PLC0415
+    from myosuite.biomech.retarget import check_refit_meta  # noqa: PLC0415
 
     from . import resolve_clips  # noqa: PLC0415
     from .models import compiled_scene, model_cfg, model_version  # noqa: PLC0415

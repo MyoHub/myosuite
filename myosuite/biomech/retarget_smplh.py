@@ -48,7 +48,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
-from myosuite.methods.biomech.retarget import (
+from myosuite.biomech.retarget import (
     ClipTargets,
     Landmark,
     LandmarkIK,
@@ -56,7 +56,7 @@ from myosuite.methods.biomech.retarget import (
     OrientationTarget,
     _foot_kinematics,
 )
-from myosuite.methods.biomech.smplh import (
+from myosuite.biomech.smplh import (
     SMPLH,
     SMPLH_JOINTS,
     SMPLH_VERTICES,
