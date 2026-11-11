@@ -31,6 +31,7 @@ from mjlab.sim import MujocoCfg
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
+from myosuite.physics.joint_coupling import JointCouplings
 from myosuite.terms.base_action import MotorNoiseCfg
 
 _CONDITION_WRAPPERS = {
@@ -255,6 +256,7 @@ class CompiledModelInfo:
     actuator_names: tuple[str, ...]
     actuator_targets: dict[int, tuple[str, ...]]
     na: int
+    couplings: JointCouplings
 
 
 def _model_key(task: CpuTaskSpec) -> tuple[Any, ...]:
@@ -284,6 +286,7 @@ def _compiled_info(key: tuple[Any, ...]) -> CompiledModelInfo:
         actuator_names=tuple(model.actuator(i).name for i in range(model.nu)),
         actuator_targets=_actuator_targets(model),
         na=int(model.na),
+        couplings=JointCouplings.from_model(model),
     )
 
 
@@ -568,7 +571,8 @@ def action_cfg(
 
     Reafferentation reroutes EIP's command to EPL and silences EIP (``_r``
     suffix on recipe-built models), exactly as the CPU envs do. Fatigue
-    carries the CPU reset options ``fatigue_reset_vec`` / ``fatigue_reset_random``.
+    carries the CPU reset options ``fatigue_reset_vec`` / ``fatigue_reset_random``
+    and the fatigued ``muscles``.
 
     Args:
         task: CPU registration of the task.
@@ -586,6 +590,7 @@ def action_cfg(
         sfx = "_r" if task.uses_recipe else ""
         reroute = (f"EIP{sfx}", f"EPL{sfx}")
     fatigue = "fatigue" in conditions
+    muscles = (task.wrapper_kwargs("FatigueWrapper") or {}).get("muscles")
     # The CPU fatigue reset options (only read by the CPU env under fatigue).
     reset_vec, reset_random = task.fatigue_reset if fatigue else (None, False)
     return MyoActionCfg(
@@ -598,6 +603,11 @@ def action_cfg(
             None if reset_vec is None else tuple(float(v) for v in reset_vec)
         ),
         fatigue_reset_random=reset_random,
+        fatigue_muscles=(
+            None
+            if not fatigue or muscles is None
+            else tuple(m if isinstance(m, str) else int(m) for m in muscles)
+        ),
         reroute=reroute,
         motor_noise=task.motor_noise,
         excitation_stages=tuple(

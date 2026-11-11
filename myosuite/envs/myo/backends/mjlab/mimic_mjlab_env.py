@@ -69,6 +69,7 @@ import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2mat
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 
@@ -274,7 +275,7 @@ def _strip_spec_keyframes(spec: Any) -> None:
         spec.delete(k)
 
 
-def _init_state_from_model(mj_model: Any) -> Any:
+def _init_state_from_model(mj_model: Any, *, project_couplings: bool = False) -> Any:
     """Build an ``EntityCfg.InitialStateCfg`` from the model's first keyframe.
 
     The default keyframe is embedded in the included XML files and only
@@ -285,6 +286,9 @@ def _init_state_from_model(mj_model: Any) -> Any:
     Using the explicit ``joint_pos`` dict path avoids a float64→float32 dtype
     mismatch that occurs when ``joint_pos=None`` and mjlab copies the keyframe
     qpos directly from MuJoCo's float64 buffers into its float32 tensors.
+
+    With *project_couplings* the coupled joints of the keyframe are first put on
+    their polynomials, as the CPU ``MyoGymnasiumEnv.reset`` does.
     """
     import mujoco as _mj
     from mjlab.entity import EntityCfg
@@ -292,12 +296,14 @@ def _init_state_from_model(mj_model: Any) -> Any:
     if mj_model.nkey == 0:
         return EntityCfg.InitialStateCfg()
 
-    kqpos = mj_model.key_qpos[0]  # float64, shape (nq,)
+    kqpos = mj_model.key_qpos[0].copy()  # float64, shape (nq,)
     kqvel = (
-        mj_model.key_qvel[0]
+        mj_model.key_qvel[0].copy()
         if getattr(mj_model, "key_qvel", None) is not None
         else None
     )
+    if project_couplings:
+        project_joint_couplings(JointCouplings.from_model(mj_model), kqpos, kqvel)
 
     pos = (0.0, 0.0, 0.0)
     rot = (1.0, 0.0, 0.0, 0.0)
@@ -361,14 +367,19 @@ def _mimic_keyframe_reset_event(
     if mj_model.nkey == 0:
         raise ValueError("Keyframe reset requires a model with at least one keyframe.")
 
-    key_qpos = np.asarray(mj_model.key_qpos[0], dtype=np.float32)
+    key_qpos = mj_model.key_qpos[0].copy()
     if (
         getattr(mj_model, "key_qvel", None) is not None
         and mj_model.key_qvel.shape[0] > 0
     ):
-        key_qvel = np.asarray(mj_model.key_qvel[0], dtype=np.float32)
+        key_qvel = mj_model.key_qvel[0].copy()
     else:
-        key_qvel = np.zeros(int(mj_model.nv), dtype=np.float32)
+        key_qvel = np.zeros(int(mj_model.nv))
+    if getattr(mj_model, "neq", 0) > 0:
+        # Coupled joints on their polynomials, as the CPU reset.
+        project_joint_couplings(JointCouplings.from_model(mj_model), key_qpos, key_qvel)
+    key_qpos = key_qpos.astype(np.float32)
+    key_qvel = key_qvel.astype(np.float32)
     if getattr(mj_model, "key_act", None) is not None and mj_model.key_act.shape[0] > 0:
         key_act = np.asarray(mj_model.key_act[0], dtype=np.float32)
     else:
@@ -1238,11 +1249,18 @@ def _mimic_rsi_event(
         Closure ``(env, env_ids) -> None`` suitable for
         ``EventTermCfg(mode="reset")``.
     """
+    # Clip frames are put on the joint couplings of *mj_model* (needs its qpos layout).
+    couplings = None if mj_model is None else JointCouplings.from_model(mj_model)
+    device_couplings: dict[tuple[Any, Any], JointCouplings] = {}
 
     def _fn(env: Any, env_ids: Any) -> None:
         import torch
         import mujoco
         from mjlab.utils.lab_api.math import quat_apply
+
+        from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import (
+            torch_joint_couplings,
+        )
 
         data = env.scene[entity_name].data.data
         n_envs = int(data.qpos.shape[0])
@@ -1300,12 +1318,22 @@ def _mimic_rsi_event(
         ref_qpos = clip_source.ref_qpos_at_frames(new_offsets, env_ids_long)
         if ref_qpos is None:
             return
+        ref_qvel = clip_source.ref_qvel_at_frames(new_offsets, env_ids_long)
+        if couplings is not None and ref_qpos.shape[-1] == mj_model.nq:
+            key = (ref_qpos.device, ref_qpos.dtype)
+            if key not in device_couplings:
+                device_couplings[key] = torch_joint_couplings(couplings, *key)
+            ref_qpos = ref_qpos.clone()
+            if ref_qvel is not None and ref_qvel.shape[-1] == mj_model.nv:
+                ref_qvel = ref_qvel.clone()
+                project_joint_couplings(device_couplings[key], ref_qpos, ref_qvel)
+            else:
+                project_joint_couplings(device_couplings[key], ref_qpos)
         # Add per-env world origins so the bodies appear in the right place.
         env_origins = env.scene.env_origins[env_ids_long]  # (n_reset, 3)
         root_pos = ref_qpos[:, :3].float() + env_origins
         root_quat = ref_qpos[:, 3:7].float()  # (w, x, y, z)
 
-        ref_qvel = clip_source.ref_qvel_at_frames(new_offsets, env_ids_long)
         if ref_qvel is not None:
             # Free-joint qvel holds the world-frame linear but the body-frame
             # angular velocity; write_root_state_to_sim expects both in world.
@@ -1587,9 +1615,10 @@ def _make_mimic_env_cfg(
         )
     )
     # Use the compiled model's keyframe for explicit init_state so the body
-    # resets to the standing pose rather than the all-zeros default.
+    # resets to the standing pose rather than the all-zeros default, with its
+    # coupled joints (knee mechanism, patella) on their polynomials.
     init_state = (
-        _init_state_from_model(mj_model)
+        _init_state_from_model(mj_model, project_couplings=True)
         if mj_model is not None
         else EntityCfg.InitialStateCfg()
     )
@@ -2540,9 +2569,10 @@ def _make_directional_sar_env_cfg(
         )
     )
     # Use the compiled model's keyframe for explicit init_state so the body
-    # resets to the standing pose rather than the all-zeros default.
+    # resets to the standing pose rather than the all-zeros default, with its
+    # coupled joints (knee mechanism, patella) on their polynomials.
     init_state = (
-        _init_state_from_model(mj_model)
+        _init_state_from_model(mj_model, project_couplings=True)
         if mj_model is not None
         else EntityCfg.InitialStateCfg()
     )
@@ -2709,29 +2739,36 @@ def register_directional_walk_sar(
 def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
     """Return mjlab PPO runner defaults tuned for clip-mode MuscleMimic.
 
-    Hyperparameters and network width match the spirit of
-    ``tutorials/files/5.2/train_mimic.py`` (256×4 MLP, lower LR, lower entropy,
-    fixed LR schedule, observation normalization, advantage norm per
-    minibatch) while remaining compatible with ``MjlabOnPolicyRunner``.
+    Actor and critic are (256, 256, 128) ELU MLPs with running observation
+    normalization. PPO runs 4 epochs x 4 minibatches per iteration, clip 0.2,
+    learning rate 3e-4 on the adaptive (KL) schedule, and normalizes advantages
+    over the whole batch, not per minibatch. The action std starts at 0.5, is
+    capped to ``MUSCLE_STD_RANGE`` and gets a small entropy bonus
+    (``MUSCLE_ENTROPY_COEF``); see
+    :func:`~myosuite.envs.myo.backends.mjlab.tasks.rl.muscle_gaussian_distribution_cfg`.
 
     Pass as ``rl_cfg_fn`` to :func:`register_mimic_mjlab_tasks_with_clip`
     instead of ``lambda: RslRlOnPolicyRunnerCfg()`` for better sample
     efficiency on the high-dimensional mimic observation.
+
+    Args:
+        **kwargs: Fields of :class:`~mjlab.rl.RslRlOnPolicyRunnerCfg` to set.
 
     Returns:
         A configured :class:`~mjlab.rl.RslRlOnPolicyRunnerCfg` instance.
     """
     from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
+    from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+        MUSCLE_ENTROPY_COEF,
+        muscle_gaussian_distribution_cfg,
+    )
+
     actor = RslRlModelCfg(
         hidden_dims=(256, 256, 128),
         activation="elu",
         obs_normalization=True,
-        distribution_cfg={
-            "class_name": "GaussianDistribution",
-            "init_std": 1.0,
-            "std_type": "scalar",
-        },
+        distribution_cfg=muscle_gaussian_distribution_cfg(),
     )
     critic = RslRlModelCfg(
         hidden_dims=(256, 256, 128),
@@ -2744,7 +2781,7 @@ def default_mimic_clip_on_policy_runner_cfg(**kwargs) -> Any:
         num_mini_batches=4,
         learning_rate=3e-4,
         schedule="adaptive",
-        entropy_coef=0.01,
+        entropy_coef=MUSCLE_ENTROPY_COEF,
         clip_param=0.2,
         value_loss_coef=1.0,
         normalize_advantage_per_mini_batch=False,

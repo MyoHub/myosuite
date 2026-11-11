@@ -31,6 +31,9 @@ _MUSCLEMIMIC_SOURCES = (
     f"{_MUSCLEMIMIC}.myotorso_bimanual_model",
     f"{_MUSCLEMIMIC}.fullbody_model",
     f"{_MUSCLEMIMIC}.fullbody_native_playback",
+    f"{_MUSCLEMIMIC}.terrain_observation",
+    f"{_MUSCLEMIMIC}.terrain_policy",
+    f"{_MUSCLEMIMIC}.reference_motion",
     "myosuite.core.playback_contract",
 )
 
@@ -63,6 +66,12 @@ def test_import_myosuite_skips_heavy_modules() -> None:
         "torch",
     )
     assert _loaded_after("import myosuite", heavy) == []
+
+
+def test_import_action_map_skips_torch() -> None:
+    """``myosuite.utils.action_map`` (maps, CPU wrapper) loads neither torch nor mjlab."""
+    heavy = ("torch", "mjlab", "myosuite.utils.rslrl_policy")
+    assert _loaded_after("import myosuite.utils.action_map", heavy) == []
 
 
 @pytest.mark.parametrize(

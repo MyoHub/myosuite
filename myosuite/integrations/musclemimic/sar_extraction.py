@@ -44,6 +44,8 @@ from typing import Any
 
 import numpy as np
 
+from myosuite.core.trajectory_io import read_npz_names
+
 logger = logging.getLogger(__name__)
 
 _SAR_SKLEARN_INSTALL = (
@@ -304,6 +306,33 @@ def encode_activations(model: SynergyModel, acts: np.ndarray) -> np.ndarray:
     return X_norm[0] if single else X_norm
 
 
+def decode_synergies(model: SynergyModel, syn: np.ndarray) -> np.ndarray:
+    """Map synergy activations back to muscle activations (inverse of :func:`encode_activations`).
+
+    Pipeline: ``MinMaxScaler``⁻¹ → ``FastICA``⁻¹ → ``PCA``⁻¹ → clamp ``[0, 1]``.
+
+    Args:
+        model: Fitted :class:`SynergyModel`.
+        syn: Synergy activations (array-like), shape ``(T, n_synergies)`` or ``(n_synergies,)``.
+
+    Returns:
+        Muscle activations, shape ``(T, n_muscles)`` or ``(n_muscles,)``, in
+        ``[0, 1]``, dtype ``float32``.
+
+    Raises:
+        ValueError: If ``syn`` last dimension does not match ``n_synergies``.
+    """
+    syn = np.asarray(syn)
+    single = syn.ndim == 1
+    S = syn.reshape(1, -1) if single else syn
+    if S.shape[1] != model.n_synergies:
+        raise ValueError(f"Expected {model.n_synergies} synergies, got {S.shape[1]}")
+    X = model.scaler.inverse_transform(S.astype(np.float64))
+    X = model.pca.inverse_transform(model.ica.inverse_transform(X))
+    acts = np.clip(X, 0.0, 1.0).astype(np.float32)
+    return acts[0] if single else acts
+
+
 # ---------------------------------------------------------------------------
 # Serialisation
 # ---------------------------------------------------------------------------
@@ -339,7 +368,7 @@ def save_synergy_model(model: SynergyModel, save_dir: Path | str) -> None:
         n_synergies=np.array(model.n_synergies, dtype=np.int32),
         n_muscles=np.array(model.n_muscles, dtype=np.int32),
         vaf=np.array(model.vaf, dtype=np.float32),
-        source_clips=np.array(model.source_clips, dtype=object),
+        source_clips=np.asarray([str(c) for c in model.source_clips], dtype=str),
     )
     logger.info(
         "Saved SynergyModel to %s (n_syn=%d, vaf=%.3f)",
@@ -378,8 +407,14 @@ def load_synergy_model(save_dir: Path | str) -> SynergyModel:
     ica = joblib.load(save_dir / "ica.pkl")
     scaler = joblib.load(save_dir / "scaler.pkl")
 
-    meta = np.load(save_dir / "metadata.npz", allow_pickle=True)
-    source_clips = list(meta["source_clips"])
+    meta = np.load(save_dir / "metadata.npz", allow_pickle=False)
+    try:
+        source_clips = read_npz_names(meta, "source_clips")
+    except ValueError:
+        # Written as an object array before 3.0; the folder's joblib files above
+        # are pickles already, so its metadata may be read the same way.
+        legacy = np.load(save_dir / "metadata.npz", allow_pickle=True)
+        source_clips = [str(c) for c in legacy["source_clips"]]
     model = SynergyModel(
         pca=pca,
         ica=ica,
@@ -417,6 +452,7 @@ def _validate_acts(acts: np.ndarray) -> None:
 __all__ = [
     "SynergyModel",
     "compute_vaf_curve",
+    "decode_synergies",
     "encode_activations",
     "extract_synergies",
     "load_synergy_model",

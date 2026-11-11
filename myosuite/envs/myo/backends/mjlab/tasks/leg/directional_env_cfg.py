@@ -114,7 +114,7 @@ def make_leg_directional_env_cfg(
             func=dmdp.heading_solved, params=reward_params, reduce="last"
         )
     }
-    # ModularTaskEnv.reset: keyframe 0 (qpos and qvel).
+    # ModularTaskEnv.reset: keyframe 0 (qpos and qvel), on the joint couplings.
     events = {
         "reset_scene_to_default": EventTermCfg(
             func=mdp.reset_to_cpu_state,
@@ -123,6 +123,7 @@ def make_leg_directional_env_cfg(
                 "asset_cfg": robot,
                 "qpos": info.key_qpos[0],
                 "qvel": info.key_qvel[0],
+                "couplings": info.couplings,
             },
         ),
     }

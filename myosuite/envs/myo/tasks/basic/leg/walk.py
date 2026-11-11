@@ -409,6 +409,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             qvel = self._init_qvel.copy()
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
@@ -532,6 +533,7 @@ class LegTerrainEnvV0(LegWalkEnvV0):
                 normalized_data.reshape(100, 100) * scalar, [0, 1]
             ).reshape(10000)
         tid = self.model.geom("terrain").id
+        self._upload_hfield_to_renderers(int(self.model.geom_dataid[tid]))
         self.model.geom_rgba[tid, 3] = 1.0
         self.model.geom_pos[tid] = np.array([0.0, 0.0, 0.0])
         self.model.geom_contype[tid] = 1
@@ -548,6 +550,7 @@ class LegTerrainEnvV0(LegWalkEnvV0):
             qvel = self._init_qvel.copy()
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)

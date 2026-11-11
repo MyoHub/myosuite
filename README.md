@@ -1,7 +1,7 @@
 <!-- =================================================
 # Copyright (c) MyoSuite Authors
 ================================================= -->
-<img src="https://github.com/myohub/myosuite/blob/main/docs/source/images/Full%20Color%20Horizontal%20wider.png?raw=true" width=800>
+<img src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/Full%20Color%20Horizontal%20wider.png" width=800>
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
@@ -15,24 +15,22 @@
 
 **MyoSuite** is a collection of musculoskeletal environments and tasks simulated with the [MuJoCo](http://www.mujoco.org/) physics engine. It serves researchers and practitioners across biomechanics, neuroscience, machine learning, sports medicine, and physical rehabilitation.
 
-[Documentation](https://myosuite.readthedocs.io/en/latest/) · [Tutorials](tutorials/) · [Task list](https://myosuite.readthedocs.io/en/latest/environments.html)
+[Documentation](https://myosuite.readthedocs.io/en/latest/) · [Tutorials](https://github.com/MyoHub/myosuite/tree/dev/tutorials) · [Task list](https://myosuite.readthedocs.io/en/latest/environments.html)
 
-<img width="1240" alt="TasksALL" src="./docs/source/images/MyoSuiteHeader.png?raw=true">
+<img width="1240" alt="MyoSuite tasks" src="https://raw.githubusercontent.com/MyoHub/myosuite/main/docs/source/images/MyoSuiteHeader.png">
 
 
-<details>
-  <summary><h2>What's new in MyoSuite 3</h2></summary>
-
+<details> <summary><strong><big>What's new in MyoSuite 3</big></strong></summary>
 MyoSuite 3 brings the whole suite to fast, scalable training while keeping the simple interface you know:
 
 - **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
 - **One task, several backends.** The same `env_id` runs on your **CPU** through the standard [Gymnasium](https://gymnasium.farama.org/) interface (to explore, debug and replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for massively parallel GPU training, and on an **experimental MJX** (JAX) path.
 - **Muscle conditions as features.** Motor noise, fatigue, sarcopenia and reafferentation are wrappers, not env arguments. `make_env(EnvConfig(env_id, features=...))` applies them identically on the CPU env and the GPU twin, together with the episode length and control step ([cross-backend contract](docs/wiki/cross-backend-contract.md)).
 - **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic** policies, with ready-to-use checkpoints and motion datasets.
-- **Updated musculoskeletal models.** `myo-sim` moved from a moving `dev` branch to a pinned PyPI release (0.2.3) with some model updates, including a torso/pelvis frame fix for the leg models ([myo_sim#132](https://github.com/MyoHub/myo_sim/pull/132)).
+- **Updated musculoskeletal models.** `myo-sim` moved from a moving `dev` branch to a pinned PyPI release with some model updates, including a torso/pelvis frame fix for the leg models ([myo_sim#132](https://github.com/MyoHub/myo_sim/pull/132)).
 - **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
 - **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared observation, reward and model-building blocks instead of writing an environment class.
-- **Some existing environments changed.** Observations are no longer clipped and are read after a fresh forward step (55 env ids), the `motorFinger*` envs have 4x stronger motors, the Random finger-reach tasks now sample only targets the fingertip can reach, and several reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier snapshots may need retraining; see [`CHANGELOG.md`](CHANGELOG.md) for the full list.
+- **Some existing environments changed.** Observations are no longer clipped and are read after a fresh forward step (55 env ids), the `motorFinger*` envs have stronger motors, the Random finger-reach tasks now sample only targets the fingertip can reach, and several reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier snapshots may need retraining; see [`CHANGELOG.md`](CHANGELOG.md) for the full list.
 - **Ready to use.** Default trained policies on [Hugging Face](https://huggingface.co/myohub/myosuite-3-baselines) (see [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md) for the full list and success rates) with evaluation videos, plus updated tutorials from the first rollout to GPU training and MuscleMimic. See the [changelog](CHANGELOG.md) for everything that changed since v2.12.
 </details>
 
@@ -63,7 +61,16 @@ Or: `uv sync -p 3.10 --extra rl`.
 
 From PyPI: `pip install -U myosuite`.
 
-**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.3 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
+Python 3.15 can run native CPU environments without ONNX Runtime. ONNX features
+require `pip install 'myosuite[onnx]'`; ONNX Runtime has no Python 3.15 wheels as
+of October 19, 2026, so use Python 3.14 for those features until wheels are
+available. Python 3.15 also needs compatible builds of other native dependencies:
+for example, h5py currently provides 3.15 wheels through its maintainer-supported
+[nightly index](https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/h5py/),
+and PyTorch CPU wheels are available from its
+[official CPU index](https://download.pytorch.org/whl/cpu/).
+
+**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.5 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 

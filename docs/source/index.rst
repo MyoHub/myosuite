@@ -33,7 +33,7 @@ interface you know:
 * **New tasks in a few lines.** Describe a task with a compact spec and reuse the shared
   observation, reward and model-building blocks instead of writing an environment class.
 * **Some existing environments changed.** Observations are no longer clipped and are read
-  after a fresh forward step (55 env ids), the ``motorFinger*`` envs have 4x stronger motors,
+  after a fresh forward step (55 env ids), the ``motorFinger*`` envs have stronger motors,
   the Random finger-reach tasks now sample only targets the fingertip can reach, and several
   reset and seed behaviours were corrected. Policies trained with MyoSuite 2.x or earlier
   snapshots may need retraining; the repository's ``CHANGELOG.md`` lists the changes.
@@ -92,6 +92,7 @@ Choose your path
    :caption: Advanced Features
 
    suite
+   blender_rendering
 
 .. toctree::
    :maxdepth: 1

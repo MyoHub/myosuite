@@ -25,7 +25,11 @@ from scipy.spatial.transform import Rotation as np_R
 from myosuite.integrations.musclemimic.running_stats import (
     numpy_running_mean_std_update as running_mean_std_update,
 )
-from myosuite.core.trajectory_io import MotionClip, expand_motion_clip_to_model
+from myosuite.core.trajectory_io import (
+    MotionClip,
+    expand_motion_clip_to_model,
+    read_npz_names,
+)
 
 
 def _to_numpy_tree(tree: Any) -> Any:
@@ -238,9 +242,40 @@ def has_local_policy_artifacts(checkpoint_root: Path) -> bool:
     return (p / "train_state").is_dir() and (p / "config" / "metadata").exists()
 
 
-def load_local_policy_artifacts(checkpoint_root: Path) -> LocalPolicyArtifacts:
+def _restore_on_cpu(checkpointer: Any, path: str) -> Any:
+    """Restore an Orbax checkpoint onto this process's CPU device.
+
+    Without a target tree Orbax rebuilds each array's sharding from the device
+    name saved in the checkpoint (``TFRT_CPU_0`` for ``mm-10m-2``), which JAX
+    >= 0.10 no longer reports. A target on ``jax.devices("cpu")[0]`` restores
+    on any JAX version. The target also turns scalar leaves into JAX arrays and,
+    with x64 disabled, narrows 64-bit leaves to 32-bit; callers here cast to
+    float32 anyway.
+    """
+    if not hasattr(checkpointer, "metadata"):
+        return checkpointer.restore(path)
+    import jax
+
+    meta = checkpointer.metadata(path)
+    tree = getattr(meta, "item_metadata", meta)
+    tree = getattr(tree, "tree", tree)
+    if not isinstance(tree, dict):
+        return checkpointer.restore(path)
+    cpu = jax.sharding.SingleDeviceSharding(jax.devices("cpu")[0])
+
+    def abstract(leaf: Any) -> Any:
+        if hasattr(leaf, "shape") and hasattr(leaf, "dtype"):
+            return jax.ShapeDtypeStruct(leaf.shape, leaf.dtype, sharding=cpu)
+        return leaf
+
+    return checkpointer.restore(path, jax.tree_util.tree_map(abstract, tree))
+
+
+def load_local_policy_artifacts(
+    checkpoint_root: Path, seed: int = 0
+) -> LocalPolicyArtifacts:
     """Load policy parameters and normalization stats from Orbax artifacts."""
-    p = Path(checkpoint_root)
+    p = Path(checkpoint_root).absolute()
     train_state_dir = p / "train_state"
     if not train_state_dir.is_dir():
         raise FileNotFoundError(f"train_state directory missing: {train_state_dir}")
@@ -251,13 +286,24 @@ def load_local_policy_artifacts(checkpoint_root: Path) -> LocalPolicyArtifacts:
             "orbax.checkpoint is required for local policy inference."
         ) from err
 
-    restored = ocp.StandardCheckpointer().restore(str(train_state_dir))
+    restored = _restore_on_cpu(ocp.StandardCheckpointer(), str(train_state_dir))
     params_raw = restored["params"]
     run_stats = restored["run_stats"]["RunningMeanStd_0"]
     params = _to_numpy_tree(params_raw)
     obs_mean = np.asarray(run_stats["mean"], dtype=np.float32)
     obs_var = np.asarray(run_stats["var"], dtype=np.float32)
     obs_count = np.asarray(run_stats.get("count", 1e-6), dtype=np.float32)
+    if obs_mean.ndim == 2:
+
+        def select(tree: Any) -> Any:
+            if isinstance(tree, dict):
+                return {key: select(value) for key, value in tree.items()}
+            return tree[seed]
+
+        params = select(params)
+        obs_mean, obs_var = obs_mean[seed], obs_var[seed]
+        if obs_count.ndim:
+            obs_count = obs_count[seed]
     actor = params["actor"]
     if "output" in actor:
         action_dim = int(np.asarray(actor["output"]["bias"]).shape[0])
@@ -457,36 +503,23 @@ class _TrajectoryGoalSpec:
     sites_for_mimic: tuple[str, ...]
 
 
-class FullbodyObsAdapter:
-    """Upstream-compatible fullbody observation builder for local inference."""
+class FullbodyStateAdapter:
+    """Shared full-body joint, muscle and touch observations."""
 
     def __init__(
         self,
         model: mujoco.MjModel,
-        clip: MotionClip,
-        goal_params: dict[str, Any] | None = None,
+        obs_flags: dict[str, Any] | None = None,
+        *,
+        egocentric_root: bool = False,
     ) -> None:
         self._model = model
-        # Map the clip's columns by joint name: features index it as model qpos/qvel.
-        self._clip = expand_motion_clip_to_model(clip, model)
-        gp = dict(goal_params or {})
-        self._goal = _TrajectoryGoalSpec(
-            n_step_lookahead=int(gp.get("n_step_lookahead", 5)),
-            n_step_stride=int(gp.get("n_step_stride", 1)),
-            enable_motion_phase=bool(gp.get("enable_motion_phase", True)),
-            use_concise_lookahead=bool(gp.get("use_concise_lookahead", False)),
-            enable_mimic_site_rpos_observations=bool(
-                gp.get("enable_mimic_site_rpos_observations", True)
-            ),
-            sites_for_mimic=tuple(gp.get("sites_for_mimic", ())),
-        )
-        if not self._goal.sites_for_mimic:
-            raise ValueError("goal_params.sites_for_mimic must be provided.")
+        self._egocentric_root = egocentric_root
+        flags = obs_flags or {}
         self._obs_flags = {
-            key: bool(gp.get(key, default))
+            key: bool(flags.get(key, default))
             for key, default in _FULLBODY_OBS_FLAG_DEFAULTS.items()
         }
-
         root_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "root")
         if root_jid < 0:
             raise ValueError("Root free joint 'root' not found in model.")
@@ -504,7 +537,14 @@ class FullbodyObsAdapter:
         qvel_indices: list[np.ndarray] = []
         qpos_non_root: list[np.ndarray] = []
         qvel_non_root: list[np.ndarray] = []
+        # Keep scene objects out of the trained actor joint feature layout.
+        actor_root = int(model.body_rootid[model.jnt_bodyid[root_jid]])
         for jid in range(model.njnt):
+            if (
+                flags.get("exclude_non_actor_joints", False)
+                and int(model.body_rootid[model.jnt_bodyid[jid]]) != actor_root
+            ):
+                continue
             jtype = int(model.jnt_type[jid])
             qpos_size = _joint_qpos_size(jtype)
             qvel_size = _joint_qvel_size(jtype)
@@ -545,6 +585,84 @@ class FullbodyObsAdapter:
             for sid in self._touch_sensor_ids
         )
 
+    def build_state(self, data: mujoco.MjData) -> np.ndarray:
+        """Return joint, muscle and touch features in checkpoint order."""
+        obs: list[np.ndarray] = []
+        root_qpos = np.asarray(data.qpos[self._root_qpos_idx_full], dtype=np.float32)
+        root_qvel = np.asarray(data.qvel[self._root_qvel_idx_full], dtype=np.float32)
+        if self._egocentric_root:
+            rotation = np_R.from_quat(np.roll(root_qpos[3:7], -1)).as_matrix()
+            yaw = np.arctan2(
+                rotation[1, 0] - rotation[0, 1], rotation[0, 0] + rotation[1, 1]
+            )
+            heading = np_R.from_rotvec([0, 0, yaw]).as_matrix()
+            root_position = np.concatenate(
+                [[root_qpos[2]], rotation.T @ np.array([0, 0, -1])]
+            )
+            root_velocity = np.concatenate(
+                [heading.T @ root_qvel[:3], heading.T @ rotation @ root_qvel[3:6]]
+            )
+        else:
+            root_position, root_velocity = root_qpos[2:], root_qvel
+        if self._obs_flags["enable_joint_pos_observations"]:
+            obs.append(root_position)
+            obs.append(np.asarray(data.qpos[self._qpos_non_root_ind], dtype=np.float32))
+        if self._obs_flags["enable_joint_vel_observations"]:
+            obs.append(root_velocity)
+            obs.append(np.asarray(data.qvel[self._qvel_non_root_ind], dtype=np.float32))
+
+        if self._muscle_fields:
+            # (nu, n_fields) flattened row-major: the fields interleave per actuator.
+            muscle = np.stack(
+                [getattr(data, f)[self._actuator_ids] for f in self._muscle_fields],
+                axis=1,
+            )
+            obs.append(muscle.astype(np.float32).reshape(-1))
+
+        if self._touch_sensor_slices:
+            sens = np.asarray(data.sensordata, dtype=np.float32)
+            # np.sum per sensor (at most four) keeps the values exact (-0.0 -> 0.0).
+            obs.append(
+                np.asarray(
+                    [float(np.sum(sens[s])) for s in self._touch_sensor_slices],
+                    dtype=np.float32,
+                )
+            )
+
+        return (
+            np.concatenate(obs).astype(np.float32)
+            if obs
+            else np.empty(0, dtype=np.float32)
+        )
+
+
+class FullbodyObsAdapter(FullbodyStateAdapter):
+    """Upstream-compatible fullbody observation builder for local inference."""
+
+    def __init__(
+        self,
+        model: mujoco.MjModel,
+        clip: MotionClip,
+        goal_params: dict[str, Any] | None = None,
+    ) -> None:
+        self._model = model
+        # Map the clip's columns by joint name: features index it as model qpos/qvel.
+        self._clip = expand_motion_clip_to_model(clip, model)
+        gp = dict(goal_params or {})
+        self._goal = _TrajectoryGoalSpec(
+            n_step_lookahead=int(gp.get("n_step_lookahead", 5)),
+            n_step_stride=int(gp.get("n_step_stride", 1)),
+            enable_motion_phase=bool(gp.get("enable_motion_phase", True)),
+            use_concise_lookahead=bool(gp.get("use_concise_lookahead", False)),
+            enable_mimic_site_rpos_observations=bool(
+                gp.get("enable_mimic_site_rpos_observations", True)
+            ),
+            sites_for_mimic=tuple(gp.get("sites_for_mimic", ())),
+        )
+        if not self._goal.sites_for_mimic:
+            raise ValueError("goal_params.sites_for_mimic must be provided.")
+        super().__init__(model, gp)
+
         site_ids: list[int] = []
         for name in self._goal.sites_for_mimic:
             sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
@@ -553,14 +671,14 @@ class FullbodyObsAdapter:
             site_ids.append(int(sid))
         self._site_ids = np.asarray(site_ids, dtype=np.int32)
 
-        npz = np.load(self._clip.source_path, allow_pickle=True)
+        npz = np.load(self._clip.source_path, allow_pickle=False)
         self._traj_site_xpos = np.asarray(npz["site_xpos"], dtype=np.float32)
         self._traj_site_xmat = np.asarray(npz["site_xmat"], dtype=np.float32)
         self._traj_cvel = np.asarray(npz["cvel"], dtype=np.float32)
         self._traj_subtree_com = np.asarray(npz["subtree_com"], dtype=np.float32)
         self._traj_site_bodyid = np.asarray(npz["site_bodyid"], dtype=np.int32)
         self._traj_body_rootid = np.asarray(npz["body_rootid"], dtype=np.int32)
-        traj_site_names = tuple(str(x) for x in np.asarray(npz["site_names"]))
+        traj_site_names = tuple(read_npz_names(npz, "site_names"))
         name_to_traj_idx = {name: i for i, name in enumerate(traj_site_names)}
         try:
             self._traj_site_ids = np.asarray(
@@ -719,32 +837,7 @@ class FullbodyObsAdapter:
         """Return the flat float32 policy observation of *data* at clip *frame_idx*."""
         g = self._goal
         obs: list[np.ndarray] = []
-        root_qpos = np.asarray(data.qpos[self._root_qpos_idx_full], dtype=np.float32)
-        root_qvel = np.asarray(data.qvel[self._root_qvel_idx_full], dtype=np.float32)
-        if self._obs_flags["enable_joint_pos_observations"]:
-            obs.append(root_qpos[2:])
-            obs.append(np.asarray(data.qpos[self._qpos_non_root_ind], dtype=np.float32))
-        if self._obs_flags["enable_joint_vel_observations"]:
-            obs.append(root_qvel)
-            obs.append(np.asarray(data.qvel[self._qvel_non_root_ind], dtype=np.float32))
-
-        if self._muscle_fields:
-            # (nu, n_fields) flattened row-major: the fields interleave per actuator.
-            muscle = np.stack(
-                [getattr(data, f)[self._actuator_ids] for f in self._muscle_fields],
-                axis=1,
-            )
-            obs.append(muscle.astype(np.float32).reshape(-1))
-
-        if self._touch_sensor_slices:
-            sens = np.asarray(data.sensordata, dtype=np.float32)
-            # np.sum per sensor (at most four) keeps the values exact (-0.0 -> 0.0).
-            obs.append(
-                np.asarray(
-                    [float(np.sum(sens[s])) for s in self._touch_sensor_slices],
-                    dtype=np.float32,
-                )
-            )
+        obs.append(self.build_state(data))
 
         site_rpos, site_rangles, site_rvel = _relative_site_quantities(
             site_ids=self._site_ids,
@@ -783,6 +876,7 @@ class LocalPolicyRunner:
     split_goal: bool = False
     goal_indices: np.ndarray | None = None
     state_indices: np.ndarray | None = None
+    update_normalizer: bool = True
 
     def __post_init__(self) -> None:
         self._rng = np.random.default_rng(int(self.seed))
@@ -830,6 +924,10 @@ class LocalPolicyRunner:
 
     def _normalize_obs(self, obs: np.ndarray) -> np.ndarray:
         """RunningMeanStd update + normalization (upstream-compatible)."""
+        if not self.update_normalizer:
+            return (np.asarray(obs, dtype=np.float32) - self._run_mean) / np.sqrt(
+                self._run_var + 1e-8
+            )
         normalized, self._run_mean, self._run_var, self._run_count = (
             running_mean_std_update(
                 obs=obs,
@@ -857,11 +955,13 @@ class LocalPolicyRunner:
         frame_idx: int,
         *,
         obs_adapter: FullbodyObsAdapter | None = None,
+        history_idx: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         adapter = obs_adapter if obs_adapter is not None else self.obs_adapter
+        hist = frame_idx if history_idx is None else history_idx
         if adapter is not None:
             raw_obs = adapter.build(data, frame_idx)
-            policy_obs = self._apply_history(raw_obs, frame_idx)
+            policy_obs = self._apply_history(raw_obs, hist)
             if policy_obs.shape[0] != self.artifacts.obs_dim:
                 raise ValueError(
                     "Upstream obs adapter dim mismatch: "
@@ -877,30 +977,15 @@ class LocalPolicyRunner:
             np.asarray(policy_obs, dtype=np.float32),
         )
 
-    def action_trace_for(
-        self,
-        data: mujoco.MjData,
-        clip: MotionClip,
-        frame_idx: int,
-        *,
-        obs_adapter: FullbodyObsAdapter | None = None,
-    ) -> LocalPolicyActionTrace:
-        """Return action and intermediate tensors for one inference step.
-
-        This method intentionally mutates the runner exactly like
-        :meth:`action_for`: history, running mean/std, and stochastic RNG state
-        advance once.
-        """
-        raw_obs, policy_obs = self._build_policy_obs(
-            data,
-            clip,
-            frame_idx,
-            obs_adapter=obs_adapter,
-        )
-        mean_before = self._run_mean.copy()
-        var_before = self._run_var.copy()
-        count_before = self._run_count.copy()
-        norm_obs = self._normalize_obs(policy_obs)
+    def _action_from_obs(
+        self, obs: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        obs = np.asarray(obs, dtype=np.float32)
+        if obs.shape != (self.artifacts.obs_dim,):
+            raise ValueError(
+                f"Policy expects {self.artifacts.obs_dim} observations, got {obs.shape}."
+            )
+        norm_obs = self._normalize_obs(obs)
         mean_action = _actor_forward(self.artifacts.params, norm_obs)
         if self.stochastic and "log_std" in self.artifacts.params:
             log_std = np.asarray(self.artifacts.params["log_std"], dtype=np.float32)
@@ -913,6 +998,43 @@ class LocalPolicyRunner:
         else:
             action = mean_action
         action = np.asarray(np.clip(action, -1.0, 1.0), dtype=np.float32)
+        return norm_obs, mean_action, action
+
+    def action_from_obs(self, obs: np.ndarray) -> np.ndarray:
+        """Infer an action from a complete observation, advancing stats and RNG once."""
+        return self._action_from_obs(obs)[2]
+
+    def action_trace_for(
+        self,
+        data: mujoco.MjData,
+        clip: MotionClip,
+        frame_idx: int,
+        *,
+        obs_adapter: FullbodyObsAdapter | None = None,
+        history_idx: int | None = None,
+    ) -> LocalPolicyActionTrace:
+        """Return action and intermediate tensors for one inference step.
+
+        This method intentionally mutates the runner exactly like
+        :meth:`action_for`: history, running mean/std, and stochastic RNG state
+        advance once.
+
+        Args:
+            history_idx: Monotonic step used only for observation-history
+                wrap detection. Defaults to *frame_idx*. Pass an increasing
+                counter when the goal frame loops so history is not reset.
+        """
+        raw_obs, policy_obs = self._build_policy_obs(
+            data,
+            clip,
+            frame_idx,
+            obs_adapter=obs_adapter,
+            history_idx=history_idx,
+        )
+        mean_before = self._run_mean.copy()
+        var_before = self._run_var.copy()
+        count_before = self._run_count.copy()
+        norm_obs, mean_action, action = self._action_from_obs(policy_obs)
         return LocalPolicyActionTrace(
             raw_obs=raw_obs,
             policy_obs=policy_obs,
@@ -934,12 +1056,14 @@ class LocalPolicyRunner:
         frame_idx: int,
         *,
         obs_adapter: FullbodyObsAdapter | None = None,
+        history_idx: int | None = None,
     ) -> np.ndarray:
         return self.action_trace_for(
             data,
             clip,
             frame_idx,
             obs_adapter=obs_adapter,
+            history_idx=history_idx,
         ).action
 
     def step(
@@ -1004,15 +1128,12 @@ class OnnxPolicyRunner:
     split_goal: bool = False
     goal_indices: np.ndarray | None = None
     state_indices: np.ndarray | None = None
+    update_normalizer: bool = True
 
     def __post_init__(self) -> None:
-        try:
-            import onnxruntime as ort
-        except ImportError as err:
-            raise ImportError(
-                "onnxruntime is required for OnnxPolicyRunner. "
-                "Install with: pip install onnxruntime"
-            ) from err
+        from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+        ort = require_onnxruntime()
         self._session = ort.InferenceSession(
             str(self.onnx_path),
             providers=["CPUExecutionProvider"],

@@ -279,7 +279,7 @@ def sb3_policy(model: Any, vec_normalize: Any | None = None) -> Policy:
     return act
 
 
-def load_policy(env: Any, checkpoint: Path | None) -> Policy:
+def load_policy(env: Any, checkpoint: Path | None, strict: bool = False) -> Policy:
     """Return ``act(obs) -> action`` for a checkpoint, driving *env* with raw observations.
 
     Args:
@@ -287,15 +287,28 @@ def load_policy(env: Any, checkpoint: Path | None) -> Policy:
         checkpoint: mjlab ``model_*.pt`` or run directory, an SB3 (SAC/TD3/PPO)
             ``.zip``, or ``None``. The ``VecNormalize`` statistics saved next to an
             SB3 checkpoint (:func:`find_vec_normalize`) normalize its observations.
+        strict: Raise instead of falling back to a random policy.
 
     Returns:
         A deterministic policy; a random one when there is no usable checkpoint (none
         given, SB3 missing, or an SB3 policy trained on a different observation space).
+
+    Raises:
+        FileNotFoundError: *strict* and the checkpoint does not exist.
+        ValueError: *strict* and the checkpoint is not an SB3 ``.zip`` or RSL-RL
+            ``.pt``/run directory, or its spaces do not match *env*.
     """
 
     def random_policy(_obs: np.ndarray) -> np.ndarray:
         return env.action_space.sample()
 
+    if strict:
+        if checkpoint is None or not checkpoint.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
+        if not checkpoint.is_dir() and checkpoint.suffix not in (".zip", ".pt"):
+            raise ValueError(
+                "Use an SB3 .zip or RSL-RL .pt checkpoint (or run directory)."
+            )
     if checkpoint is None:
         print("No checkpoint found; using a random policy.")
         return random_policy
@@ -303,8 +316,19 @@ def load_policy(env: Any, checkpoint: Path | None) -> Policy:
         try:
             model = load_sb3_model(checkpoint)
         except ImportError:
+            if strict:
+                raise
             print("stable-baselines3 is not installed; using a random policy.")
             return random_policy
+        if strict and (
+            model.observation_space.shape != env.observation_space.shape
+            or model.action_space.shape != env.action_space.shape
+        ):
+            raise ValueError(
+                f"{checkpoint} observation/action shapes "
+                f"{model.observation_space.shape}/{model.action_space.shape} do not "
+                f"match the env's {env.observation_space.shape}/{env.action_space.shape}."
+            )
         if model.observation_space.shape != env.observation_space.shape:
             print(
                 f"{checkpoint} was trained on another env (obs "

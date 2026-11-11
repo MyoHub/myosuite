@@ -29,6 +29,10 @@ Muscle-command features (the ones the checkpoint was trained with, see
     python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN \
         --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
 
+A checkpoint trained through an action map (e.g. DynSyn muscle synergies, trained with
+``training/dynsyn``) is evaluated with the map of its training run, at its training
+progress, read from the checkpoint (see ``myosuite.utils.action_map``).
+
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
 metric that every task twin logs during training too).
@@ -431,15 +435,21 @@ errors are only given for pose tasks."""
 
 
 def _add_floor(
-    scene: mujoco.MjvScene, z: float, half_extent: float, horizon: float
+    scene: mujoco.MjvScene,
+    z: float,
+    half_extent: float,
+    horizon: float,
+    center: tuple[float, float] = (0.0, 0.0),
 ) -> None:
     """Append a light floor plate with a grid, white sky walls and a shadow light.
 
     The plate and walls are far beyond the fog end, so they fade into a white
-    horizon and sky. Grid lines only cover ``half_extent`` around the origin:
-    thin coplanar lines far away z-fight (speckle), and are fogged out anyway.
+    horizon and sky. Grid lines only cover ``half_extent`` around ``center``
+    (a multiple of ``FLOOR_CELL``, so the lines stay put in the world): thin
+    coplanar lines far away z-fight (speckle), and are fogged out anyway.
     """
     eye = np.eye(3).ravel()
+    cx, cy = center
 
     def add(size, pos, rgba) -> None:
         mujoco.mjv_initGeom(
@@ -452,18 +462,18 @@ def _add_floor(
         )
         scene.ngeom += 1
 
-    add([horizon, horizon, 0.005], [0, 0, z - 0.005], FLOOR_RGBA)
+    add([horizon, horizon, 0.005], [cx, cy, z - 0.005], FLOOR_RGBA)
     # Sky: four solid walls (a hollow dome would be back-face culled from inside).
     for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         along_x = sy != 0
         add(
             [horizon if along_x else 5.0, 5.0 if along_x else horizon, horizon],
-            [sx * horizon, sy * horizon, z + horizon - 1.0],
+            [cx + sx * horizon, cy + sy * horizon, z + horizon - 1.0],
             FLOOR_RGBA,
         )
     for c in np.arange(-half_extent, half_extent + 1e-6, FLOOR_CELL):
-        add([half_extent, 0.004, 0.0015], [0, c, z], FLOOR_LINE_RGBA)
-        add([0.004, half_extent, 0.0015], [c, 0, z], FLOOR_LINE_RGBA)
+        add([half_extent, 0.004, 0.0015], [cx, cy + c, z], FLOOR_LINE_RGBA)
+        add([0.004, half_extent, 0.0015], [cx + c, cy, z], FLOOR_LINE_RGBA)
     light = scene.lights[scene.nlight]
     light.headlight = 0
     light.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
@@ -623,6 +633,7 @@ class GridRenderer:
 
     def render(self) -> np.ndarray:
         scene = self._renderer.scene
+        floor_center = (0.0, 0.0)
         if self._sweep is not None:
             self._sweep_camera()
         self._frame += 1
@@ -638,6 +649,11 @@ class GridRenderer:
                     self._data, camera=self._cam, scene_option=self._opt
                 )
                 first = 0
+                if not isinstance(self._cam, mujoco.MjvCamera):
+                    # Model camera (it may track the agent): the floor follows the
+                    # agent's centre of mass, so a walker never leaves it.
+                    com = self._data.subtree_com[0, :2] + offset[:2]
+                    floor_center = tuple(np.round(com / FLOOR_CELL) * FLOOR_CELL)
             else:
                 first = scene.ngeom
                 mujoco.mjv_addGeoms(
@@ -682,7 +698,9 @@ class GridRenderer:
                 )
                 scene.ngeom += 1
         if self._floor_z is not None:
-            _add_floor(scene, self._floor_z, self._floor_half, self._horizon)
+            _add_floor(
+                scene, self._floor_z, self._floor_half, self._horizon, floor_center
+            )
             scene.flags[mujoco.mjtRndFlag.mjRND_SKYBOX] = 0
             scene.flags[mujoco.mjtRndFlag.mjRND_FOG] = 1
             scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = int(self._shadows)
@@ -882,7 +900,9 @@ def _check_stochastic(cfg: EvalConfig, policy) -> None:
         )
 
 
-def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
+def evaluate_cpu(
+    cfg: EvalConfig, checkpoint: Path, features: tuple = (), trained: Any = None
+) -> None:
     """Roll out ``cols x rows`` CPU envs in lockstep, ``episodes_per_env`` each."""
 
     import myosuite  # noqa: F401  (registers the CPU envs)
@@ -892,7 +912,20 @@ def evaluate_cpu(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> Non
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_config = EnvConfig(cfg.env_id, features=features)
     envs = [make_env(env_config) for _ in range(n_envs)]
-    policy = load_rslrl_policy(checkpoint, envs[0].action_space.shape[0])
+    if trained is not None:
+        from myosuite.utils.action_map import ActionMapWrapper  # noqa: PLC0415
+
+        envs = [
+            ActionMapWrapper(
+                env, trained.action_map, step_offset=trained.env_steps, frozen=True
+            )
+            for env in envs
+        ]
+    policy = load_rslrl_policy(
+        checkpoint,
+        envs[0].action_space.shape[0],
+        action_map_applied=trained is not None,
+    )
     _check_stochastic(cfg, policy)
     grid = (
         GridRenderer(
@@ -954,7 +987,9 @@ def _actor_obs(obs: Any) -> Any:
     return obs["actor"] if "actor" in obs else obs["policy"]
 
 
-def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> None:
+def evaluate_mjlab(
+    cfg: EvalConfig, checkpoint: Path, features: tuple = (), trained: Any = None
+) -> None:
     """Roll out ``cols x rows`` parallel mjlab envs, ``episodes_per_env`` each."""
     import torch
     from mjlab.envs import ManagerBasedRlEnv
@@ -977,6 +1012,12 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_cfg.scene.num_envs = n_envs
     env_cfg.seed = cfg.seed
+    if trained is not None:
+        from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (  # noqa: PLC0415
+            apply_trained_action_map,
+        )
+
+        apply_trained_action_map(env_cfg, trained, frozen=True)
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
     grid = (
         GridRenderer(
@@ -994,9 +1035,11 @@ def evaluate_mjlab(cfg: EvalConfig, checkpoint: Path, features: tuple = ()) -> N
         else None
     )
     frames: list[np.ndarray] = []
-    policy = load_rslrl_policy(checkpoint, env.action_manager.total_action_dim).to(
-        device
-    )
+    policy = load_rslrl_policy(
+        checkpoint,
+        env.action_manager.total_action_dim,
+        action_map_applied=trained is not None,
+    ).to(device)
     _check_stochastic(cfg, policy)
     has_success = "success" in env.metrics_manager.active_terms
 
@@ -1045,10 +1088,18 @@ def main() -> None:
     print(f"\n\ncheckpoint: {checkpoint}  backend: {cfg.backend}  env: {cfg.env_id}")
     if features:
         print("features: " + ", ".join(spec.name for spec in features))
+    from myosuite.utils.action_map import trained_action_map  # noqa: PLC0415
+
+    trained = trained_action_map(checkpoint)
+    if trained is not None:
+        print(
+            f"Action map: {trained.action_map.kind} ({trained.action_map.action_dim} "
+            f"actions, as trained after {trained.env_steps:.4g} env steps)"
+        )
     if cfg.backend == "cpu":
-        evaluate_cpu(cfg, checkpoint, features)
+        evaluate_cpu(cfg, checkpoint, features, trained)
     else:
-        evaluate_mjlab(cfg, checkpoint, features)
+        evaluate_mjlab(cfg, checkpoint, features, trained)
 
 
 if __name__ == "__main__":

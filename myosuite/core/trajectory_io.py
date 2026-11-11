@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from myosuite.core.hf_io import default_musclemimic_cache_root
+from myosuite.core.model_names import resolve_model_names
 
 _QPOS_NAME_KEYS: tuple[str, ...] = ("qpos_names", "qpos_joint_names", "joint_names")
 _QVEL_NAME_KEYS: tuple[str, ...] = ("qvel_names", "qvel_joint_names", "joint_names")
@@ -40,6 +41,31 @@ class MotionClip:
     frequency_hz: float | None = None
     source_path: Path | None = None
     weights: np.ndarray | None = None
+    site_xmat: np.ndarray | None = None
+    site_velocity: np.ndarray | None = None
+
+    @property
+    def num_frames(self) -> int:
+        return int(self.qpos.shape[0])
+
+    def to_mjdata(self, model: Any, frame: int = 0) -> Any:
+        """Return a new ``MjData`` posed at *frame* (``qpos``, ``qvel`` if any), forwarded.
+
+        Args:
+            model: Compiled ``mujoco.MjModel`` whose ``qpos``/``qvel`` layout the clip uses.
+            frame: Clip frame to start from.
+
+        Returns:
+            A new ``mujoco.MjData`` at that frame, after ``mj_forward``.
+        """
+        import mujoco
+
+        data = mujoco.MjData(model)
+        data.qpos[:] = self.qpos[frame]
+        if self.qvel is not None and self.qvel.shape[0] > frame:
+            data.qvel[:] = self.qvel[frame]
+        mujoco.mj_forward(model, data)
+        return data
 
     def __post_init__(self) -> None:
         if self.weights is not None:
@@ -80,6 +106,37 @@ class MotionClip:
             )
 
 
+def read_npz_names(npz: np.lib.npyio.NpzFile, key: str) -> list[str]:
+    """Return the names stored under *key* of an NPZ opened without pickle.
+
+    Motion files often come from downloads, so they are opened with
+    ``allow_pickle=False``: names must be a string (or bytes) array, and a
+    pickled object array is refused instead of unpickled.
+
+    Args:
+        npz: File returned by ``np.load(path, allow_pickle=False)``.
+        key: Key of the name array.
+
+    Returns:
+        The names as ``str`` (bytes are decoded as UTF-8).
+
+    Raises:
+        ValueError: If *key* holds a pickled object array.
+    """
+    try:
+        raw = np.asarray(npz[key]).reshape(-1)
+    except ValueError as err:
+        if "allow_pickle" not in str(err):
+            raise
+        source = getattr(getattr(npz, "zip", None), "filename", None) or "the file"
+        raise ValueError(
+            f"{key!r} in {source} is a pickled object array, and motion files are "
+            "loaded without pickle. Re-save the names as strings: "
+            f"np.savez(..., {key}=np.asarray(names, dtype=str))."
+        ) from err
+    return [n.decode() if isinstance(n, bytes) else str(n) for n in raw.tolist()]
+
+
 def _decode_name_list(
     npz: np.lib.npyio.NpzFile,
     candidate_keys: tuple[str, ...],
@@ -87,7 +144,7 @@ def _decode_name_list(
     for key in candidate_keys:
         if key not in npz.files:
             continue
-        values = [str(name) for name in np.asarray(npz[key]).reshape(-1).tolist()]
+        values = read_npz_names(npz, key)
         if not values:
             raise ValueError(f"Motion file metadata key {key!r} is empty.")
         return values
@@ -155,6 +212,7 @@ def _resolve_model_indices(
         return np.arange(expected_width, dtype=np.int32)
 
     index_map = _build_model_joint_index_map(mj_model, use_qvel=use_qvel)
+    joint_names = resolve_model_names(joint_names, index_map, field_name=field_name)
     missing = sorted(set(joint_names) - set(index_map))
     if missing:
         raise ValueError(
@@ -263,7 +321,9 @@ def expand_motion_clip_to_model(
     metadata are resolved by name at any width: a full-width clip whose joints
     are stored in another order is reordered, and a partial clip is expanded
     to the full model width (missing coordinates take the model's default
-    state).  Clips without names must already be in model order.  The result
+    state). Known full-body aliases (including prefixed agent names) are used
+    only when the exact joint name is absent. Clips without names must already
+    be in model order. The result
     is idempotent: ``expanded.qpos[:, expanded.qpos_model_indices]`` equals the
     clip's own columns.
     """
@@ -301,6 +361,8 @@ def expand_motion_clip_to_model(
         frequency_hz=clip.frequency_hz,
         source_path=clip.source_path,
         weights=clip.weights,
+        site_xmat=clip.site_xmat,
+        site_velocity=clip.site_velocity,
     )
 
 
@@ -351,7 +413,7 @@ def load_motion_clip(
     :func:`expand_motion_clip_to_model` before its columns are used as model
     qpos/qvel.
     """
-    npz = np.load(path, allow_pickle=True)
+    npz = np.load(path, allow_pickle=False)
     if "qpos" not in npz.files:
         raise KeyError(f"Motion file missing required key 'qpos': {path}")
     qpos = np.asarray(npz["qpos"], dtype=np.float64)
@@ -380,7 +442,7 @@ def load_motion_clip(
     site_names: list[str] | None = None
     if "site_names" in npz.files:
         try:
-            site_names = [str(n) for n in npz["site_names"]]
+            site_names = read_npz_names(npz, "site_names")
         except Exception as exc:
             import warnings
 
@@ -441,8 +503,77 @@ def check_clip_rate(
 
 __all__ = [
     "MotionClip",
+    "motion_clip_from_states",
     "check_clip_rate",
     "expand_motion_clip_to_model",
     "load_motion_clip",
+    "read_npz_names",
     "resolve_motion_path",
 ]
+
+
+def motion_clip_from_states(
+    model: Any,
+    qpos: np.ndarray,
+    dt: float,
+    sites: tuple[str, ...],
+    *,
+    qvel: np.ndarray | None = None,
+) -> MotionClip:
+    """Build site kinematics; supplied qvel preserves the reference states exactly."""
+    import mujoco  # noqa: PLC0415
+
+    if not np.isfinite(dt) or dt <= 0:
+        raise ValueError("dt must be finite and positive")
+    if (
+        np.asarray(qpos).ndim != 2
+        or np.asarray(qpos).shape[1] != model.nq
+        or len(qpos) == 0
+        or not np.isfinite(qpos).all()
+    ):
+        raise ValueError("qpos must contain finite model states")
+    supplied_qvel = qvel is not None
+    if qvel is not None and (
+        np.asarray(qvel).shape != (len(qpos), model.nv) or not np.isfinite(qvel).all()
+    ):
+        raise ValueError("qvel must contain finite velocities matching qpos")
+    original_qvel = qvel
+    qpos = np.asarray(qpos, dtype=float if supplied_qvel else np.float32).astype(float)
+    step = np.zeros((max(len(qpos) - 1, 0), model.nv))
+    for t in range(len(qpos) - 1):
+        mujoco.mj_differentiatePos(model, step[t], dt, qpos[t], qpos[t + 1])
+    qvel = np.zeros((len(qpos), model.nv))
+    if len(qpos) > 1:
+        qvel[0], qvel[-1] = step[0], step[-1]
+        qvel[1:-1] = 0.5 * (step[:-1] + step[1:])
+    qvel = (
+        np.asarray(original_qvel, dtype=float).copy()
+        if supplied_qvel
+        else qvel.astype(np.float32).astype(float)
+    )
+    ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, n) for n in sites]
+    if min(ids, default=0) < 0:
+        raise ValueError("Reference site is missing from model")
+    data = mujoco.MjData(model)
+    xpos = np.zeros((len(qpos), len(sites), 3))
+    xmat = np.zeros((len(qpos), len(sites), 3, 3))
+    velocity = np.zeros((len(qpos), len(sites), 6))
+    for t, q in enumerate(qpos):
+        data.qpos[:] = q
+        data.qvel[:] = qvel[t]
+        mujoco.mj_forward(model, data)
+        xpos[t] = data.site_xpos[ids]
+        xmat[t] = data.site_xmat[ids[: len(sites)]].reshape(-1, 3, 3)
+        for j, sid in enumerate(ids[: len(sites)]):
+            mujoco.mj_objectVelocity(
+                model, data, mujoco.mjtObj.mjOBJ_SITE, sid, velocity[t, j], 0
+            )
+    return MotionClip(
+        qpos=qpos,
+        qvel=qvel,
+        site_xpos=xpos[:, : len(sites)],
+        site_names=list(sites),
+        frequency_hz=1 / dt,
+        site_xmat=xmat,
+        site_velocity=velocity,
+    )

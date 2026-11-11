@@ -18,6 +18,8 @@ Finger joint/muscle name lists are shared with
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from pathlib import Path
 import tempfile
 import warnings
@@ -37,6 +39,9 @@ from myosuite.integrations.musclemimic.model_versions import (
     resolve_models_version,
 )
 from myosuite.terms.mimic_reward import MimicTrackingConfig
+
+NATIVE_FULLBODY_MODEL = "myofullbody"
+"""The myo_sim model the native full body is built from (``model_name`` overrides it)."""
 
 NATIVE_FULLBODY_FALLBACK_WARNING = (
     "musclemimic_models is not installed; using myo_sim's own myofullbody "
@@ -377,11 +382,13 @@ def build_mimic_fullbody_spec(
     return spec, xml_path
 
 
-@cached_spec()
-def _native_fullbody_spec(disable_fingers: bool) -> mujoco.MjSpec:
-    """Native full-body spec, built once per ``disable_fingers`` (the only config input)."""
+@cached_spec(min_uses=1)
+def _native_fullbody_spec(
+    disable_fingers: bool, model_name: str = NATIVE_FULLBODY_MODEL
+) -> mujoco.MjSpec:
+    """Native full-body spec, built once per ``disable_fingers`` and myo_sim model."""
     return _build_native_mimic_fullbody_spec(
-        config_dict.create(disable_fingers=disable_fingers)
+        config_dict.create(disable_fingers=disable_fingers, model_name=model_name)
     )
 
 
@@ -389,17 +396,21 @@ def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.M
     """Build a myo_sim-native Mimic-compatible full-body MjSpec.
 
     See :func:`_build_native_mimic_fullbody_spec`. The spec is built once per
-    ``disable_fingers`` in a process; every call returns a private copy once it
-    is kept (see :func:`~myosuite.core.model_builder.cached_spec`).
+    ``disable_fingers`` and model in a process; every call returns a private copy
+    once it is kept (see :func:`~myosuite.core.model_builder.cached_spec`).
 
     Args:
         config: At least ``disable_fingers`` (see
-            :func:`default_mimic_fullbody_config`).
+            :func:`default_mimic_fullbody_config`); optionally ``model_name``, the
+            myo_sim model to load (default :data:`NATIVE_FULLBODY_MODEL`).
 
     Returns:
         Edited, uncompiled MjSpec.
     """
-    return _native_fullbody_spec(bool(config.disable_fingers))
+    return _native_fullbody_spec(
+        bool(config.disable_fingers),
+        str(config.get("model_name", NATIVE_FULLBODY_MODEL)),
+    )
 
 
 def _build_native_mimic_fullbody_spec(
@@ -429,19 +440,12 @@ def _build_native_mimic_fullbody_spec(
     """
     import myo_sim
 
-    spec = myo_sim.load_spec("myofullbody")
+    spec = myo_sim.load_spec(str(config.get("model_name", NATIVE_FULLBODY_MODEL)))
     if config.disable_fingers:
-        model = spec.compile()
-        import mujoco as _mujoco
-
-        joint_pool = frozenset(
-            _mujoco.mj_id2name(model, _mujoco.mjtObj.mjOBJ_JOINT, i) or ""
-            for i in range(model.njnt)
-        )
-        actuator_pool = frozenset(
-            _mujoco.mj_id2name(model, _mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
-            for i in range(model.nu)
-        )
+        # From the spec: compiling here would leave its sizes stale after the deletions,
+        # and MjSpec.attach checks keyframes against those.
+        joint_pool = frozenset(joint.name for joint in spec.joints)
+        actuator_pool = frozenset(actuator.name for actuator in spec.actuators)
         joint_tokens = tuple(
             _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
         )
@@ -479,11 +483,11 @@ def compile_mimic_fullbody_mjmodel(
     if arena is not None:
         spec.memory = int(arena)
 
-    mj_model = spec.compile()
     # Match MuscleMimic ``MyoFullBody`` (CPU): LocoEnv only applies
     # ``timestep`` via ``model_option_conf``, not solver iterations /
-    # disableflags (those are MJX tuning).
-    mj_model.opt.timestep = float(config.sim_dt)
+    # disableflags (those are MJX tuning). Set on the spec, so it compiles alike.
+    spec.option.timestep = float(config.sim_dt)
+    mj_model = spec.compile()
     return mj_model, spec, xml_path
 
 
@@ -545,6 +549,7 @@ __all__ = [
     "FULLBODY_BODY2SITES_FOR_MIMIC",
     "MIMIC_FULLBODY_ARENA_BYTES",
     "build_mimic_fullbody_spec",
+    "build_terrain_fullbody_spec",
     "resolve_mimic_fullbody_xml",
     "compile_mimic_fullbody_mjmodel",
     "default_mimic_fullbody_config",
@@ -552,3 +557,62 @@ __all__ = [
     "compile_musclemimic_fullbody_mjmodel",
     "default_musclemimic_fullbody_config",
 ]
+
+
+TERRA_MODELS_VERSION = "1.0.5"
+# Terrain geoms (and the floor) are in this group: the heightmap rays see only it.
+TERRAIN_GROUP = 2
+_BICLONG_SIDESITE_Y = 0.020
+_GASLAT_WRAP_RADIUS = 0.052
+
+
+def apply_terrain_model_fixes(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """TERRA's wrap corrections (``apply_myofullbody_model_fixes``), in place."""
+    for name in (
+        "BIClong_ellipsoid_BIClong_2_sidesite",
+        "BIClong_ellipsoid_BIClong_2_sidesite_left",
+    ):
+        site = spec.site(name)
+        if site is not None:
+            site.pos[1] = _BICLONG_SIDESITE_Y
+    for name in ("GasLat_at_shank_r_wrap", "GasLat_at_shank_l_wrap"):
+        geom = spec.geom(name)
+        if geom is not None:
+            geom.size[0] = _GASLAT_WRAP_RADIUS
+    return spec
+
+
+def build_terrain_fullbody_spec(
+    scene_fn: Callable[[mujoco.MjSpec], object] | None = None,
+    *,
+    disabled_contact_pairs: tuple[tuple[str, str], ...] = (
+        ("humerus_l_coll", "thorax_coll1"),
+    ),
+) -> mujoco.MjSpec:
+    """Edited TERRA actor spec, plus an optional scene edit (terrain in :data:`TERRAIN_GROUP`).
+
+    Raises:
+        ImportError: Without ``musclemimic_models`` (the native fallback model is
+            not the actor TERRA was trained on).
+    """
+    try:
+        import musclemimic_models  # noqa: F401, PLC0415
+    except ImportError as err:
+        raise ImportError(
+            "TERRA needs the musclemimic_models MyoFullBody: pip install 'myosuite[musclemimic]'"
+        ) from err
+    cfg = default_mimic_fullbody_config()
+    cfg.model_version = TERRA_MODELS_VERSION
+    spec, _ = build_mimic_fullbody_spec(cfg)
+    apply_terrain_model_fixes(spec)
+    disabled = {frozenset(pair) for pair in disabled_contact_pairs}
+    for pair in list(spec.pairs):
+        if frozenset((pair.geomname1, pair.geomname2)) in disabled:
+            spec.delete(pair)
+    spec.option.timestep = float(cfg.sim_dt)
+    spec.option.iterations = 4
+    spec.option.ls_iterations = 8
+    spec.option.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP)
+    if scene_fn is not None:
+        scene_fn(spec)
+    return spec

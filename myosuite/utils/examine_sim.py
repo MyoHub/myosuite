@@ -7,38 +7,36 @@
 
 
 import click
-import numpy as np
-from mujoco import MjData, MjModel, mj_forward, mj_step, viewer
+from mujoco import MjData, MjModel, viewer
+from myosuite.core.registry import make_env
 
 DESC = """
-Vizualize model in a viewer\n
-    - render forward kinematics if `qpos` is provided\n
-    - simulate dynamcis if `ctrl` is provided\n
+Vizualize model in the MuJoCo "Simulate" viewer. No policy or environment logic included.\n
+    - Loads an MJCF if provided in --sim_path\n
+    - Otherwise you can specify a MyoSuite env via --env_name\n
 Example:\n
-    - python utils/examine_sim.py --sim_path envs/arms/franka/assets/franka_reach_v0.xml --qpos "0, 0, -1, -1, 0, 0, 0, 0, 0"\n
-    - python utils/examine_sim.py --sim_path envs/arms/franka/assets/franka_reach_v0.xml --ctrl "0, 0, -1, -1, 0, 0, 0, 0, 0"\n
+    - python -m myosuite.utils.examine_sim --sim_path path/to/model.xml\n
+    - python -m myosuite.utils.examine_sim --env_name myoElbowPose1D6MRandom-v0\n
 """
 
 
 @click.command(help=DESC)
-@click.option("-s", "--sim_path", type=str, help="environment to load", required=True)
-@click.option("-q", "--qpos", type=str, help="joint position", default=None)
-@click.option("-c", "--ctrl", type=str, help="actuator position", default=None)
-@click.option("-h", "--horizon", type=int, help="time (s) to simulate", default=5)
-def main(sim_path, qpos, ctrl, horizon):
-    model = MjModel.from_xml_path(sim_path)
+@click.option(
+    "-e", "--env_name", type=str, help="MyoSuite env id to load", required=False
+)
+@click.option(
+    "-s", "--sim_path", type=str, help="path to an MJCF model", required=False
+)
+def main(sim_path, env_name):
+    if sim_path is None and env_name is None:
+        raise click.UsageError("Provide --sim_path or --env_name")
+    if sim_path is not None:
+        model = MjModel.from_xml_path(sim_path)
+    else:
+        model = make_env(env_name).model
     data = MjData(model)
 
     viewer.launch(model, data)
-
-    while data.time < horizon:
-        if qpos is not None:
-            data.qpos[:] = np.array(qpos.split(","), dtype=np.float64)
-            mj_forward(model, data)
-            data.time += model.opt.timestep
-        elif ctrl is not None:
-            data.ctrl[:] = np.array(ctrl.split(","), dtype=np.float64)
-            mj_step(model, data)
 
 
 if __name__ == "__main__":

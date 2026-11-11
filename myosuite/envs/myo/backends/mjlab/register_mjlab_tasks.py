@@ -47,6 +47,7 @@ from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
+from myosuite.physics.quat import quat_yaw
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
@@ -62,6 +63,10 @@ from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
 )
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
     register_table_tennis_mjlab_tasks,
+)
+from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+    MUSCLE_ENTROPY_COEF,
+    muscle_gaussian_distribution_cfg,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -211,11 +216,7 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             hidden_dims=(64, 64),
             activation="elu",
             obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(),
         ),
         critic=RslRlModelCfg(
             hidden_dims=(64, 64),
@@ -227,7 +228,7 @@ def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             value_loss_coef=1.0,
             use_clipped_value_loss=True,
             clip_param=0.2,
-            entropy_coef=0.01,
+            entropy_coef=MUSCLE_ENTROPY_COEF,
             num_learning_epochs=2,
             num_mini_batches=1,
             learning_rate=3e-4,
@@ -332,12 +333,6 @@ def _chasetag_obs_act(env: ManagerBasedRlEnv) -> torch.Tensor:
     return env.scene[_CHASETAG_ENTITY_NAME].data.data.act
 
 
-def _chasetag_yaw(quat: torch.Tensor) -> torch.Tensor:
-    """Yaw of ``wxyz`` quaternions, as ``_pelvis_yaw_from_qpos``. Shape (N,)."""
-    w, x, y, z = quat.unbind(dim=1)
-    return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
-
-
 def _chasetag_rotate_by_neg_yaw(xy: torch.Tensor, yaw: torch.Tensor) -> torch.Tensor:
     """Rotate planar vectors ``(N, 2)`` by ``-yaw``, as ``_directional_obs``."""
     c, s = torch.cos(-yaw), torch.sin(-yaw)
@@ -348,7 +343,7 @@ def _chasetag_rotate_by_neg_yaw(xy: torch.Tensor, yaw: torch.Tensor) -> torch.Te
 def _chasetag_obs_root_vel_body(env: ManagerBasedRlEnv) -> torch.Tensor:
     """Root planar velocity in the pelvis yaw frame. Shape (N, 2)."""
     qpos, qvel = _chasetag_root(env)
-    return _chasetag_rotate_by_neg_yaw(qvel[:, :2], _chasetag_yaw(qpos[:, 3:7]))
+    return _chasetag_rotate_by_neg_yaw(qvel[:, :2], quat_yaw(torch, qpos[:, 3:7]))
 
 
 def _chasetag_obs_heading_cmd(env: ManagerBasedRlEnv) -> torch.Tensor:
@@ -364,7 +359,7 @@ def _chasetag_obs_orientation(env: ManagerBasedRlEnv) -> torch.Tensor:
     w, x, y, z = qpos[:, 3:7].unbind(dim=1)
     roll = torch.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
     pitch = torch.asin(torch.clamp(2.0 * (w * y - z * x), -1.0, 1.0))
-    ang_b = _chasetag_rotate_by_neg_yaw(qvel[:, 3:5], _chasetag_yaw(qpos[:, 3:7]))
+    ang_b = _chasetag_rotate_by_neg_yaw(qvel[:, 3:5], quat_yaw(torch, qpos[:, 3:7]))
     return torch.cat(
         [roll[:, None], pitch[:, None], ang_b, qvel[:, 5:6], qvel[:, 2:3]], dim=1
     )
@@ -483,7 +478,7 @@ class _ChaseTagOpponent(ManagerTermBase):
             dt: Control timestep in seconds.
         """
         lo, hi = self._vel_range
-        # The horizon equals the noise length; the index wraps beyond it.
+        # The noise is longer than the horizon; the index would wrap beyond it.
         idx = (self.noise_idx % _CHASETAG_NOISE_STEPS).view(-1, 1, 1).expand(-1, 2, 1)
         sample = _CHASETAG_NOISE_SCALE * torch.gather(self.noise, 2, idx).squeeze(2)
         self.noise_idx += 1
@@ -620,7 +615,7 @@ def _chasetag_solved(env: ManagerBasedRlEnv, win_distance: float) -> torch.Tenso
 
 def _chasetag_lose(env: ManagerBasedRlEnv) -> torch.Tensor:
     """``lose``: 1 on a fall or out of bounds (the CHASE time limit lies beyond
-    the horizon: CPU ``data.time`` after the last step is still below 20 s). (N,)."""
+    the horizon: CPU ``data.time`` after the last step is still below it). (N,)."""
     return (_chasetag_fallen(env) | _chasetag_out_of_bounds(env)).float()
 
 
@@ -713,6 +708,8 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
                 "asset_cfg": SceneEntityCfg(_CHASETAG_ENTITY_NAME),
                 "qpos": tuple(float(q) for q in model.key_qpos[0]),
                 "qvel": tuple(float(v) for v in model.key_qvel[0]),
+                # The CPU ChaseTagEnv reset does not project its couplings.
+                "couplings": None,
             },
         ),
         # After the agent reset: the spawn distance is measured from its new pose.
@@ -769,11 +766,7 @@ def _chasetag_ppo_runner_cfg(
             hidden_dims=(512, 256, 128),
             activation="elu",
             obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(),
         ),
         critic=RslRlModelCfg(
             hidden_dims=(512, 256, 128),
@@ -785,7 +778,7 @@ def _chasetag_ppo_runner_cfg(
             value_loss_coef=1.0,
             use_clipped_value_loss=True,
             clip_param=0.2,
-            entropy_coef=0.01,
+            entropy_coef=MUSCLE_ENTROPY_COEF,
             num_learning_epochs=4,
             num_mini_batches=4,
             learning_rate=3e-4,

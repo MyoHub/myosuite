@@ -62,8 +62,13 @@ _STEP_ATOL = {
     "role": 0.0,
 }
 _STEP_MEDIAN_ATOL = 1e-3  # a block that is merely bounded (e.g. zeros) fails this
-# Blocks whose median float32/solver noise between MuJoCo versions exceeds the default.
-_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 2e-3}
+# Blocks whose median float32/solver noise exceeds the default. Orientation stays near 1e-4,
+# with rare single-step spikes on any body: up to 0.0105 on the MuscleMimic body and 0.0071
+# on myofullbody over seeds 2-6, with matching contact sets. qvel_local spikes at one
+# contact-rich step of seed 2 with mujoco / mujoco-warp 3.11: 6e-4 on Windows, 1.5e-3 and
+# 1.6e-3 on some Linux runners (the same tree passes on others). Dropped joint velocities
+# still give a 4e-2 median.
+_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 1e-2, "qvel_local": 5e-3}
 _STEP_REW_ATOL = 1e-3
 # Same state, no physics: term functions must agree to float32 precision.
 _TERM_ATOL = 1e-5
@@ -157,14 +162,14 @@ def test_spaces_timing_physics_and_reward_terms_match(pair) -> None:
 
     assert cpu.frame_skip == cfg.decimation == 5
     assert cpu.dt == pytest.approx(mj.step_dt) == pytest.approx(0.01)
-    assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 2000
-    assert cpu_env.spec.max_episode_steps * cpu.dt == pytest.approx(20.0)
-    # CHASE also loses at data.time >= maxTime; the float64 time after the
-    # last step is still below it, so the horizon is a truncation on both.
+    assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 1000
+    assert cpu_env.spec.max_episode_steps * cpu.dt == pytest.approx(10.0)
+    # CHASE also loses past maxTime; the float64 time after the last step is
+    # within rounding of it, so the horizon is a truncation on both.
     time = 0.0
     for _ in range(cpu_env.spec.max_episode_steps * cpu.frame_skip):
         time += cpu.model.opt.timestep
-    assert time < cpu.maxTime
+    assert time == pytest.approx(cpu.maxTime, abs=1e-10)
 
     assert cfg.sim.mujoco == mujoco_cfg_from_model(cpu.model)
     for field in (
@@ -320,7 +325,7 @@ def test_termination_parity(pair, case: str) -> None:
 
 
 def test_horizon_is_a_truncation_on_both(pair) -> None:
-    """The 2000th step (20 s) truncates without the CHASE time-limit penalty."""
+    """The 1000th step (10 s) truncates without the CHASE time-limit penalty."""
     cpu_env, mj = pair
     cpu = cpu_env.unwrapped
     cpu_env.reset(seed=4)

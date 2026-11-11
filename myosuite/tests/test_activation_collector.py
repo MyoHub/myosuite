@@ -15,11 +15,14 @@ from unittest.mock import MagicMock, patch
 
 import mujoco
 import numpy as np
+import pytest
 
 from myosuite.integrations.musclemimic.fullbody_local_policy import (
     LocalPolicyArtifacts,
     LocalPolicyRunner,
 )
+
+pytestmark = pytest.mark.tier2
 
 
 # ---------------------------------------------------------------------------

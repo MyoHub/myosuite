@@ -27,6 +27,10 @@ from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils.colored_noise import ColoredNoiseProcess
 
 
+# Rounding of the summed timestep: the 1000th step at 10 s ends at 10.000000000000009 s.
+_TIME_EPS = 1e-9
+
+
 class Task(Enum):
     CHASE = 0
     EVADE = 1
@@ -346,6 +350,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         normalize_act: If ``True``, action space is ``[-1, 1]``.
         reset_type: One of ``"none"``, ``"init"``, ``"random"``.
         win_distance: Tagging distance threshold (m).
+        max_time: Time limit of the episode (s).
         min_spawn_distance: Minimum opponent spawn radius (m).
         task_choice: ``"CHASE"``, ``"EVADE"``, or ``"random"``.
         terrain: ``"FLAT"`` or ``"random"``.
@@ -413,6 +418,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         normalize_act: bool = True,
         reset_type: str = "none",
         win_distance: float = 0.5,
+        max_time: float = 20.0,
         min_spawn_distance: float = 2.0,
         task_choice: str = "CHASE",
         terrain: str = "FLAT",
@@ -442,6 +448,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             normalize_act=normalize_act,
             reset_type=reset_type,
             win_distance=win_distance,
+            max_time=max_time,
             min_spawn_distance=min_spawn_distance,
             task_choice=task_choice,
             terrain=terrain,
@@ -477,7 +484,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.task_choice = task_choice
         self.terrain = terrain
         self.win_distance = win_distance
-        self.maxTime = 20
+        self.maxTime = max_time
         self.repeller_opponent = repeller_opponent
 
         # ── Terrain ─────────────────────────────────────────────────────────
@@ -704,8 +711,10 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         rwd_dict["dense"] = float(
             np.sum([wt * rwd_dict[key] for key, wt in self.rwd_keys_wt.items()], axis=0)
         )
-        self.model.site_rgba[self.success_indicator_sid, :] = (
-            np.array([0, 2, 0, 0.2]) if rwd_dict["solved"] else np.array([2, 0, 0, 0])
+        self._set_success_indicator(self.success_indicator_sid, rwd_dict["solved"])
+        # The indicator around the opponent shows only once it is tagged.
+        self.model.site_rgba[self.success_indicator_sid, 3] = (
+            0.2 if rwd_dict["solved"] else 0.0
         )
         return rwd_dict
 
@@ -829,7 +838,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     def _chase_lose_condition(self, obs_dict: dict) -> int:
         root_pos = self.data.body(self._pelvis_body_name).xpos[:2]
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime:
+        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime + _TIME_EPS:
             return 1
         if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
             return 1
@@ -852,7 +861,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return 0
 
     def _evade_win_condition(self, obs_dict: dict) -> int:
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime:
+        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime + _TIME_EPS:
             return 1
         return 0
 
@@ -885,9 +894,10 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def _maybe_flatten_agent_patch(self, qpos: np.ndarray) -> None:
         if self.heightfield is not None:
             self.heightfield.flatten_agent_patch(qpos)
-            renderer = getattr(self, "_mujoco_renderer", None)
-            if renderer is not None and getattr(renderer, "_window", None) is not None:
-                renderer._window.update_hfield(0)
+            # Runs after this reset's terrain sample, so one upload covers both edits.
+            self._upload_hfield_to_renderers(
+                int(self.model.geom_dataid[self.model.geom("terrain").id])
+            )
 
     # ── Reset state helpers ───────────────────────────────────────────────────
 

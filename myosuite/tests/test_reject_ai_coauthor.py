@@ -11,7 +11,20 @@ from pathlib import Path
 
 import pytest
 
-from scripts.reject_ai_coauthor import _hits, main
+from scripts.reject_ai_coauthor import _author_hits, _hits, main
+
+
+@pytest.fixture(autouse=True)
+def _human_git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin a human author/committer so results do not depend on the machine's git config.
+
+    Tests of the identity check override this with their own ``_configured_idents``.
+    """
+    monkeypatch.setattr(
+        "scripts.reject_ai_coauthor._configured_idents",
+        lambda: ["Ada Lovelace <ada@example.org> 0 +0000"] * 2,
+    )
+
 
 pytestmark = pytest.mark.tier1
 
@@ -132,3 +145,17 @@ def test_verbose_diff_below_the_scissors_line_is_ignored(tmp_path: Path) -> None
     )
     assert main(["reject_ai_coauthor.py", "--strip", str(path)]) == 0
     assert path.read_bytes() == f"Fix\n{diff}".encode()
+
+
+def test_ai_author_identity_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``Author`` / ``Committer`` of Cursor Agent fails even with a clean message."""
+    monkeypatch.setattr(
+        "scripts.reject_ai_coauthor._configured_idents",
+        lambda: ["Cursor Agent <cursoragent@cursor.com> 1 +0000"],
+    )
+    path = _message(tmp_path, b"Fix the thing\n")
+
+    assert main(["reject_ai_coauthor.py", str(path)]) == 1
+    assert _author_hits(["Vittorio Caggiano <caggiano@gmail.com> 1 +0000"]) == []

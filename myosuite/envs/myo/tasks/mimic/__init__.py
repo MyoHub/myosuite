@@ -10,11 +10,18 @@ This suite owns canonical Mimic IDs and their legacy aliases:
 - ``myoMimicFullbody-v0``
 - ``myoMuscleMimicBimanual-v0`` (legacy alias)
 - ``myoMuscleMimicFullbody-v0`` (legacy alias)
+- ``myoFullBodyWaypoint-v0`` (random ordered waypoints on flat ground)
+- ``myoMimic-v0`` (multi-clip motion tracking, :mod:`.tracking`)
 """
 
 from __future__ import annotations
 
+import math
+
 import myosuite.core.registry as _registry
+from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
+from myosuite.envs.waypoint import WaypointTaskCfg
+from myosuite.terms.waypoint import WaypointRouteCfg
 
 _BIMANUAL_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicBimanualEnv"
 _FULLBODY_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv"
@@ -55,4 +62,41 @@ _registry.register_env(
     entry_point=_FULLBODY_DIRECTIONAL_ENTRY,
     max_episode_steps=500,
     kwargs={"frame_skip": 5},
+)
+
+# MyoFullBody faces -y at yaw 0, so routes start along -y. 100 Hz control, as MuscleMimic.
+FULLBODY_WAYPOINT_TASK = WaypointTaskCfg(
+    site_name="pelvis_mimic",
+    route=WaypointRouteCfg(
+        num_waypoints=4,
+        segment_length=(1.0, 2.0),
+        turn_angle=(-0.8, 0.8),
+        heading_offset=-math.pi / 2,
+    ),
+    arrival_radius=0.3,
+    lookahead=2,
+    min_site_height=0.6,
+    reset_noise=0.01,
+)
+
+_registry.register_env(
+    env_id="myoFullBodyWaypoint-v0",
+    entry_point="myosuite.envs.waypoint:WaypointEnv",
+    max_episode_steps=1500,
+    mjlab_task_kwargs=True,
+    kwargs={
+        "task": FULLBODY_WAYPOINT_TASK,
+        "frame_skip": 5,
+    },
+)
+
+# The env truncates itself at the task's time limit; TimeLimit only backs it up (300 s
+# at the shortest control step, one 2 ms physics step).
+_registry.register_env(
+    env_id=MIMIC_ENV_ID,
+    entry_point="myosuite.envs.myo.tasks.mimic.tracking.env:MimicEnv",
+    max_episode_steps=150_000,
+    mjlab_task_kwargs=True,
+    models=("myofullbody",),
+    kwargs={"frame_skip": 10, "preset": "supermimic", "model": "myofullbody"},
 )

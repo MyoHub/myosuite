@@ -21,6 +21,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
+from myosuite.tests.support.joint_couplings import joint_equality_residuals
 
 pytestmark = pytest.mark.tier1
 
@@ -73,6 +74,19 @@ def test_random_start_draws_from_the_env_rng(tmp_path: Path) -> None:
         assert env._current_frame() == first
         starts.append(first)
     assert len(set(starts)) > 1
+    env.close()
+
+
+def test_reset_puts_the_coupled_joints_on_their_polynomials(tmp_path: Path) -> None:
+    """The clip holds the keyframe, whose patella is 5 cm off its knee coupling."""
+    env = _env(_write_standing_clip(tmp_path / "c.npz", 20, 0.0), seed=0)
+    assert (
+        np.abs(joint_equality_residuals(env.model, env._clip_qpos[0])[0]).max() > 0.05
+    )
+    env.reset(seed=0)
+    pos, vel = joint_equality_residuals(env.model, env.data.qpos, env.data.qvel)
+    assert np.abs(pos).max() < 1e-12
+    assert np.abs(vel).max() < 1e-12
     env.close()
 
 
