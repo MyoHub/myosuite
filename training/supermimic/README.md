@@ -46,7 +46,7 @@ transitions with the same code. The env observes MuJoCo's state, the method its 
 
 ```bash
 pip install "myosuite[mjlab]"   # or: pip install -e ".[mjlab]" from a MyoSuite checkout
-pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/supermimic"
+pip install "git+https://github.com/MyoHub/myosuite.git@v3.1.0#subdirectory=training/supermimic"
 # or, from a checkout: pip install -e training/supermimic
 ```
 

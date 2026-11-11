@@ -60,8 +60,8 @@ The library of the 860 locomotion clips is built once and cached in `$CHASETAG_T
 
 ```bash
 pip install "myosuite[mjlab]"
-pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/supermimic"
-pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/chasetag_teacher"
+pip install "git+https://github.com/MyoHub/myosuite.git@v3.1.0#subdirectory=training/supermimic"
+pip install "git+https://github.com/MyoHub/myosuite.git@v3.1.0#subdirectory=training/chasetag_teacher"
 # or, from a checkout: pip install -e ".[mjlab]" -e training/supermimic -e training/chasetag_teacher
 ```
 
