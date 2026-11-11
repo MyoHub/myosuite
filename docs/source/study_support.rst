@@ -28,6 +28,9 @@ passive contribution.
 ``max_joint_torque(..., max_activation=...)`` predicts net torque under per-muscle
 fatigue caps at the probe posture, including passive torque and coupled virtual
 work. An unweighted fatigue average does not equal joint MVC capacity.
+MVC calculations use steady activation, including for ``actearly`` actuators.
+They reject actuator/joint force clamps, multi-state actuators and body gravity
+compensation rather than silently fitting a non-affine or assisted torque model.
 
 ``scale_body_mass`` accepts explicit ``represented_mass`` or a
 ``participant_mass / reference_mass`` ratio. ``bodies`` selects the subject rather
@@ -40,6 +43,11 @@ on an externally scaled subject model. Registration and mass scaling do not resi
 geometry, muscle paths or moment arms. ``endurance_time`` and
 ``fit_fatigue_parameters`` fit 3CC-r coefficients on calibration holds; independent
 trials are still required for validation.
+Fitting first increases the starting fatigue rate, within a bounded search, until
+the model predicts finite failure times inside the fitting horizon. This avoids a
+flat censored loss when the initial model fatigues much more slowly than the
+participant. Optimization uses at most 400 objective evaluations and reports a
+failure if initialization or convergence fails.
 
 External loading
 ----------------

@@ -207,3 +207,80 @@ def test_geometry_verification_reports_segment_mismatch() -> None:
     assert checks[0].within_tolerance and not checks[1].within_tolerance
     assert checks[1].error == pytest.approx(0.1)
     json.dumps([check.record() for check in checks], allow_nan=False)
+
+
+def test_early_activation_probes_are_steady_and_do_not_modify_the_model() -> None:
+    model = _arm()
+    q = posture_at(model, {"elbow": 1.0})
+    nominal = max_joint_torque(model, q, "elbow")[0]
+    model.actuator_actearly[:] = 1
+    assert max_joint_torque(model, q, "elbow")[0] == pytest.approx(nominal)
+    assert np.all(model.actuator_actearly == 1)
+    cal = strength_from_mvc(model, q, "elbow", 40.0)
+    scaled = scale_strength(model, cal.scale, cal.agonists)
+    data = mujoco.MjData(scaled)
+    data.qpos[:] = q
+    flexor = scaled.actuator("flexor").id
+    data.act[scaled.actuator_actadr[flexor]] = 1
+    data.ctrl[flexor] = 1
+    mujoco.mj_forward(scaled, data)
+    assert (data.qfrc_actuator + data.qfrc_passive)[0] == pytest.approx(40.0)
+    data.act[scaled.actuator_actadr[flexor]] = 0.5
+    data.ctrl[flexor] = 0.5
+    mujoco.mj_forward(scaled, data)
+    cap = np.array([0.5, 1.0])
+    assert max_joint_torque(scaled, q, "elbow", max_activation=cap)[0] == pytest.approx(
+        (data.qfrc_actuator + data.qfrc_passive)[0]
+    )
+
+
+@pytest.mark.parametrize("clamp", ["actuator", "joint", "multi_state"])
+def test_mvc_apis_reject_nonaffine_or_multistate_actuators(clamp: str) -> None:
+    model = _arm()
+    if clamp == "actuator":
+        model.actuator_forcelimited[0] = True
+        model.actuator_forcerange[0] = [-50.0, 0.0]
+    elif clamp == "joint":
+        model.jnt_actfrclimited[0] = True
+        model.jnt_actfrcrange[0] = [0.0, 20.0]
+    else:
+        model = mujoco.MjModel.from_xml_string(
+            '<mujoco><worldbody><body><joint name="elbow"/>'
+            '<geom size=".1" mass="1"/></body></worldbody>'
+            '<actuator><general joint="elbow" dyntype="user" actdim="2"/>'
+            "</actuator></mujoco>"
+        )
+    q = posture_at(model, {"elbow": 1.0})
+    with pytest.raises(ValueError, match="Force clamps and multi-state"):
+        max_joint_torque(model, q, "elbow")
+    with pytest.raises(ValueError, match="Force clamps and multi-state"):
+        strength_from_mvc(model, q, "elbow", 40.0)
+    with pytest.raises(ValueError, match="Force clamps and multi-state"):
+        fit_strength_from_mvcs(model, [q, q], "elbow", [40.0, 40.0])
+
+
+@pytest.mark.parametrize("route_to_actuation", [False, True])
+def test_gravity_corrected_mvc_rejects_compensation_in_either_routing(
+    route_to_actuation: bool,
+) -> None:
+    model = _arm()
+    model.body_gravcomp[model.body("arm").id] = 1
+    model.jnt_actgravcomp[:] = route_to_actuation
+    q = posture_at(model, {"elbow": 1.0})
+    with pytest.raises(ValueError, match="gravity compensation"):
+        max_joint_torque(model, q, "elbow")
+    with pytest.raises(ValueError, match="gravity compensation"):
+        strength_from_mvc(model, q, "elbow", 40.0)
+    with pytest.raises(ValueError, match="gravity compensation"):
+        fit_strength_from_mvcs(model, [q, q], "elbow", [40.0, 40.0])
+
+
+def test_fatigue_fit_initializes_beyond_a_censored_starting_simplex() -> None:
+    observed = endurance_time([0.5], F=0.05, R=0.002, r=5.0)
+    assert np.isinf(
+        endurance_time([0.5], F=0.01, R=0.002, r=5.0, max_time=3 * observed[0])[0]
+    )
+    fit = fit_fatigue_parameters([0.5], observed, F=0.01, R=0.002, r=5.0)
+    assert fit.F == pytest.approx(0.05, rel=1e-4)
+    assert fit.rmse_log < 1e-4
+    np.testing.assert_allclose(fit.predicted, observed, rtol=1e-4)

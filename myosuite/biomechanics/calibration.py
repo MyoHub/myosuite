@@ -43,6 +43,22 @@ def _posture(model: mujoco.MjModel, qpos: np.ndarray) -> np.ndarray:
     return q
 
 
+def _validate_mvc_model(model: mujoco.MjModel) -> None:
+    unsupported = [
+        model.actuator(i).name
+        for i in range(model.nu)
+        if model.actuator_forcelimited[i] or model.actuator_actnum[i] > 1
+    ] + [model.joint(int(j)).name for j in np.flatnonzero(model.jnt_actfrclimited)]
+    if unsupported:
+        raise ValueError(
+            f"Force clamps and multi-state actuators are not supported for MVC: {unsupported}"
+        )
+    if np.any(model.body_gravcomp != 0):
+        raise ValueError(
+            "gravity compensation is not supported for gravity-corrected MVC"
+        )
+
+
 def posture_at(model: mujoco.MjModel, joints: Mapping[str, float]) -> np.ndarray:
     """Return the first keyframe (else qpos0) with named coordinates set.
 
@@ -68,6 +84,10 @@ def posture_at(model: mujoco.MjModel, joints: Mapping[str, float]) -> np.ndarray
 def _torque_terms(
     model: mujoco.MjModel, qpos: np.ndarray, joint: str
 ) -> tuple[np.ndarray, np.ndarray, float]:
+    _validate_mvc_model(model)
+    if np.any(model.actuator_actearly):
+        model = copy.deepcopy(model)
+        model.actuator_actearly[:] = 0
     q = _posture(model, qpos)
     jid = model.joint(joint).id
     if int(model.jnt_type[jid]) not in (
@@ -134,6 +154,10 @@ def max_joint_torque(
     Returns:
         Signed torque [N m for hinges, N for slides] and agonist actuator names.
         Includes passive muscle/joint forces; excludes gravity and external loads.
+
+    Raises:
+        ValueError: If the model has force clamps, multi-state actuators or gravity
+            compensation. Force must be affine in activation and strength.
     """
     if direction not in (-1.0, 1.0):
         raise ValueError("direction must be +1 or -1")
@@ -606,6 +630,16 @@ def fit_fatigue_parameters(
     if fit_recovery and len(np.unique(loads)) < 3:
         raise ValueError("fitting recovery needs holds at three distinct loads")
     max_time = 3.0 * float(observed.max())
+    start_F = F
+    for _ in range(16):
+        initial = endurance_time(loads, start_F, R, r, max_time=max_time)
+        if np.all(np.isfinite(initial) & (initial > 0)):
+            break
+        start_F *= 2
+    else:
+        raise ValueError(
+            "could not initialize finite failure times; check holds and starting rates"
+        )
 
     def unpack(x: np.ndarray) -> tuple[float, float]:
         return float(np.exp(x[0])), float(np.exp(x[1])) if fit_recovery else R
@@ -616,9 +650,12 @@ def fit_fatigue_parameters(
         pred = np.where(np.isfinite(pred), pred, max_time)
         return float(np.mean((np.log(pred) - np.log(observed)) ** 2))
 
-    x0 = np.log([F, R]) if fit_recovery else np.log([F])
+    x0 = np.log([start_F, R]) if fit_recovery else np.log([start_F])
     res = minimize(
-        loss, x0, method="Nelder-Mead", options={"xatol": 1e-4, "fatol": 1e-10}
+        loss,
+        x0,
+        method="Nelder-Mead",
+        options={"xatol": 1e-4, "fatol": 1e-10, "maxfev": 400},
     )
     if not res.success or not np.isfinite(res.fun):
         raise RuntimeError(f"fatigue parameter fitting failed: {res.message}")
