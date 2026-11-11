@@ -265,9 +265,9 @@ class LandmarkIK:
         self.hi = np.full(self.nr, np.inf)
         self.red_qadr = np.full(self.nr, -1)
         for j in range(m.njnt):
-            if m.jnt_type[j] in (
-                mujoco.mjtJoint.mjJNT_HINGE,
-                mujoco.mjtJoint.mjJNT_SLIDE,
+            if int(m.jnt_type[j]) in (
+                int(mujoco.mjtJoint.mjJNT_HINGE),
+                int(mujoco.mjtJoint.mjJNT_SLIDE),
             ):
                 k = col[m.jnt_dofadr[j]]
                 if k >= 0:
