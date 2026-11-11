@@ -179,8 +179,22 @@ class StaticOptimizer:
             ValueError: If an actuator's force is clamped (``forcelimited``,
                 joint ``actuatorfrcrange``) or has more than one activation.
         """
+        self._initialize(copy.deepcopy(model), config)
+
+    @classmethod
+    def _from_owned_model(
+        cls, model: mujoco.MjModel, config: StaticOptimizationConfig | None = None
+    ) -> StaticOptimizer:
+        """Take ownership of a private model that no caller will reuse."""
+        optimizer = cls.__new__(cls)
+        optimizer._initialize(model, config)
+        return optimizer
+
+    def _initialize(
+        self, m: mujoco.MjModel, config: StaticOptimizationConfig | None
+    ) -> None:
+        """Prepare the model owned by this optimizer."""
         cfg = config or StaticOptimizationConfig()
-        m = copy.deepcopy(model)
         unsupported = [
             m.actuator(i).name
             for i in range(m.nu)
@@ -470,7 +484,17 @@ def static_optimization(
     Returns:
         The per-frame solutions stacked along a leading axis.
     """
-    so = StaticOptimizer(model, config)
+    return _solve_clip(StaticOptimizer(model, config), qpos, qvel, qacc, external_qfrc)
+
+
+def _solve_clip(
+    so: StaticOptimizer,
+    qpos: np.ndarray,
+    qvel: np.ndarray,
+    qacc: np.ndarray,
+    external_qfrc: np.ndarray | None = None,
+) -> StaticOptimizationResult:
+    """Solve a clip on an existing optimizer, including private sampled models."""
     frames = [
         so.solve(
             qpos[t],

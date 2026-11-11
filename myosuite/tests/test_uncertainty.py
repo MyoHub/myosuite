@@ -192,7 +192,14 @@ def test_samples_keep_the_nominal_weights(
         seen.append(config)
         return static_optimization(*args, config=config, **kwargs)
 
+    owned = StaticOptimizer._from_owned_model
+
+    def owned_spy(cls, model, config=None):
+        seen.append(config)
+        return owned(model, config)
+
     monkeypatch.setattr(uncertainty, "static_optimization", spy)
+    monkeypatch.setattr(StaticOptimizer, "_from_owned_model", classmethod(owned_spy))
     static_optimization_bands(
         elbow, _CLIP, _DT, config=UncertaintyConfig(samples=3, strength_cv=0.5)
     )
@@ -301,3 +308,40 @@ def test_nonfinite_sample_is_rejected_even_with_inaccurate_opt_in(
             config=UncertaintyConfig(samples=2, strength_cv=0.2, allow_inaccurate=True),
         )
     np.testing.assert_array_equal(error.value.frame_indices, [1])
+
+
+def test_owned_samples_match_copying_path_and_preserve_input(
+    elbow: mujoco.MjModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An extra model copy must change neither the sampled prior nor the outputs."""
+    original = copy.deepcopy(elbow)
+    config = UncertaintyConfig(
+        samples=3, strength_cv=0.2, mass_cv=0.1, joint_noise_deg=0.1, seed=3
+    )
+
+    def copying(cls, model, config=None):
+        return cls(model, config)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(StaticOptimizer, "_from_owned_model", classmethod(copying))
+        reference = static_optimization_bands(elbow, _CLIP[:20], _DT, config=config)
+    actual = static_optimization_bands(elbow, _CLIP[:20], _DT, config=config)
+    for name in (
+        "activation",
+        "actuator_force",
+        "reserve",
+        "joint_torque",
+        "contact_force",
+    ):
+        np.testing.assert_array_equal(getattr(actual, name), getattr(reference, name))
+    for name in (
+        "body_mass",
+        "body_inertia",
+        "actuator_gainprm",
+        "actuator_biasprm",
+        "actuator_actearly",
+        "geom_margin",
+    ):
+        np.testing.assert_array_equal(getattr(elbow, name), getattr(original, name))
+    assert elbow.opt.jacobian == original.opt.jacobian
+    assert elbow.opt.disableflags == original.opt.disableflags
