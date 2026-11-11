@@ -63,7 +63,20 @@ From the command line (the CPU counterpart of ``scripts/train_mjlab.py``)::
    python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
 
 It supports ``--algo ppo|sac|td3``, ``--n-envs``, ``--normalize`` and ``--tensorboard``, and prints the
-deterministic success rate after training.
+deterministic success rate after training. By default, ``--vec-env dummy`` steps the
+environments serially. Use ``--vec-env subproc`` for one spawned CPU worker per env::
+
+   python scripts/train_sb3.py myoArmReachRandom-v0 --n-envs 4 --vec-env subproc --normalize
+
+Workers retain the same ``seed + rank`` initialization and ``Monitor`` episode
+statistics. Spawning and interprocess communication add overhead: benchmark your
+task and keep the worker count within available CPU cores. A direct SB3 vectorizer
+benchmark on Windows/i7-14700KF with four arm-reach envs measured 1.74 times the simulation throughput of
+four serial envs, with about 3.7 seconds more startup time. That measurement used
+SB3 2.7.1, MuJoCo 3.11 and ``OMP_NUM_THREADS=1`` / ``MKL_NUM_THREADS=1``; it excludes learning
+and is not a universal speedup. A single serial env was fastest for the cheap elbow
+task. When calling ``main()`` or creating workers from Python, use an
+``if __name__ == "__main__":`` guard, as in the script.
 
 
 Training (GPU)
