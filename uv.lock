@@ -3136,6 +3136,9 @@ musclemimic = [
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+muskemo = [
+    { name = "trimesh" },
+]
 onnx = [
     { name = "onnxruntime", version = "1.20.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "onnxruntime", version = "1.30.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
@@ -3222,13 +3225,14 @@ requires-dist = [
     { name = "tensorboard", marker = "extra == 'rl'", specifier = ">=2.20.0" },
     { name = "termcolor" },
     { name = "torch", marker = "python_full_version >= '3.10' and extra == 'mjlab'", specifier = ">=2.13.0" },
+    { name = "trimesh", marker = "extra == 'muskemo'", specifier = ">=4" },
     { name = "wandb", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'mjlab'", specifier = ">=0.22.3,<0.29.0" },
     { name = "wandb", marker = "python_full_version >= '3.10' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=0.21.0" },
     { name = "wandb", marker = "extra == 'rl'", specifier = ">=0.25.0" },
     { name = "warp-lang", marker = "python_full_version >= '3.10' and extra == 'mjlab'", specifier = ">=1.12.0" },
     { name = "warp-lang", marker = "python_full_version >= '3.10' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=1.11" },
 ]
-provides-extras = ["onnx", "rl", "examples", "mjlab", "mjx", "mjx-cuda", "docs", "musclemimic", "dev"]
+provides-extras = ["onnx", "rl", "examples", "mjlab", "mjx", "mjx-cuda", "docs", "muskemo", "musclemimic", "dev"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest-cov", specifier = ">=7.1.0" }]
