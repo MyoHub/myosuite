@@ -16,6 +16,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+bl_info = {
+    "name": "MyoSuite compiled anatomy",
+    "author": "MyoSuite contributors",
+    "version": (0, 1, 0),
+    "blender": (5, 3, 0),
+    "category": "Import-Export",
+}
+_registered: list[tuple[Any, Any]] = []
+
 
 def _matrix(position: list[float], quaternion: list[float]) -> Any:
     from mathutils import Quaternion
@@ -372,10 +381,176 @@ def _populate(
     return objects
 
 
+def export_patch(output: str | Path, *, prefix: str = "MyoSuite") -> dict[str, Any]:
+    """Write explicit selected site/attachment and body-inertia edits.
+
+    Args:
+        output: New patch JSON file, applied to the original MjSpec in Python.
+        prefix: Imported namespace. Select site empties, edited muscle curves or
+            bodies; body properties use ``mass``, ``COM_local`` and
+            ``inertia_COM_local``. Export at the import's first pose.
+
+    Returns:
+        A versioned patch bound to the original model fingerprint.
+
+    Raises:
+        ValueError: No selected changes, conflicting shared-site edits or a
+            body outside its imported pose.
+    """
+    import bpy
+
+    source = json.loads(bpy.data.texts[prefix + ":source"].as_string())
+    bodies = {
+        i: bpy.data.objects[f"{prefix}:body:{i}"] for i in range(len(source["bodies"]))
+    }
+    if bpy.context.scene.frame_current != 1:
+        raise ValueError("Export edits at frame 1")
+    for obj in bodies.values():
+        if any(
+            abs(obj.matrix_world[r][c] - obj["default_pose"][r][c]) > 3e-6
+            for r in range(4)
+            for c in range(4)
+        ):
+            raise ValueError("Restore imported body poses before exporting local edits")
+    sites, inertias = {}, []
+
+    def record(identifier: int, position: Any) -> None:
+        original = source["sites"][identifier]
+        position = list(position)
+        if max(abs(a - b) for a, b in zip(position, original["pos"])) <= 3e-6:
+            return
+        entry = dict(name=original["name"], pos=position)
+        if (
+            identifier in sites
+            and max(abs(a - b) for a, b in zip(sites[identifier]["pos"], position))
+            > 3e-6
+        ):
+            raise ValueError(f"Conflicting edits to shared site {original['name']}")
+        sites[identifier] = entry
+
+    for obj in bpy.context.selected_objects:
+        if not obj.name.startswith(prefix + ":"):
+            continue
+        role, identifier = obj.get("mujoco_role"), obj.get("mujoco_id")
+        if role == "site":
+            record(
+                identifier,
+                bodies[source["sites"][identifier]["body"]].matrix_world.inverted()
+                @ obj.matrix_world.translation,
+            )
+        elif role == "muscle":
+            obj.update_from_editmode()
+            for site_id, point in zip(
+                obj["mujoco_site_ids"], obj.data.splines[0].points
+            ):
+                body = bodies[source["sites"][site_id]["body"]]
+                record(
+                    site_id,
+                    body.matrix_world.inverted() @ obj.matrix_world @ point.co.xyz,
+                )
+        elif role == "body":
+            original = source["bodies"][identifier]
+            xx, yy, zz, xy, xz, yz = obj["inertia_COM_local"]
+            inertia = [[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]]
+            if (
+                obj["mass"] != original["mass"]
+                or list(obj["COM_local"]) != original["com"]
+                or inertia != original["inertia"]
+            ):
+                inertias.append(
+                    dict(
+                        name=original["name"],
+                        mass=obj["mass"],
+                        com=list(obj["COM_local"]),
+                        inertia=inertia,
+                    )
+                )
+    if not sites and not inertias:
+        raise ValueError(
+            "Select edited sites, muscle attachments or body inertia properties"
+        )
+    patch = dict(
+        schema=1,
+        fingerprint=source["fingerprint"],
+        mujoco_version=source["mujoco_version"],
+        sites=list(sites.values()),
+        inertias=inertias,
+    )
+    Path(output).write_text(
+        json.dumps(patch, allow_nan=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return patch
+
+
+def geometry_report(
+    objects: dict[str, Any], document: dict[str, Any]
+) -> dict[str, Any]:
+    """Compare preview lengths with the MuJoCo reference.
+
+    Args:
+        objects: Return value of ``import_model``.
+        document: Original anatomy document.
+
+    Returns:
+        Lengths and per-muscle errors without fitting away offsets.
+    """
+    import bpy
+    import numpy as np
+
+    previous, lengths = bpy.context.scene.frame_current, []
+    try:
+        for frame in range(1, len(document["frames"]) + 1):
+            bpy.context.scene.frame_set(frame)
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            row = []
+            for obj in objects["muscle"].values():
+                evaluated = obj.evaluated_get(depsgraph)
+                mesh = evaluated.to_mesh()
+                try:
+                    row.append(float(mesh.attributes["length"].data[0].value))
+                finally:
+                    evaluated.to_mesh_clear()
+            lengths.append(row)
+    finally:
+        bpy.context.scene.frame_set(previous)
+    reference = np.array([f["muscle_length"] for f in document["frames"]])
+    error = np.asarray(lengths) - reference
+    report = dict(
+        names=[m["name"] for m in document["muscles"]],
+        max_length_error_m=np.max(np.abs(error), axis=0).tolist(),
+        preview_lengths_m=lengths,
+        reference_lengths_m=reference.tolist(),
+    )
+    dependent = {
+        e["object1"]
+        for e in document["equalities"]
+        if e["type"] == "JOINT" and e["active"]
+    }
+    qpos = np.array([f["qpos"] for f in document["frames"]])
+    changing = [
+        j
+        for j in document["joints"]
+        if j["type"] in ("HINGE", "SLIDE")
+        and j["id"] not in dependent
+        and np.ptp(qpos[:, j["qpos_address"]]) > 1e-9
+    ]
+    if len(changing) == 1 and len(qpos) >= 3:
+        x = qpos[:, changing[0]["qpos_address"]]
+        if np.all(np.diff(x) > 0) or np.all(np.diff(x) < 0):
+            report["sweep_joint"] = changing[0]["name"]
+            report["max_effective_moment_arm_error"] = np.max(
+                np.abs(np.gradient(error, x, axis=0, edge_order=2)), axis=0
+            ).tolist()
+    return report
+
+
 def register() -> None:
     """Add a compiled anatomy entry to Blender's File > Import menu."""
     import bpy
     from bpy_extras.io_utils import ImportHelper
+
+    if _registered:
+        return
 
     class ImportCompiledAnatomy(bpy.types.Operator, ImportHelper):
         bl_idname = "import_scene.myosuite_anatomy"
@@ -402,6 +577,17 @@ def register() -> None:
         )
 
     bpy.types.TOPBAR_MT_file_import.append(menu)
+    _registered.append((ImportCompiledAnatomy, menu))
+
+
+def unregister() -> None:
+    """Remove the importer menu and operator when disabling the Blender add-on."""
+    import bpy
+
+    for operator, menu in reversed(_registered):
+        bpy.types.TOPBAR_MT_file_import.remove(menu)
+        bpy.utils.unregister_class(operator)
+    _registered.clear()
 
 
 def main() -> None:
@@ -413,8 +599,15 @@ def main() -> None:
     parser.add_argument("--addon", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--prefix", default="MyoSuite")
+    parser.add_argument("--report", type=Path)
     args = parser.parse_args(sys.argv[sys.argv.index("--") + 1 :])
-    import_model(args.input, addon=args.addon, prefix=args.prefix)
+    objects = import_model(args.input, addon=args.addon, prefix=args.prefix)
+    if args.report:
+        document = json.loads(args.input.read_text(encoding="utf-8"))
+        args.report.write_text(
+            json.dumps(geometry_report(objects, document), indent=2) + "\n",
+            encoding="utf-8",
+        )
     if args.output:
         bpy.ops.wm.save_as_mainfile(
             filepath=str(args.output.resolve()), check_existing=False

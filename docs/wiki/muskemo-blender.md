@@ -13,7 +13,7 @@ Export a document using [muskemo.md](muskemo.md), then run:
 & 'C:/Program Files/Blender Foundation/Blender 5.3/blender.exe' `
   --background --factory-startup --python-exit-code 1 `
   --python myosuite/integrations/muskemo_blender.py -- elbow.json `
-  --addon C:/path/to/MuSkeMo --output elbow.blend
+  --addon C:/path/to/MuSkeMo --output elbow.blend --report geometry.json
 ```
 
 To use the file picker, enable MuSkeMo and run `muskemo_blender.py` in Blender's
@@ -22,11 +22,23 @@ Import namespaces prevent accidental replacement of existing work. A failed
 import removes the objects/collections it created. Source names and IDs are
 stored on objects, and compact source metadata is embedded in the blend file.
 
-MuSkeMo wrapping is a preview using a different geometry algorithm. Sphere wraps
-can differ substantially from MuJoCo. Original wrap definitions and sidesite IDs
-remain in metadata for validation against the source model. Polynomial couplings
-are preserved through baked poses, rather than live Blender joint constraints.
+The geometry report compares actual evaluated MuSkeMo lengths against MuJoCo at
+every exported pose. With a scalar joint sweep it also compares effective moment
+arms by finite differences. The source model remains the simulation authority:
+MuSkeMo's wrapping uses a different algorithm, and some sphere wraps differ
+substantially. For example, in the bundled elbow the BIClong sphere preview is
+about 55 mm too long even though the other five muscles match within 1 micrometre
+in the checked five-pose sweep. The importer exposes this discrepancy; do not
+use Blender preview lengths to calibrate physiological parameters. Sidesite IDs
+and all original wrap definitions remain available for source-model validation.
 Pulley/fixed muscle paths, flexes, skins and heightfields fail explicitly.
+
+To export a selected change, use `export_patch("edit.json")` from the importer
+module. At frame 1 select edited site empties, edited muscle curves or bodies.
+Body properties are `mass`, `COM_local` and `inertia_COM_local` (xx, yy, zz, xy,
+xz, yz about the COM in body axes). Selected muscle attachments are converted
+back to body-local sites. Conflicting shared-site edits are rejected. Apply the
+versioned patch to the original `MjSpec`; no unrelated model properties change.
 
 Real Blender tests are opt-in:
 

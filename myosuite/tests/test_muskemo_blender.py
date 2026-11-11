@@ -67,6 +67,22 @@ except ValueError:
 else:
     raise AssertionError("Duplicate namespace accepted")
 assert before == set(bpy.data.objects)
+report = bridge.geometry_report(objects, data)
+assert len(report["max_length_error_m"]) == {count}
+assert all(math.isfinite(v) for v in report["max_length_error_m"])
+if {name!r} == "myoelbow":
+    assert max(report["max_length_error_m"][i] for i in [0,1,2,4,5]) < 2e-6
+    assert report["sweep_joint"] == "r_elbow_flex"
+    bpy.context.scene.frame_set(1)
+    bpy.ops.object.select_all(action="DESELECT")
+    site = objects["site"][0]
+    site.select_set(True)
+    site.location.x += .001
+    bpy.context.view_layer.update()
+    patch = bridge.export_patch({str(tmp_path / "patch.json")!r})
+    assert len(patch["sites"]) == 1
+    assert patch["sites"][0]["name"] == data["sites"][0]["name"]
+    close(patch["sites"][0]["pos"], [data["sites"][0]["pos"][0]+.001, *data["sites"][0]["pos"][1:]])
 bad = dict(data)
 bad["muscles"] = [dict(data["muscles"][0], tendon=-100)]
 badpath = Path({str(tmp_path / "bad.json")!r})
@@ -80,6 +96,9 @@ else:
     raise AssertionError("Malformed path accepted")
 assert before == set(bpy.data.objects)
 bridge.register()
+bridge.register()
+bridge.unregister()
+bridge.unregister()
 print("MUSKEMO_VALIDATED")
 """
     script = tmp_path / "verify.py"
