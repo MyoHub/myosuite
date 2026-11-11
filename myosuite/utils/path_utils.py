@@ -53,25 +53,44 @@ def compute_path_rewards(env: Any, paths: dict) -> dict:
     return paths
 
 
+def _truncate_time_arrays(data: dict, length: int, end: int) -> None:
+    for key, value in data.items():
+        if isinstance(value, dict):
+            _truncate_time_arrays(value, length, end)
+        elif isinstance(value, np.ndarray) and value.ndim and len(value) == length:
+            data[key] = value[:end]
+
+
 def truncate_paths(paths: list[dict]) -> list[dict]:
     """Truncate rollout paths at the first terminal transition.
 
     Args:
         paths: List of path dicts, each containing a ``"rewards"`` array and
-            a ``"done"`` array of the same length.
+            a one-dimensional ``"done"`` array of the same length. NumPy arrays
+            with that leading length are time-aligned, including leaves of nested
+            ``env_infos`` and ``agent_infos`` dictionaries. Other values, such as
+            scalar metadata and arrays of other lengths, are preserved.
 
     Returns:
-        The same list with each path truncated in-place at termination.
+        The same list, retaining the first terminal transition and setting each
+        path's ``"terminated"`` flag. Empty paths and paths with no terminal
+        transition keep all their frames and get ``terminated=False``.
+
+    Raises:
+        ValueError: If a path's done flags are not one-dimensional or have a
+            different length from its rewards.
     """
-    paths[0]["rewards"].shape[0]
     for path in paths:
-        if path["done"][-1] == False:  # noqa: E712
-            path["terminated"] = False
-        elif path["done"][0] == False:  # noqa: E712
-            terminated_idx = sum(~path["done"]) + 1
-            for key in path.keys():
-                path[key] = path[key][: terminated_idx + 1, ...]
-            path["terminated"] = True
+        done = np.asarray(path["done"])
+        length = len(path["rewards"])
+        if done.ndim != 1 or len(done) != length:
+            raise ValueError(
+                "done must be one-dimensional and have the same length as rewards"
+            )
+        terminal = np.flatnonzero(done)
+        if terminal.size:
+            _truncate_time_arrays(path, length, int(terminal[0]) + 1)
+        path["terminated"] = bool(terminal.size)
     return paths
 
 
