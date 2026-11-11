@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -335,6 +336,10 @@ def _populate(
         obj["mujoco_lengths"] = [
             f["muscle_length"][muscle_index] for f in document["frames"]
         ]
+        if all("muscle_tendon_length" in f for f in document["frames"]):
+            obj["mujoco_tendon_lengths"] = [
+                f["muscle_tendon_length"][muscle_index] for f in document["frames"]
+            ]
         pre_wrap = 0
         for element in elements:
             if element["type"] == "SITE":
@@ -419,6 +424,10 @@ def export_patch(output: str | Path, *, prefix: str = "MyoSuite") -> dict[str, A
         position = list(position)
         if max(abs(a - b) for a, b in zip(position, original["pos"])) <= 3e-6:
             return
+        if not original.get("source_name", original["name"]):
+            raise ValueError(
+                "Unnamed source sites cannot be patched; name them in the original model"
+            )
         entry = dict(name=original["name"], pos=position)
         if (
             identifier in sites
@@ -440,6 +449,14 @@ def export_patch(output: str | Path, *, prefix: str = "MyoSuite") -> dict[str, A
             )
         elif role == "muscle":
             obj.update_from_editmode()
+            if (
+                len(obj.data.splines) != 1
+                or obj.data.splines[0].type != "POLY"
+                or len(obj.data.splines[0].points) != len(obj["mujoco_site_ids"])
+            ):
+                raise ValueError(
+                    "Muscle curve topology changed; only attachment position edits are supported"
+                )
             for site_id, point in zip(
                 obj["mujoco_site_ids"], obj.data.splines[0].points
             ):
@@ -453,10 +470,23 @@ def export_patch(output: str | Path, *, prefix: str = "MyoSuite") -> dict[str, A
             xx, yy, zz, xy, xz, yz = obj["inertia_COM_local"]
             inertia = [[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]]
             if (
-                obj["mass"] != original["mass"]
-                or list(obj["COM_local"]) != original["com"]
-                or inertia != original["inertia"]
+                not math.isclose(
+                    obj["mass"], original["mass"], rel_tol=1e-10, abs_tol=1e-12
+                )
+                or not all(
+                    math.isclose(a, b, rel_tol=1e-10, abs_tol=1e-12)
+                    for a, b in zip(obj["COM_local"], original["com"])
+                )
+                or not all(
+                    math.isclose(a, b, rel_tol=1e-10, abs_tol=1e-12)
+                    for row, old in zip(inertia, original["inertia"])
+                    for a, b in zip(row, old)
+                )
             ):
+                if not original.get("source_name", original["name"]):
+                    raise ValueError(
+                        "Unnamed source bodies cannot be patched; name them in the original model"
+                    )
                 inertias.append(
                     dict(
                         name=original["name"],
@@ -497,6 +527,10 @@ def geometry_report(
     import bpy
     import numpy as np
 
+    if not all("muscle_tendon_length" in f for f in document["frames"]):
+        raise ValueError(
+            "Re-export anatomy with native physical tendon lengths before geometry reporting"
+        )
     previous, lengths = bpy.context.scene.frame_current, []
     try:
         for frame in range(1, len(document["frames"]) + 1):
@@ -513,7 +547,7 @@ def geometry_report(
             lengths.append(row)
     finally:
         bpy.context.scene.frame_set(previous)
-    reference = np.array([f["muscle_length"] for f in document["frames"]])
+    reference = np.array([f["muscle_tendon_length"] for f in document["frames"]])
     error = np.asarray(lengths) - reference
     report = dict(
         names=[m["name"] for m in document["muscles"]],
@@ -534,7 +568,15 @@ def geometry_report(
         and j["id"] not in dependent
         and np.ptp(qpos[:, j["qpos_address"]]) > 1e-9
     ]
-    if len(changing) == 1 and len(qpos) >= 3:
+    dependent_addresses = {
+        j["qpos_address"] for j in document["joints"] if j["id"] in dependent
+    }
+    varying = set(np.flatnonzero(np.ptp(qpos, axis=0) > 1e-9).tolist())
+    if (
+        len(changing) == 1
+        and len(qpos) >= 3
+        and varying <= dependent_addresses | {changing[0]["qpos_address"]}
+    ):
         x = qpos[:, changing[0]["qpos_address"]]
         if np.all(np.diff(x) > 0) or np.all(np.diff(x) < 0):
             report["sweep_joint"] = changing[0]["name"]

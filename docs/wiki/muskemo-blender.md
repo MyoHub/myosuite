@@ -22,7 +22,8 @@ Import namespaces prevent accidental replacement of existing work. A failed
 import removes the objects/collections it created. Source names and IDs are
 stored on objects, and compact source metadata is embedded in the blend file.
 
-The geometry report compares actual evaluated MuSkeMo lengths against MuJoCo at
+The geometry report compares actual evaluated MuSkeMo lengths against physical
+MuJoCo tendon lengths (separate from geared actuator lengths) at
 every exported pose. With a scalar joint sweep it also compares effective moment
 arms by finite differences. The source model remains the simulation authority:
 MuSkeMo's wrapping uses a different algorithm, and some sphere wraps differ
@@ -39,6 +40,8 @@ Body properties are `mass`, `COM_local` and `inertia_COM_local` (xx, yy, zz, xy,
 xz, yz about the COM in body axes). Selected muscle attachments are converted
 back to body-local sites. Conflicting shared-site edits are rejected. Apply the
 versioned patch to the original `MjSpec`; no unrelated model properties change.
+Curve topology changes are rejected: this patch format edits existing attachment
+positions. Unnamed source sites/bodies need names before they can be patched.
 
 Real Blender tests are opt-in:
 

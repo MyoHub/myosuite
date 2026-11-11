@@ -92,9 +92,6 @@ def export_model(
             ("tendon", model.ntendon),
         )
     }
-    for kind, values in names.items():
-        if len(set(values)) != len(values):
-            raise ValueError(f"Generated {kind} names collide with source names")
     muscles = np.flatnonzero(model.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE)
     if any(model.actuator_trntype[a] != mujoco.mjtTrn.mjTRN_TENDON for a in muscles):
         raise ValueError("Muscles without tendon transmission are unsupported")
@@ -103,6 +100,7 @@ def export_model(
         dict(
             id=i,
             name=names["body"][i],
+            source_name=model.body(i).name,
             parent=int(model.body_parentid[i]),
             mass=float(model.body_mass[i]),
             com=model.body_ipos[i].tolist(),
@@ -128,6 +126,7 @@ def export_model(
         dict(
             id=i,
             name=names["site"][i],
+            source_name=model.site(i).name,
             body=int(model.site_bodyid[i]),
             pos=model.site_pos[i].tolist(),
         )
@@ -153,6 +152,7 @@ def export_model(
             name=names["actuator"][a],
             tendon=int(model.actuator_trnid[a, 0]),
             force=float(force[a]),
+            gear=model.actuator_gear[a].tolist(),
             gain=model.actuator_gainprm[a].tolist(),
             bias=model.actuator_biasprm[a].tolist(),
             dynamics=model.actuator_dynprm[a].tolist(),
@@ -218,6 +218,9 @@ def export_model(
                 geom_quat=[_quat(r) for r in data.geom_xmat],
                 site_pos=data.site_xpos.tolist(),
                 muscle_length=data.actuator_length[muscles].tolist(),
+                muscle_tendon_length=data.ten_length[
+                    model.actuator_trnid[muscles, 0]
+                ].tolist(),
                 moment_arms=moment[muscles].tolist(),
             )
         )

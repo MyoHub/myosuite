@@ -27,6 +27,10 @@ Metres, radians and kilograms are used throughout, with wxyz quaternions. Mesh
 vertices/faces are embedded, so Blender needs neither MuJoCo nor access to the
 source model's mesh paths. Flexes, skins and heightfields fail explicitly.
 
+The selected-edit/report extension also retains raw source names, actuator gear
+and physical tendon lengths separately from geared actuator lengths. Generated
+labels for unnamed objects are display labels, not editable source names.
+
 This interchange is for anatomy authoring and geometric validation. It is not a
 complete simulation serialization or a replacement for the original `MjSpec`:
 preserve the original model when applying selected edits. The fingerprint binds

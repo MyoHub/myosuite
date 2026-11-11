@@ -89,3 +89,13 @@ def test_invalid_poses_rejected(tmp_path, poses):
     model = myo_sim.load_spec("myoelbow").compile()
     with pytest.raises(ValueError, match="qpos"):
         export_model(model, tmp_path / "bad.json", qpos=poses)
+
+
+def test_generated_labels_do_not_replace_source_names(tmp_path):
+    model = mujoco.MjModel.from_xml_string("""<mujoco><worldbody>
+      <site pos="1 0 0"/><site name="site_0" pos="0 1 0"/>
+      </worldbody></mujoco>""")
+    document = export_model(model, tmp_path / "unnamed.json")
+    assert document["sites"][0]["name"] == document["sites"][1]["name"]
+    assert document["sites"][0]["source_name"] == ""
+    assert document["sites"][1]["source_name"] == "site_0"
