@@ -77,6 +77,8 @@ so one draw varies a lot. The released 3.0.0 code gives 18.4, 19.9 and 14.1% on 
 
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
+`myoMimic-v0` uniform and return resets now exclude terminal-only reference bins on CPU and mjlab, so every reset has at least one reference transition. This corrects the random-start distribution for clips whose last frame starts a bin (for example, a one-second clip at 10 ms). The stored terminal frame remains the final scoring target. Reevaluate policies with the corrected distribution; adaptive per-bin training statistics from a library containing those empty bins must be rebuilt. Policy input/action layouts and clip-start evaluation are unchanged.
+
 ---
 
 <sub>
