@@ -212,6 +212,11 @@ Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full com
 
 ### Fixed
 
+* Require patched Pillow >=13.0.0 and filelock >=4.2.5 on Python >=3.11,
+  including pip installs, and refresh the dependency lock and waypoint tutorial
+  Pillow pin. Python 3.10 retains known advisories because the fixed upstream
+  releases require Python >=3.11; see the installation guide.
+
 * **mjlab waypoint resets preserve the initial route distance.** Clearing the previous step's state no longer zeros the new route's distance through an aliased tensor, preventing a spurious negative progress reward after reset.
 
 * **`myoFingerReachRandom-v0` and `motorFingerReachRandom-v0` targets on MuJoCo 3.12 and newer.** The table of reachable targets checked joint types with a comparison that is always false from MuJoCo 3.12, so no joint was sampled and every target sat at the fingertip's start. Both envs, on the CPU and in mjlab, now sample the full table on every version.
