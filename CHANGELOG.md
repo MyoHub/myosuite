@@ -41,6 +41,11 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+* Configurable preprocessing workers and an opt-in validated NumPy disk cache for
+  `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
+  CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
+  versions; execution settings leave task fingerprints unchanged.
+
 * **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks the AMASS KIT
   motions retargeted onto the task model (by default MuscleMimic's 972 KIT training motions, `motion.clips="kit_train"`,
   the clips its released checkpoints were trained on; any clip, directory or `.txt` list works too; read from the local retarget cache that `scripts/mimic/retarget_amass.py` fills from an AMASS download,
