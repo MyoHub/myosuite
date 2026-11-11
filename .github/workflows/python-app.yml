@@ -52,6 +52,9 @@ jobs:
         shell: bash -l {0}
 
     runs-on: ${{ matrix.os }}
+    # Tests and sourced tutorial scripts must keep the fresh pip resolution.
+    env:
+      UV_NO_SYNC: "true"
     strategy:
       fail-fast: false
       # PRs into dev run Ubuntu 3.10 only; macOS, Windows and Python 3.14 run
@@ -134,6 +137,11 @@ jobs:
         run: |
           uv pip install -e ".[mjlab,rl]"
           uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch ipython "musclemimic_models==1.0.6" usd-core
+
+      - name: Check and report resolved dependencies
+        run: |
+          uv pip check
+          uv pip list
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
         if: ${{ runner.os != 'Linux' }}
