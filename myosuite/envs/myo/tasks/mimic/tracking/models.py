@@ -253,8 +253,10 @@ def kinematic_fingerprint(name: str) -> str:
 
     :func:`~myosuite.biomechanics.retarget.kinematic_fingerprint` of
     :func:`compiled_body` (joints, body tree, coupling equalities, foot collision
-    geoms), with the landmark bodies and feet of the model's SMPL+H map. Clips whose
-    metadata carries it load whatever myo_sim version they were fitted under.
+    geoms), with the landmark bodies and feet of the model's SMPL+H map (a body
+    without one, e.g. a submodel: no landmarks, its contact bodies as the feet).
+    Clips whose metadata carries it load whatever myo_sim version they were fitted
+    under.
     """
     from myosuite.biomechanics.retarget import (  # noqa: PLC0415
         kinematic_fingerprint as fingerprint,
@@ -264,7 +266,10 @@ def kinematic_fingerprint(name: str) -> str:
         landmark_bodies,
     )
 
-    smap = SMPLH_MAPS[model_cfg(name).name]
+    mc = model_cfg(name)
+    smap = SMPLH_MAPS.get(mc.name)
+    if smap is None:
+        return fingerprint(compiled_body(name), (), [[b] for b in mc.foot_bodies])
     return fingerprint(compiled_body(name), landmark_bodies(smap), smap.feet)
 
 

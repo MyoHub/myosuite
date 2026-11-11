@@ -137,7 +137,14 @@ fixed-base example), selected with ``TaskEnvCfg(model=...)``:
 * ``effectors``: their world position error is reported under the model's metric name (e.g. ``tip_err_cm``).
 
 ``TaskEnvCfg.task`` passes further task overrides (e.g. reward kernels at the body's scale). Checkpoints store the
-model and the control step. ``tests/test_submodel.py`` runs the runner-vs-env and collector-vs-``env.step`` checks on
+model and the control step, and their task contract adds the root kind, the motors and the effectors (a checkpoint
+from before submodels counts as a free-root body of muscles only).
+
+Two opt-in runner options help on small bodies, where the deterministic policy can drift away from the noisy one
+it was trained with: ``noise_free_frac`` lets a share of the training envs collect with the noise-free policy (their
+returns are logged as ``det_ret``), and ``budget_schedules`` runs the learning-rate decay (and an action-noise
+annealing down to ``action_noise_final``; set it to ``action_noise`` to keep the noise) over the ``max_hours``
+budget. ``tests/test_submodel.py`` runs the runner-vs-env and collector-vs-``env.step`` checks on
 a fixed-base body with muscles, a direct and a first-order motor.
 
 ## Planned: DynSyn action groups

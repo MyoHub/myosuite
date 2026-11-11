@@ -526,6 +526,15 @@ def test_a_checkpoint_with_another_task_contract_is_rejected(
     runner.cfg.accept_contract_mismatch = True
     runner.load(str(tmp_path / "swapped.pt"))
     runner.cfg.accept_contract_mismatch = False
+    pre = {
+        k: v
+        for k, v in runner.task_contract().items()
+        if k not in ("root", "motors", "effectors")
+    }
+    torch.save(
+        {**ck, "contract": pre}, tmp_path / "pre_submodels.pt"
+    )  # a contract from before submodels
+    runner.load(str(tmp_path / "pre_submodels.pt"))
     del ck[
         "contract"
     ]  # a checkpoint from before contracts: its stored widths still match

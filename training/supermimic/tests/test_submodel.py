@@ -195,6 +195,32 @@ def test_fixed_base_learns_and_evaluates(toy: tuple[str, Path], tmp_path: Path) 
     )
 
 
+def test_the_task_contract_records_the_body(
+    toy: tuple[str, Path], tmp_path: Path
+) -> None:
+    """A checkpoint's contract names the root kind, motors and effectors; another body's checkpoint is refused."""
+    model, d = toy
+    _, runner = _make(model, str(d / "clip0.npz"))
+    runner.log_dir = str(tmp_path)
+    runner.save(str(tmp_path / "model.pt"))
+    ck = torch.load(tmp_path / "model.pt", weights_only=False)
+    c = ck["contract"]
+    info = runner.cmd.info
+    assert c["root"] == "fixed" and c["actuators"] == info.actuator_names
+    assert (
+        c["motors"] == [info.actuator_names[a] for a in info.motor_ids] and c["motors"]
+    )
+    assert c["effectors"] == list(runner.cmd.model_cfg.effectors)
+    for key, value in (("root", "free"), ("motors", []), ("effectors", [])):
+        torch.save({**ck, "contract": {**c, key: value}}, tmp_path / "other.pt")
+        with pytest.raises(ValueError, match=key):
+            runner.load(str(tmp_path / "other.pt"))
+    old = {k: v for k, v in c.items() if k not in ("root", "motors", "effectors")}
+    torch.save({**ck, "contract": old}, tmp_path / "old.pt")
+    with pytest.raises(ValueError, match="root"):  # before submodels: a free-root body
+        runner.load(str(tmp_path / "old.pt"))
+
+
 @pytest.mark.parametrize("graph", [False, True], ids=["eager", "collector"])
 def test_noise_free_envs_collect_the_deterministic_policy(
     toy: tuple[str, Path], graph: bool

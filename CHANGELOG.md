@@ -16,7 +16,10 @@ Changes since **v3.1.0**.
   optional left-right mirror map and effectors whose position error is reported as a success metric. Built-in
   example: `myoelbow2dof` (myo_sim's 2-DoF elbow, fixed base, fingertip error in cm). myoSuperMimic trains on such
   bodies (fixed-root world model, one analytic drive per actuator for muscles and direct or first-order motors,
-  mirror augmentation only with a map); the full body's results are bit-identical.
+  mirror augmentation only with a map); the full body's results are bit-identical. The checkpoint task contract
+  adds the root kind, the motors and the effectors.
+* **myoSuperMimic `noise_free_frac` and `budget_schedules`** (opt-in): a share of the training envs collects with
+  the noise-free policy, and the learning-rate decay (and an action-noise annealing) runs over the time budget.
 
 ## [3.1.0] - unreleased
 

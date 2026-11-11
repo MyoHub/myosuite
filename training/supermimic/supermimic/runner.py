@@ -60,6 +60,9 @@ from supermimic.task import TaskView
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM
 from myosuite.envs.myo.tasks.mimic.tracking.models import model_version
 
+_CONTRACT_BEFORE_SUBMODELS = {"root": "free", "motors": [], "effectors": []}
+"""The contract fields a checkpoint from before submodels leaves out (a free-root body of muscles only)."""
+
 
 class AnalyticObsGroup:
     """An observation group of the env, evaluated from states: same terms, order, history and scale."""
@@ -1222,14 +1225,18 @@ class SuperMimicRunner:
 
     def task_contract(self) -> dict:
         """What the policy's inputs and outputs mean: every observation group's terms in order with their widths, the
-        actuators in action order, the model and its version, and the timing. Stored in checkpoints, checked on load."""
+        actuators in action order, the model and its version, its root kind, motors and effectors, and the timing.
+        Stored in checkpoints, checked on load."""
         om = self.uenv.observation_manager
         obs = {g: [[n, list(d)] for n, d in zip(om._group_obs_term_names[g], om._group_obs_term_dim[g], strict=True)]
                for g in om._group_obs_term_names}  # fmt: skip
-        model = self.cmd.cfg.model
-        return {"obs": obs, "actuators": list(self.cmd.info.muscle_names), "model": model,
+        model, info = self.cmd.cfg.model, self.cmd.info
+        return {"obs": obs, "actuators": list(info.actuator_names), "model": model,
                 "model_version": model_version(model), "step_dt": round(float(self.uenv.step_dt), 9),
-                "stride": self.cmd.stride, "lookahead": self.cmd.lookahead}  # fmt: skip
+                "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
+                "root": "fixed" if info.fixed_root else "free",
+                "motors": [info.actuator_names[a] for a in info.motor_ids],
+                "effectors": list(self.cmd.model_cfg.effectors)}  # fmt: skip
 
     def _check_contract(self, ck: dict) -> None:
         """Refuse a checkpoint trained on another task contract (unless accept_contract_mismatch). Checkpoints from
@@ -1246,6 +1253,10 @@ class SuperMimicRunner:
                 if v != mine_dims[k]
             ]
         else:
+            saved = {
+                **_CONTRACT_BEFORE_SUBMODELS,
+                **saved,
+            }  # contracts from before submodels: a free-root body
             diff = [
                 f"{k}: checkpoint {saved.get(k)!r} != env {mine[k]!r}"
                 for k in mine
