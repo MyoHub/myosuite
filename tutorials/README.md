@@ -73,9 +73,9 @@ Headless video on Linux often needs `MUJOCO_GL=egl`; on macOS use `MUJOCO_GL=glf
 
 ## Models
 
-The models come from the `myo-sim` package, which MyoSuite pins to 0.2.4 on PyPI and installs automatically. A plain `pip install myosuite` or `pip install -e .` therefore gives the same XML assets the notebooks use; no extra install step is needed. The few MPL, YCB and furniture assets are bundled in `myosuite/envs/myo/assets/`.
+The models come from the `myo-sim` package, which MyoSuite pins to 0.2.5 on PyPI and installs automatically. A plain `pip install myosuite` or `pip install -e .` therefore gives the same XML assets the notebooks use; no extra install step is needed. The few MPL, YCB and furniture assets are bundled in `myosuite/envs/myo/assets/`.
 
-The `.[dev]` extra is only for development (tests and linters), not for models. Do not install a different `myo-sim` version unless you intend to retrain: the baseline policies in the tutorials are tied to 0.2.4.
+The `.[dev]` extra is only for development (tests and linters), not for models. Do not install a different `myo-sim` version unless you intend to retrain: the baseline policies in the tutorials are tied to 0.2.5.
 
 ## Inverse kinematics
 
