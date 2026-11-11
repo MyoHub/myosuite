@@ -5,7 +5,7 @@
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
-[![Documentation Status](https://readthedocs.org/projects/myosuite/badge/?version=latest)](https://myosuite.readthedocs.io/en/latest/)
+[![Documentation Status](https://img.shields.io/readthedocs/myosuite/latest)](https://myosuite.readthedocs.io/en/latest/)
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/myohub/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://static.pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
