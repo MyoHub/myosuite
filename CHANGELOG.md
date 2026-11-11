@@ -193,6 +193,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+* Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
+
 * **Mimic resets always leave a reference transition.** CPU and mjlab `myoMimic-v0` sample only bins with a frame before the clip end. A one-second clip at a 10 ms control step previously created a bin containing only its final frame; resetting there made the first step index past the clip or enter the next clip. Terminal frames remain available for final-step scoring and failure statistics. Clips shorter than one control transition now fail with a clear error.
 
 * **MuscleMimic checkpoints load on JAX ≥ 0.10.** `load_local_policy_artifacts` restored the Orbax `train_state` without a target, so Orbax rebuilt each array's sharding from the device name saved in the checkpoint (`TFRT_CPU_0` for `amathislab/mm-10m-2`), which JAX 0.10 renamed to `cpu:0`. Every MuscleMimic policy load (tutorials 5.1, 5.4 and 5.5, `myosuite-musclemimic-fullbody-eval`, `export_onnx --framework orbax`) failed with `Device TFRT_CPU_0 was not found in jax.local_devices()`. It now restores against the checkpoint's own metadata placed on the CPU device ([#614]).
