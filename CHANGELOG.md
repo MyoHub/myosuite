@@ -212,6 +212,8 @@ Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full com
 
 ### Fixed
 
+* **mjlab waypoint resets preserve the initial route distance.** Clearing the previous step's state no longer zeros the new route's distance through an aliased tensor, preventing a spurious negative progress reward after reset.
+
 * **`myoFingerReachRandom-v0` and `motorFingerReachRandom-v0` targets on MuJoCo 3.12 and newer.** The table of reachable targets checked joint types with a comparison that is always false from MuJoCo 3.12, so no joint was sampled and every target sat at the fingertip's start. Both envs, on the CPU and in mjlab, now sample the full table on every version.
 * **MuscleMimic checkpoints load on JAX ≥ 0.10.** `load_local_policy_artifacts` restored the Orbax `train_state` without a target, so Orbax rebuilt each array's sharding from the device name saved in the checkpoint (`TFRT_CPU_0` for `amathislab/mm-10m-2`), which JAX 0.10 renamed to `cpu:0`. Every MuscleMimic policy load (tutorials 5.1, 5.4 and 5.5, `myosuite-musclemimic-fullbody-eval`, `export_onnx --framework orbax`) failed with `Device TFRT_CPU_0 was not found in jax.local_devices()`. It now restores against the checkpoint's own metadata placed on the CPU device ([#614]).
 * **Motion clips load without pickle:** `load_motion_clip`, the CPU Mimic clip env and the full-body observation adapter open `.npz` files with `allow_pickle=False` (unpickling a downloaded file can run code). Names stored as bytes now read as text instead of `"b'name'"`, and a pickled name array is refused with instructions for re-saving it. SAR synergy metadata is written as strings, and older folders still load ([#522]).

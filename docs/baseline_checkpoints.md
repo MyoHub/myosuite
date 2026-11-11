@@ -1,5 +1,7 @@
 # Default-run policies (mjlab / RSL-RL)
 
+**Waypoint reset reward fix (3.1.0):** mjlab `myoFullBodyWaypoint-v0` now preserves the initial route distance after repeated resets. The first progress reward of each new episode uses the actual distance change instead of a spurious negative distance. Observation/action shapes and checkpoint loading are unchanged; returns from runs with the old reset bug should be re-evaluated. CPU behavior is unchanged.
+
 Every mjlab-registered env id with a default `scripts/train_mjlab.py` run (Sarc/Fati/Reaf
 muscle-condition variants excluded here; they use the same checkpoint as their base env).
 

@@ -23,7 +23,10 @@ from mjlab.tasks.registry import load_env_cfg  # noqa: E402
 
 from myosuite import make_env  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.waypoint.mdp import COMMAND  # noqa: E402
+from myosuite.envs.myo.backends.mjlab.tasks.waypoint.mdp import (  # noqa: E402
+    COMMAND,
+    WaypointCommand,
+)
 from myosuite.tests.support.joint_couplings import (  # noqa: E402
     joint_equality_residuals,
 )
@@ -31,6 +34,51 @@ from myosuite.tests.support.joint_couplings import (  # noqa: E402
 ENV_ID = "myoFullBodyWaypoint-v0"
 # Float32 Warp vs float64 MuJoCo with foot contacts after one 10 ms step.
 OBS_ATOL, REW_ATOL = 5e-3, 5e-3
+
+
+def test_repeated_partial_reset_preserves_initial_distance() -> None:
+    """Reset after advance has aliased the distance into the last-step state."""
+    from types import SimpleNamespace
+
+    from myosuite.terms.waypoint import waypoint_progress
+
+    route = SimpleNamespace(
+        _fixed=torch.tensor([[3.0, 4.0]]),
+        _start=torch.zeros(2),
+        waypoints=torch.zeros(2, 1, 2),
+        next_index=torch.zeros(2, dtype=torch.long),
+        prev_distance=torch.zeros(2),
+        state={"progress": torch.zeros(2)},
+    )
+    ids = torch.tensor([0, 1])
+    WaypointCommand._resample_command(route, ids)
+    result = waypoint_progress(
+        torch,
+        torch.zeros(2, 2),
+        route.waypoints,
+        route.next_index,
+        route.prev_distance,
+        0.1,
+        torch.zeros(2, dtype=torch.bool),
+    )
+    route.next_index = result["next_index"]
+    route.prev_distance = result["prev_distance"]
+    route.state = result
+    before = route.prev_distance[1].clone()
+    for _ in range(2):
+        WaypointCommand._resample_command(route, torch.tensor([0]))
+        torch.testing.assert_close(route.prev_distance[0], torch.tensor(5.0))
+        torch.testing.assert_close(route.prev_distance[1], before)
+        next_step = waypoint_progress(
+            torch,
+            torch.zeros(2, 2),
+            route.waypoints,
+            route.next_index,
+            route.prev_distance,
+            0.1,
+            torch.zeros(2, dtype=torch.bool),
+        )
+        torch.testing.assert_close(next_step["progress"], torch.zeros(2))
 
 
 def _t(x: np.ndarray) -> torch.Tensor:
