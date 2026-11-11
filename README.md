@@ -57,7 +57,7 @@ pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
                                  # build for your driver; with pip see docs/source/install.rst
 ```
 
-Or: `uv sync -p 3.10 --extra rl`.
+Or: `uv sync -p 3.11 --extra rl`.
 
 From PyPI: `pip install -U myosuite`.
 
