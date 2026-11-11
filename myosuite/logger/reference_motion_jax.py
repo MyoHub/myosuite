@@ -158,10 +158,12 @@ class ReferenceMotion:
         # resolve values
         assert "time" in reference.keys(), "Missing key (time) in reference"
         reference.setdefault(
-            "robot_init", reference["robot"][0] if "robot" in reference else None
+            "robot_init",
+            reference["robot"][0] if reference.get("robot") is not None else None,
         )
         reference.setdefault(
-            "object_init", reference["object"][0] if "object" in reference else None
+            "object_init",
+            reference["object"][0] if reference.get("object") is not None else None,
         )
 
         # Handle conversion from euler to quaternion format for object_init if needed
@@ -274,35 +276,27 @@ class ReferenceMotion:
         key: Optional PRNG key for RANDOM references. Without one, the stored key is
             split, so successive calls draw new samples.
         """
+        channels = (self.reference[k] for k in ("robot", "robot_vel", "object"))
         if self.type == ReferenceType.FIXED:
-            robot_ref = self.reference["robot"][0]
-            robot_vel_ref = self.reference["robot_vel"][0]
-            object_ref = self.reference["object"][0]
+            robot_ref, robot_vel_ref, object_ref = (
+                None if values is None else values[0] for values in channels
+            )
         elif self.type == ReferenceType.RANDOM:
             if key is None:
                 self._random_key, key = jrandom.split(self._random_key)
             rng_key, rng1, rng2 = jrandom.split(key, 3)
-            robot_ref = jrandom.uniform(
-                rng1,
-                shape=self.reference["robot"][
-                    0, :
-                ].shape,  # Specify the shape explicitly
-                minval=self.reference["robot"][0, :],
-                maxval=self.reference["robot"][1, :],
-            )
-            robot_vel_ref = jrandom.uniform(
-                rng2,
-                shape=self.reference["robot_vel"][
-                    0, :
-                ].shape,  # Specify the shape explicitly
-                minval=self.reference["robot_vel"][0, :],
-                maxval=self.reference["robot_vel"][1, :],
-            )
-            object_ref = jrandom.uniform(
-                rng_key,
-                shape=self.reference["object"][0, :].shape,
-                minval=self.reference["object"][0, :],
-                maxval=self.reference["object"][1, :],
+            robot_ref, robot_vel_ref, object_ref = (
+                None
+                if values is None
+                else values[0]
+                if len(values) == 1
+                else jrandom.uniform(
+                    channel_key,
+                    shape=values[0].shape,
+                    minval=values[0],
+                    maxval=values[1],
+                )
+                for values, channel_key in zip(channels, (rng1, rng2, rng_key))
             )
         elif self.type == ReferenceType.TRACK:
             ind, ind_next = self.find_timeslot_in_reference(time=time)
@@ -311,7 +305,9 @@ class ReferenceMotion:
             def exact_frame_case(_):
                 # Exact frame[time] found for reference
                 robot_ref = (
-                    self.reference["robot"][ind]
+                    None
+                    if self.reference["robot"] is None
+                    else self.reference["robot"][ind]
                     if self.robot_horizon > 1
                     else self.reference["robot"][0]
                 )
@@ -348,7 +344,11 @@ class ReferenceMotion:
                         + blend * self.reference["robot_vel"][ind_next]
                     )
                 else:
-                    robot_ref = self.reference["robot"][0]
+                    robot_ref = (
+                        None
+                        if self.reference["robot"] is None
+                        else self.reference["robot"][0]
+                    )
                     robot_vel_ref = (
                         None
                         if self.reference["robot_vel"] is None
