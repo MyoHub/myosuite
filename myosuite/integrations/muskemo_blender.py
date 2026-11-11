@@ -128,8 +128,12 @@ def import_model(
         or document.get("units") != "metres-radians-kilograms"
     ):
         raise ValueError("Unsupported anatomy schema or units")
-    if not prefix or len(prefix) > 32 or any(c in prefix for c in "\\/:"):
-        raise ValueError("Use a namespace of 1-32 characters without slashes/colon")
+    if (
+        not prefix
+        or len(prefix.encode("utf-8")) > 32
+        or any(c in prefix for c in "\\/:")
+    ):
+        raise ValueError("Use a namespace of 1-32 UTF-8 bytes without slashes/colon")
     if any(
         c.name.startswith(prefix + ":")
         for c in (*bpy.data.collections, *bpy.data.objects)
@@ -351,8 +355,9 @@ def _populate(
                 )
                 panel = importlib.import_module(package + ".scripts.muscle_panel")
                 wrap_name = objects["geom"][element["object"]].name
+                previous_modifiers = set(obj.modifiers)
                 assign.assign_muscle_wrap(wrap_name, obj.name, reporter)
-                modifier = obj.modifiers[obj.name + "_wrap_" + wrap_name]
+                modifier = next(m for m in obj.modifiers if m not in previous_modifiers)
                 panel.set_socket(
                     modifier, "Index Of Pre Wrap Point Starting At 1", pre_wrap
                 )

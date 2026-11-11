@@ -65,7 +65,13 @@ def native_blender(tmp_path: Path) -> tuple[str, str, Path]:
     return blender, addon, anatomy
 
 
-def _run_blender(native: tuple[str, str, Path], tmp_path: Path, checks: str) -> None:
+def _run_blender(
+    native: tuple[str, str, Path],
+    tmp_path: Path,
+    checks: str,
+    *,
+    prefix: str = "MyoSuite",
+) -> None:
     blender, addon, anatomy = native
     importer = (
         Path(__file__).resolve().parents[1] / "integrations" / "muskemo_blender.py"
@@ -80,7 +86,7 @@ spec = importlib.util.spec_from_file_location("bridge", {str(importer)!r})
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 document = json.loads(Path({str(anatomy)!r}).read_text(encoding="utf-8"))
-objects = bridge.import_model({str(anatomy)!r}, addon={addon!r})
+objects = bridge.import_model({str(anatomy)!r}, addon={addon!r}, prefix={prefix!r})
 output = Path({str(tmp_path / "patch.json")!r})
 bpy.context.scene.frame_set(1)
 bpy.ops.object.select_all(action="DESELECT")
@@ -233,4 +239,24 @@ def test_moving_free_root_is_not_labelled_a_scalar_joint_sweep(
         assert "sweep_joint" not in report
         assert "max_effective_moment_arm_error" not in report
     """,
+    )
+
+
+def test_wrapping_survives_blender_modifier_name_truncation(
+    native_blender: tuple[str, str, Path],
+    tmp_path: Path,
+) -> None:
+    """A valid long namespace can exceed Blender's modifier-name byte limit."""
+    import myo_sim
+
+    export_model(myo_sim.load_spec("myoelbow").compile(), native_blender[2])
+    _run_blender(
+        native_blender,
+        tmp_path,
+        """
+        assert len(objects["muscle"]) == 6
+        assert sum("_wrap_" in m.name for obj in objects["muscle"].values()
+                   for m in obj.modifiers) == 6
+    """,
+        prefix="ABCDEFGHIJKLMNOPQRSTUVWXYZ123456",
     )
