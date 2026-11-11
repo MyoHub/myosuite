@@ -266,7 +266,7 @@ tutorial 5.5 were measured with the earlier defaults.
 | Against itself, A chases | 11/12 | 0 | 5.2 s | runner 1.7 s |
 | Against itself, B chases | 0/12 | 12 | 7.1 s | runner 5.5 s, chaser 6.7 s |
 
-It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) from a policy that descends from the behaviour-cloned tutorial 5.4 walker (`policy_bc_best.pt`, a student of MuscleMimic `amathislab/mm-10m-2`), so it is not trained from scratch on this body. Observations and actions match the game; only the dynamics of `myofullbody` were new to it. Policies trained on `musclemimic_models` do not carry over reliably: moving between releases 1.0.6 and 1.0.5 of that body already took a similar policy to 0 tags.
+It was fine-tuned with self-play on `myofullbody` (4,000 iterations, 2048 envs) from a policy that descends from the behaviour-cloned walker from the earlier version of tutorial 5.4 (`policy_bc_best.pt`, a student of MuscleMimic `amathislab/mm-10m-2`), so it is not trained from scratch on this body. Observations and actions match the game; only the dynamics of `myofullbody` were new to it. Policies trained on `musclemimic_models` do not carry over reliably: moving between releases 1.0.6 and 1.0.5 of that body already took a similar policy to 0 tags.
 
 **Tutorial files for ChaseTag and directional walking (myoSuperMimic, `myofullbody`).** Tutorials 5.4, 5.6 and 5.7 download these from the same repo; they come from `training/chasetag_teacher` and were trained only on the KIT clips of `myoMimic-v0`'s default list (MuscleMimic's 972 KIT training motions, retargeted onto `myofullbody`; AMASS licence). Matches as above, 48 episodes per match and side:
 

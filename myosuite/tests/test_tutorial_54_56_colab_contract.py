@@ -15,7 +15,7 @@ import pytest
 pytestmark = pytest.mark.tier1
 
 _TUTORIALS = Path(__file__).resolve().parents[2] / "tutorials"
-_NB54 = _TUTORIALS / "5.4_MuscleMimic_Directional_Locomotion.ipynb"
+_NB54 = _TUTORIALS / "5.4_Directional_Locomotion.ipynb"
 _NB56 = _TUTORIALS / "5.6_ChaseTag_MyoChallenge.ipynb"
 _MUSCLEMIMIC = (
     "amathislab",
@@ -73,7 +73,7 @@ def test_56_exports_the_walker_and_offers_the_student(nb56: dict) -> None:
 @pytest.mark.parametrize(
     "filename",
     [
-        "5.4_MuscleMimic_Directional_Locomotion.ipynb",
+        "5.4_Directional_Locomotion.ipynb",
         "5.6_ChaseTag_MyoChallenge.ipynb",
         "5.7_ChaseTag_Steered_Teacher.ipynb",
     ],
