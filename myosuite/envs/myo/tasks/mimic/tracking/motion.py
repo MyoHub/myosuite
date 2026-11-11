@@ -244,7 +244,7 @@ def _process_clip(
 
 
 REF_FIELDS = tuple(f.name for f in dataclasses.fields(mt.TrackRef))
-_CACHE_SCHEMA = 1
+_CACHE_SCHEMA = 2
 
 
 @dataclass
@@ -460,6 +460,14 @@ def _array_digest(array: np.ndarray) -> str:
     return hashlib.sha256(np.ascontiguousarray(array).view(np.uint8)).hexdigest()
 
 
+def _metadata_digest(metadata: dict[str, Any]) -> str:
+    """Checksum canonical JSON metadata to detect accidental cache corruption."""
+    canonical = json.dumps(
+        metadata, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _read_cache(
     path: Path, key: str, m: mujoco.MjModel, tracked: Sequence[str],
     files: Sequence[str], dt: float, bin_s: float,
@@ -468,12 +476,20 @@ def _read_cache(
         n_clips = len(files)
         with np.load(path, allow_pickle=False) as data:
             shapes = _frame_shapes(m, len(tracked))
-            if set(data.files) != {"metadata", "clip_len", *shapes}:
+            if set(data.files) != {"metadata", "metadata_sha256", "clip_len", *shapes}:
                 raise ValueError("unexpected array fields")
             text = data["metadata"]
             if text.shape != () or text.dtype.kind != "U":
                 raise ValueError("metadata must be a Unicode scalar")
             meta = json.loads(str(text))
+            checksum = data["metadata_sha256"]
+            if (
+                not isinstance(meta, dict)
+                or checksum.shape != ()
+                or checksum.dtype.kind != "U"
+                or str(checksum) != _metadata_digest(meta)
+            ):
+                raise ValueError("invalid metadata checksum")
             if meta["schema"] != _CACHE_SCHEMA or meta["key"] != key:
                 raise ValueError("cache identity differs")
             names, flags = meta["names"], meta["quality_flags"]
@@ -535,7 +551,12 @@ def _write_cache(path: Path, key: str, lib: MotionLib) -> None:
             dir=path.parent, suffix=".npz", delete=False
         ) as f:
             temporary = Path(f.name)
-            np.savez(f, metadata=np.array(json.dumps(meta)), **arrays)
+            np.savez(
+                f,
+                metadata=np.array(json.dumps(meta)),
+                metadata_sha256=np.array(_metadata_digest(meta)),
+                **arrays,
+            )
             f.flush()
             os.fsync(f.fileno())
         temporary.replace(path)

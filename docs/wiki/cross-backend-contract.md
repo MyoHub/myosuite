@@ -213,9 +213,10 @@ hashed on every library lookup, including in-process hits; hashing and validated
 archive reads still cost I/O. Cache hits skip resampling and per-frame MuJoCo
 kinematics. This cache does not replace clip/model compatibility checks.
 
-Shapes, dtypes, finite values, clip metadata and array checksums are checked on
-disk reads. Invalid archives warn and are rebuilt. Writers use unique temporary
-files and atomic replacement; concurrent processes can redundantly build the
+Disk reads validate shapes, dtypes, finite values, clip metadata and checksums of
+every array and the canonical JSON metadata. The checksums detect accidental
+cache corruption. Invalid archives warn and are rebuilt. Writers use unique
+temporary files and atomic replacement; concurrent processes can redundantly build the
 same library but readers never consume a partially written archive. An unwritable
 cache warns and falls back to preprocessing. Cache directories are disposable;
 old entries are retained until you remove them. Each process also retains up to
