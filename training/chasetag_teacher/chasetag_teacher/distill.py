@@ -170,15 +170,16 @@ def yaw_rotate(obs: torch.Tensor, theta: torch.Tensor) -> torch.Tensor:
 
 def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096, lr: float = 1e-3,
           device: str = "cpu", init: dict | None = None, log: Callable[[str], None] = print,
-          yaw_aug: bool = False) -> dict:  # fmt: skip
+          yaw_aug: bool = False, obs_dim: int = OBS_DIM) -> dict:  # fmt: skip
     """Fit an ``ActorCritic`` student; returns ``{"state": plain state dict, "val_mse": ...}``.
 
     Args:
-        obs: (N, 546) observations (float16/32).
+        obs: (N, obs_dim) observations (float16/32).
         act: (N, 354) teacher excitations.
         init: A previous result to start from (warm start; its normalisation is kept).
         yaw_aug: Rotate every training sample about the world z axis by a random angle (:func:`yaw_rotate`); the
             normalisation then uses rotated samples too.
+        obs_dim: Observation size (546 for FBVs players, 528 for the directional walker).
     """
     # a large dataset stays in host memory; batches move to the device
     host = obs.nbytes + act.nbytes > 4 * 2**30
@@ -192,7 +193,7 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
             sub = yaw_rotate(sub, torch.rand(len(sub), device=device) * 2 * np.pi)
         mean = sub.mean(0)
         std = sub.std(0).clamp(min=1e-2)
-    net = ActorCritic(OBS_DIM, ACT_DIM).to(device)
+    net = ActorCritic(obs_dim, ACT_DIM).to(device)
     if init is not None:
         net.load_state_dict(init["raw_state"])
     n = len(X)
@@ -298,12 +299,14 @@ def canonicalise_inplace(obs: np.ndarray, chunk: int = 262144) -> np.ndarray:
     return obs
 
 
-def load_data(dirs: Sequence[str | Path]) -> tuple[np.ndarray, np.ndarray]:
+def load_data(
+    dirs: Sequence[str | Path], obs_dim: int = OBS_DIM
+) -> tuple[np.ndarray, np.ndarray]:
     """The (N, 546) observations and (N, 354) teacher excitations (float16) of the bout files (``b*.npz``) in
     ``dirs``, as :mod:`scripts.dagger` writes them."""
     files = sorted(f for d in dirs for f in Path(d).glob("b*.npz"))
     sizes = [np.load(f)["act"].shape[0] for f in files]
-    X = np.empty((sum(sizes), OBS_DIM), np.float16)
+    X = np.empty((sum(sizes), obs_dim), np.float16)
     Y = np.empty((sum(sizes), ACT_DIM), np.float16)
     k = 0
     for f, n in zip(files, sizes):

@@ -24,13 +24,19 @@ of a walking policy, and its distillation into one 546 -> 354 network that plays
    raw 546-d observation and outputs 354 excitations in [0, 1].
 4. **Evaluation.** `scripts/evaluate.py` plays every match of a matrix of players (teacher, ONNX students, the
    shipped baseline, an idle player) from both sides and reports tags and wins per player.
+5. **Directional walker** (`directional`, tutorial 5.4). The same teacher, asked for a world heading instead of a role,
+   walks one `myofullbody` on flat ground; DAgger (`scripts/dagger_directional.py`) distils it into a 528 -> 354
+   walker. The walker reads its joints, velocities, activations, root velocity in the yaw frame and the commanded
+   heading **in the yaw frame**, so it is invariant to rotations about the vertical axis by construction.
+   `export_chasetag_onnx` puts a 546 -> 528 adapter in front of it (heading toward or away from the opponent by the
+   role flag, turned off the fence like the teacher's planner) and writes a scored-game player (tutorial 5.6).
 
 This is a self-contained training project (`training/chasetag_teacher/`, import name `chasetag_teacher`), not
 part of the installable `myosuite` package; see `docs/wiki/training-guidelines.md`. MyoSuite never imports it.
 
 It replaces the earlier content of this project, a writer of (observation, action) pairs from the `mm-10m-2`
 steered teacher. That teacher stays available for playback as `ChaseTagSteeredPair` in
-`myosuite.integrations.musclemimic.steered_teacher` (tutorial 5.7).
+`myosuite.integrations.musclemimic.steered_teacher`. Tutorial 5.7 plays the myoSuperMimic teacher of this project.
 
 ## Attribution
 
@@ -45,11 +51,16 @@ The code in this project is new MyoSuite code (header `Copyright (c) MyoSuite Au
 
 ## Data and checkpoints
 
-Nothing is shipped: no motion clip, tracker or student.
+No motion clip is shipped. Tutorials 5.4, 5.6 and 5.7 download the 30-minute tracker
+(`supermimic/tracker_myofullbody_kit_30min.pt`), the directional walker (`directional/walker_myofullbody.pt`) and the
+ChaseTag student (`onnx/chasetag_supermimic_student.onnx`, and a self-play refinement of it,
+`onnx/chasetag_supermimic_selfplay.onnx`) from the baselines repo
+(`myosuite.core.hf_io.download_baseline_file`).
 
 - **Clips.** Retarget the AMASS KIT motions from your own AMASS download onto `myofullbody` with
-  `scripts/mimic/retarget_amass.py` (in MyoSuite); point `$MYOSUITE_KIT_ROOT` at the output folder. The AMASS licence
-  (non-commercial research) applies to the clips and to anything derived from them.
+  `scripts/mimic/retarget_amass.py` (in MyoSuite) and point `$MYOSUITE_KIT_ROOT` at the output folder, or name a
+  Hugging Face dataset of retargeted clips in `$MYOSUITE_MIMIC_DATASET` (`myosuite.envs.myo.tasks.mimic.tracking.kit_root`).
+  The AMASS licence (non-commercial research) applies to the clips and to anything derived from them.
 - **Tracker.** Train one with `training/supermimic` (its fast recipe; a 30-minute run was the teacher of the results
   below). The tracker must be trained on the same myo_sim version as the FBVs body (`check_same_body`).
 
@@ -84,6 +95,9 @@ python training/chasetag_teacher/scripts/retrain.py --out runs/s.pt --data runs/
 python training/chasetag_teacher/scripts/evaluate.py --out runs/eval.json --sm teacher=<tracker>/model_014164.pt \
     --onnx s21=runs/dagger/student_r21.onnx \
     --matches teacher:idle,teacher:base,base:teacher,s21:idle,s21:base,base:s21 --episodes 48
+# the directional walker (tutorial 5.4): DAgger with tutorial 5.4's evaluation after every round
+python training/chasetag_teacher/scripts/dagger_directional.py --out runs/walker --checkpoint <tracker>/model_014164.pt \
+    --rounds 8 --episodes 480 --workers 12
 ```
 
 `student_r<k>.onnx` is a scored-game player: `obs [batch, 546] -> action [batch, 354]`. In Python,
@@ -100,9 +114,14 @@ end in a tag. *Head-to-head*: bouts against the baseline won (a tag as chaser, n
 | baseline | 100 % | 50 % |
 | steered teacher (30-minute tracker + steering) | 92 % | 71 % |
 | student, round 21 (yaw-canonicalised) | 98 % | 61 % |
+| directional walker, round 5 (`scripts/dagger_directional.py`, as a player through `export_chasetag_onnx`) | 100 % | 64 % |
 
 One tracker, one DAgger run and one seed per row; the earlier rounds trained a plain student on raw observations
 and the canonicalised one started at round 20. These numbers will move with more runs.
+
+The directional walker (12 rounds of 480 episodes; round 5 scored best) survives 91 % of tutorial 5.4's 2 s rollouts
+(8 headings x 10 seeds from standing, alignment +0.85) and 85 % over 10 s (alignment +0.93); later rounds were not
+better.
 
 ## What lives where
 
@@ -110,7 +129,7 @@ and the canonicalised one started at round 20. These numbers will move with more
 |---|---|
 | MyoSuite | the scored game, the role and arena headings (`myosuite.integrations.musclemimic.steering`), the student network (`ActorCritic`), `export_fbvs_onnx`, the `myoMimic-v0` task, its motion library and the retargeting script |
 | `training/supermimic` | the tracker: its training, checkpoints, kinematics (`SkeletonKinematics`, `rel_sites`) and policy network |
-| this project | `library` / `reference` (steering library and reference), `tracker` / `player` (the tracker on one FBVs player), `match` (bouts, scores), `distill` / `augment` (DAgger, canonicalisation, ONNX) |
+| this project | `library` / `reference` (steering library and reference), `tracker` / `player` (the tracker on one FBVs player), `match` (bouts, scores), `distill` / `augment` (DAgger, canonicalisation, ONNX), `directional` (the directional walker: scene, observation, teacher, evaluation, ChaseTag export) |
 
 ## Tests
 
@@ -119,7 +138,8 @@ cd training/chasetag_teacher && pytest
 ```
 
 Without data the tests check the canonicalisation (exact invariance), the half-turn symmetry, the 546 -> 354
-interface, ONNX against torch, the scene symmetry, the players' body against the tracker's, and the tracker's
+interface, ONNX against torch, the scene symmetry, the directional observation (layout, yaw invariance), its
+ChaseTag adapter against the teacher's planner heading and its ONNX, the players' body against the tracker's, and the tracker's
 observation and the reference goal against `myoMimic-v0` on synthetic clips. With `$MYOSUITE_KIT_ROOT` and
 `$CHASETAG_TEACHER_CHECKPOINT` (a tracker `model_*.pt`) the `data` tests also play bouts; without them they skip.
 MyoSuite's CI does not run these tests.
