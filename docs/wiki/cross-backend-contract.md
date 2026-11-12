@@ -288,6 +288,17 @@ The parity tests are `test_mjlab_cpu_twins.py` (basic suite, per family: see `do
 binding. Custom action processing, per-substep application and command state need separate checks; observation export
 alone does not demonstrate their support. Keep MyoSuite-specific support unverified until that task's pilot passes.
 
-The 2026-11-12 pilot uses mjswan 0.12.12 and mjviser 0.0.14 with MuJoCo 3.11. In its isolated environment,
-mjviser 0.0.17 instead pulled mujoco-core 4.0.1. Record the resolved build and WASM runtime versions, and verify
-compatibility before upgrading them; these build pins do not establish custom action/command support.
+The 2026-11-12 directional-forward pilot pins the combined mjswan fork at
+[`2c76c56c78452fa433663e98b4f905a8acded6a7`](https://github.com/M-Colley/mjswan/commit/2c76c56c78452fa433663e98b4f905a8acded6a7),
+with upstream fixes for [static tracing values (#216)](https://github.com/ttktjmt/mjswan/pull/216),
+[readonly event classes (#217)](https://github.com/ttktjmt/mjswan/pull/217) and
+[constant reset graphs/structural validation (#218)](https://github.com/ttktjmt/mjswan/pull/218).
+Event instance history remains unsupported; mutating class state is rejected. Remove the fork pin only after
+these fixes are merged and released, and the same build/parity/playback checks pass against that release.
+
+That pilot records physics/control steps of 0.001/0.005 s (decimation 5), MuJoCo WASM 3.11,
+ONNX Runtime Web 1.29.0 and three.js 0.181.2. Its build uses mjviser 0.0.14; mjviser 0.0.17 instead pulled
+mujoco-core 4.0.1 in the isolated build environment. Record resolved versions and verify before upgrading.
+The five pilot graphs pass native ONNX checks, and its 64-state Torch/ONNX comparison has maximum error
+1.907e-6; browser playback and manual Reset were checked. This evidence applies to that configured pilot,
+not every task or arbitrary custom action/command binding.
