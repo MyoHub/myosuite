@@ -138,6 +138,56 @@ def test_motor_controls_match_the_closed_form(reserve: float | None) -> None:
     )  # before the gear
 
 
+@pytest.mark.parametrize("reference", [0.0, 0.5, 2.0])
+@pytest.mark.parametrize("gear", [1.0, -2.0])
+def test_servo_peak_torque_includes_native_bias(reference: float, gear: float) -> None:
+    model = mujoco.MjModel.from_xml_string(f"""
+      <mujoco><compiler angle="radian"/><option gravity="0 0 0"/>
+      <worldbody><body><joint name="j" ref="{reference}"/><geom size=".1"/></body></worldbody>
+      <actuator><position joint="j" kp="100" gear="{gear}" ctrlrange="1 2"/></actuator></mujoco>
+    """)
+    data = mujoco.MjData(model)
+    endpoints = []
+    for ctrl in model.actuator_ctrlrange[0]:
+        data.ctrl[0] = ctrl
+        mujoco.mj_forward(model, data)
+        endpoints.append(data.qfrc_actuator.copy())
+    expected = np.max(np.abs(endpoints), axis=0)
+    optimizer = StaticOptimizer(model)
+    np.testing.assert_allclose(optimizer.peak_actuator_qfrc(), expected, rtol=1e-12)
+    np.testing.assert_allclose(
+        optimizer.config.reserve_optimal_force,
+        StaticOptimizationConfig().reserve_fraction * expected,
+        rtol=1e-12,
+    )
+
+
+@pytest.mark.parametrize("fraction", [0.005, 0.1])
+def test_servo_reserves_match_the_biased_closed_form(fraction: float) -> None:
+    model = mujoco.MjModel.from_xml_string("""
+      <mujoco><compiler angle="radian"/><option gravity="0 0 0"/>
+      <worldbody><body><joint name="j" ref="2"/><geom size=".1"/></body></worldbody>
+      <actuator><position joint="j" kp="10" ctrlrange="-1 1"/></actuator></mujoco>
+    """)
+    optimizer = StaticOptimizer(
+        model, StaticOptimizationConfig(reserve_fraction=fraction)
+    )
+    frame = optimizer.solve(model.qpos0, np.zeros(1), np.zeros(1), np.array([19.0]))
+    # Native force is 10 u - 20, so its peak magnitude on [-1, 1] is 30.
+    # min u^2 + (r / F)^2, 10 u - 20 + r = -19 -> u=10/(100+F^2).
+    reserve = fraction * 30.0
+    assert frame.status == "solved"
+    np.testing.assert_allclose(
+        frame.activation, [10.0 / (100.0 + reserve**2)], rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        frame.reserve, [reserve**2 / (100.0 + reserve**2)], rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        frame.actuator_force + frame.reserve, frame.joint_torque, atol=1e-8
+    )
+
+
 def _scaled_strength(model: mujoco.MjModel, k: float) -> mujoco.MjModel:
     """*model* without gravity or joint springs, its muscles *k* times as strong."""
     m = copy.deepcopy(model)
