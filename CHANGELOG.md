@@ -13,7 +13,8 @@ Changes since **v3.1.0**.
   checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`, joint or site
   transmission: an action in [0, 1] maps onto each motor's control range, on the CPU and in the twin through
   `MyoActionCfg.motor_ctrl_range`), any number of tracked bodies, no contact bodies (no ground, no touch), an
-  optional left-right mirror map and effectors whose position error is reported as a success metric. Built-in
+  optional left-right mirror map, effectors whose position error is reported as a success metric and
+  the kinematic fingerprint of clips from another retargeting (`fingerprint`). Built-in
   example: `myoelbow2dof` (myo_sim's 2-DoF elbow, fixed base, fingertip error in cm). myoSuperMimic trains on such
   bodies (fixed-root world model, one analytic drive per actuator for muscles and direct or first-order motors,
   mirror augmentation only with a map); the full body's results are bit-identical. The checkpoint task contract

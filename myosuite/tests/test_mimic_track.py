@@ -470,6 +470,27 @@ def test_motors_by_transmission() -> None:
     assert info.motor_site_names == ["forearm_motor_site"]
 
 
+def test_a_model_may_bring_its_fingerprint() -> None:
+    """A body whose clips come from another retargeting names its own fingerprint."""
+    import dataclasses
+
+    from myosuite.envs.myo.tasks.mimic.tracking.models import (
+        MODELS,
+        kinematic_fingerprint,
+        register_model,
+    )
+
+    name = "myoelbow2dof_own_fingerprint"
+    if name not in MODELS:
+        register_model(
+            dataclasses.replace(
+                MODELS["myoelbow2dof"], name=name, fingerprint=lambda m: f"nq{m.nq}"
+            )
+        )
+    assert kinematic_fingerprint(name) == "nq2"
+    assert kinematic_fingerprint("myoelbow2dof") != "nq2"
+
+
 def test_submodel_motion_lib_has_no_root(submodel) -> None:
     name, path = submodel
     m = compiled_body(name)

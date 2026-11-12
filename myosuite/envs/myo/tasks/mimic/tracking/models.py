@@ -70,6 +70,9 @@ class MimicModelCfg:
         effector_metric: Name of that metric.
         effector_scale: Its unit per metre (100: cm).
         version: Version of the package the body comes from (the clips' refit metadata).
+        fingerprint: ``fingerprint(compiled body) -> str``, the kinematic fingerprint
+            its clips were fitted with (e.g. their retargeting's landmark bodies and
+            feet); ``None``: from the model's SMPL+H map (see :func:`kinematic_fingerprint`).
         njmax: MuJoCo-Warp constraint rows per world.
         nconmax: MuJoCo-Warp contacts per world.
     """
@@ -85,6 +88,7 @@ class MimicModelCfg:
     effector_metric: str = "effector_err_mm"
     effector_scale: float = 1000.0
     version: Callable[[], str] = _myo_sim_version
+    fingerprint: Callable[[mujoco.MjModel], str] | None = None
     njmax: int = 768
     nconmax: int = 96
 
@@ -268,6 +272,8 @@ def kinematic_fingerprint(name: str) -> str:
     )
 
     mc = model_cfg(name)
+    if mc.fingerprint is not None:
+        return mc.fingerprint(compiled_body(name))
     smap = SMPLH_MAPS.get(mc.name)
     if smap is None:
         return fingerprint(compiled_body(name), (), [[b] for b in mc.foot_bodies])
