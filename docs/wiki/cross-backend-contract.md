@@ -288,6 +288,20 @@ The parity tests are `test_mjlab_cpu_twins.py` (basic suite, per family: see `do
 binding. Custom action processing, per-substep application and command state need separate checks; observation export
 alone does not demonstrate their support. Keep MyoSuite-specific support unverified until that task's pilot passes.
 
+**Motion tracking needs an explicit command binding.** MyoSuite's
+`tasks.mimic_tracking.commands.MotionCommandCfg` shares its class name with mjlab's config but describes a
+different command: `task.motion.clips`, its root/model, future goal frames and multi-clip reset/reference timing.
+The pinned mjswan registry matches that name to its built-in `TrackingCommand` and currently emits empty anchor/body
+metadata and default sampling settings for the MyoSuite config. That successful adaptation does not preserve the task.
+Register a MyoSuite-specific binding that implements those semantics and validate its reference state and clock;
+the built-in mapping is unsupported for `myoMimic-v0`. The heading-command pilot below does not test this path.
+
+The [SuperMimic training package](../../training/supermimic/README.md) returns an inference callable with separate
+`policy` and `goal` observation slots. Its `Policy` module embeds both frozen normalizers, but the package currently
+has no dedicated ONNX export API. A two-input module export does not export observation/history assembly, motion
+sampling or the browser command binding; it is not an end-to-end SuperMimic browser deployment. The generic RSL-RL
+checkpoint exporter is not a loader for that package's native SuperMimic checkpoint format.
+
 The 2026-11-12 directional-forward pilot pins the combined mjswan fork at
 [`2c76c56c78452fa433663e98b4f905a8acded6a7`](https://github.com/M-Colley/mjswan/commit/2c76c56c78452fa433663e98b4f905a8acded6a7),
 with upstream fixes for [static tracing values (#216)](https://github.com/ttktjmt/mjswan/pull/216),
