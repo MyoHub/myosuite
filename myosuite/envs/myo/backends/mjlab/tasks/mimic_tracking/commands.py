@@ -87,7 +87,9 @@ class MotionCommand(CommandTerm):
         self._joint_qadr = torch.as_tensor(self.info.joint_qadr, device=dev)
         self._joint_dadr = torch.as_tensor(self.info.joint_dadr, device=dev)
         self.goal_stride = max(1, round(task.obs.goal_spacing_s / env.step_dt))
-        self.goal_frame, self.goal_bodies, anchor = goal_layout(task, cfg.model)
+        self.goal_frame, bodies, anchor = goal_layout(task, cfg.model)
+        # on the device: myoSuperMimic indexes with it inside a captured CUDA graph
+        self.goal_bodies = torch.as_tensor(bodies, dtype=torch.long, device=dev)
         self.goal_anchor = tuple(
             torch.as_tensor(x, dtype=torch.float32, device=dev) for x in anchor
         )
