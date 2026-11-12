@@ -98,7 +98,7 @@ class SkeletonKinematics:
             off_p.append(p), off_R.append(R)
             js = []
             for j in range(m.body_jntadr[b], m.body_jntadr[b] + m.body_jntnum[b]):
-                jt = m.jnt_type[j]
+                jt = int(m.jnt_type[j])
                 assert jt in (
                     mujoco.mjtJoint.mjJNT_HINGE,
                     mujoco.mjtJoint.mjJNT_SLIDE,

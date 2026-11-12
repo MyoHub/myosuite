@@ -55,9 +55,10 @@ class MuscleActivation:
             not m.actuator_actearly.any()
         ), "actearly actuators use the next activation for force"
         assert (m.actuator_actnum[mus] == 1).all()
-        filt = [a for a in mot if dyn[a] == mujoco.mjtDyn.mjDYN_FILTER]
+        # int(): a NumPy scalar does not compare equal to a MuJoCo enum member (MuJoCo >= 3.17)
+        filt = [a for a in mot if int(dyn[a]) == mujoco.mjtDyn.mjDYN_FILTER]
         assert all(
-            dyn[a] in (mujoco.mjtDyn.mjDYN_NONE, mujoco.mjtDyn.mjDYN_FILTER)
+            int(dyn[a]) in (mujoco.mjtDyn.mjDYN_NONE, mujoco.mjtDyn.mjDYN_FILTER)
             for a in mot
         )
         self.motor_filter = torch.tensor([a in filt for a in mot], device=device)
