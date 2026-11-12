@@ -32,7 +32,7 @@ from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.sim import MujocoCfg
 
-from myosuite.core.body_scaling import _plain_scales, _scale_spec
+from myosuite.core.body_scaling import _plain_scales, scale_spec
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
@@ -253,7 +253,7 @@ def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
         spec = builder.build_spec() if task.is_subject else builder.build()[1]
     if task.is_subject:
         scales = kwargs.get("scales")
-        _scale_spec(
+        spec = scale_spec(
             spec, {} if scales is None else scales, total_mass=kwargs.get("total_mass")
         )
     sarcopenia = task.wrapper_kwargs("SarcopeniaWrapper")

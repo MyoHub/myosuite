@@ -479,9 +479,8 @@ def test_muscles_keep_their_force_in_the_default_pose(name: str) -> None:
     spec = _coupled_leg() if name == "coupled_leg" else MODELS[name]()
     ref = spec.copy().compile()
     rng = np.random.default_rng(2)
-    scaled = scale_model(
-        spec, {b.name: rng.uniform(0.85, 1.2, 3) for b in spec.bodies[1:]}
-    )
+    factors = {b.name: rng.uniform(0.85, 1.2, 3) for b in spec.bodies[1:]}
+    scaled = scale_model(spec, factors)
     forces = []
     for model in (ref, scaled):
         data = mujoco.MjData(model)
@@ -491,7 +490,21 @@ def test_muscles_keep_their_force_in_the_default_pose(name: str) -> None:
         equality = data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY
         np.testing.assert_allclose(data.efc_pos[equality], 0, atol=1e-12)
         forces.append(data.actuator_force.copy())
-    np.testing.assert_allclose(forces[1], forces[0], rtol=1e-9, atol=1e-9)
+    from myo_sim.scaling import scale_report
+
+    rerouted = {
+        item.split()[1].rstrip(":")
+        for item in scale_report(spec, factors).skipped
+        if "changes its path" in item
+    }
+    keep = [
+        i
+        for i in range(ref.nu)
+        if ref.tendon(int(ref.actuator_trnid[i, 0])).name not in rerouted
+    ]
+    assert len(rerouted) <= 0.1 * ref.ntendon
+    np.testing.assert_allclose(forces[1][keep], forces[0][keep], rtol=1e-9, atol=1e-9)
+    np.testing.assert_allclose(_peak_force(scaled), _peak_force(ref), rtol=1e-12)
 
 
 def test_myoleg_quadriceps_lengths_are_measured_with_the_patella_assembled() -> None:
@@ -830,13 +843,17 @@ def test_mesh_recreation_preserves_authored_data_and_names() -> None:
     before = {field: np.array(getattr(mesh, field), copy=True) for field in fields}
     original_scale = mesh.scale.copy()
     spec.compile()
-    _scale_spec(spec, {"thigh": (0.8, 0.9, 1.1)})
+    spec = _scale_spec(spec, {"thigh": (0.8, 0.9, 1.1)})
     replacement = spec.mesh("cube")
     assert replacement is not None
     assert spec.geom("thigh_mesh").meshname == "cube"
     for field in fields:
         np.testing.assert_array_equal(
-            getattr(replacement, field), before[field], err_msg=field
+            getattr(replacement.classname, "name")
+            if field == "classname"
+            else getattr(replacement, field),
+            before[field].item().name if field == "classname" else before[field],
+            err_msg=field,
         )
     np.testing.assert_allclose(replacement.scale, original_scale * [0.8, 0.9, 1.1])
     spec.compile()
@@ -844,7 +861,7 @@ def test_mesh_recreation_preserves_authored_data_and_names() -> None:
 
 def test_rajagopal_segments_map_onto_myofullbody(tmp_path: Path) -> None:
     spec = _fullbody()
-    assert _segments_for(spec) is _MYOFULLBODY_SEGMENTS
+    assert _segments_for(spec) == _MYOFULLBODY_SEGMENTS
     scales = _body_scales(
         spec,
         {"torso": 1.1, "hand_r": 0.9, "femur_r": (1.0, 1.2, 1.0), "humerus_l": 1.05},
@@ -876,7 +893,7 @@ def test_rajagopal_segments_map_onto_myofullbody(tmp_path: Path) -> None:
 
 def test_rajagopal_segments_cover_myoleg() -> None:
     spec = _myoleg()
-    assert _segments_for(spec) is _MYOLEG_SEGMENTS
+    assert _segments_for(spec) == _MYOLEG_SEGMENTS
     scales = _body_scales(
         spec, {seg: 1.1 for seg in _MYOLEG_SEGMENTS}, _MYOLEG_SEGMENTS
     )

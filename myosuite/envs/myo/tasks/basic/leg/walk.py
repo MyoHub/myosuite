@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Leg walk environment — migrated from BaseV0 to MyoGymnasiumEnv.
+"""Leg walk environment â€” migrated from BaseV0 to MyoGymnasiumEnv.
 
 Replaces walk_v0.WalkEnvV0 for myoLegWalk-v0 and variants.
 Preserves identical obs/reward schema and semantics for parity.
@@ -20,7 +20,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.utils import EzPickle
 
-from myosuite.core.body_scaling import _scale_spec
+from myosuite.core.body_scaling import scale_spec
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
@@ -118,7 +118,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             self.model, self._mj_spec = builder.build()
         else:
             self._mj_spec = builder.build_spec()
-            _scale_spec(
+            self._mj_spec = scale_spec(
                 self._mj_spec, {} if scales is None else scales, total_mass=total_mass
             )
             self.model = self._mj_spec.compile()
