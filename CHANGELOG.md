@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
 
+* Participant 3CC-r fatigue fits from sustained-hold endurance times, with explicit censoring at the requested horizon and finite initialization of the fitting search.
+
 * Explicit represented-segment or participant/reference mass scaling with refreshed inertia and preserved muscle strength; measured landmark-distance checks for prepared subject models.
 
 * Participant group-strength calibration across signed MVC postures and fatigued steady MVC probes, sharing the muscle-strength torque and scaling primitives.
