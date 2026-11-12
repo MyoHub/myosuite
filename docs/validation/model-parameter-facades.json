@@ -1,0 +1,54 @@
+{
+  "baseline": "af15ff10165282af32b5fa7e6a673b959b666d2e",
+  "mujoco": "3.11.0",
+  "myo_sim": "0.2.5",
+  "numpy": "2.2.6",
+  "unchanged_ast": {
+    "myosuite/core/muscle_strength.py": [
+      "MaxTorqueMeasurement",
+      "StrengthCalibration",
+      "_coupled_direction",
+      "_muscles",
+      "_validate_mvc_model",
+      "calibrate_muscle_strength",
+      "max_torque_terms",
+      "strength_factor_from_body_mass"
+    ],
+    "myosuite/biomechanics/calibration.py": [
+      "FatigueFit",
+      "SegmentLengthCheck",
+      "SegmentLengthMeasurement",
+      "StrengthCalibration",
+      "StrengthFit",
+      "_fatigue_bank",
+      "_muscles",
+      "_posture",
+      "_torque_terms",
+      "check_segment_lengths",
+      "endurance_time",
+      "fatigue_params",
+      "fit_fatigue_parameters",
+      "fit_strength_from_mvcs",
+      "max_joint_torque",
+      "posture_at",
+      "scale_strength",
+      "strength_from_mvc"
+    ]
+  },
+  "legacy_sarcopenia_ast_unchanged": true,
+  "assets_source": "published myo-sim 0.2.5, installed site-packages/myo_sim/models",
+  "helper_strength_head": "8abb4646d4b5d45bd1b5337110e9d6ca9a43a85e",
+  "helper_mass_head": "43e09d1da4b48067b01174ffd4fdf24e472a6b58",
+  "method": "extend package search paths for helper modules only; compare against exact pinned pre-facade source using native models and forces",
+  "cases": [
+    {"case": "compiled_strength", "factor": 0.8, "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "compiled_strength", "factor": 1.0, "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "compiled_strength", "factor": 1.7, "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "compiled_strength", "factor": [1.4554425309821815, 0.9046800706458055, 0.5614602859042921, 0.5247914532927936, 1.7199053588004087, 1.8691333659165825], "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "spec_strength", "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "body_mass", "parameters": {"represented_mass": 6, "bodies": ["arm"]}, "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "body_mass", "parameters": {"participant_mass": 90, "reference_mass": 60, "bodies": ["arm"]}, "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "body_mass", "parameters": {"represented_mass": 46}, "max_errors": {"body_mass": 0.0, "body_inertia": 0.0, "body_subtreemass": 0.0, "body_invweight0": 0.0, "actuator_acc0": 0.0, "actuator_gainprm": 0.0, "actuator_biasprm": 0.0, "actuator_force": 0.0}},
+    {"case": "mvc_fit", "max_error": 0.0}
+  ]
+}
