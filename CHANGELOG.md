@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
 
+* Participant group-strength calibration across signed MVC postures and fatigued steady MVC probes, sharing the muscle-strength torque and scaling primitives.
+
 ### Highlights
 
 * **`myoMimic-v0`: multi-clip full-body motion tracking on myo_sim's `myofullbody`**, on the CPU and on mjlab, with
