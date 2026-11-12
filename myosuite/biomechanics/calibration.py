@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Participant strength calibration of compiled MuJoCo models.
+"""Participant strength, mass and geometry calibration of compiled MuJoCo models.
 
 MVC torques are gravity-corrected, signed joint torques: agonists are maximally
 active, antagonists relaxed, and passive muscle and joint forces retained.
@@ -15,6 +15,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
+from typing import Literal
 
 import mujoco
 import numpy as np
@@ -293,3 +294,147 @@ def fit_strength_from_mvcs(
         tuple(predicted.tolist()),
         float(np.sqrt(np.mean((predicted - measured) ** 2))),
     )
+
+
+def scale_body_mass(
+    model: mujoco.MjModel,
+    represented_mass: float | None = None,
+    *,
+    participant_mass: float | None = None,
+    reference_mass: float | None = None,
+    bodies: Sequence[str] | None = None,
+) -> mujoco.MjModel:
+    """Return a mass/inertia-scaled copy without changing muscle strength.
+
+    Args:
+        model: Compiled model, unchanged. Segment geometry remains unchanged.
+        represented_mass: Target sum [kg] of selected model bodies, explicitly
+            not a participant's whole-body mass for a partial-body model.
+        participant_mass: Participant whole-body mass [kg]. Requires the model's
+            reference participant ``reference_mass``; scales by their ratio.
+        reference_mass: Whole-body mass [kg] of the model's reference participant.
+        bodies: Bodies to scale, e.g. anatomical bodies excluding held objects.
+            ``None`` selects all non-world bodies, including world-fixed bodies.
+
+    Returns:
+        Model copy with refreshed MuJoCo constants and original automatic muscle
+        strengths frozen explicitly. Supply exactly one mass-scaling mode.
+    """
+    ratio_mode = participant_mass is not None or reference_mass is not None
+    if (represented_mass is None) == (not ratio_mode):
+        raise ValueError(
+            "choose represented_mass or participant_mass with reference_mass"
+        )
+    ids = (
+        np.arange(1, model.nbody)
+        if bodies is None
+        else np.array([model.body(name).id for name in bodies], dtype=int)
+    )
+    if not len(ids) or 0 in ids or len(ids) != len(np.unique(ids)):
+        raise ValueError("bodies must select distinct non-world bodies")
+    if ratio_mode:
+        if participant_mass is None or reference_mass is None:
+            raise ValueError("participant_mass requires explicit reference_mass")
+        values = np.array([participant_mass, reference_mass], dtype=float)
+        ratio = participant_mass / reference_mass if np.all(values > 0) else np.nan
+    else:
+        values = np.array([represented_mass], dtype=float)
+        total = float(model.body_mass[ids].sum())
+        ratio = represented_mass / total if total > 0 else np.nan
+    if not np.all(np.isfinite(values) & (values > 0)) or not np.isfinite(ratio):
+        raise ValueError("masses must be positive and finite and selected mass nonzero")
+    out = scale_strength(model, 1.0)
+    out.body_mass[ids] *= ratio
+    out.body_inertia[ids] *= ratio
+    mujoco.mj_setConst(out, mujoco.MjData(out))
+    return out
+
+
+@dataclass(frozen=True)
+class SegmentLengthMeasurement:
+    """Measured distance [m] between named anatomical body/site landmarks.
+
+    Body origins and sites must first be placed at the measured landmarks.
+    A generic body origin need not coincide with a joint center.
+    """
+
+    proximal: str
+    distal: str
+    length: float
+    object_type: Literal["body", "site"] = "site"
+
+
+@dataclass(frozen=True)
+class SegmentLengthCheck:
+    """Model/measured landmark distance and an explicit acceptance tolerance."""
+
+    proximal: str
+    distal: str
+    object_type: str
+    measured_length: float
+    model_length: float
+    error: float
+    tolerance: float
+    within_tolerance: bool
+
+    def record(self) -> dict:
+        """Return JSON-serialisable anthropometry check fields."""
+        return asdict(self)
+
+
+def check_segment_lengths(
+    model: mujoco.MjModel,
+    qpos: np.ndarray,
+    measurements: Sequence[SegmentLengthMeasurement],
+    *,
+    relative_tolerance: float = 0.05,
+    absolute_tolerance: float = 0.005,
+) -> tuple[SegmentLengthCheck, ...]:
+    """Verify an externally scaled model against measured segment lengths.
+
+    Args:
+        model: Compiled subject model, unchanged.
+        qpos: Calibration posture ``(nq,)`` matching the measurement protocol.
+        measurements: Named landmark endpoint distances [m]; at least one.
+        relative_tolerance: Allowed fraction of measured length.
+        absolute_tolerance: Allowed absolute difference [m].
+
+    Returns:
+        Checks accepting differences up to ``max(absolute, relative * length)``.
+        This verifies geometry; it does not resize segments or muscle paths.
+        Landmark placement and tolerances require study-specific validation.
+    """
+    tolerances = np.array([relative_tolerance, absolute_tolerance])
+    if not measurements or not np.all(np.isfinite(tolerances) & (tolerances >= 0)):
+        raise ValueError("need measurements and finite nonnegative tolerances")
+    data = mujoco.MjData(model)
+    data.qpos[:] = _posture(model, qpos)
+    mujoco.mj_fwdPosition(model, data)
+    checks = []
+    for measurement in measurements:
+        if not np.isfinite(measurement.length) or measurement.length <= 0:
+            raise ValueError("measured segment lengths must be positive and finite")
+        if measurement.object_type == "site":
+            proximal = data.site_xpos[model.site(measurement.proximal).id]
+            distal = data.site_xpos[model.site(measurement.distal).id]
+        elif measurement.object_type == "body":
+            proximal = data.xpos[model.body(measurement.proximal).id]
+            distal = data.xpos[model.body(measurement.distal).id]
+        else:
+            raise ValueError("segment object_type must be 'body' or 'site'")
+        length = float(np.linalg.norm(distal - proximal))
+        error = length - measurement.length
+        tolerance = max(absolute_tolerance, relative_tolerance * measurement.length)
+        checks.append(
+            SegmentLengthCheck(
+                measurement.proximal,
+                measurement.distal,
+                measurement.object_type,
+                measurement.length,
+                length,
+                error,
+                tolerance,
+                abs(error) <= tolerance,
+            )
+        )
+    return tuple(checks)

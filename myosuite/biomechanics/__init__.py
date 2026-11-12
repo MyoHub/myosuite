@@ -16,5 +16,5 @@
 - :mod:`.retarget_smplh`: AMASS SMPL+H motions straight onto a body model (a refit source).
 - :mod:`.effort`: muscle effort metrics of recorded rollouts (NumPy or torch arrays).
 - :mod:`.external_loads`: Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
-- :mod:`.calibration`: participant group-strength fits and steady MVC probes.
+- :mod:`.calibration`: participant strength, mass and geometry calibration.
 """
