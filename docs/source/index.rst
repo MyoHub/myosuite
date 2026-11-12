@@ -87,6 +87,7 @@ Choose your path
    backend_parity
    fatigue_validation
    landmark_observability
+   participant_calibration
 
 .. toctree::
    :maxdepth: 1
