@@ -535,6 +535,12 @@ for i in range(len(clip.qpos)):
     runner.step(model, data, action)
 ```
 
+Both CPU runners refresh MuJoCo's derived quantities after their final physics
+substep. The next observation, tracking score and rendered frame therefore use
+the returned state. This corrects standalone playback that previously mixed the
+new joint state with site, muscle and sensor quantities from the previous substep;
+old CPU rollout observations and scores may differ even with the same checkpoint.
+
 > **Why not use the ONNX model directly with mjlab's env?**
 > mjlab's `myoMimicFullbody-v0` env produces ~684-dim observations
 > (qpos + qvel + act + site positions), while the mm-10m-2 ONNX model expects
