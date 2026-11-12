@@ -12,4 +12,5 @@
 - :mod:`.smplh`: SMPL+H forward kinematics (AMASS motions) in NumPy.
 - :mod:`.retarget_smplh`: AMASS SMPL+H motions straight onto a body model (a refit source).
 - :mod:`.effort`: muscle effort metrics of recorded rollouts (NumPy or torch arrays).
+- :mod:`.camera`: Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
 """

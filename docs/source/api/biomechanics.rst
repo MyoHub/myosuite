@@ -32,3 +32,11 @@ Uncertainty bands
 
 .. automodule:: myosuite.biomechanics.uncertainty
    :members:
+
+Camera
+------
+
+Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+
+.. automodule:: myosuite.biomechanics.camera
+   :members:
