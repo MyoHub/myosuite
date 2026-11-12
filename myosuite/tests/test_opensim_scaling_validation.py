@@ -21,7 +21,6 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.core import body_scaling
 from myosuite.core.body_scaling import scale_model
 from scripts import validate_opensim_scaling as validation
 
@@ -282,13 +281,18 @@ def test_root_height_regression_sees_unscaled_feet(
 ) -> None:
     # Inject the bug through the private geom-scaling helper: the feet keep their
     # nominal collision geoms. The calcaneus landmarks cannot see this.
-    scale_geom = body_scaling._scale_geom
+    from myo_sim import scaling as model_scaling
+
+    scale_geom = model_scaling._scale_geom
 
     def skip_feet(spec: mujoco.MjSpec, geom: Any, factors: np.ndarray) -> None:
-        if not geom.parent.name.startswith(("calcn_", "toes_")):
+        if not (
+            isinstance(geom, mujoco.MjsGeom)
+            and geom.parent.name.startswith(("calcn_", "toes_"))
+        ):
             scale_geom(spec, geom, factors)
 
-    monkeypatch.setattr(body_scaling, "_scale_geom", skip_feet)
+    monkeypatch.setattr(model_scaling, "_scale_geom", skip_feet)
     case = "anisotropic_volume"
     recipe = validation.fixture()["cases"][case]
     model = validation.build_myo_case(recipe)
