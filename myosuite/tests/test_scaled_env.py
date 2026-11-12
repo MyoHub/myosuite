@@ -15,6 +15,7 @@ import pytest
 
 from myosuite import make_env
 from myosuite.core.body_scaling import scale_model
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.core.config import EnvConfig
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.utils import gym
@@ -110,17 +111,20 @@ def test_subject_env_resets_reproducibly_on_its_aligned_keyframe() -> None:
     nominal = make_env(ENV_ID)
     env = make_env(ENV_ID, scales={b: 1.1 for b in ("root", "femur_r", "tibia_r")})
     try:
+        nominal.reset(seed=5)
         first, _ = env.reset(seed=5)
         env.step(np.full(env.action_space.shape, 0.2, dtype=np.float32))
         second, _ = env.reset(seed=5)
         np.testing.assert_array_equal(first, second)
         assert first.dtype == np.float32 and np.all(np.isfinite(first))
         model, data = env.unwrapped.model, env.unwrapped.data
-        np.testing.assert_array_equal(data.qpos, model.key_qpos[2])
+        expected = model.key_qpos[2].copy()
+        project_joint_couplings(JointCouplings.from_model(model), expected)
+        np.testing.assert_array_equal(data.qpos, expected)
         # The longer right leg still starts as far above the floor as nominal.
         ref = nominal.unwrapped.model
         assert _floor_clearance(model, data.qpos) == pytest.approx(
-            _floor_clearance(ref, ref.key_qpos[2]), abs=1e-6
+            _floor_clearance(ref, nominal.unwrapped.data.qpos), abs=1e-6
         )
         assert len(env.step(np.zeros(env.action_space.shape, np.float32))) == 5
     finally:
