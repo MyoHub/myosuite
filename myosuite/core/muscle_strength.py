@@ -56,7 +56,9 @@ def scale_muscle_strength(model: mujoco.MjModel, factors: float | np.ndarray) ->
     """
     try:
         from myo_sim.physics.muscle_strength import scale_muscle_strength as scale
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
+        if exc.name != "myo_sim.physics.muscle_strength":
+            raise
         raise ImportError(
             "Muscle strength scaling requires a myo-sim build containing "
             "MyoHub/myo_sim#186 (myo_sim.physics.muscle_strength). "
@@ -84,7 +86,9 @@ def scale_muscle_strength_spec(
     """
     try:
         from myo_sim.physics.muscle_strength import scale_muscle_strength_spec as scale
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
+        if exc.name != "myo_sim.physics.muscle_strength":
+            raise
         raise ImportError(
             "Spec strength scaling requires a myo-sim build containing "
             "MyoHub/myo_sim#186 (myo_sim.physics.muscle_strength). "

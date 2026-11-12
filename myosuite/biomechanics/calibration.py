@@ -327,7 +327,9 @@ def scale_body_mass(
     """
     try:
         from myo_sim.physics.body_mass import scale_body_mass as scale
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
+        if exc.name != "myo_sim.physics.body_mass":
+            raise
         raise ImportError(
             "Mass scaling requires a myo-sim build containing MyoHub/myo_sim#187 "
             "(myo_sim.physics.body_mass). Install that development build or a "

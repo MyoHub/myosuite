@@ -64,17 +64,30 @@ apply_sarcopenia_to_model(model, 0.5)
 np.testing.assert_allclose(model.actuator_gainprm[:, 2], gain * 0.5)
 np.testing.assert_array_equal(model.actuator_biasprm, bias)
 assert np.isfinite(max_joint_torque(model, np.array([2.8]), 'elbow')[0])
-for call, feature in (
+calls = (
     (lambda: scale_muscle_strength(model, 1.0), 'myo_sim.physics.muscle_strength'),
     (lambda: scale_muscle_strength_spec(spec, 1.0), 'myo_sim.physics.muscle_strength'),
     (lambda: scale_body_mass(model, represented_mass=3, bodies=['arm']), 'myo_sim.physics.body_mass'),
-):
+)
+for call, feature in calls:
     try:
         call()
     except ImportError as exc:
         assert feature in str(exc) and 'Install' in str(exc)
     else:
         raise AssertionError('missing model API was not reported')
+class BrokenDependency(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname in ('myo_sim.physics.muscle_strength', 'myo_sim.physics.body_mass'):
+            raise ModuleNotFoundError('unrelated dependency defect', name='broken_dependency')
+sys.meta_path[0] = BrokenDependency()
+for call, feature in calls:
+    try:
+        call()
+    except ModuleNotFoundError as exc:
+        assert exc.name == 'broken_dependency'
+    else:
+        raise AssertionError('unrelated import defect was hidden')
 """
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True
