@@ -516,6 +516,9 @@ class FullbodyStateAdapter:
         self._model = model
         self._egocentric_root = egocentric_root
         flags = obs_flags or {}
+        self._exclude_non_actor_joints = bool(
+            flags.get("exclude_non_actor_joints", False)
+        )
         self._obs_flags = {
             key: bool(flags.get(key, default))
             for key, default in _FULLBODY_OBS_FLAG_DEFAULTS.items()
@@ -541,7 +544,7 @@ class FullbodyStateAdapter:
         actor_root = int(model.body_rootid[model.jnt_bodyid[root_jid]])
         for jid in range(model.njnt):
             if (
-                flags.get("exclude_non_actor_joints", False)
+                self._exclude_non_actor_joints
                 and int(model.body_rootid[model.jnt_bodyid[jid]]) != actor_root
             ):
                 continue
@@ -721,6 +724,7 @@ class FullbodyObsAdapter(FullbodyStateAdapter):
             "use_concise_lookahead": g.use_concise_lookahead,
             "enable_mimic_site_rpos_observations": g.enable_mimic_site_rpos_observations,
             "sites_for_mimic": list(g.sites_for_mimic),
+            "exclude_non_actor_joints": self._exclude_non_actor_joints,
         }
         gp.update(self._obs_flags)
         return FullbodyObsAdapter(self._model, clip, gp)
