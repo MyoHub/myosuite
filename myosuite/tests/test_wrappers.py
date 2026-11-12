@@ -87,6 +87,75 @@ def test_cleared_perturbations_stop_being_applied() -> None:
     np.testing.assert_allclose(env.unwrapped.applied[-1], 0.0)
 
 
+def test_body_frame_off_com_push_matches_native_force_application() -> None:
+    base = _TwoBodyEnv()
+    base.model = mujoco.MjModel.from_xml_string(
+        _TWO_BODIES.replace('<geom size="0.1"/>', '<geom size="0.1" pos=".1 0 0"/>', 1)
+    )
+    base.data = mujoco.MjData(base.model)
+    env = PerturbationWrapper(base)
+    env.reset(seed=0)
+    force = np.array([4.0, 0, 0])
+    env.add_perturbation(
+        {
+            "body": "a",
+            "force": force,
+            "torque": [0, 0, 1],
+            "point": [0, 1, 0],
+            "frame": "body",
+            "start": 0,
+            "end": 2,
+        }
+    )
+    force[:] = 999  # The registered protocol owns its vectors.
+    body = base.model.body("a").id
+    for yaw in (np.pi / 2, np.pi):
+        base.data.qpos[3:7] = [np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]
+        mujoco.mj_forward(base.model, base.data)
+        rotation = base.data.xmat[body].reshape(3, 3)
+        world_force = rotation @ np.array([4.0, 0, 0])
+        world_point = base.data.xpos[body] + rotation @ np.array([0, 1.0, 0])
+        native = np.zeros(base.model.nv)
+        mujoco.mj_applyFT(
+            base.model,
+            base.data,
+            world_force,
+            np.array([0.0, 0.0, 1.0]),
+            world_point,
+            body,
+            native,
+        )
+        com = base.data.xipos[body].copy()
+        reference = mujoco.MjData(base.model)
+        mujoco.mj_copyData(reference, base.model, base.data)
+        env.step(np.zeros(1))
+        wrench = base.applied[-1][body]
+        equivalent = np.zeros(base.model.nv)
+        mujoco.mj_applyFT(
+            base.model, reference, wrench[:3], wrench[3:], com, body, equivalent
+        )
+        np.testing.assert_allclose(wrench[:3], world_force, atol=1e-14)
+        np.testing.assert_allclose(equivalent, native, atol=1e-12)
+    env.step(np.zeros(1))
+    np.testing.assert_array_equal(base.applied[-1][body], np.zeros(6))
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"frame": "camera"},
+        {"force": [1, 2]},
+        {"torque": [0, np.nan, 0]},
+        {"point": [np.inf, 0, 0]},
+    ],
+)
+def test_invalid_force_contract_is_not_registered(extra: dict) -> None:
+    env = PerturbationWrapper(_TwoBodyEnv())
+    with pytest.raises(ValueError):
+        env.add_perturbation({"body": "a", "start": 0, **extra})
+    assert env._perturbations == []
+
+
 def test_dict_observation_wrapper_space_and_reset_obs() -> None:
     """The Dict space exists before the first reset and reset returns the dict
     observation of the reset state (it returned {} and kept the flat Box)."""

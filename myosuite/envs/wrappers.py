@@ -210,9 +210,17 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
     * ``"body"`` *(str)* — MuJoCo body name.
     * ``"force"`` *(array-like, shape (3,), optional)* — world-frame force in N.
     * ``"torque"`` *(array-like, shape (3,), optional)* — world-frame torque in N·m.
+    * ``"frame"`` *("world" or "body", optional)* — force/torque coordinates;
+      defaults to ``"world"``. Body coordinates use the current orientation.
+    * ``"point"`` *(array-like, shape (3,), optional)* — application point in body-local
+      coordinates, measured from the body origin. Omitted: apply at the body's COM.
+      An off-COM force also adds its moment about the COM.
     * ``"start"`` *(int)* — step index to begin applying (inclusive).
     * ``"end"`` *(int, optional)* — step index to stop (exclusive); ``-1`` means
       apply forever. Defaults to ``-1``.
+
+    Frame/point transforms are sampled at control-step boundaries. The resulting
+    world wrench is held constant over that step's physics substeps.
 
     Example::
 
@@ -253,15 +261,26 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
             perturbation: Dict with keys ``body``, ``force`` (optional),
                 ``torque`` (optional), ``start``, ``end`` (optional, default -1).
         """
+        frame = perturbation.get("frame", "world")
+        if frame not in ("world", "body"):
+            raise ValueError("Perturbation frame must be 'world' or 'body'.")
+        vectors = {}
+        for key in ("force", "torque", "point"):
+            value = perturbation.get(key)
+            if value is None and key == "point":
+                vectors[key] = None
+                continue
+            vector = np.asarray(
+                [0.0, 0.0, 0.0] if value is None else value, dtype=np.float64
+            )
+            if vector.shape != (3,) or not np.all(np.isfinite(vector)):
+                raise ValueError(f"Perturbation {key} must be a finite 3-vector.")
+            vectors[key] = vector.copy()
         self._perturbations.append(
             {
                 "body": str(perturbation["body"]),
-                "force": np.asarray(
-                    perturbation.get("force", [0.0, 0.0, 0.0]), dtype=np.float64
-                ),
-                "torque": np.asarray(
-                    perturbation.get("torque", [0.0, 0.0, 0.0]), dtype=np.float64
-                ),
+                **vectors,
+                "frame": frame,
                 "start": int(perturbation["start"]),
                 "end": int(perturbation.get("end", -1)),
             }
@@ -304,8 +323,17 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
                 body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, p["body"])
                 if body_id < 0:
                     continue
-                data.xfrc_applied[body_id, :3] += p["force"]
-                data.xfrc_applied[body_id, 3:] += p["torque"]
+                rotation = data.xmat[body_id].reshape(3, 3)
+                force, torque = p["force"], p["torque"]
+                if p["frame"] == "body":
+                    force, torque = rotation @ force, rotation @ torque
+                if p["point"] is not None:
+                    lever = (
+                        data.xpos[body_id] + rotation @ p["point"] - data.xipos[body_id]
+                    )
+                    torque = torque + np.cross(lever, force)
+                data.xfrc_applied[body_id, :3] += force
+                data.xfrc_applied[body_id, 3:] += torque
                 self._touched_bodies.add(body_id)
 
         result = self.env.step(action)
