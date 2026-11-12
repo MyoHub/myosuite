@@ -201,7 +201,7 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
     Enables perturbation-response experiments — reactive balance, motor
     adaptation, and neuroscience lesion studies — without modifying env
     source code.  Perturbations are injected into MuJoCo's
-    ``data.xfrc_applied`` before each physics substep.  Every step the wrapper
+    ``data.xfrc_applied`` before each control step.  Every step the wrapper
     rewrites the rows of the bodies it perturbs as the sum of the active
     perturbations (zero once none is active).
 
