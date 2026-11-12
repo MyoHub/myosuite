@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Participant model preparation and steady MVC regression tests."""
+"""Participant model calibration and steady MVC regression tests."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ import numpy as np
 import pytest
 
 from myosuite.biomechanics.calibration import (
+    endurance_time,
+    fit_fatigue_parameters,
     SegmentLengthMeasurement,
     check_segment_lengths,
     scale_body_mass,
@@ -298,3 +300,42 @@ def test_geometry_verification_reports_segment_mismatch() -> None:
 def test_invalid_represented_mass_fails_early(bad: float) -> None:
     with pytest.raises(ValueError):
         scale_body_mass(_arm(), represented_mass=bad)
+
+
+def test_fatigue_fit_rejects_insufficient_recovery_measurements() -> None:
+    with pytest.raises(ValueError, match="three distinct"):
+        fit_fatigue_parameters([0.3, 0.5], [200, 70], fit_recovery=True)
+
+
+def test_fatigue_fit_initializes_beyond_a_censored_starting_simplex() -> None:
+    observed = endurance_time([0.5], F=0.05, R=0.002, r=5.0)
+    assert np.isinf(
+        endurance_time([0.5], F=0.01, R=0.002, r=5.0, max_time=3 * observed[0])[0]
+    )
+    fit = fit_fatigue_parameters([0.5], observed, F=0.01, R=0.002, r=5.0)
+    assert fit.F == pytest.approx(0.05, rel=1e-4)
+    assert fit.rmse_log < 1e-4
+    np.testing.assert_allclose(fit.predicted, observed, rtol=1e-4)
+
+
+@pytest.mark.parametrize("dt,horizon", [(0.25, 20.4), (60.0, 1.0)])
+def test_endurance_failure_after_the_horizon_remains_censored(
+    dt: float, horizon: float
+) -> None:
+    full = endurance_time([0.5], F=0.05, R=0.002, r=5.0)[0]
+    assert full > horizon
+    result = endurance_time([0.5], F=0.05, R=0.002, r=5.0, dt=dt, max_time=horizon)
+    assert np.isinf(result[0])
+
+
+def test_endurance_interpolates_with_the_short_final_interval() -> None:
+    result = endurance_time([0.5], F=0.05, R=0.002, r=5.0, max_time=20.45)[0]
+    reference = endurance_time([0.5], F=0.05, R=0.002, r=5.0, dt=0.01)[0]
+    assert 20.25 < result <= 20.45
+    assert result == pytest.approx(reference, abs=1e-3)
+
+
+@pytest.mark.parametrize("bad", [0, -1, float("nan"), float("inf")])
+def test_invalid_endurance_step_fails_early(bad: float) -> None:
+    with pytest.raises(ValueError):
+        endurance_time([0.3], 0.01, 0.002, 5, dt=bad)

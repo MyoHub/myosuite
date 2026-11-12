@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Participant strength, mass and geometry calibration of compiled MuJoCo models.
+"""Participant strength, mass, geometry and fatigue calibration of compiled models.
 
 MVC torques are gravity-corrected, signed joint torques: agonists are maximally
 active, antagonists relaxed, and passive muscle and joint forces retained.
@@ -19,7 +19,9 @@ from typing import Literal
 
 import mujoco
 import numpy as np
+from scipy.optimize import minimize
 
+from myosuite.core.muscle_conditions import CumulativeFatigue
 from myosuite.core.muscle_strength import (
     MaxTorqueMeasurement,
     max_torque_terms,
@@ -438,3 +440,202 @@ def check_segment_lengths(
             )
         )
     return tuple(checks)
+
+
+_ONE_MUSCLE = (
+    """<mujoco><worldbody>{bodies}</worldbody><actuator>{muscles}</actuator></mujoco>"""
+)
+
+
+def _fatigue_bank(n: int) -> CumulativeFatigue:
+    """3CC-r state for *n* independent muscles (one per load)."""
+    bodies = "".join(
+        f'<body><joint name="j{i}" axis="0 1 0" range="0 1"/>'
+        '<geom size=".1" mass="1"/></body>'
+        for i in range(n)
+    )
+    muscles = "".join(
+        f'<muscle name="m{i}" joint="j{i}" lengthrange="0 1"/>' for i in range(n)
+    )
+    model = mujoco.MjModel.from_xml_string(
+        _ONE_MUSCLE.format(bodies=bodies, muscles=muscles)
+    )
+    return CumulativeFatigue(model)
+
+
+def endurance_time(
+    loads: Sequence[float],
+    F: float,
+    R: float,
+    r: float,
+    *,
+    dt: float = 0.25,
+    max_time: float = 1800.0,
+) -> np.ndarray:
+    """3CC-r time to task failure of sustained contractions (Frey-Law et al. 2012).
+
+    A hold of ``load`` (fraction of MVC) fails when the residual capacity
+    ``1 - MF`` falls below the load; the crossing is interpolated between steps.
+
+    Args:
+        loads: Target loads in (0, 1].
+        F, R, r: 3CC-r fatigue, recovery and rest-recovery coefficients.
+        dt: Step between failure checks [s] (integrated in MyoSuite's sub-steps).
+        max_time: Give up after this long [s]; such holds return ``inf``.
+
+    Returns:
+        ``(len(loads),)`` endurance times [s].
+    """
+    loads = np.asarray(loads, dtype=float)
+    if (
+        loads.ndim != 1
+        or not len(loads)
+        or not np.all(np.isfinite(loads) & (loads > 0) & (loads <= 1))
+    ):
+        raise ValueError("loads must be a nonempty vector in (0,1]")
+    if (
+        not np.all(np.isfinite([F, R, r, dt, max_time]))
+        or min(F, R, r, dt, max_time) <= 0
+    ):
+        raise ValueError("coefficients, dt and max_time must be positive and finite")
+    bank = _fatigue_bank(len(loads))
+    for setter, value in (
+        (bank.set_FatigueCoefficient, F),
+        (bank.set_RecoveryCoefficient, R),
+        (bank.set_RecoveryMultiplier, r),
+    ):
+        setter(value)
+    out = np.full(len(loads), np.inf)
+    margin = (1.0 - bank.MF) - loads
+    t = 0.0
+    while t < max_time and np.isinf(out).any():
+        step = min(dt, max_time - t)
+        bank.compute_act(loads, dt=step)
+        t += step
+        new = (1.0 - bank.MF) - loads
+        crossed = np.isinf(out) & (new < 0)
+        out[crossed] = t - step * new[crossed] / (new[crossed] - margin[crossed])
+        margin = new
+    return out
+
+
+@dataclass(frozen=True)
+class FatigueFit:
+    """3CC-r parameters fitted to endurance times.
+
+    Attributes:
+        F, R, r: Fitted (or fixed) coefficients.
+        loads: Loads of the holds (fraction of MVC).
+        observed: Observed endurance times [s].
+        predicted: Endurance times of the fitted model [s].
+        rmse_log: Root-mean-square error of the log endurance times.
+        fitted: Names of the fitted coefficients.
+    """
+
+    F: float
+    R: float
+    r: float
+    loads: tuple[float, ...]
+    observed: tuple[float, ...]
+    predicted: tuple[float, ...]
+    rmse_log: float
+    fitted: tuple[str, ...]
+
+    def record(self) -> dict:
+        """JSON-serialisable form for the session record."""
+        return asdict(self)
+
+
+def fit_fatigue_parameters(
+    loads: Sequence[float],
+    endurance_times: Sequence[float],
+    *,
+    F: float = 0.01,
+    R: float = 0.002,
+    r: float = 15.0,
+    fit_recovery: bool = False,
+) -> FatigueFit:
+    """Fit 3CC-r's F (and optionally R) to a participant's sustained holds.
+
+    Minimises the squared error of log endurance times (Nelder-Mead in log
+    parameters). ``r`` acts only at rest, so sustained holds cannot inform it.
+
+    Args:
+        loads: Loads of the holds (fraction of the calibrated MVC).
+        endurance_times: Observed times to task failure [s].
+        F, R, r: Starting (or fixed) coefficients, e.g. MyoSuite's group row.
+        fit_recovery: Also fit R (needs holds at three or more loads).
+
+    Returns:
+        The fit.
+    """
+    loads = np.asarray(loads, dtype=float)
+    observed = np.asarray(endurance_times, dtype=float)
+    if (
+        loads.ndim != 1
+        or observed.shape != loads.shape
+        or not len(loads)
+        or not np.all(np.isfinite(loads) & (loads > 0) & (loads < 1))
+        or not np.all(np.isfinite(observed) & (observed > 0))
+    ):
+        raise ValueError(
+            "need paired finite loads in (0,1) and positive endurance times"
+        )
+    if not np.all(np.isfinite([F, R, r])) or min(F, R, r) <= 0:
+        raise ValueError("starting coefficients must be positive and finite")
+    if fit_recovery and len(np.unique(loads)) < 3:
+        raise ValueError("fitting recovery needs holds at three distinct loads")
+    max_time = 3.0 * float(observed.max())
+    start_F = F
+    for _ in range(16):
+        initial = endurance_time(loads, start_F, R, r, max_time=max_time)
+        if np.all(np.isfinite(initial) & (initial > 0)):
+            break
+        start_F *= 2
+    else:
+        raise ValueError(
+            "could not initialize finite failure times; check holds and starting rates"
+        )
+
+    def unpack(x: np.ndarray) -> tuple[float, float]:
+        return float(np.exp(x[0])), float(np.exp(x[1])) if fit_recovery else R
+
+    def loss(x: np.ndarray) -> float:
+        f_, r_cap = unpack(x)
+        pred = endurance_time(loads, f_, r_cap, r, max_time=max_time)
+        pred = np.where(np.isfinite(pred), pred, max_time)
+        return float(np.mean((np.log(pred) - np.log(observed)) ** 2))
+
+    x0 = np.log([start_F, R]) if fit_recovery else np.log([start_F])
+    res = minimize(
+        loss,
+        x0,
+        method="Nelder-Mead",
+        options={"xatol": 1e-4, "fatol": 1e-10, "maxfev": 400},
+    )
+    if not res.success or not np.isfinite(res.fun):
+        raise RuntimeError(f"fatigue parameter fitting failed: {res.message}")
+    f_, r_cap = unpack(res.x)
+    pred = endurance_time(loads, f_, r_cap, r, max_time=max_time)
+    if not np.all(np.isfinite(pred) & (pred > 0)):
+        raise ValueError(
+            "fit did not predict finite failure times; check holds and starting rates"
+        )
+    return FatigueFit(
+        F=f_,
+        R=r_cap,
+        r=float(r),
+        loads=tuple(loads.tolist()),
+        observed=tuple(observed.tolist()),
+        predicted=tuple(pred.tolist()),
+        rmse_log=float(np.sqrt(res.fun)),
+        fitted=("F", "R") if fit_recovery else ("F",),
+    )
+
+
+def fatigue_params(
+    model: mujoco.MjModel, muscles: Sequence[str], fit: FatigueFit
+) -> tuple[tuple[str, float, float, float], ...]:
+    """Return validated per-muscle ``(name, F, R, r)`` coefficient rows."""
+    _muscles(model, muscles)
+    return tuple((m, fit.F, fit.R, fit.r) for m in muscles)
