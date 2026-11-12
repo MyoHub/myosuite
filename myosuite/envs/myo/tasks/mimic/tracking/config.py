@@ -53,6 +53,12 @@ class ObsCfg:
         policy: Body-state terms (:data:`myosuite.terms.mimic_track.OBSERVATIONS`), in order.
         goal_frames: Reference frames in the goal, the current one included.
         goal_spacing_s: Time between them.
+        goal_frame: A tracked body (not the anchor): the goal is then ``goal_bodies``'
+            reference positions in its frame, now and at each future frame, and its own
+            future motion in its current frame (``mimic_track.goal_observation``), e.g.
+            fingertips in a palm frame; ``""``: the lookahead goal of every tracked body,
+            root motion and phase.
+        goal_bodies: The tracked bodies of a ``goal_frame`` goal.
     """
 
     policy: tuple[str, ...] = (
@@ -61,6 +67,8 @@ class ObsCfg:
     )  # fmt: skip
     goal_frames: int = 5
     goal_spacing_s: float = 0.2
+    goal_frame: str = ""
+    goal_bodies: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

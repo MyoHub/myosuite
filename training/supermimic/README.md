@@ -135,6 +135,9 @@ fixed-base example), selected with ``TaskEnvCfg(model=...)``:
   motor's normalized activation), integrated analytically like the muscles;
 * no contact bodies: no touch observation or world-model touch head; no ``mirror_sides``: mirror augmentation off;
 * ``effectors``: their world position error is reported under the model's metric name (e.g. ``tip_err_cm``).
+* ``goal_frame`` / ``goal_bodies`` (task overrides ``obs.goal_frame``, ``obs.goal_bodies``): a goal of chosen bodies in
+  a frame body's frame and that body's own future motion, without the clip phase, so a controller above the tracker can
+  set it (e.g. fingertip targets in a palm frame).
 
 ``TaskEnvCfg.task`` passes further task overrides (e.g. reward kernels at the body's scale). Checkpoints store the
 model and the control step, and their task contract adds the root kind, the motors and the effectors (a checkpoint

@@ -19,6 +19,10 @@ Changes since **v3.1.0**.
   bodies (fixed-root world model, one analytic drive per actuator for muscles and direct or first-order motors,
   mirror augmentation only with a map); the full body's results are bit-identical. The checkpoint task contract
   adds the root kind, the motors and the effectors.
+* **`myoMimic-v0` goal in a body's frame** (`ObsCfg.goal_frame`, `goal_bodies`): the goal can be chosen tracked
+  bodies in a frame body's reference frame, now and over the lookahead, with that body's own future motion and no
+  clip phase (e.g. fingertip targets in a palm frame, which a higher-level controller can supply). myoSuperMimic
+  imagines with it unchanged.
 * **myoSuperMimic `noise_free_frac` and `budget_schedules`** (opt-in): a share of the training envs collects with
   the noise-free policy, and the learning-rate decay (and an action-noise annealing) runs over the time budget.
 

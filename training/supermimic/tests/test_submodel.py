@@ -45,7 +45,7 @@ def toy_fixture(tmp_path_factory: Any) -> tuple[str, Path]:
 
 
 def _make(model: str, clip_path: str, num_envs: int = 2, env_edit: Any = None, sampling: str = "start",
-          **rl: Any) -> tuple[Any, Any]:  # fmt: skip
+          task: dict | None = None, **rl: Any) -> tuple[Any, Any]:  # fmt: skip
     from supermimic.config import fast_runner_cfg
     from supermimic.env import TaskEnvCfg, make_task_env
     from supermimic.runner import SuperMimicRunner
@@ -57,6 +57,7 @@ def _make(model: str, clip_path: str, num_envs: int = 2, env_edit: Any = None, s
             motion_file=clip_path,
             num_envs=num_envs,
             sampling_mode=sampling,
+            task=task or {},
         ),
         "cpu",
     )
@@ -125,6 +126,28 @@ def test_fixed_base_runner_scores_like_the_env(toy: tuple[str, Path]) -> None:
     for i in range(4):
         assert torch.equal(S1[i], S[i])
     assert S1[6].shape == (2, 9) and S1[7].shape == (2, 0)
+
+
+def test_frame_goal_matches_the_env(toy: tuple[str, Path]) -> None:
+    """The method's goal (and the policy's input width) follows a goal_frame goal."""
+    model, d = toy
+    task = {
+        "obs.goal_frame": "r_ulna_radius_hand",
+        "obs.goal_bodies": ("hand_tip", "r_humerus"),
+    }
+    env, runner = _make(model, str(d / "clip0.npz"), task=task)
+    u, cmd = env.unwrapped, runner.cmd
+    assert runner.obs_goal.dim == 3 * 2 + (runner.cmd.lookahead - 1) * (3 * 2 + 6)
+    u.reset()
+    gen = torch.Generator().manual_seed(0)
+    for _ in range(5):
+        obs, *_ = env.step(torch.rand(2, cmd.num_actuators, generator=gen))
+        torch.testing.assert_close(
+            runner.obs_goal.assemble(None, cmd.obs_ctx()),
+            obs["goal"],
+            atol=1e-6,
+            rtol=0,
+        )
 
 
 def _short_episodes(u: Any) -> None:

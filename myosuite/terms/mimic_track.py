@@ -193,6 +193,15 @@ def so3_log(xp: Any, R: Any) -> Any:
     return quat_to_rotvec(xp, mat_to_quat(xp, R))
 
 
+def so3_exp(xp: Any, v: Any) -> Any:
+    """Rotation vector -> rotation matrix (stable near 0)."""
+    th = xp.sqrt((v * v).sum(-1))[..., None]
+    scale = xp.where(
+        th < 1e-6, 0.5 - th * th / 48, xp.sin(th / 2) / xp.clip(th, 1e-12, None)
+    )
+    return quat_to_mat(xp, xp.concatenate((xp.cos(th / 2), v * scale), axis=-1))
+
+
 def rotation_angle(xp: Any, Ra: Any, Rb: Any) -> Any:
     """Geodesic angle between rotations (via the relative quaternion; exact near 0)."""
     q = mat_to_quat(xp, _t(Ra) @ Rb)
@@ -305,18 +314,68 @@ def observation(xp: Any, s: TrackState, f: TrackFeatures, name: str) -> Any:
     return OBSERVATIONS[name](xp, s, f)
 
 
-def goal_observation(xp: Any, now: TrackRef, future: TrackRef, phase: Any) -> Any:
-    """The reference-only goal: GoalTrajMimic's concise lookahead and the motion phase.
+def _frame_pose(xp: Any, r: TrackRef, frame: int, anchor: Any) -> tuple[Any, Any]:
+    """World position (up to a constant) and rotation of tracked body ``frame + 1``."""
+    R_off, p_off = anchor
+    pos = r.site_rpos[..., frame, :]
+    if r.root_pos.shape[-1]:  # a free root carries the anchor
+        pos = pos + r.root_pos + _mv(r.root_rot, p_off)
+    return pos, r.root_rot @ R_off @ so3_exp(xp, r.site_rangles[..., frame, :])
+
+
+def _frame_goal(
+    xp: Any, now: TrackRef, future: TrackRef, frame: int, bodies: Any, anchor: Any
+) -> Any:
+    def local(r: TrackRef, R: Any) -> Any:
+        rel = r.site_rpos[..., bodies, :] - r.site_rpos[..., frame : frame + 1, :]
+        return _flat((_t(R)[..., None, :, :] @ rel[..., None])[..., 0])
+
+    p0, R0 = _frame_pose(xp, now, frame, anchor)
+    p1, R1 = _frame_pose(xp, future, frame, anchor)
+    R0k = _t(R0)[..., None, :, :]
+    fut = xp.concatenate(
+        (
+            local(future, R1),
+            (R0k @ (p1 - p0[..., None, :])[..., None])[..., 0],
+            so3_log(xp, R0k @ R1),
+        ),
+        axis=-1,
+    )
+    return xp.concatenate((local(now, R0), _flat(fut)), axis=-1)
+
+
+def goal_observation(
+    xp: Any,
+    now: TrackRef,
+    future: TrackRef,
+    phase: Any,
+    frame: int | None = None,
+    bodies: Any = (),
+    anchor: Any = None,
+) -> Any:
+    """The reference-only goal: GoalTrajMimic's concise lookahead and the motion phase,
+    or (``frame`` set) the goal bodies in a frame body's frame.
 
     Args:
         xp: Array module.
         now: Reference at the current frame (batch ``...``).
         future: Reference at the K future frames (batch ``..., K``).
         phase: ``(...,)`` progress through the clip.
+        frame: Index into the relative sites (tracked body ``frame + 1``) of the goal's
+            frame body; ``None``: the lookahead goal.
+        bodies: With ``frame``: relative-site indices of the goal bodies (G).
+        anchor: With ``frame``: ``(R_off (3, 3), p_off (3,))``, the anchor's constant
+            pose in the root body's frame (a fixed root: in the world).
 
     Returns:
-        ``(..., 3 (B-1) + K (9 + 3 (B-1)) + 1)`` (``K 9`` -> 0 for a fixed root).
+        Lookahead: ``(..., 3 (B-1) + K (9 + 3 (B-1)) + 1)`` (``K 9`` -> 0 for a fixed
+        root). Frame goal: ``(..., 3 G + K (3 G + 6))``: the goal bodies' positions in
+        the frame body's frame now and at each future frame, and the frame body's
+        position and rotation vector at each future frame in its current frame (no
+        phase).
     """
+    if frame is not None:
+        return _frame_goal(xp, now, future, frame, bodies, anchor)
     fut = xp.concatenate(
         (
             future.root_pos - now.root_pos[..., None, :],

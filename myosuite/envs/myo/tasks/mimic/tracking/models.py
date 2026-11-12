@@ -297,6 +297,49 @@ def body_info(name: str) -> ModelInfo:
     return ModelInfo(compiled_body(name), model_cfg(name).motor_expr or None)
 
 
+def goal_layout(task: Any, name: str) -> tuple[int | None, list[int], tuple[Any, Any]]:
+    """``(frame, bodies, anchor)`` of a ``goal_frame`` goal of task config *task* on model
+    *name*: relative-site indices of the frame and goal bodies, and the anchor's constant
+    pose ``(R_off, p_off)`` in the root body's frame (a fixed root: in the world).
+    ``(None, [], (I, 0))``: the lookahead goal.
+
+    Raises:
+        ValueError: For an unknown body, the anchor, or no goal bodies.
+    """
+    obs = task.obs
+    eye = (np.eye(3), np.zeros(3))
+    if not obs.goal_frame:
+        return None, [], eye
+    tracked = list(model_cfg(name).tracked_bodies)
+    names = (obs.goal_frame, *obs.goal_bodies)
+    if not obs.goal_bodies or any(n not in tracked[1:] for n in names):
+        raise ValueError(
+            f"goal_frame / goal_bodies {names} must be tracked bodies of {name} other "
+            f"than the anchor {tracked[0]!r}, and goal_bodies non-empty"
+        )
+    info, m = body_info(name), compiled_body(name)
+    d = mujoco.MjData(m)
+    mujoco.mj_kinematics(m, d)
+    a, r = m.body(tracked[0]).id, info.root_id
+    Rr = d.xmat[r].reshape(3, 3)
+    anchor = (Rr.T @ d.xmat[a].reshape(3, 3), Rr.T @ (d.xpos[a] - d.xpos[r]))
+    return (
+        tracked.index(obs.goal_frame) - 1,
+        [tracked.index(n) - 1 for n in obs.goal_bodies],
+        anchor,
+    )
+
+
+def goal_dim(task: Any, name: str, num_tracked: int, fixed_root: bool) -> int:
+    """Width of the goal of task config *task* on model *name*."""
+    frame, bodies, _ = goal_layout(task, name)
+    k = task.obs.goal_frames - 1
+    if frame is not None:
+        return 3 * len(bodies) + k * (3 * len(bodies) + 6)
+    n_s = num_tracked - 1
+    return 3 * n_s + k * ((0 if fixed_root else 9) + 3 * n_s) + 1
+
+
 def task_on_model(task: Any, name: str) -> Any:
     """The task config *task* (a ``MimicTaskCfg``) adapted to model *name*
     (:func:`~.config.for_body`)."""

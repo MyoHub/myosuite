@@ -24,6 +24,8 @@ from .models import (
     TOUCH_SENSOR,
     ModelInfo,
     compiled_scene,
+    goal_dim,
+    goal_layout,
     model_cfg,
     task_on_model,
 )
@@ -32,11 +34,14 @@ from .sampling import ResetSampler
 
 
 def observation_dims(
-    task: MimicTaskCfg, info: ModelInfo, num_tracked: int, num_touch: int = 4
+    task: MimicTaskCfg,
+    info: ModelInfo,
+    num_tracked: int,
+    num_touch: int = 4,
+    model: str = "myofullbody",
 ) -> dict[str, int]:
-    """Size of every policy term and of the goal."""
+    """Size of every policy term and of the goal (on body *model*)."""
     n_j, n_m, n_s = len(info.joint_ids), info.num_muscles, num_tracked - 1
-    n_root = 0 if info.fixed_root else 9  # root position and velocity in the goal
     sizes = {
         "root_pos": 5, "joint_pos": n_j, "root_vel": 6, "joint_vel": n_j,
         "muscle_length": n_m, "muscle_velocity": n_m, "muscle_force": n_m,
@@ -45,7 +50,7 @@ def observation_dims(
         "site_rvel": 6 * n_s,
     }  # fmt: skip
     dims = {name: sizes[name] for name in task.obs.policy}
-    dims["goal"] = 3 * n_s + (task.obs.goal_frames - 1) * (n_root + 3 * n_s) + 1
+    dims["goal"] = goal_dim(task, model, num_tracked, info.fixed_root)
     return dims
 
 
@@ -105,7 +110,10 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         self._kernels = {t.name: t.kernel for t in self.task.reward.terms}
         self._goal_stride = max(1, round(self.task.obs.goal_spacing_s / self._ctrl_dt))
         self.obs_dims = observation_dims(
-            self.task, self.info, len(self._tracked), len(feet)
+            self.task, self.info, len(self._tracked), len(feet), model
+        )
+        self._goal_frame, self._goal_bodies, self._goal_anchor = goal_layout(
+            self.task, model
         )
         self.obs_groups = {"policy": tuple(self.task.obs.policy), "goal": ("goal",)}
         self.obs_keys = [*self.task.obs.policy, "goal"]
@@ -180,7 +188,10 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         fut = np.minimum(
             f + self._goal_stride * np.arange(1, self.task.obs.goal_frames), end
         )
-        return mt.goal_observation(np, m.ref(f), m.ref(fut), np.asarray(m.phase(f)))
+        return mt.goal_observation(
+            np, m.ref(f), m.ref(fut), np.asarray(m.phase(f)),
+            self._goal_frame, self._goal_bodies, self._goal_anchor,
+        )  # fmt: skip
 
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
         del accessor

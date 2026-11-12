@@ -24,7 +24,11 @@ import torch
 from mjlab.managers.command_manager import CommandTerm, CommandTermCfg
 
 from myosuite.envs.myo.tasks.mimic.tracking.config import MimicTaskCfg
-from myosuite.envs.myo.tasks.mimic.tracking.models import ModelInfo, model_cfg
+from myosuite.envs.myo.tasks.mimic.tracking.models import (
+    ModelInfo,
+    goal_layout,
+    model_cfg,
+)
 from myosuite.envs.myo.tasks.mimic.tracking.motion import MotionLib, load_motion_lib
 from myosuite.terms import mimic_track as mt
 
@@ -83,6 +87,10 @@ class MotionCommand(CommandTerm):
         self._joint_qadr = torch.as_tensor(self.info.joint_qadr, device=dev)
         self._joint_dadr = torch.as_tensor(self.info.joint_dadr, device=dev)
         self.goal_stride = max(1, round(task.obs.goal_spacing_s / env.step_dt))
+        self.goal_frame, self.goal_bodies, anchor = goal_layout(task, cfg.model)
+        self.goal_anchor = tuple(
+            torch.as_tensor(x, dtype=torch.float32, device=dev) for x in anchor
+        )
         self._goal_offsets = self.goal_stride * torch.arange(
             1, task.obs.goal_frames, device=dev
         )
@@ -212,7 +220,10 @@ class MotionCommand(CommandTerm):
         fut = torch.minimum(
             f[:, None] + self._goal_offsets, m.clip_end[m.clip_id[f]][:, None]
         )
-        return mt.goal_observation(torch, m.ref(f), m.ref(fut), m.phase(f).float())
+        return mt.goal_observation(
+            torch, m.ref(f), m.ref(fut), m.phase(f).float(),
+            self.goal_frame, self.goal_bodies, self.goal_anchor,
+        )  # fmt: skip
 
     # ------------------------------------------------------------------ reset
     def reset(self, env_ids: torch.Tensor | slice | None) -> dict[str, float]:

@@ -59,6 +59,12 @@ class TaskView:
             self.kin, cmd.motion, self.geo, self.lookahead, self.stride,
             None if mus is None else torch.as_tensor(mus, device=dev),
         )  # fmt: skip
+        h = self.heads
+        h.goal_frame, h.goal_bodies, h.goal_anchor = (
+            cmd.goal_frame,
+            cmd.goal_bodies,
+            cmd.goal_anchor,
+        )
         self.observes_muscles = any(
             t.params.get("name") in MUSCLE_OBSERVATIONS
             for g in env.cfg.observations.values()

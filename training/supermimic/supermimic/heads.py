@@ -143,6 +143,10 @@ class TrackingHeads:
         # the muscles' columns of the drive (None: every actuator is a muscle)
         self.muscle_cols = muscle_ids
         self.lookahead, self.stride = lookahead, stride
+        self.goal_frame: int | None = None
+        """The task's goal frame body (relative-site index; ``None``: the lookahead goal)."""
+        self.goal_bodies: list[int] = []
+        self.goal_anchor: tuple[torch.Tensor, torch.Tensor] | None = None
         self.nq = kin.num_q
         self.body_state_dim = BODY_STATE_DIM_EXTRA + 2 * self.nq
         self.inv_dim = 1 + 6 + 3 + 3 + 2 * self.nq
@@ -246,9 +250,15 @@ class TrackingHeads:
         c = m.clip_id[f]
         k = self.stride * torch.arange(1, self.lookahead, device=f.device)
         fut = torch.minimum(f[..., None] + k, m.clip_end[c][..., None])
-        return mt.goal_observation(torch, m.ref(f), m.ref(fut), m.phase(f).float())
+        return mt.goal_observation(
+            torch, m.ref(f), m.ref(fut), m.phase(f).float(), self.goal_frame, self.goal_bodies,
+            self.goal_anchor,
+        )  # fmt: skip
 
     def goal_dim(self) -> int:
+        if self.goal_frame is not None:
+            g = 3 * len(self.goal_bodies)
+            return g + (self.lookahead - 1) * (g + 6)
         n = 3 * (self.num_tracked - 1)
         return n + (self.lookahead - 1) * ((0 if self.fixed_root else 9) + n) + 1
 
