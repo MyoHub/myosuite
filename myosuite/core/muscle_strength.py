@@ -27,6 +27,7 @@ strength.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -163,6 +164,37 @@ def _coupled_direction(
     return e
 
 
+def _validate_mvc_model(model: mujoco.MjModel) -> None:
+    unsupported = [
+        model.actuator(i).name
+        for i in range(model.nu)
+        if model.actuator_forcelimited[i] or model.actuator_actnum[i] > 1
+    ] + [model.joint(int(j)).name for j in np.flatnonzero(model.jnt_actfrclimited)]
+    if unsupported:
+        raise ValueError(
+            f"Force clamps and multi-state actuators are not supported for MVC: {unsupported}"
+        )
+    if not model.opt.disableflags & int(mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL):
+        restricted = (
+            (model.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE)
+            & (model.actuator_actadr < 0)
+            & (model.actuator_ctrllimited != 0)
+            & (
+                (model.actuator_ctrlrange[:, 0] > 0)
+                | (model.actuator_ctrlrange[:, 1] < 1)
+            )
+        )
+        names = [model.actuator(int(i)).name for i in np.flatnonzero(restricted)]
+        if names:
+            raise ValueError(
+                f"stateless muscle control clamps must include [0, 1] for MVC: {names}"
+            )
+    if np.any(model.body_gravcomp != 0):
+        raise ValueError(
+            "gravity compensation is not supported for gravity-corrected MVC"
+        )
+
+
 def max_torque_terms(
     model: mujoco.MjModel, measurement: MaxTorqueMeasurement
 ) -> tuple[np.ndarray, np.ndarray, float]:
@@ -177,7 +209,16 @@ def max_torque_terms(
         activation beyond its passive force, in the measured direction
         (antagonists negative); ``(nu,)`` torque of each actuator's passive
         force; and the torque of the joints' own springs [N m].
+
+    Raises:
+        ValueError: If force clamps, multi-state actuators, gravity compensation
+            or stateless muscle control clamps excluding [0, 1] prevent the
+            gravity-corrected, affine full-activation probe.
     """
+    _validate_mvc_model(model)
+    if np.any(model.actuator_actearly):
+        model = copy.deepcopy(model)
+        model.actuator_actearly[:] = 0
     joint = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, measurement.joint)
     # Plain ints: tuple membership of a NumPy scalar in MuJoCo enums is False on
     # some MuJoCo 3.17 wheels (Linux), so compare integer values.
@@ -249,7 +290,8 @@ def calibrate_muscle_strength(
         The factors and the measured, nominal and predicted torques.
 
     Raises:
-        ValueError: If there are no measurements or a torque is not positive.
+        ValueError: If there are no measurements, a torque is not positive,
+            or the model cannot support the steady probe in :func:`max_torque_terms`.
     """
     if not measurements or any(m.torque <= 0 for m in measurements):
         raise ValueError("Need measurements with positive torques")

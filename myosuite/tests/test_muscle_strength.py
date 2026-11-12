@@ -215,3 +215,131 @@ def test_rejects_invalid_trials(elbow: mujoco.MjModel) -> None:
         )
     with pytest.raises(ValueError):
         strength_factor_from_body_mass(-1.0, 75.0)
+
+
+def test_early_activation_terms_are_steady_without_modifying_the_model() -> None:
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><compiler angle="radian"/><worldbody><body>'
+        '<joint name="elbow" range="0 3" stiffness="2"/>'
+        '<geom size=".1" mass="1"/></body></worldbody><actuator>'
+        '<muscle name="flexor" joint="elbow" gear="-1" '
+        'lengthrange="-3 0" force="100"/></actuator></mujoco>'
+    )
+    trial = MaxTorqueMeasurement("elbow", np.array([1.0]), torque=40.0)
+    expected = max_torque_terms(model, trial)
+    assert expected[0][0] > 1.0
+    model.actuator_actearly[0] = 1
+    active, passive, joints = max_torque_terms(model, trial)
+    for actual, nominal in zip((active, passive, joints), expected):
+        np.testing.assert_allclose(actual, nominal)
+    assert model.actuator_actearly[0] == 1
+    for activation in (0.5, 1.0):
+        data = mujoco.MjData(model)
+        data.qpos[:] = trial.qpos
+        data.act[:] = activation
+        data.ctrl[0] = activation
+        mujoco.mj_forward(model, data)
+        physical = (
+            data.actuator_force[0] * data.actuator_moment[0] + data.qfrc_passive[0]
+        )
+        assert activation * active[0] + passive[0] + joints == pytest.approx(physical)
+
+
+def test_early_activation_calibration_matches_steady_fit(elbow: mujoco.MjModel) -> None:
+    model = copy.deepcopy(elbow)
+    trials = [MaxTorqueMeasurement("r_elbow_flex", np.array([1.0]), 50.0)]
+    expected = calibrate_muscle_strength(model, trials)
+    model.actuator_actearly[:] = 1
+    actual = calibrate_muscle_strength(model, trials)
+    np.testing.assert_allclose(actual.factors, expected.factors)
+    np.testing.assert_allclose(actual.predicted, expected.predicted)
+    assert np.all(model.actuator_actearly == 1)
+
+
+@pytest.mark.parametrize(
+    "unsupported", ["actuator_clamp", "joint_clamp", "multi_state"]
+)
+def test_mvc_rejects_unsupported_force_paths(unsupported: str) -> None:
+    model = mujoco.MjModel.from_xml_string(_XML)
+    if unsupported == "actuator_clamp":
+        model.actuator_forcelimited[0] = True
+        model.actuator_forcerange[0] = [-50.0, 0.0]
+    elif unsupported == "joint_clamp":
+        model.jnt_actfrclimited[0] = True
+        model.jnt_actfrcrange[0] = [0.0, 20.0]
+    else:
+        model = mujoco.MjModel.from_xml_string(
+            '<mujoco><worldbody><body><joint name="hinge"/>'
+            '<geom size=".1" mass="1"/></body></worldbody>'
+            '<actuator><general joint="hinge" dyntype="user" actdim="2"/>'
+            "</actuator></mujoco>"
+        )
+    trial = MaxTorqueMeasurement("hinge", model.qpos0.copy(), 5.0)
+    with pytest.raises(ValueError, match="Force clamps and multi-state"):
+        max_torque_terms(model, trial)
+    with pytest.raises(ValueError, match="Force clamps and multi-state"):
+        calibrate_muscle_strength(model, [trial])
+
+
+@pytest.mark.parametrize("route_to_actuation", [False, True])
+def test_mvc_rejects_gravity_compensation(route_to_actuation: bool) -> None:
+    model = mujoco.MjModel.from_xml_string(_XML)
+    model.body_gravcomp[1] = 1
+    model.jnt_actgravcomp[:] = route_to_actuation
+    trial = MaxTorqueMeasurement("hinge", np.array([0.4]), 5.0)
+    with pytest.raises(ValueError, match="gravity compensation"):
+        max_torque_terms(model, trial)
+    with pytest.raises(ValueError, match="gravity compensation"):
+        calibrate_muscle_strength(model, [trial])
+
+
+def _stateless_muscle() -> mujoco.MjModel:
+    return mujoco.MjModel.from_xml_string(
+        '<mujoco><compiler angle="radian"/><worldbody><body>'
+        '<joint name="elbow" range="0 3"/><geom size=".1" mass="1"/>'
+        '</body></worldbody><actuator><general name="flexor" joint="elbow" '
+        'gear="-1" dyntype="none" gaintype="muscle" biastype="muscle" '
+        'gainprm=".75 1.05 100 200 .5 1.6 1.5 1.3 1.2" '
+        'biasprm=".75 1.05 100 200 .5 1.6 1.5 1.3 1.2" '
+        'lengthrange="-3 0" ctrllimited="true" ctrlrange="0 1"/>'
+        "</actuator></mujoco>"
+    )
+
+
+@pytest.mark.parametrize("lower,upper", [(0.0, 0.5), (0.2, 1.0)])
+def test_mvc_rejects_restricted_stateless_controls(lower: float, upper: float) -> None:
+    model = _stateless_muscle()
+    model.actuator_ctrlrange[0] = [lower, upper]
+    trial = MaxTorqueMeasurement("elbow", np.array([1.0]), 40.0)
+    data = mujoco.MjData(model)
+    data.qpos[:] = trial.qpos
+    data.ctrl[:] = 0.5
+    mujoco.mj_forward(model, data)
+    assert data.qfrc_actuator[0] == pytest.approx(49.0)
+    with pytest.raises(ValueError, match="stateless muscle control clamps"):
+        max_torque_terms(model, trial)
+    with pytest.raises(ValueError, match="stateless muscle control clamps"):
+        calibrate_muscle_strength(model, [trial])
+
+
+@pytest.mark.parametrize(
+    "lower,upper,disable_clamp",
+    [(0.0, 1.0, False), (-1.0, 2.0, False), (0.0, 0.5, True)],
+)
+def test_supported_stateless_terms_match_direct_actuation(
+    lower: float, upper: float, disable_clamp: bool
+) -> None:
+    model = _stateless_muscle()
+    model.actuator_ctrlrange[0] = [lower, upper]
+    if disable_clamp:
+        model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL)
+    trial = MaxTorqueMeasurement("elbow", np.array([1.0]), 40.0)
+    active, passive, joints = max_torque_terms(model, trial)
+    for activation in (0.5, 1.0):
+        data = mujoco.MjData(model)
+        data.qpos[:] = trial.qpos
+        data.ctrl[:] = activation
+        mujoco.mj_forward(model, data)
+        assert activation * active[0] + passive[0] + joints == pytest.approx(
+            data.qfrc_actuator[0]
+        )
