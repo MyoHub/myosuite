@@ -53,6 +53,21 @@ def _validate_mvc_model(model: mujoco.MjModel) -> None:
         raise ValueError(
             f"Force clamps and multi-state actuators are not supported for MVC: {unsupported}"
         )
+    if not model.opt.disableflags & int(mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL):
+        restricted = (
+            (model.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE)
+            & (model.actuator_actadr < 0)
+            & (model.actuator_ctrllimited != 0)
+            & (
+                (model.actuator_ctrlrange[:, 0] > 0)
+                | (model.actuator_ctrlrange[:, 1] < 1)
+            )
+        )
+        names = [model.actuator(int(i)).name for i in np.flatnonzero(restricted)]
+        if names:
+            raise ValueError(
+                f"stateless muscle control clamps must include [0, 1] for MVC: {names}"
+            )
     if np.any(model.body_gravcomp != 0):
         raise ValueError(
             "gravity compensation is not supported for gravity-corrected MVC"
@@ -157,7 +172,8 @@ def max_joint_torque(
 
     Raises:
         ValueError: If the model has force clamps, multi-state actuators or gravity
-            compensation. Force must be affine in activation and strength.
+            compensation, or enabled stateless muscle control clamps exclude part
+            of [0, 1]. Force must be affine in activation and strength.
     """
     if direction not in (-1.0, 1.0):
         raise ValueError("direction must be +1 or -1")
@@ -554,11 +570,12 @@ def endurance_time(
     margin = (1.0 - bank.MF) - loads
     t = 0.0
     while t < max_time and np.isinf(out).any():
-        bank.compute_act(loads, dt=dt)
-        t += dt
+        step = min(dt, max_time - t)
+        bank.compute_act(loads, dt=step)
+        t += step
         new = (1.0 - bank.MF) - loads
         crossed = np.isinf(out) & (new < 0)
-        out[crossed] = t - dt * new[crossed] / (new[crossed] - margin[crossed])
+        out[crossed] = t - step * new[crossed] / (new[crossed] - margin[crossed])
         margin = new
     return out
 

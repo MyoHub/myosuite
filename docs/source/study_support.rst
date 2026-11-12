@@ -31,6 +31,8 @@ work. An unweighted fatigue average does not equal joint MVC capacity.
 MVC calculations use steady activation, including for ``actearly`` actuators.
 They reject actuator/joint force clamps, multi-state actuators and body gravity
 compensation rather than silently fitting a non-affine or assisted torque model.
+Enabled control clamps on stateless muscle actuators must contain the full
+``[0, 1]`` activation interval; otherwise MVC routines reject the model.
 
 ``scale_body_mass`` accepts explicit ``represented_mass`` or a
 ``participant_mass / reference_mass`` ratio. ``bodies`` selects the subject rather
@@ -48,6 +50,9 @@ the model predicts finite failure times inside the fitting horizon. This avoids 
 flat censored loss when the initial model fatigues much more slowly than the
 participant. Optimization uses at most 400 objective evaluations and reports a
 failure if initialization or convergence fails.
+``endurance_time`` stops integration at ``max_time`` even when the check interval
+is longer than the remaining time. A hold that has not failed at that horizon
+returns infinity.
 
 External loading
 ----------------

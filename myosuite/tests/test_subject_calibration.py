@@ -284,3 +284,74 @@ def test_fatigue_fit_initializes_beyond_a_censored_starting_simplex() -> None:
     assert fit.F == pytest.approx(0.05, rel=1e-4)
     assert fit.rmse_log < 1e-4
     np.testing.assert_allclose(fit.predicted, observed, rtol=1e-4)
+
+
+@pytest.mark.parametrize("dt,horizon", [(0.25, 20.4), (60.0, 1.0)])
+def test_endurance_failure_after_the_horizon_remains_censored(
+    dt: float, horizon: float
+) -> None:
+    full = endurance_time([0.5], F=0.05, R=0.002, r=5.0)[0]
+    assert full > horizon
+    result = endurance_time([0.5], F=0.05, R=0.002, r=5.0, dt=dt, max_time=horizon)
+    assert np.isinf(result[0])
+
+
+def test_endurance_interpolates_with_the_short_final_interval() -> None:
+    result = endurance_time([0.5], F=0.05, R=0.002, r=5.0, max_time=20.45)[0]
+    reference = endurance_time([0.5], F=0.05, R=0.002, r=5.0, dt=0.01)[0]
+    assert 20.25 < result <= 20.45
+    assert result == pytest.approx(reference, abs=1e-3)
+
+
+def _stateless_muscle() -> mujoco.MjModel:
+    return mujoco.MjModel.from_xml_string(
+        '<mujoco><compiler angle="radian"/><worldbody><body>'
+        '<joint name="elbow" range="0 3"/><geom size=".1" mass="1"/>'
+        '</body></worldbody><actuator><general name="flexor" joint="elbow" '
+        'gear="-1" dyntype="none" gaintype="muscle" biastype="muscle" '
+        'gainprm=".75 1.05 100 200 .5 1.6 1.5 1.3 1.2" '
+        'biasprm=".75 1.05 100 200 .5 1.6 1.5 1.3 1.2" '
+        'lengthrange="-3 0" ctrllimited="true" ctrlrange="0 1"/>'
+        "</actuator></mujoco>"
+    )
+
+
+@pytest.mark.parametrize("lower,upper", [(0.0, 0.5), (0.2, 1.0)])
+def test_mvc_rejects_restricted_stateless_controls(lower: float, upper: float) -> None:
+    model = _stateless_muscle()
+    model.actuator_ctrlrange[0] = [lower, upper]
+    q = posture_at(model, {"elbow": 1.0})
+    data = mujoco.MjData(model)
+    data.qpos[:] = q
+    data.ctrl[:] = 0.5
+    mujoco.mj_forward(model, data)
+    assert data.qfrc_actuator[0] == pytest.approx(49.0)
+    with pytest.raises(ValueError, match="stateless muscle control clamps"):
+        max_joint_torque(model, q, "elbow", max_activation=np.array([0.5]))
+    with pytest.raises(ValueError, match="stateless muscle control clamps"):
+        strength_from_mvc(model, q, "elbow", 40.0)
+    with pytest.raises(ValueError, match="stateless muscle control clamps"):
+        fit_strength_from_mvcs(model, [q, q], "elbow", [40.0, 40.0])
+
+
+@pytest.mark.parametrize(
+    "lower,upper,disable_clamp",
+    [(0.0, 1.0, False), (-1.0, 2.0, False), (0.0, 0.5, True)],
+)
+def test_supported_stateless_controls_match_direct_actuation(
+    lower: float, upper: float, disable_clamp: bool
+) -> None:
+    model = _stateless_muscle()
+    model.actuator_ctrlrange[0] = [lower, upper]
+    if disable_clamp:
+        model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL)
+    q = posture_at(model, {"elbow": 1.0})
+    for activation in (0.5, 1.0):
+        data = mujoco.MjData(model)
+        data.qpos[:] = q
+        data.ctrl[:] = activation
+        mujoco.mj_forward(model, data)
+        prediction = max_joint_torque(
+            model, q, "elbow", max_activation=np.array([activation])
+        )[0]
+        assert prediction == pytest.approx(data.qfrc_actuator[0])
