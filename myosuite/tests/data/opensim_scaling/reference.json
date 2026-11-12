@@ -210,15 +210,15 @@
   },
   "myosuite": {
     "provenance": {
-      "platform": "Windows-11-10.0.26300-SP0",
+      "platform": "Windows-10-10.0.26300-SP0",
       "code_sha256_lf": {
         "scripts/validate_opensim_scaling.py": "e2c38397fcd7a89d34723c9c6216ad4b77f413f48b825c2fa753dc0e4273b546",
-        "myosuite/core/body_scaling.py": "7b3e86d667d433b37c3391412b7abcf7e5cd80fbdb37da4720f6fb4743323d26"
+        "myosuite/core/body_scaling.py": "6fe965b686d1e8454ca7f714f4da7c5e86df243ebf7e10cf3ca15d70248bb0eb"
       },
-      "python_version": "3.12.9",
+      "python_version": "3.10.22",
       "mujoco_version": "3.11.0",
-      "myo_sim_version": "0.2.4",
-      "myosuite_version": "3.0.0"
+      "myo_sim_version": "0.2.5",
+      "myosuite_version": "3.1.0"
     },
     "inertia_probe": {
       "volume": {
