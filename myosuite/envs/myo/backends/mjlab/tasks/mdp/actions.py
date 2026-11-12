@@ -28,7 +28,7 @@ MuJoCo actuator order and map it to ``ctrl`` as follows:
 
 mjlab's :class:`~mjlab.envs.mdp.actions.BaseAction` only supports affine maps on
 a single transmission type, so this term writes the processed ctrl of every
-actuator to its own joint/tendon effort target (wrapped by ``XmlActuatorCfg``).
+actuator to its own joint/tendon/site effort target (wrapped by ``XmlActuatorCfg``).
 """
 
 from __future__ import annotations
@@ -211,8 +211,10 @@ class MyoAction(ActionTerm):
         ctrl_ids = entity.indexing.ctrl_ids.cpu().tolist()
         joint_ids = entity.indexing.joint_ids.cpu().tolist()
         tendon_ids = entity.indexing.tendon_ids.cpu().tolist()
+        site_ids = entity.indexing.site_ids.cpu().tolist()
 
         joint_cols, joint_targets, tendon_cols, tendon_targets = [], [], [], []
+        site_cols, site_targets = [], []
         for col, act_id in enumerate(ctrl_ids):
             trn_type = int(model.actuator_trntype[act_id])
             trn_id = int(model.actuator_trnid[act_id, 0])
@@ -222,12 +224,22 @@ class MyoAction(ActionTerm):
             elif trn_type == mujoco.mjtTrn.mjTRN_TENDON:
                 tendon_cols.append(col)
                 tendon_targets.append(tendon_ids.index(trn_id))
+            elif (
+                trn_type == mujoco.mjtTrn.mjTRN_SITE
+                and model.actuator_trnid[act_id, 1] == -1
+            ):
+                site_cols.append(col)
+                site_targets.append(site_ids.index(trn_id))
             else:
                 raise ValueError(
-                    f"Actuator {model.actuator(act_id).name!r}: only joint and "
-                    "tendon transmissions are supported."
+                    f"Actuator {model.actuator(act_id).name!r}: only joint, tendon "
+                    "and site (no refsite) transmissions are supported."
                 )
-        for kind, targets in (("joint", joint_targets), ("tendon", tendon_targets)):
+        for kind, targets in (
+            ("joint", joint_targets),
+            ("tendon", tendon_targets),
+            ("site", site_targets),
+        ):
             if len(set(targets)) != len(targets):
                 raise ValueError(f"Several actuators drive the same {kind}.")
 
@@ -237,6 +249,7 @@ class MyoAction(ActionTerm):
         self._joint_cols, self._joint_targets = _long(joint_cols), _long(joint_targets)
         self._tendon_cols = _long(tendon_cols)
         self._tendon_targets = _long(tendon_targets)
+        self._site_cols, self._site_targets = _long(site_cols), _long(site_targets)
 
         self._action_dim = len(ctrl_ids)
         dyn_type = model.actuator_dyntype[ctrl_ids]
@@ -364,6 +377,11 @@ class MyoAction(ActionTerm):
             self._entity.set_tendon_effort_target(
                 self._processed_actions[:, self._tendon_cols],
                 tendon_ids=self._tendon_targets,
+            )
+        if len(self._site_cols):
+            self._entity.set_site_effort_target(
+                self._processed_actions[:, self._site_cols],
+                site_ids=self._site_targets,
             )
 
     def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:

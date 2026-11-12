@@ -449,13 +449,25 @@ def test_for_body_keeps_the_full_body_and_drops_root_terms() -> None:
 
 @pytest.fixture(scope="module", params=["myoelbow2dof", "mixed"])
 def submodel(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory):
-    """A fixed-base body (muscles only, or with a direct and a first-order motor) and a clip."""
+    """A fixed-base body (muscles only, or with a direct, a first-order and a site motor) and a clip."""
     from myosuite.tests.mimic_toy import register_mixed_model
 
     name = register_mixed_model().name if request.param == "mixed" else request.param
     path = tmp_path_factory.mktemp("sub") / f"{name}.npz"
     write_synthetic_clip(path, compiled_body(name), 2.0, 0.0, 0.3, 0, model_name=name)
     return name, str(path)
+
+
+def test_motors_by_transmission() -> None:
+    """Joint and site motors are motors; the twin targets each by its transmission."""
+    from myosuite.envs.myo.tasks.mimic.tracking.models import body_info
+    from myosuite.tests.mimic_toy import register_mixed_model
+
+    info = body_info(register_mixed_model().name)
+    names = [info.actuator_names[a] for a in info.motor_ids]
+    assert names == ["shoulder_motor", "elbow_motor", "forearm_motor"]
+    assert info.motor_joint_names == ["r_shoulder_elev", "r_elbow_flex"]
+    assert info.motor_site_names == ["forearm_motor_site"]
 
 
 def test_submodel_motion_lib_has_no_root(submodel) -> None:

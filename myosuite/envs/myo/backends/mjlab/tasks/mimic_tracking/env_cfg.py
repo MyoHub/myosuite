@@ -81,14 +81,18 @@ def _entity_cfg(
             command_field="effort",
         )
     ]
-    if info.motor_joint_names:
-        actuators.append(
-            XmlActuatorCfg(
-                target_names_expr=tuple(f"^{n}$" for n in info.motor_joint_names),
-                transmission_type=TransmissionType.JOINT,
-                command_field="effort",
+    for names, trn in (
+        (info.motor_joint_names, TransmissionType.JOINT),
+        (info.motor_site_names, TransmissionType.SITE),
+    ):
+        if names:
+            actuators.append(
+                XmlActuatorCfg(
+                    target_names_expr=tuple(f"^{n}$" for n in names),
+                    transmission_type=trn,
+                    command_field="effort",
+                )
             )
-        )
     return EntityCfg(
         init_state=EntityCfg.InitialStateCfg(
             pos=tuple(map(float, pos)),

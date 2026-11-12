@@ -130,7 +130,7 @@ The task runs on any body registered as a ``MimicModelCfg`` (``register_model``;
 fixed-base example), selected with ``TaskEnvCfg(model=...)``:
 
 * a fixed root (no free joint): the root terms drop out of the task, the world model integrates the joints only;
-* motors next to the muscles (``motor_expr``): the policy's action in [0, 1] maps onto each motor's control range, and
+* motors next to the muscles (``motor_expr``; joint or site transmission): the policy's action in [0, 1] maps onto each motor's control range, and
   the state carries one drive per actuator (muscle activation, a direct motor's normalized command, a first-order
   motor's normalized activation), integrated analytically like the muscles;
 * no contact bodies: no touch observation or world-model touch head; no ``mirror_sides``: mirror augmentation off;
@@ -145,7 +145,7 @@ it was trained with: ``noise_free_frac`` lets a share of the training envs colle
 returns are logged as ``det_ret``), and ``budget_schedules`` runs the learning-rate decay (and an action-noise
 annealing down to ``action_noise_final``; set it to ``action_noise`` to keep the noise) over the ``max_hours``
 budget. ``tests/test_submodel.py`` runs the runner-vs-env and collector-vs-``env.step`` checks on
-a fixed-base body with muscles, a direct and a first-order motor.
+a fixed-base body with muscles, a direct and a first-order joint motor and a site force / torque motor.
 
 ## Planned: DynSyn action groups
 

@@ -10,8 +10,8 @@ Changes since **v3.1.0**.
 
 * **`myoMimic-v0` and myoSuperMimic on submodels of a body.** A model adapter (`MimicModelCfg`,
   `register_model`) may have a fixed root (no free joint: the root observations, reward components and failure
-  checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`: an
-  action in [0, 1] maps onto each motor's control range, on the CPU and in the twin through
+  checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`, joint or site
+  transmission: an action in [0, 1] maps onto each motor's control range, on the CPU and in the twin through
   `MyoActionCfg.motor_ctrl_range`), any number of tracked bodies, no contact bodies (no ground, no touch), an
   optional left-right mirror map and effectors whose position error is reported as a success metric. Built-in
   example: `myoelbow2dof` (myo_sim's 2-DoF elbow, fixed base, fingertip error in cm). myoSuperMimic trains on such

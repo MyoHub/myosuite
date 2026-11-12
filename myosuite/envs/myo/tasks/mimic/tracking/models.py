@@ -60,8 +60,9 @@ class MimicModelCfg:
         foot_bodies: Contact bodies of the touch observation (heels and toes); empty:
             no touch observation and no ground.
         muscle_tendon_expr: Regexes of the muscle tendons (mjlab's actuator targets).
-        motor_expr: Regexes of the actuator names that are motors (joint transmission,
-            no or first-order dynamics); every other actuator is a tendon muscle.
+        motor_expr: Regexes of the actuator names that are motors (joint or site
+            transmission, no or first-order dynamics); every other actuator is a tendon
+            muscle.
         mirror_sides: Left / right suffix pairs of a left-right symmetric body (mirror
             augmentation of a learning method); ``None``: not symmetric.
         effectors: Tracked bodies whose world position error is a success metric
@@ -379,12 +380,16 @@ class ModelInfo:
                 "every actuator but the motors must be a tendon-driven muscle"
             )
         motor_dyn = (mujoco.mjtDyn.mjDYN_NONE, mujoco.mjtDyn.mjDYN_FILTER)
+        trn = m.actuator_trntype[motors]
+        site = trn == mujoco.mjtTrn.mjTRN_SITE
         if motors and not (
             np.isin(m.actuator_dyntype[motors], motor_dyn).all()
-            and (m.actuator_trntype[motors] == mujoco.mjtTrn.mjTRN_JOINT).all()
+            and ((trn == mujoco.mjtTrn.mjTRN_JOINT) | site).all()
+            and (m.actuator_trnid[motors, 1][site] == -1).all()
         ):
             raise ValueError(
-                "motors need a joint transmission and no or filter dynamics"
+                "motors need a joint or site (no refsite) transmission and no or "
+                "filter dynamics"
             )
         self.num_actuators = m.nu
         self.actuator_names = names
@@ -398,8 +403,17 @@ class ModelInfo:
             m.tendon(int(t)).name for t in m.actuator_trnid[muscles, 0]
         ]
         self.motor_joint_names = [
-            m.joint(int(j)).name for j in m.actuator_trnid[motors, 0]
+            m.joint(int(j)).name
+            for j, s in zip(m.actuator_trnid[motors, 0], site, strict=True)
+            if not s
         ]
+        """Joints of the joint-transmission motors."""
+        self.motor_site_names = [
+            m.site(int(j)).name
+            for j, s in zip(m.actuator_trnid[motors, 0], site, strict=True)
+            if s
+        ]
+        """Sites of the site-transmission motors (a force / torque at the site)."""
         self.qpos0 = m.qpos0.copy()
         self.act_adr = m.actuator_actadr[muscles].copy()
         """``act`` addresses of the muscles."""

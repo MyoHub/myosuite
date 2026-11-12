@@ -82,7 +82,7 @@ def test_fixed_base_runner_scores_like_the_env(toy: tuple[str, Path]) -> None:
         and runner.mirror is None
         and runner.num_touch == 0
     )
-    assert cmd.num_actuators == 8 and cmd.info.num_muscles == 6
+    assert cmd.num_actuators == 9 and cmd.info.num_muscles == 6
     names = set(u.reward_manager._term_names)
     assert "mimic_root_pos" not in names and "mimic_root_vel" not in names
     assert {t for t in u.termination_manager.active_terms if t.endswith("_dev")} == {
@@ -124,7 +124,7 @@ def test_fixed_base_runner_scores_like_the_env(toy: tuple[str, Path]) -> None:
     S1, *_ = runner._imag_step(S, hist, cmd.f.clone(), a)
     for i in range(4):
         assert torch.equal(S1[i], S[i])
-    assert S1[6].shape == (2, 8) and S1[7].shape == (2, 0)
+    assert S1[6].shape == (2, 9) and S1[7].shape == (2, 0)
 
 
 def _short_episodes(u: Any) -> None:

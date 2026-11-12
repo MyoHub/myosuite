@@ -3,8 +3,9 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 """A fixed-base ``myoMimic-v0`` test body with muscles and a motor: myo_sim's 2-DoF elbow
-(``myoelbow2dof``) plus a torque motor on the shoulder and a first-order (filter) motor on
-the elbow. Also used by ``training/supermimic``'s tests."""
+(``myoelbow2dof``) plus a torque motor on the shoulder, a first-order (filter) motor on
+the elbow and a site force / torque motor on the forearm. Also used by
+``training/supermimic``'s tests."""
 
 from __future__ import annotations
 
@@ -34,6 +35,15 @@ def _spec(self_collisions: bool = True) -> mujoco.MjSpec:
         act.gear[0] = gear
         act.ctrllimited = mujoco.mjtLimited.mjLIMITED_TRUE
         act.ctrlrange = (-1.0, 1.0)
+    # a site transmission: a force and torque at an off-axis forearm site (site frame)
+    spec.body("r_ulna_radius_hand").add_site(
+        name="forearm_motor_site", pos=(0.02, 0.0, -0.1)
+    )
+    act = spec.add_actuator(name="forearm_motor", target="forearm_motor_site")
+    act.trntype = mujoco.mjtTrn.mjTRN_SITE
+    act.gear = (3.0, 0.0, 2.0, 0.0, 0.3, 0.0)
+    act.ctrllimited = mujoco.mjtLimited.mjLIMITED_TRUE
+    act.ctrlrange = (-1.0, 1.0)
     return spec
 
 
