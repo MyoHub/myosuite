@@ -26,6 +26,17 @@ Changes since **v3.1.0**.
 * **myoSuperMimic `noise_free_frac` and `budget_schedules`** (opt-in): a share of the training envs collects with
   the noise-free policy, and the learning-rate decay (and an action-noise annealing) runs over the time budget.
 
+### Changed
+
+* **myoSuperMimic's `soft_width` is relative to each failure threshold.** The full body's thresholds are 1 m and
+  1 rad, so its results are unchanged; on a submodel with small thresholds the softened failure rule no longer
+  turns into a constant per-step death rate.
+
+### Fixed
+
+* **myoSuperMimic on MuJoCo 3.17:** the world model's joint-type check rejected hinge joints, because a NumPy scalar
+  no longer compares equal to a MuJoCo enum member. Types are compared as Python ints.
+
 ## [3.1.0] - unreleased
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
