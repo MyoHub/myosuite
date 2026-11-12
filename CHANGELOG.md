@@ -8,7 +8,7 @@ Changes since **v3.1.0**.
 
 ### Added
 
-* **`myoMimic-v0` and myoSuperMimic on submodels of a body.** A model adapter (`MimicModelCfg`,
+* **`myoMimic-v0` and myoSuperMimic on submodels of a body.** A model adapter (`MimicModelCfg`, ([#711])
   `register_model`) may have a fixed root (no free joint: the root observations, reward components and failure
   checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`, joint or site
   transmission: an action in [0, 1] maps onto each motor's control range, on the CPU and in the twin through
@@ -36,6 +36,8 @@ Changes since **v3.1.0**.
 
 * **myoSuperMimic on MuJoCo 3.17:** the world model's joint-type check rejected hinge joints, because a NumPy scalar
   no longer compares equal to a MuJoCo enum member. Types are compared as Python ints.
+
+[#711]: https://github.com/MyoHub/myosuite/pull/711
 
 ## [3.1.0] - unreleased
 
