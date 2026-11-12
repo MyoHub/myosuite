@@ -12,9 +12,9 @@ import torch
 from mjlab.managers.event_manager import EventTermCfg, requires_model_fields
 from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+from mjlab.utils.lab_api.math import quat_apply
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
-from myosuite.physics.quat_math_torch import quat2mat
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 if TYPE_CHECKING:
@@ -125,9 +125,7 @@ def write_cpu_state(
     if len(idx.free_joint_q_adr):
         root = torch.cat((qpos[:, :7], qvel[:, :6]), dim=-1)
         root[:, :3] += env.scene.env_origins[env_ids]
-        root[:, 10:13] = torch.einsum(
-            "nij,nj->ni", quat2mat(root[:, 3:7]), qvel[:, 3:6]
-        )
+        root[:, 10:13] = quat_apply(root[:, 3:7], qvel[:, 3:6])
         entity.write_root_state_to_sim(root, env_ids=env_ids)
     if len(idx.joint_q_adr):
         entity.write_joint_state_to_sim(
