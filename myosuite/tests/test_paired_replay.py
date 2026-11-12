@@ -13,7 +13,8 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
-from myosuite.utils.paired_replay import ReplayPolicy, ReplaySnapshot
+from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper
+from myosuite.utils.paired_replay import ReplayPolicy, ReplaySnapshot, ReplayStateOwner
 
 pytestmark = pytest.mark.tier1
 
@@ -157,3 +158,77 @@ def test_loaded_torch_rng_restores_when_available() -> None:
     expected = torch.rand(5)
     snapshot.restore()
     torch.testing.assert_close(torch.rand(5), expected, rtol=0, atol=0)
+
+
+def test_shared_state_across_layers_keeps_aliases() -> None:
+    env = gym.wrappers.TimeLimit(RandomEnv(), max_episode_steps=10)
+    env.reset(seed=0)
+    env.shared = env.unwrapped.shared = {"history": [1]}
+    snapshot = ReplaySnapshot.capture(
+        env, ReplayPolicy.stateless(lambda obs: np.zeros(1))
+    )
+    env.shared["history"].append(2)
+    snapshot.restore()
+    assert env.shared is env.unwrapped.shared
+    assert env.shared == {"history": [1]}
+
+
+@pytest.mark.parametrize("muscles", [None, [0, 2, 4]])
+def test_fatigue_noise_closure_restores_original_owner_in_place(muscles) -> None:
+    env = MotorNoiseWrapper(
+        FatigueWrapper(make_env("myoElbowPose1D6MFixed-v0"), muscles=muscles),
+        {"constant_std": 0.01},
+    )
+    try:
+        obs, _ = env.reset(seed=4)
+        fatigue = env.env.muscle_fatigue
+        policy = ReplayPolicy.stateless(
+            lambda obs: np.full(env.action_space.shape, 0.6, np.float32)
+        )
+        snapshot = ReplaySnapshot.capture(env, policy)
+        expected = []
+        for _ in range(8):
+            current, reward, *_ = env.step(policy.action(obs))
+            expected.append(
+                (current.copy(), reward, copy.deepcopy(fatigue.state_dict()))
+            )
+        snapshot.restore()
+        assert env.env.muscle_fatigue is fatigue
+        assert env.unwrapped.muscle_fatigue is fatigue
+        for current_expected, reward_expected, fatigue_expected in expected:
+            current, reward, *_ = env.step(policy.action(obs))
+            np.testing.assert_array_equal(current, current_expected)
+            assert reward == reward_expected
+            assert fatigue.state_dict() == fatigue_expected
+    finally:
+        env.close()
+
+
+def test_custom_mutable_closure_requires_and_restores_explicit_owner() -> None:
+    env = make_env("myoElbowPose1D6MFixed-v0")
+    history = []
+
+    def stage(host, ctrl):
+        history.append(float(ctrl.sum()))
+        return ctrl
+
+    try:
+        env.unwrapped.add_ctrl_stage("history", stage)
+        env.reset(seed=0)
+        policy = ReplayPolicy.stateless(
+            lambda obs: np.full(env.action_space.shape, 0.5, np.float32)
+        )
+        with pytest.raises(ValueError, match="ReplayStateOwner"):
+            ReplaySnapshot.capture(env, policy)
+        owner = ReplayStateOwner(
+            history,
+            lambda: list(history),
+            lambda state: history.__setitem__(slice(None), state),
+        )
+        snapshot = ReplaySnapshot.capture(env, policy, state_owners=(owner,))
+        env.step(policy.action(None))
+        assert history
+        snapshot.restore()
+        assert history == []
+    finally:
+        env.close()
