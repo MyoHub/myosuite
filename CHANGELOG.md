@@ -8,7 +8,7 @@ Changes since **v3.1.0**.
 
 ### Added
 
-* **`myoMimic-v0` and myoSuperMimic on submodels of a body.** A model adapter (`MimicModelCfg`, ([#711])
+* **`myoMimic-v0` and myoSuperMimic on submodels of a body ([#711]).** A model adapter (`MimicModelCfg`,
   `register_model`) may have a fixed root (no free joint: the root observations, reward components and failure
   checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`, joint or site
   transmission: an action in [0, 1] maps onto each motor's control range, on the CPU and in the twin through
