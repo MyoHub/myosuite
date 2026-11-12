@@ -529,6 +529,9 @@ def verify_onnx_on_cpu(
     seed: int = 0,
     env_id: str = "myoLegWalk-v0",
     min_mean_reward: float = -np.inf,
+    *,
+    allow_provenance_mismatch: bool = False,
+    current_deployment: dict[str, Any] | None = None,
 ) -> dict[str, float]:
     """Run an ONNX policy on the CPU Gymnasium env and return episode metrics.
 
@@ -538,6 +541,8 @@ def verify_onnx_on_cpu(
         seed: Environment reset seed.
         env_id: Gymnasium environment ID to run.
         min_mean_reward: If set, assert that mean per-step reward >= this value.
+        allow_provenance_mismatch: Explicit override for reviewed deployment differences.
+        current_deployment: Actual configured I/O/reference provenance, when customized.
 
     Returns:
         Dict with ``total_reward``, ``mean_reward``, ``n_steps``, ``terminated``.
@@ -547,23 +552,31 @@ def verify_onnx_on_cpu(
     ort = require_onnxruntime()
 
     onnx_path = Path(onnx_path)
-    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    input_name = sess.get_inputs()[0].name
-    output_name = sess.get_outputs()[0].name
-
     env = make_env(env_id)
-    obs, _ = env.reset(seed=seed)
+    try:
+        from myosuite.utils.deployment_manifest import validate_policy_manifest
 
-    total_reward = 0.0
-    steps = 0
-    for _ in range(n_steps):
-        action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze()
-        obs, rew, term, trunc, _ = env.step(action)
-        total_reward += float(rew)
-        steps += 1
-        if term or trunc:
-            break
-    env.close()
+        validate_policy_manifest(
+            onnx_path,
+            env,
+            current=current_deployment,
+            allow_mismatch=allow_provenance_mismatch,
+        )
+        sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        obs, _ = env.reset(seed=seed)
+        total_reward = 0.0
+        steps = 0
+        for _ in range(n_steps):
+            action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze()
+            obs, rew, term, trunc, _ = env.step(action)
+            total_reward += float(rew)
+            steps += 1
+            if term or trunc:
+                break
+    finally:
+        env.close()
 
     mean_reward = total_reward / max(steps, 1)
     if mean_reward < min_mean_reward:
@@ -679,6 +692,12 @@ def _build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--obs-dim", type=int, default=None)
     ex.add_argument("--act-dim", type=int, default=None)
     ex.add_argument("--opset", type=int, default=17)
+    ex.add_argument("--env", help="CPU env for a physical deployment manifest sidecar")
+    ex.add_argument(
+        "--deployment-metadata",
+        type=Path,
+        help="JSON containing explicit interface, normalization, references and checkpoint_source",
+    )
     ex.add_argument(
         "--vecnormalize",
         type=Path,
@@ -695,6 +714,7 @@ def _build_parser() -> argparse.ArgumentParser:
     vr.add_argument("--steps", type=int, default=200)
     vr.add_argument("--env", default="myoLegWalk-v0")
     vr.add_argument("--min-reward", type=float, default=-float("inf"))
+    vr.add_argument("--allow-provenance-mismatch", action="store_true")
 
     # --- compare ---
     cm = sub.add_parser(
@@ -707,11 +727,92 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _write_export_manifest(args: argparse.Namespace) -> Path:
+    """Write provenance for an exported CPU policy without loading weights again."""
+    import hashlib
+    import json
+
+    from myosuite.utils.deployment_manifest import (
+        artifact_record,
+        env_deployment_manifest,
+        write_deployment_manifest,
+    )
+
+    metadata = (
+        json.loads(args.deployment_metadata.read_text(encoding="utf-8"))
+        if args.deployment_metadata
+        else {}
+    )
+    allowed = {
+        "interface",
+        "normalization",
+        "references",
+        "checkpoint_source",
+        "runtime",
+    }
+    if set(metadata) - allowed:
+        raise ValueError(
+            f"Unknown deployment metadata fields: {set(metadata) - allowed}"
+        )
+    checkpoint = Path(args.checkpoint)
+    checkpoint_source = metadata.pop("checkpoint_source", None)
+    if checkpoint.is_dir():
+        files = {
+            p.relative_to(checkpoint).as_posix(): artifact_record(p)
+            for p in sorted(checkpoint.rglob("*"))
+            if p.is_file()
+        }
+        record = {
+            "algorithm": "sha256-sorted-file-records-v1",
+            "files": files,
+            "sha256": hashlib.sha256(
+                json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
+        if checkpoint_source:
+            raise ValueError(
+                "Directory checkpoint sources must be recorded per file in reference metadata"
+            )
+    else:
+        record = artifact_record(checkpoint, source=checkpoint_source)
+    stats = args.vecnormalize
+    if args.framework == "sb3" and stats is None:
+        from myosuite.utils.checkpoint_utils import find_vec_normalize
+
+        stats = find_vec_normalize(checkpoint)
+    if stats is not None:
+        record["vecnormalize"] = artifact_record(stats)
+    metadata.setdefault(
+        "normalization",
+        {"kind": "embedded-or-identity", "input": "raw", "framework": args.framework},
+    )
+    with make_env(args.env) as env:
+        if args.obs_dim is not None and args.obs_dim != int(
+            np.prod(env.observation_space.shape)
+        ):
+            raise ValueError("--obs-dim does not match the deployment env")
+        if args.act_dim is not None and args.act_dim != int(
+            np.prod(env.action_space.shape)
+        ):
+            raise ValueError("--act-dim does not match the deployment env")
+        output = Path(args.output)
+        manifest = env_deployment_manifest(
+            env, artifacts={output.name: output}, checkpoint=record, **metadata
+        )
+    return write_deployment_manifest(output, manifest)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _build_parser().parse_args()
 
     if args.command == "export":
+        if args.env and str(args.checkpoint).startswith("hf://"):
+            _build_parser().error(
+                "For a provenance export, download the checkpoint at a pinned HF revision first and pass its local path plus checkpoint_source metadata."
+            )
+        if args.deployment_metadata and not args.env:
+            _build_parser().error("--deployment-metadata requires --env")
         if args.framework == "orbax":
             export_orbax_to_onnx(args.checkpoint, args.output, args.opset)
         else:
@@ -744,10 +845,16 @@ def main() -> None:
                 export_jax_to_onnx(
                     args.checkpoint, args.output, args.obs_dim, args.act_dim, args.opset
                 )
+        if args.env:
+            _write_export_manifest(args)
 
     elif args.command == "verify":
         metrics = verify_onnx_on_cpu(
-            args.onnx, args.steps, env_id=args.env, min_mean_reward=args.min_reward
+            args.onnx,
+            args.steps,
+            env_id=args.env,
+            min_mean_reward=args.min_reward,
+            allow_provenance_mismatch=args.allow_provenance_mismatch,
         )
         print(
             f"total_reward={metrics['total_reward']:.3f}  "

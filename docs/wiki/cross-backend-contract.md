@@ -18,19 +18,21 @@ weights, thresholds and reset distributions, so MJX-trained policies are not por
 ### 1. Observation vector — identical shape, order, and units
 
 - Obs terms registered in the same order in `ObservationGroupCfg` (mjlab) and the browser config.
-- Per-term `scale` and `clip` must match exactly — these are applied in TypeScript at inference.
+- Per-term `scale`, `clip` and history layout must match exactly at inference.
 - **No implicit clipping.** CPU observation spaces are float32 `Box(-inf, inf)`; observations are only cast to
   float32. Neither backend clips beyond an explicit per-term `clip`.
 - **Fresh derived quantities.** Observations, rewards and terminations read positions, `cvel`, actuator
   length/velocity/force, sensors and contacts of the post-step state. CPU `step()` runs `mj_forward` after `mj_step`
   (`MyoGymnasiumEnv._step_physics`). mjlab scores rewards and terminations before its own post-step `forward()`, so a
   twin whose rewards or terminations read derived quantities registers `mdp.sync_forward` as its first termination term.
-- **Browser (mjswan): no running normalization.** The browser cannot load `VecNormalize` or running mean/std
-  statistics. Use a fixed `scale` in `ObservationTermCfg` and train with `obs_normalization=False`.
-- **CPU, mjlab and ONNX: running normalization is allowed.** The basic-suite runner (`tasks/rl.py`) enables it by
+- **Running normalization is allowed when frozen into the exported policy.** The basic-suite runner (`tasks/rl.py`) enables it by
   default. The frozen statistics are folded into the policy (`load_rslrl_policy`, `export_rslrl_to_onnx`; for SB3
   `export_sb3_to_onnx(vec_normalize=...)` and `OnnxCheckpointCallback`), so the policy still takes the raw CPU
-  observation vector.
+  observation vector. A browser consumes that same ONNX graph; it must not normalize again. A raw `.pt` checkpoint
+  or a separate `VecNormalize` pickle is not itself a browser-ready policy.
+- Current mjswan traces Python observation bodies to ONNX, replacing its earlier TypeScript term DSL.
+  Custom terms can therefore be candidates without a second handwritten implementation. Each task still needs
+  an actual build, numerical parity checks and playback evidence; see [How the Build Works](https://mjswan.readthedocs.io/en/latest/guides/how-it-works/).
 
 ### 2. Action space — identical dimensionality, scaling, and activation
 
@@ -49,9 +51,11 @@ ctrl_dt = decimation × sim_dt
 
 On both backends the control step is set with `EnvConfig(env_id, ctrl_dt=...)` (see [Building an env](#building-an-env-make_env)).
 
-mjswan hardcodes decimation as `round(0.02 / model.opt.timestep)` (50 Hz control). Use only timesteps that are integer divisors of 0.02:
+Current mjswan imports the task's control rate with `add_scene_mjlab`; a manually built policy scene requires an
+explicit `control_dt`. Do not assume 50 Hz. Preserve the training rate and an integer number of physics steps;
+see [Using mjlab](https://mjswan.readthedocs.io/en/latest/guides/mjlab/).
 
-| `timestep` | Browser decimation | ctrl_dt |
+| `timestep` | Decimation for a 0.02 s policy | ctrl_dt |
 |---|---|---|
 | 0.002 s | 10 | 0.02 s ✓ |
 | 0.001 s | 20 | 0.02 s ✓ |
@@ -64,10 +68,19 @@ mjswan hardcodes decimation as `round(0.02 / model.opt.timestep)` (50 Hz control
 - Do not strip actuators, sensors, or meshes for deployment.
 - If DR is applied during training (mass, friction), the browser uses the nominal model — policies must be robust to this by design.
 
-### 5. Observation normalization — per-term scale/clip only
+### 5. Observation normalization — exactly once
 
-For the browser export, only the fixed `scale` and `clip` of `ObservationTermCfg` are exported to JSON and replicated in
-TypeScript; `VecNormalize` statistics are not.
+Freeze training statistics at evaluation and embed them in the exported actor. Preserve any per-term scale/clip
+before that actor and record the order. Check history ordering too: term-major and step-major stacks have the same
+shape but different meaning. Export tests must compare actions from raw observations against the native policy.
+
+### Deployment provenance
+
+New checkpoint manifests can carry a `deployment` section; ONNX exports made with `--env` write
+`<policy>.onnx.manifest.json`. See [Deployment manifests](deployment-manifests.md) for the API and explicit metadata.
+It records exact physical identity (including compiled assets and solver/contact options), separately from the
+kinematic clip fingerprint, plus byte hashes, I/O, timing, normalization and runtime versions. Missing units/history
+remain unknown. A hash match establishes identity, not training quality or browser portability.
 
 ---
 
@@ -248,11 +261,12 @@ User-in-the-Box.
 
 - [ ] Obs term key order identical between mjlab and browser config (assert in `test_mjlab_task_builder.py`)
 - [ ] Obs term `scale` and `clip` values match exactly
-- [ ] Browser export only: no running mean/std normalization (`obs_normalization=False`)
-- [ ] `ctrl_dt = decimation × timestep = 0.02 s`
+- [ ] Frozen normalization embedded exactly once; native vs ONNX actions agree on raw observations
+- [ ] `ctrl_dt = decimation × timestep` equals the actual training rate
 - [ ] XML path via `myo_sim.get_path(...)`
 - [ ] Keyframe at index 0 for `encoder_bias`
 - [ ] Action class exported correctly
+- [ ] Physical/artifact identities and ordered I/O/history/units recorded in the deployment manifest
 - [ ] Smoke-test rollout: 10 steps in browser without NaN
 
 ---
@@ -261,13 +275,19 @@ User-in-the-Box.
 
 | Task | gym ↔ mjlab obs | gym ↔ mjlab action | mjswan export | Blocker |
 |---|---|---|---|---|
-| Elbow | ✓ 9D | ✓ 6D sigmoid | ✗ | No TypeScript: `pose_err`, `act`, `qvel×ctrl_dt` |
-| Walk | ✓ 403D | ✓ 80D, [0, 1] activations (no sigmoid) | ✗ | No TypeScript: all 12 custom obs terms |
-| TableTennis | ✓ 417D | ✓ 275D | ✗ | Custom obs term (no TypeScript) |
-| ChaseTag FBP2 | ✓ 537D (`test_chasetag_fbp2_parity.py`) | ✓ 354D direct | ✗ | No TypeScript: `chasetag_obs` blocks, scripted opponent; ctrl_dt 0.01 s |
+| Elbow | ✓ 9D | ✓ 6D sigmoid | unverified | Trace custom obs and verify muscle action processing/application |
+| Walk | ✓ 403D | ✓ 80D, [0, 1] activations (no sigmoid) | unverified | Trace obs, verify direct activations and controller timing |
+| TableTennis | ✓ 417D | ✓ 275D | unverified | Custom obs/action/command bindings need a build and playback test |
+| ChaseTag FBP2 | ✓ 537D (`test_chasetag_fbp2_parity.py`) | ✓ 354D direct | unverified | Custom obs, scripted opponent and 0.01 s timing need validation |
 
 The parity tests are `test_mjlab_cpu_twins.py` (basic suite, per family: see `docs/source/backend_parity.rst`),
 `test_mjlab_task_builder.py`, `test_chasetag_fbp2_parity.py`, `test_table_tennis_mjlab_parity.py` and
 `test_tabletennis_cpu_mjlab_parity.py`.
 
-**To unblock mjswan export:** either contribute TypeScript obs term implementations to the [mjswan repo](https://github.com/ttktjmt/mjswan), or rewrite mjlab obs functions to use only mjswan built-ins (`joint_pos_rel`, `joint_vel_rel`, etc.) where semantically equivalent.
+**Browser validation:** use the current ONNX tracing path first. Trace failures can require an equivalent trace-friendly
+binding. Custom action processing, per-substep application and command state need separate checks; observation export
+alone does not demonstrate their support. Keep MyoSuite-specific support unverified until that task's pilot passes.
+
+The 2026-11-12 pilot uses mjswan 0.12.12 and mjviser 0.0.14 with MuJoCo 3.11. In its isolated environment,
+mjviser 0.0.17 instead pulled mujoco-core 4.0.1. Record the resolved build and WASM runtime versions, and verify
+compatibility before upgrading them; these build pins do not establish custom action/command support.
