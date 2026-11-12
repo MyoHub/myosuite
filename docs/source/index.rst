@@ -86,6 +86,7 @@ Choose your path
    model_builder
    backend_parity
    fatigue_validation
+   participant_calibration
 
 .. toctree::
    :maxdepth: 1
