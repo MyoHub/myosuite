@@ -23,7 +23,11 @@ from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
 
 from myosuite.core.config import TaskConfig
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import (
+    MUSCLE_SATURATION_MARGIN,
+    muscle_saturation_bounds,
+    sigmoid_muscle_activation,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     import torch
@@ -176,6 +180,25 @@ class MyoMuscleActivationAction:
             )
         if self.cfg.pre_physics_fn is not None:
             self.cfg.pre_physics_fn(self._env)
+
+    def muscle_action_bounds(
+        self, margin: float = MUSCLE_SATURATION_MARGIN
+    ) -> tuple[torch.Tensor, float, float]:
+        """Policy actions of the muscles and their saturation bounds.
+
+        Args:
+            margin: See :func:`~myosuite.terms.base_action.muscle_saturation_bounds`.
+
+        Returns:
+            ``(actions, lo, hi)``, actions of shape ``(num_envs, n_muscles)``.
+        """
+        clip = {"direct": (-1.0, 1.0), "excitation": (0.0, 1.0)}.get(
+            self.cfg.action_mode
+        )
+        lo, hi = muscle_saturation_bounds(
+            sigmoid=self.cfg.action_mode == "sigmoid", clip=clip, margin=margin
+        )
+        return self._raw_actions, lo, hi
 
     def apply_actions(self) -> None:
         self._entity.set_tendon_effort_target(
