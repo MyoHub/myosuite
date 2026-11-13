@@ -30,7 +30,7 @@ import yaml
 import myosuite
 
 MANIFEST_NAME = "manifest.json"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 # Action map a checkpoint needs: ``{"manifest": {"kind": ..., ...}, "env_steps": ...}``.
 ACTION_MAP_FIELD = "action_map"
 # Checkpoints written before ACTION_MAP_FIELD: ``infos`` key -> kind.
@@ -75,23 +75,7 @@ def env_contract(env_id: str) -> dict[str, Any]:
 
     env = make_env(env_id)
     try:
-        unwrapped = env.unwrapped
-        dt = next(
-            (
-                getattr(unwrapped, a)
-                for a in ("dt", "_ctrl_dt")
-                if hasattr(unwrapped, a)
-            ),
-            None,
-        )
-        contract: dict[str, Any] = {
-            "obs_shape": _shape(env.observation_space),
-            "action_shape": _shape(env.action_space),
-            "ctrl_dt": None if dt is None else round(float(dt), 6),
-        }
-        if hasattr(unwrapped, "obs_keys"):
-            contract["obs_keys"] = list(unwrapped.obs_keys)
-        return contract
+        return contract_from_env(env)
     finally:
         env.close()
 
@@ -132,6 +116,23 @@ def _body(subject: dict[str, Any] | None) -> str:
     return f"the subject with model digest {str(subject.get('model_digest'))[:12]}"
 
 
+def contract_from_env(env: Any) -> dict[str, Any]:
+    """Describe the configured env actually used, including timing overrides."""
+    unwrapped = env.unwrapped
+    dt = next(
+        (getattr(unwrapped, a) for a in ("dt", "_ctrl_dt") if hasattr(unwrapped, a)),
+        None,
+    )
+    contract: dict[str, Any] = {
+        "obs_shape": _shape(env.observation_space),
+        "action_shape": _shape(env.action_space),
+        "ctrl_dt": None if dt is None else round(float(dt), 6),
+    }
+    if hasattr(unwrapped, "obs_keys"):
+        contract["obs_keys"] = list(unwrapped.obs_keys)
+    return contract
+
+
 def contract_hash(contract: dict[str, Any]) -> str:
     """Return a 12-character hash of a contract (stable across runs and platforms)."""
     canonical = json.dumps(contract, sort_keys=True, separators=(",", ":"))
@@ -164,6 +165,8 @@ def write_manifest(
     scales: Mapping[str, Any] | str | os.PathLike[str] | None = None,
     total_mass: float | None = None,
     action_map: dict[str, Any] | None = None,
+    deployment: dict[str, Any] | None = None,
+    env: Any | None = None,
 ) -> Path:
     """Write ``manifest.json`` into a checkpoint folder.
 
@@ -177,6 +180,10 @@ def write_manifest(
         scales: The ``scales`` the env was built with, if a subject.
         total_mass: The ``total_mass`` the env was built with, if any.
         action_map: Manifest of the action map the policy acts through, if any.
+        deployment: Explicit deployment provenance (actual model/I/O/reference data).
+        env: Actual CPU env, including configured physical edits. When no explicit
+            contract is supplied, a default env is constructed and recorded. Passing
+            a contract alone preserves the inexpensive legacy metadata-only path.
 
     Returns:
         Path of the written manifest. For envs whose body is built from ``musclemimic_models``
@@ -184,7 +191,30 @@ def write_manifest(
         releases while the contract does not, and loaders build the recorded one.
     """
     checkpoint_dir = Path(checkpoint_dir)
-    contract = env_contract(env_id) if contract is None else contract
+    if deployment is None and (env is not None or contract is None):
+        from myosuite import make_env
+        from myosuite.utils.deployment_manifest import env_deployment_manifest
+
+        owned_env = env is None
+        env = make_env(env_id) if owned_env else env
+        try:
+            if contract is None:
+                contract = contract_from_env(env)
+            deployment = env_deployment_manifest(
+                env,
+                artifacts={
+                    p.relative_to(checkpoint_dir).as_posix(): p
+                    for p in (
+                        *checkpoint_dir.glob("model_*.pt"),
+                        *(checkpoint_dir / "params").rglob("*.yaml"),
+                    )
+                },
+            )
+        finally:
+            if owned_env:
+                env.close()
+    if contract is None:
+        contract = contract_from_env(env) if env is not None else env_contract(env_id)
     manifest = {
         "schema": SCHEMA_VERSION,
         "env_id": env_id,
@@ -200,6 +230,8 @@ def write_manifest(
     }
     if action_map is not None:
         manifest[ACTION_MAP_FIELD] = action_map
+    if deployment is not None:
+        manifest["deployment"] = deployment
     from myosuite.integrations.musclemimic.model_versions import (
         MANIFEST_FIELD,
         env_models_version,
