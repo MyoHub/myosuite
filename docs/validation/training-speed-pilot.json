@@ -1,0 +1,283 @@
+{
+  "date": "2026-11-12 to 2026-11-13",
+  "task": "myoElbowPose1D6MRandom-v0",
+  "source_commit": "3d118ee30c1f88ad8fb905029ce05f68993ee10f",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "versions": {
+    "torch": "2.14.1+cu132",
+    "mjlab": "1.6.0",
+    "mujoco": "3.11.0",
+    "myo-sim": "0.2.5",
+    "mujoco-warp": "3.11.0",
+    "warp-lang": "1.19.0",
+    "rsl-rl-lib": "5.4.2"
+  },
+  "physical_model": {
+    "algorithm": "mujoco-public-fields-v1",
+    "physical_sha256": "077959b6f9a13929bae131c772c2ddbda36158bea8a36a3dbff0a57a1c783fbf",
+    "mujoco_version": "3.11.0",
+    "kinematic_fingerprint": "5c8aeb7da3c9db4f",
+    "kinematic_scope": "body-tree-joints-couplings; no landmark or sole targets"
+  },
+  "evaluation": {
+    "num_eval_envs": 64,
+    "episodes_per_env": 2,
+    "seed_rule": "100000 + training seed",
+    "policy": "deterministic mean action",
+    "reset_distribution": "registered play config",
+    "rng_restored_after_eval": true,
+    "quality_schedule_fraction": [
+      0,
+      0.25,
+      0.5,
+      0.75,
+      1
+    ],
+    "threshold": 0.95,
+    "clock_origin": "script_entry"
+  },
+  "training": {
+    "num_learning_epochs": 8,
+    "num_mini_batches": 8,
+    "transitions_per_run": 1228800,
+    "rollout_steps": 24,
+    "iterations_by_env_count": {
+      "256": 200,
+      "1024": 50
+    }
+  },
+  "clock_origin": "script_entry",
+  "memory_scope": "torch.cuda.max_memory_allocated; excludes Warp and driver",
+  "timing_method": "RSL-RL logger wall-clock collection/update; synchronized checkpoints",
+  "cache_state": "fresh_process_existing_Warp_disk_cache",
+  "runs": [
+    {
+      "config_id": "elbow-ppo-1024",
+      "seed": 0,
+      "startup_s": 12.04502859999775,
+      "collection_s": 10.347270011901855,
+      "learning_s": 15.815540075302124,
+      "evaluation_s": 6.83571519999532,
+      "total_wall_s": 45.05779150000308,
+      "transitions": 1228800,
+      "peak_memory_bytes": 70440448,
+      "quality_points": [
+        {
+          "wall_s": 13.521674000003259,
+          "transitions": 0,
+          "value": 0.140625
+        },
+        {
+          "wall_s": 21.001567999992403,
+          "transitions": 294912,
+          "value": 0.96875
+        },
+        {
+          "wall_s": 28.89678759999515,
+          "transitions": 614400,
+          "value": 1.0
+        },
+        {
+          "wall_s": 36.80124249999062,
+          "transitions": 933888,
+          "value": 1.0
+        },
+        {
+          "wall_s": 45.05711080000037,
+          "transitions": 1228800,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "config_id": "elbow-ppo-1024",
+      "seed": 1,
+      "startup_s": 11.91685470000084,
+      "collection_s": 11.017130374908447,
+      "learning_s": 17.731152057647705,
+      "evaluation_s": 7.147246900014579,
+      "total_wall_s": 47.82594190000964,
+      "transitions": 1228800,
+      "peak_memory_bytes": 70440448,
+      "quality_points": [
+        {
+          "wall_s": 13.420344099999056,
+          "transitions": 0,
+          "value": 0.1640625
+        },
+        {
+          "wall_s": 21.739604000002146,
+          "transitions": 294912,
+          "value": 0.9921875
+        },
+        {
+          "wall_s": 31.0721448000113,
+          "transitions": 614400,
+          "value": 1.0
+        },
+        {
+          "wall_s": 39.892628200002946,
+          "transitions": 933888,
+          "value": 1.0
+        },
+        {
+          "wall_s": 47.825282600009814,
+          "transitions": 1228800,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "config_id": "elbow-ppo-1024",
+      "seed": 2,
+      "startup_s": 20.032892899995204,
+      "collection_s": 10.568033933639526,
+      "learning_s": 15.589497089385986,
+      "evaluation_s": 7.296131100010825,
+      "total_wall_s": 53.502074999996694,
+      "transitions": 1228800,
+      "peak_memory_bytes": 70440448,
+      "quality_points": [
+        {
+          "wall_s": 21.872841999997036,
+          "transitions": 0,
+          "value": 0.1796875
+        },
+        {
+          "wall_s": 30.096512300005998,
+          "transitions": 294912,
+          "value": 0.9921875
+        },
+        {
+          "wall_s": 38.02591159999429,
+          "transitions": 614400,
+          "value": 1.0
+        },
+        {
+          "wall_s": 46.041964000003645,
+          "transitions": 933888,
+          "value": 1.0
+        },
+        {
+          "wall_s": 53.50132900000608,
+          "transitions": 1228800,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "config_id": "elbow-ppo-256",
+      "seed": 0,
+      "startup_s": 17.673500700009754,
+      "collection_s": 40.488115549087524,
+      "learning_s": 60.77918577194214,
+      "evaluation_s": 7.030481100009638,
+      "total_wall_s": 126.02275410000584,
+      "transitions": 1228800,
+      "peak_memory_bytes": 32155648,
+      "quality_points": [
+        {
+          "wall_s": 19.298629199998686,
+          "transitions": 0,
+          "value": 0.140625
+        },
+        {
+          "wall_s": 46.383594200000516,
+          "transitions": 307200,
+          "value": 1.0
+        },
+        {
+          "wall_s": 73.40872550000495,
+          "transitions": 614400,
+          "value": 1.0
+        },
+        {
+          "wall_s": 99.53854930000671,
+          "transitions": 921600,
+          "value": 1.0
+        },
+        {
+          "wall_s": 126.02188600000227,
+          "transitions": 1228800,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "config_id": "elbow-ppo-256",
+      "seed": 1,
+      "startup_s": 12.184157200012123,
+      "collection_s": 40.30440926551819,
+      "learning_s": 61.7347469329834,
+      "evaluation_s": 7.039171899974463,
+      "total_wall_s": 121.27647110000544,
+      "transitions": 1228800,
+      "peak_memory_bytes": 32155648,
+      "quality_points": [
+        {
+          "wall_s": 13.693526400005794,
+          "transitions": 0,
+          "value": 0.1640625
+        },
+        {
+          "wall_s": 40.73855700000422,
+          "transitions": 307200,
+          "value": 1.0
+        },
+        {
+          "wall_s": 67.1644854000042,
+          "transitions": 614400,
+          "value": 1.0
+        },
+        {
+          "wall_s": 93.95206410001265,
+          "transitions": 921600,
+          "value": 1.0
+        },
+        {
+          "wall_s": 121.27586120000342,
+          "transitions": 1228800,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "config_id": "elbow-ppo-256",
+      "seed": 2,
+      "startup_s": 12.720888700001524,
+      "collection_s": 40.82734274864197,
+      "learning_s": 61.11721110343933,
+      "evaluation_s": 7.037264500017045,
+      "total_wall_s": 121.71571960000438,
+      "transitions": 1228800,
+      "peak_memory_bytes": 32155648,
+      "quality_points": [
+        {
+          "wall_s": 14.279254700013553,
+          "transitions": 0,
+          "value": 0.1796875
+        },
+        {
+          "wall_s": 39.7942338000139,
+          "transitions": 307200,
+          "value": 1.0
+        },
+        {
+          "wall_s": 66.2015997000126,
+          "transitions": 614400,
+          "value": 1.0
+        },
+        {
+          "wall_s": 94.71591180001269,
+          "transitions": 921600,
+          "value": 1.0
+        },
+        {
+          "wall_s": 121.71503890000167,
+          "transitions": 1228800,
+          "value": 1.0
+        }
+      ]
+    }
+  ]
+}
