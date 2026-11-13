@@ -615,13 +615,11 @@ def qpos_from_site_pose(
         Default value is False, i.e. a copy of `physics.data` will be made.
 
     Returns:
-      An `IKResult` namedtuple with the following fields:
-        qpos: An (nq,) numpy array of joint positions.
-        err_norm: A float, the weighted sum of L2 norms for the residual
-          translational and rotational errors.
-        steps: An int, the number of iterations that were performed.
-        success: Boolean, True if we converged on a solution within `max_steps`,
-          False otherwise.
+        IKResult: Namedtuple containing joint positions ``qpos`` (shape ``nq``),
+            the weighted sum of positional and rotational residual norms
+            ``err_norm``, iteration count ``steps``, and convergence flag
+            ``success`` indicating whether the target tolerance was reached
+            within ``max_steps``.
 
     Raises:
       ValueError: If both `target_pos` and `target_quat` are None, or if

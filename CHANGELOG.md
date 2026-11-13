@@ -244,6 +244,7 @@ Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full com
 [#136]: https://github.com/MyoHub/myosuite/issues/136
 [#307]: https://github.com/MyoHub/myosuite/issues/307
 [#522]: https://github.com/MyoHub/myosuite/pull/522
+[#525]: https://github.com/MyoHub/myosuite/pull/525
 [#531]: https://github.com/MyoHub/myosuite/pull/531
 [#540]: https://github.com/MyoHub/myosuite/pull/540
 [#563]: https://github.com/MyoHub/myosuite/issues/563
@@ -465,12 +466,6 @@ A big thanks to all MyoSuite 1.0 and 2.0 contributors, whose work this release e
 [#506]: https://github.com/MyoHub/myosuite/pull/506
 [#508]: https://github.com/MyoHub/myosuite/pull/508
 [#520]: https://github.com/MyoHub/myosuite/pull/520
-[#531]: https://github.com/MyoHub/myosuite/pull/531
-[#563]: https://github.com/MyoHub/myosuite/issues/563
-[#522]: https://github.com/MyoHub/myosuite/pull/522
-[#525]: https://github.com/MyoHub/myosuite/pull/525
-[#540]: https://github.com/MyoHub/myosuite/pull/540
-[#566]: https://github.com/MyoHub/myosuite/issues/566
 
 ## [2.12.2] - 2026-05-06
 * Asset credits updated ([#392]).
