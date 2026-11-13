@@ -256,15 +256,36 @@ class MuscleActionTerm:
         self._processed: Any = None
         self._fatigue: Any = None
         if cfg.muscle_fatigue:
+            import mujoco  # noqa: PLC0415
+
             from myosuite.core.muscle_conditions import TorchFatigueState  # noqa: PLC0415
 
             num_envs = getattr(env, "num_envs", 1)
             device = str(getattr(env, "device", "cpu"))
             mj_model = getattr(getattr(env, "sim", None), "mj_model", None)
-            if mj_model is not None:
-                self._fatigue = TorchFatigueState.from_mj_model(
-                    mj_model, num_envs=num_envs, device=device
-                )
+            ctrl_ids = getattr(
+                getattr(self._entity, "indexing", None), "ctrl_ids", None
+            )
+            if mj_model is not None and hasattr(mj_model, "actuator_dyntype"):
+                if ctrl_ids is not None:
+                    ids_np = (
+                        ctrl_ids.detach().cpu().numpy()
+                        if hasattr(ctrl_ids, "detach")
+                        else np.asarray(ctrl_ids, dtype=int)
+                    )
+                    n_muscles = int(
+                        np.sum(
+                            mj_model.actuator_dyntype[ids_np]
+                            == int(mujoco.mjtDyn.mjDYN_MUSCLE)
+                        )
+                    )
+                    self._fatigue = TorchFatigueState(
+                        num_envs=num_envs, n_muscles=n_muscles, device=device
+                    )
+                else:
+                    self._fatigue = TorchFatigueState.from_mj_model(
+                        mj_model, num_envs=num_envs, device=device
+                    )
             else:
                 self._fatigue = TorchFatigueState(
                     num_envs=num_envs,
@@ -283,19 +304,21 @@ class MuscleActionTerm:
         Args:
             actions: Policy output tensor, shape (N, action_dim).
         """
-        is_torch = "torch" in getattr(actions, "__module__", "")
-        if is_torch:
+        mod = getattr(actions, "__module__", "")
+        if "torch" in mod:
             import torch  # noqa: PLC0415
 
-            xp = torch
+            xp: Any = torch
+        elif "jax" in mod:
+            import jax.numpy as jnp  # noqa: PLC0415
+
+            xp = jnp
         else:
             xp = np
         if self.cfg.normalize:
             self._processed = sigmoid_muscle_activation(actions, xp)
         else:
-            self._processed = (
-                torch.clamp(actions, 0, 1) if is_torch else np.clip(actions, 0, 1)
-            )
+            self._processed = xp.clip(actions, 0.0, 1.0)
         if self._fatigue is not None:
             self._processed = self._fatigue.step(self._processed, self.cfg.ctrl_dt)
 
@@ -310,5 +333,11 @@ class MuscleActionTerm:
 
     def apply_actions(self) -> None:
         """Write processed excitations to the simulation entity."""
-        if self._processed is not None:
+        if self._processed is None:
+            return
+        if hasattr(type(self._entity), "write_ctrl_to_sim") or (
+            "write_ctrl_to_sim" in getattr(self._entity, "__dict__", {})
+        ):
+            self._entity.write_ctrl_to_sim(self._processed)
+        else:
             self._entity.set_ctrl(self._processed)

@@ -20,16 +20,25 @@ if TYPE_CHECKING:
     from myosuite.core.protocols import EnvAccessor
 
 
-def _xp_asarray(xp: Any, value: Any, *, dtype: Any | None = None) -> Any:
+def _xp_asarray(
+    xp: Any,
+    value: Any,
+    *,
+    dtype: Any | None = None,
+    device: Any | None = None,
+) -> Any:
     if getattr(xp, "__name__", "") == "torch":
-        tensor = xp.as_tensor(value)
+        tensor = (
+            xp.as_tensor(value, device=device)
+            if device is not None
+            else xp.as_tensor(value)
+        )
         return tensor.to(dtype=dtype) if dtype is not None else tensor
     return xp.asarray(value, dtype=dtype) if dtype is not None else xp.asarray(value)
 
 
 def _maybe_item(value: Any) -> Any:
-    ndim = getattr(value, "ndim", None)
-    if ndim == 0 and hasattr(value, "item"):
+    if isinstance(value, np.ndarray | np.generic) and np.ndim(value) == 0:
         return value.item()
     return value
 
@@ -56,7 +65,7 @@ def joint_limit_violation(
     margin: float = 0.0,
     **kwargs: Any,
 ) -> Any:
-    """Terminate when any joint exceeds its control range.
+    """Terminate when any limited 1-DoF joint exceeds its range of motion.
 
     Args:
         accessor: Environment state accessor.
@@ -66,15 +75,16 @@ def joint_limit_violation(
         **kwargs: Unused extra keyword arguments.
 
     Returns:
-        Boolean scalar — True if any joint is outside its limits.
+        Boolean scalar (unbatched) or shape-``(N,)`` boolean array (batched).
     """
     xp = accessor.array_module()
-    ctrl_range = accessor.ctrl_range()
     qpos = accessor.joint_pos()
-    lo = ctrl_range[:, 0] - margin
-    hi = ctrl_range[:, 1] + margin
-    # Use bitwise | instead of Python `or` so this expression is traceable by JAX JIT.
-    return xp.any(qpos < lo) | xp.any(qpos > hi)
+    lo, hi, limited = accessor.joint_limits()
+    violated = xp.logical_and(
+        limited,
+        xp.logical_or(qpos < lo - margin, qpos > hi + margin),
+    )
+    return _maybe_item(xp.any(violated, axis=-1))
 
 
 def fall_termination(
@@ -138,5 +148,6 @@ def upright_posture_failure(
         xp,
         task_state.get("upright_posture", 0.0),
         dtype=getattr(xp, "float32", None),
+        device=getattr(accessor.joint_pos(), "device", None),
     )
     return _maybe_item(posture < float(upright_posture_threshold))

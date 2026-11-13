@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -555,8 +556,13 @@ def _foot_kinematics(
         d.qpos[:] = q
         mujoco.mj_kinematics(m, d)
         for s in range(2):
-            low[t, s] = min(_geom_lowest_z(m, d, g) for g in geoms[s])
-            org[t, s] = d.xpos[feet[s]].mean(0)
+            if geoms[s]:
+                low[t, s] = min(_geom_lowest_z(m, d, g) for g in geoms[s])
+            elif feet[s]:
+                low[t, s] = float(d.xpos[feet[s], 2].min())
+            else:
+                low[t, s] = 0.0
+            org[t, s] = d.xpos[feet[s]].mean(0) if feet[s] else np.zeros(3)
     return low, org
 
 
@@ -658,24 +664,35 @@ def validate_refit(
     lo, hi = ik.lo[ik.bounded], ik.hi[ik.bounded]
     viol = int(((qpos[:, a] < lo - 1e-9) | (qpos[:, a] > hi + 1e-9)).sum())
     # dependent joints the polynomials carry outside their own range (informational)
-    dep_j = [int(np.flatnonzero(m.jnt_qposadr == q)[0]) for q in c.dep_qpos]
-    dep_lim = np.array([m.jnt_limited[j] for j in dep_j], bool)
-    dep_lo, dep_hi = m.jnt_range[dep_j].T
-    dq = qpos[:, c.dep_qpos]
-    dep_viol = int((dep_lim & ((dq < dep_lo - 1e-6) | (dq > dep_hi + 1e-6))).sum())
+    if len(c.dep_qpos) > 0:
+        dep_j = [int(np.flatnonzero(m.jnt_qposadr == q)[0]) for q in c.dep_qpos]
+        dep_lim = np.array([m.jnt_limited[j] for j in dep_j], bool)
+        dep_lo, dep_hi = m.jnt_range[dep_j].T
+        dq = qpos[:, c.dep_qpos]
+        dep_viol = int((dep_lim & ((dq < dep_lo - 1e-6) | (dq > dep_hi + 1e-6))).sum())
+    else:
+        dep_viol = 0
     # feet: penetration of the ground plane (z = 0), sliding and floating in contact
     low, org = _foot_kinematics(m, lmap, qpos)
     contact = np.asarray(targets.contact, bool)
     pen = float(max(0.0, -low.min()) * 1e3)
-    slide = _sliding(low, org, contact, dt)
+    slide = _sliding(low, org, contact, dt) if len(qpos) >= 2 else 0.0
     float_mm = np.where(contact, np.maximum(low, 0.0), np.nan) * 1e3
     # velocity spikes: joint accelerations above the floor, off and at the limits
-    v = np.gradient(qpos[:, a], dt, axis=0)
-    acc = np.abs(np.diff(qpos[:, a], 2, axis=0)) / dt**2
-    at = (qpos[:, a] <= lo + 1e-9) | (qpos[:, a] >= hi - 1e-9)
-    at_limit = at[:-2] | at[1:-1] | at[2:]  # frames of each second difference
-    spikes = int(((acc > th.accel_spike_floor) & ~at_limit).sum())
-    stops = int(((acc > th.accel_spike_floor) & at_limit).sum())
+    v = (
+        np.gradient(qpos[:, a], dt, axis=0)
+        if len(qpos) >= 2
+        else np.zeros_like(qpos[:, a])
+    )
+    if len(qpos) >= 3:
+        acc = np.abs(np.diff(qpos[:, a], 2, axis=0)) / dt**2
+        at = (qpos[:, a] <= lo + 1e-9) | (qpos[:, a] >= hi - 1e-9)
+        at_limit = at[:-2] | at[1:-1] | at[2:]  # frames of each second difference
+        spikes = int(((acc > th.accel_spike_floor) & ~at_limit).sum())
+        stops = int(((acc > th.accel_spike_floor) & at_limit).sum())
+    else:
+        spikes = 0
+        stops = 0
     out: dict[str, Any] = {
         "frames": len(qpos),
         "landmark_rmse_mm": float(np.sqrt((err**2).mean())),
@@ -683,8 +700,8 @@ def validate_refit(
         "landmark_max_by_site_mm": {
             lm.source: float(e) for lm, e in zip(lmap.landmarks, err.max(0))
         },
-        "orientation_mean_deg": float(ori.mean()),
-        "orientation_max_deg": float(ori.max()),
+        "orientation_mean_deg": float(ori.mean()) if ori.size else 0.0,
+        "orientation_max_deg": float(ori.max()) if ori.size else 0.0,
         "coupling_residual": coupling,
         "limit_violations": viol,
         "dependent_limit_violations": dep_viol,
@@ -808,17 +825,27 @@ def save_refit(
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp.npz")
-    np.savez_compressed(
-        tmp,
-        qpos=qpos.astype(np.float64),
-        joint_names=np.array([model.joint(j).name for j in range(model.njnt)]),
-        jnt_type=model.jnt_type.astype(np.int32),
-        frequency=np.float64(frequency),
-        split_points=np.array([0, len(qpos)], np.int32),
-        **{REFIT_META_KEY: np.array(json.dumps(meta, sort_keys=True))},
-    )
-    tmp.replace(path)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=".npz",
+        delete=False,
+    ) as fh:
+        tmp = Path(fh.name)
+    try:
+        np.savez_compressed(
+            tmp,
+            qpos=qpos.astype(np.float64),
+            joint_names=np.array([model.joint(j).name for j in range(model.njnt)]),
+            jnt_type=model.jnt_type.astype(np.int32),
+            frequency=np.float64(frequency),
+            split_points=np.array([0, len(qpos)], np.int32),
+            **{REFIT_META_KEY: np.array(json.dumps(meta, sort_keys=True))},
+        )
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def read_refit_meta(path: str | Path) -> dict[str, Any] | None:
@@ -997,15 +1024,24 @@ def stamp_fingerprint(
     with np.load(path, allow_pickle=False) as d:
         arrays = {k: d[k] for k in d.files}
     arrays[REFIT_META_KEY] = np.array(json.dumps(meta, sort_keys=True))
-    tmp = path.with_suffix(".tmp.npz")
-    np.savez_compressed(tmp, **arrays)
-    with np.load(tmp, allow_pickle=False) as d:
-        q = d["qpos"]
-        same = q.dtype == arrays["qpos"].dtype and q.shape == arrays["qpos"].shape
-        if not (same and q.tobytes() == arrays["qpos"].tobytes()):
-            tmp.unlink()
-            raise RuntimeError(f"{path}: qpos changed on rewrite; left untouched")
-    tmp.replace(path)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=".npz",
+        delete=False,
+    ) as fh:
+        tmp = Path(fh.name)
+    try:
+        np.savez_compressed(tmp, **arrays)
+        with np.load(tmp, allow_pickle=False) as d:
+            q = d["qpos"]
+            same = q.dtype == arrays["qpos"].dtype and q.shape == arrays["qpos"].shape
+            if not (same and q.tobytes() == arrays["qpos"].tobytes()):
+                raise RuntimeError(f"{path}: qpos changed on rewrite; left untouched")
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return True
 
 

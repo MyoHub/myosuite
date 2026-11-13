@@ -230,19 +230,28 @@ def health_status_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
     """Return the current normalized health status as a scalar observation."""
 
     xp = accessor.array_module()
+    qpos = accessor.joint_pos()
+    batch_shape = qpos.shape[:-1]
     health_status = kwargs.get("health_status", 0.5)
     if getattr(xp, "__name__", "") == "torch":
-        value = xp.as_tensor(health_status, dtype=xp.float32)
+        device = getattr(qpos, "device", None)
+        value = xp.as_tensor(health_status, dtype=xp.float32, device=device)
         if value.ndim == 0:
+            if batch_shape:
+                return value.expand(*batch_shape, 1).clone()
             return value.unsqueeze(0)
         if value.ndim == 1:
-            return value.unsqueeze(-1)
+            return value.unsqueeze(-1) if batch_shape else value
         return value
     value = xp.asarray(health_status, dtype=xp.float32)
     if value.ndim == 0:
+        if batch_shape:
+            return xp.broadcast_to(
+                value.reshape((1,) * (len(batch_shape) + 1)), (*batch_shape, 1)
+            )
         return xp.asarray([value], dtype=xp.float32)
     if value.ndim == 1:
-        return value.reshape(-1, 1)
+        return value.reshape(-1, 1) if batch_shape else value
     return value
 
 
@@ -275,7 +284,18 @@ def heading_cmd_obs(
         **kwargs: Unused; for uniform call signature.
 
     Returns:
-        Length-2 array equal to ``heading_dir``.
+        Length-2 array equal to ``heading_dir`` (batched to ``(N, 2)`` when batched).
     """
     xp = accessor.array_module()
-    return xp.asarray(heading_dir, dtype=xp.float32)
+    qpos = accessor.joint_pos()
+    batch_shape = qpos.shape[:-1]
+    if getattr(xp, "__name__", "") == "torch":
+        device = getattr(qpos, "device", None)
+        cmd = xp.as_tensor(heading_dir, dtype=xp.float32, device=device)
+        if cmd.ndim == 1 and batch_shape:
+            return cmd.expand(*batch_shape, cmd.shape[0]).clone()
+        return cmd
+    cmd = xp.asarray(heading_dir, dtype=xp.float32)
+    if cmd.ndim == 1 and batch_shape:
+        return xp.broadcast_to(cmd, (*batch_shape, cmd.shape[0]))
+    return cmd

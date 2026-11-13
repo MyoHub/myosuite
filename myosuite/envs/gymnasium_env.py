@@ -93,6 +93,9 @@ class CpuEnvAccessor:
         self._model = model
         self._data = data
         self._ctrl_dt = ctrl_dt
+        self._joint_limits_cache: tuple[np.ndarray, np.ndarray, np.ndarray] | None = (
+            None
+        )
 
     @property
     def physics_path(self) -> Any:
@@ -135,6 +138,31 @@ class CpuEnvAccessor:
 
     def ctrl_range(self) -> np.ndarray:
         return self._model.actuator_ctrlrange.copy()
+
+    def joint_limits(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if self._joint_limits_cache is None:
+            import mujoco
+
+            nq = int(self._model.nq)
+            lo = np.zeros(nq, dtype=np.float64)
+            hi = np.zeros(nq, dtype=np.float64)
+            limited = np.zeros(nq, dtype=bool)
+            scalar_types = (
+                int(mujoco.mjtJoint.mjJNT_HINGE),
+                int(mujoco.mjtJoint.mjJNT_SLIDE),
+            )
+            for j in range(int(self._model.njnt)):
+                if int(self._model.jnt_type[j]) in scalar_types and bool(
+                    self._model.jnt_limited[j]
+                ):
+                    qadr = int(self._model.jnt_qposadr[j])
+                    if qadr < nq:
+                        lo[qadr] = float(self._model.jnt_range[j, 0])
+                        hi[qadr] = float(self._model.jnt_range[j, 1])
+                        limited[qadr] = True
+            self._joint_limits_cache = (lo, hi, limited)
+        lo, hi, limited = self._joint_limits_cache
+        return lo.copy(), hi.copy(), limited.copy()
 
     def dt(self) -> float:
         return self._ctrl_dt

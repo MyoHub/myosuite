@@ -118,7 +118,7 @@ def mimic_site_tracking_reward(
         Scalar reward in (0, 1].
     """
     diff = current_site_pos - ref_site_pos
-    mean_dist = xp.sqrt((diff * diff).sum(axis=-1)).mean(axis=-1)
+    mean_dist = _safe_sqrt(xp, (diff * diff).sum(axis=-1)).mean(axis=-1)
     return xp.exp(-scale * mean_dist)
 
 
@@ -184,7 +184,7 @@ def mimic_root_pos_reward(
         Scalar reward in (0, 1].
     """
     diff = current_root_pos - ref_root_pos
-    dist = xp.sqrt((diff * diff).sum(axis=-1))
+    dist = _safe_sqrt(xp, (diff * diff).sum(axis=-1))
     return xp.exp(-scale * dist)
 
 
@@ -227,11 +227,24 @@ def mimic_root_orient_reward(
     Returns:
         Scalar reward in (0, 1].
     """
-    # |q1 · q2| = cos(half-angle) → angle = 2 * arccos(|dot|)
-    dot = (current_root_quat * ref_root_quat).sum(axis=-1)
-    # Clamp to [-1, 1] to avoid NaN from floating-point drift
-    clamped = _clamp(xp, dot, -1.0, 1.0)
-    angle = 2.0 * _acos(xp, _abs(xp, clamped))
+    w1, x1, y1, z1 = (
+        current_root_quat[..., 0],
+        current_root_quat[..., 1],
+        current_root_quat[..., 2],
+        current_root_quat[..., 3],
+    )
+    w2, x2, y2, z2 = (
+        ref_root_quat[..., 0],
+        ref_root_quat[..., 1],
+        ref_root_quat[..., 2],
+        ref_root_quat[..., 3],
+    )
+    dot = w1 * w2 + x1 * x2 + y1 * y2 + z1 * z2
+    vx = w1 * x2 - x1 * w2 - y1 * z2 + z1 * y2
+    vy = w1 * y2 + x1 * z2 - y1 * w2 - z1 * x2
+    vz = w1 * z2 - x1 * y2 + y1 * x2 - z1 * w2
+    sin_half = _safe_sqrt(xp, vx * vx + vy * vy + vz * vz)
+    angle = 2.0 * _atan2(xp, sin_half, _abs(xp, dot))
     return xp.exp(-scale * angle)
 
 
@@ -312,8 +325,8 @@ def mimic_composite_reward(
         dense = dense + weights.root_orient * r_rorient
     # Mean site distance for the solved check, per batch element.
     diff = current_site_pos - ref_site_pos
-    mean_site_dist = xp.sqrt((diff * diff).sum(axis=-1)).mean(axis=-1)
-    if getattr(mean_site_dist, "ndim", 0) == 0:
+    mean_site_dist = _safe_sqrt(xp, (diff * diff).sum(axis=-1)).mean(axis=-1)
+    if isinstance(mean_site_dist, np.ndarray | np.generic) and mean_site_dist.ndim == 0:
         mean_site_dist = float(mean_site_dist)
 
     return {
@@ -333,6 +346,19 @@ def mimic_composite_reward(
 # ---------------------------------------------------------------------------
 # Private helpers — keeps xp usage backend-agnostic without if/else chains
 # ---------------------------------------------------------------------------
+
+
+def _safe_sqrt(xp: Any, sq: Any) -> Any:
+    pos = sq > 0
+    safe = xp.where(pos, sq, xp.ones_like(sq))
+    return xp.where(pos, xp.sqrt(safe), xp.zeros_like(sq))
+
+
+def _atan2(xp: Any, y: Any, x: Any) -> Any:
+    try:
+        return xp.arctan2(y, x)
+    except AttributeError:
+        return xp.atan2(y, x)
 
 
 def _clamp(xp: Any, x: Any, lo: float, hi: float) -> Any:
