@@ -397,7 +397,12 @@ class ModularMultiAgentSingleAgentWrapper(gym.Wrapper):
         self._opp_id = env.unwrapped._opponent(agent_id)
 
         if opponent_policy is None:
-            self._opp_policy = lambda obs: env.action_space[self._opp_id].sample()
+            opp_space = env.action_space[self._opp_id]
+            self._opp_policy = lambda _obs: (
+                self.unwrapped.np_random.uniform(opp_space.low, opp_space.high).astype(
+                    opp_space.dtype
+                )
+            )
         else:
             self._opp_policy = opponent_policy
 

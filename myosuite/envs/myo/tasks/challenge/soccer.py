@@ -113,6 +113,7 @@ class GoalKeeper:
             if rand_num < cum:
                 self.goalkeeper_policy = policy
                 return
+        self.goalkeeper_policy = "stationary"
 
     def update_goalkeeper_state(self) -> None:
         """Execute one goalkeeper step using the active policy."""
@@ -476,7 +477,7 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 ("act_reg", act_mag),
                 ("pain", pain),
                 ("alive", 0.0 if done else 1.0),
-                ("sparse", float(done)),
+                ("sparse", float(goal_scored)),
                 ("solved", float(goal_scored)),
                 ("done", done),
             )
@@ -568,10 +569,25 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     # ── Reset state helpers ───────────────────────────────────────────────────
 
+    def _enforce_min_spawn_distance(self, qpos: np.ndarray) -> np.ndarray:
+        if self.min_agent_spawn_distance <= 0:
+            return qpos
+        root_adr = int(self.model.joint("root").qposadr[0])
+        ball_jnt = int(self.model.body_jntadr[self.soccer_ball_id])
+        ball_adr = int(self.model.jnt_qposadr[ball_jnt])
+        ball_x, ball_y = float(qpos[ball_adr]), float(qpos[ball_adr + 1])
+        dy = float(qpos[root_adr + 1]) - ball_y
+        dist = float(np.hypot(float(qpos[root_adr]) - ball_x, dy))
+        if dist < self.min_agent_spawn_distance:
+            dx_req = float(np.sqrt(max(self.min_agent_spawn_distance**2 - dy**2, 0.0)))
+            qpos[root_adr] = ball_x - dx_req
+        return qpos
+
     def _get_reset_state(self) -> tuple[np.ndarray, np.ndarray]:
         if self.reset_type == "random":
             return self._get_randomized_initial_state()
-        return self.model.key_qpos[0].copy(), self.model.key_qvel[0].copy()
+        qpos = self._enforce_min_spawn_distance(self.model.key_qpos[0].copy())
+        return qpos, self.model.key_qvel[0].copy()
 
     def _get_randomized_initial_state(self) -> tuple[np.ndarray, np.ndarray]:
         self.data.qpos[:] = self.model.key_qpos[0].copy()
@@ -586,7 +602,8 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.data.joint("root").qpos[1] += self.np_random.uniform(
             -abs(self.rnd_pos_noise), abs(self.rnd_pos_noise)
         )
-        return self.data.qpos.copy(), self.data.qvel.copy()
+        qpos = self._enforce_min_spawn_distance(self.data.qpos.copy())
+        return qpos, self.data.qvel.copy()
 
     # ── Metrics ───────────────────────────────────────────────────────────────
 

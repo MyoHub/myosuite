@@ -13,6 +13,15 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Fixed
+
+* CPU environment contracts, resets, and wrappers:
+  - Removed duplicate `myoArmReach*` registrations in `myosuite.envs.myo.tasks.basic` so `myosuite_myoedits_suite` reflects the 6 `myoArmReach*` IDs registered by `myosuite.envs.myo.myoedits`.
+  - `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) now perturbs and clips only `jnt_limited` joints rather than clamping the pelvis freejoint `qpos[0]` to `0.0`.
+  - `myoChallengeSoccer*` sets `rwd_dict["sparse"] = float(goal_scored)` instead of `float(done)` (falls and timeouts no longer award sparse points) and enforces `min_agent_spawn_distance` from the ball at reset.
+  - `myoChallengeBimanual-v0` and `myoChallengeTableTennis*` keep `_get_obs_dict` and `get_reward_dict` side-effect-free, refresh `mj_forward` and observations on multi-rally ball relaunches, and preserve `obs_dict["time"]` array shape on drop termination.
+  - `HeightField.size` returns `hfield.data.size`, `ChaseTagField.flatten_agent_patch` passes `(y, x)` to `cart2map`, `ChaseTagEnv`/`RunTrackEnv` seed `self.np_random` before constructing terrain/opponents, `ChaseTagEnv` clamps keyframe indices on single-keyframe models, `RunTrackEnv` isolates `ACTUATOR_PARAM` per instance, `ModularMultiAgentSingleAgentWrapper` draws default random opponent actions from `env.unwrapped.np_random`, and `DictObservationWrapper`/`PerturbationWrapper` forward public env attributes.
+
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11
