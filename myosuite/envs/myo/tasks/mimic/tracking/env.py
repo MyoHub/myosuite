@@ -138,6 +138,7 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
             self._motion = load_motion_lib(
                 mc.clips, mc.root, self.model_name, self.task.self_collisions,
                 round(self._ctrl_dt, 9), mc.bin_s,
+                workers=mc.workers, cache_dir=mc.cache_dir,
             )  # fmt: skip
             self._sampler = ResetSampler(
                 self._motion, self.task.reset, self.max_step_reward

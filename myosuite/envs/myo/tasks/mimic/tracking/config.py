@@ -38,11 +38,23 @@ class MotionCfg:
             :func:`~myosuite.envs.myo.tasks.mimic.tracking.kit_root`; else the
             list's own directory).
         bin_s: Length of the reset bins in seconds.
+        workers: Threads preprocessing clips (one by default; benchmark your clips).
+        cache_dir: Optional directory for validated, persistent NumPy motion data.
     """
 
     clips: str = "kit_train"
     root: str = ""
     bin_s: float = 1.0
+    workers: int = 1
+    cache_dir: str = ""
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.workers, bool)
+            or not isinstance(self.workers, int)
+            or self.workers < 1
+        ):
+            raise ValueError("motion.workers must be a positive integer")
 
 
 @dataclass(frozen=True)
@@ -193,7 +205,10 @@ class MimicTaskCfg:
 
     def fingerprint(self) -> str:
         """Stable hash of the config (store it with checkpoints)."""
-        blob = json.dumps(dataclasses.asdict(self), sort_keys=True, default=str)
+        data = dataclasses.asdict(self)
+        for name in ("workers", "cache_dir"):
+            data["motion"].pop(name)
+        blob = json.dumps(data, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 

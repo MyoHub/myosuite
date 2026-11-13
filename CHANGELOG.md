@@ -4,10 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-Changes since **v3.1.0**.
+Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
+* Configurable preprocessing workers and an opt-in validated NumPy disk cache for
+  `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
+  CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
+  versions; execution settings leave task fingerprints unchanged ([#672]).
 * **`myoMimic-v0` and myoSuperMimic on submodels of a body ([#711]).** A model adapter (`MimicModelCfg`,
   `register_model`) may have a fixed root (no free joint: the root observations, reward components and failure
   checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`, joint or site
@@ -37,9 +41,10 @@ Changes since **v3.1.0**.
 * **myoSuperMimic on MuJoCo 3.17:** the world model's joint-type check rejected hinge joints, because a NumPy scalar
   no longer compares equal to a MuJoCo enum member. Types are compared as Python ints.
 
+[#672]: https://github.com/MyoHub/myosuite/pull/672
 [#711]: https://github.com/MyoHub/myosuite/pull/711
 
-## [3.1.0] - unreleased
+## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
 
