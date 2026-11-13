@@ -321,35 +321,27 @@ def scale_body_mass(
     Returns:
         Model copy with refreshed MuJoCo constants and original automatic muscle
         strengths frozen explicitly. Supply exactly one mass-scaling mode.
+
+    Raises:
+        ImportError: If the installed myo-sim lacks the selected-body mass API.
     """
-    ratio_mode = participant_mass is not None or reference_mass is not None
-    if (represented_mass is None) == (not ratio_mode):
-        raise ValueError(
-            "choose represented_mass or participant_mass with reference_mass"
-        )
-    ids = (
-        np.arange(1, model.nbody)
-        if bodies is None
-        else np.array([model.body(name).id for name in bodies], dtype=int)
+    try:
+        from myo_sim.physics.body_mass import scale_body_mass as scale
+    except ModuleNotFoundError as exc:
+        if exc.name != "myo_sim.physics.body_mass":
+            raise
+        raise ImportError(
+            "Mass scaling requires a myo-sim build containing MyoHub/myo_sim#187 "
+            "(myo_sim.physics.body_mass). Install that development build or a "
+            "release containing it; 0.2.5 lacks this API."
+        ) from exc
+    return scale(
+        model,
+        represented_mass,
+        participant_mass=participant_mass,
+        reference_mass=reference_mass,
+        bodies=bodies,
     )
-    if not len(ids) or 0 in ids or len(ids) != len(np.unique(ids)):
-        raise ValueError("bodies must select distinct non-world bodies")
-    if ratio_mode:
-        if participant_mass is None or reference_mass is None:
-            raise ValueError("participant_mass requires explicit reference_mass")
-        values = np.array([participant_mass, reference_mass], dtype=float)
-        ratio = participant_mass / reference_mass if np.all(values > 0) else np.nan
-    else:
-        values = np.array([represented_mass], dtype=float)
-        total = float(model.body_mass[ids].sum())
-        ratio = represented_mass / total if total > 0 else np.nan
-    if not np.all(np.isfinite(values) & (values > 0)) or not np.isfinite(ratio):
-        raise ValueError("masses must be positive and finite and selected mass nonzero")
-    out = scale_strength(model, 1.0)
-    out.body_mass[ids] *= ratio
-    out.body_inertia[ids] *= ratio
-    mujoco.mj_setConst(out, mujoco.MjData(out))
-    return out
 
 
 @dataclass(frozen=True)

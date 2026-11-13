@@ -35,19 +35,12 @@ import mujoco
 import numpy as np
 from scipy.optimize import lsq_linear
 
-from myosuite.core.muscle_conditions import _peak_force
+from myosuite.core.muscle_conditions import _peak_force as _peak_force
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 
 def _muscles(model: mujoco.MjModel) -> np.ndarray:
     return model.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE
-
-
-def _factors(model: mujoco.MjModel, factors: float | np.ndarray) -> np.ndarray:
-    f = np.broadcast_to(np.asarray(factors, dtype=np.float64), (model.nu,))
-    if not np.all(f[_muscles(model)] > 0):
-        raise ValueError("Strength factors must be positive")
-    return f
 
 
 def scale_muscle_strength(model: mujoco.MjModel, factors: float | np.ndarray) -> None:
@@ -58,12 +51,20 @@ def scale_muscle_strength(model: mujoco.MjModel, factors: float | np.ndarray) ->
         factors: One factor for all muscles, or ``(nu,)`` per actuator.
 
     Raises:
-        ValueError: If a muscle's factor is not positive.
+        ValueError: If a muscle's factor is not positive and finite.
+        ImportError: If the installed myo-sim lacks the model-only strength API.
     """
-    f, mus = _factors(model, factors), _muscles(model)
-    gain, bias = _peak_force(model), _peak_force(model, model.actuator_biasprm)
-    model.actuator_gainprm[mus, 2] = gain[mus] * f[mus]
-    model.actuator_biasprm[mus, 2] = bias[mus] * f[mus]
+    try:
+        from myo_sim.physics.muscle_strength import scale_muscle_strength as scale
+    except ModuleNotFoundError as exc:
+        if exc.name != "myo_sim.physics.muscle_strength":
+            raise
+        raise ImportError(
+            "Muscle strength scaling requires a myo-sim build containing "
+            "MyoHub/myo_sim#186 (myo_sim.physics.muscle_strength). "
+            "Install that development build or a release containing it; 0.2.5 lacks this API."
+        ) from exc
+    scale(model, factors)
 
 
 def scale_muscle_strength_spec(
@@ -71,7 +72,7 @@ def scale_muscle_strength_spec(
 ) -> mujoco.MjSpec:
     """Spec-level :func:`scale_muscle_strength`: writes explicit peak forces.
 
-    The spec is compiled once to resolve automatic peak forces (``force="-1"``).
+    myo-sim compiles a copy to resolve automatic peak forces (``force="-1"``).
 
     Args:
         spec: Model spec, modified in place.
@@ -79,15 +80,21 @@ def scale_muscle_strength_spec(
 
     Returns:
         The same spec.
+
+    Raises:
+        ImportError: If the installed myo-sim lacks the model-only strength API.
     """
-    model = spec.compile()
-    f, mus = _factors(model, factors), _muscles(model)
-    gain, bias = _peak_force(model), _peak_force(model, model.actuator_biasprm)
-    for i, actuator in enumerate(spec.actuators):
-        if mus[i]:
-            actuator.gainprm[2] = float(gain[i] * f[i])
-            actuator.biasprm[2] = float(bias[i] * f[i])
-    return spec
+    try:
+        from myo_sim.physics.muscle_strength import scale_muscle_strength_spec as scale
+    except ModuleNotFoundError as exc:
+        if exc.name != "myo_sim.physics.muscle_strength":
+            raise
+        raise ImportError(
+            "Spec strength scaling requires a myo-sim build containing "
+            "MyoHub/myo_sim#186 (myo_sim.physics.muscle_strength). "
+            "Install that development build or a release containing it; 0.2.5 lacks this API."
+        ) from exc
+    return scale(spec, factors)
 
 
 def strength_factor_from_body_mass(mass: float, reference_mass: float) -> float:
