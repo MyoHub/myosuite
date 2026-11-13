@@ -13,7 +13,15 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Fixed
+
+* The arm-reach model edit (`myoArmReach*`) builds with myo_sim hands whose finger joints are used by tendons
+  and equalities, such as the lumbrical junction nodes of the revised hand. Finger joints are now deleted
+  together with everything that references them (`spec_processing.delete_joint`). The edited model is
+  unchanged on myo_sim 0.2.5 ([#748]).
+
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#748]: https://github.com/MyoHub/myosuite/pull/748
 
 ## [3.1.0] - 2026-11-11
 
