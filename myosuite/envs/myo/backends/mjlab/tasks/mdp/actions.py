@@ -48,6 +48,7 @@ from myosuite.envs.muscle_stages import (
     STAGE_ORDER,
     ExcitationStage,
     check_custom_order,
+    resolve_right_name,
     warn_order_clash,
 )
 from myosuite.terms.base_action import (
@@ -248,7 +249,8 @@ class MyoAction(ActionTerm):
         self._reroute: tuple[int, int] | None = None
         if cfg.reroute is not None:
             names = list(entity.actuator_names)
-            self._reroute = (names.index(cfg.reroute[0]), names.index(cfg.reroute[1]))
+            src, dst = (resolve_right_name(n, names) for n in cfg.reroute)
+            self._reroute = (names.index(src), names.index(dst))
 
         # Global torch RNG on the sim device, seeded by mjlab (``seed_rng``).
         self._randn = functools.partial(torch.randn, device=self.device)
