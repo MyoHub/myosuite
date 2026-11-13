@@ -1,0 +1,29 @@
+{
+  "env_id": "myoLegDirectionalForward-v0",
+  "checkpoint_source": {
+    "repo_id": "myohub/myosuite-3-baselines",
+    "filename": "checkpoints/myoLegDirectionalForward-v0/model_583.pt",
+    "revision": "ecfd7ed0d8b2b3211fe73b14d9538b419970d6df"
+  },
+  "seeds": [0],
+  "protocol": {
+    "body": "pelvis",
+    "leg_length_m": 0.9,
+    "steps": 480,
+    "duration_s": null,
+    "duration_tau": 0.5,
+    "forward_world": [0, -1, 0],
+    "foot_bodies": ["calcn_r", "toes_r", "calcn_l", "toes_l"],
+    "ground_bodies": ["world"],
+    "frame": "world"
+  },
+  "directions": {"forward": [0, -1, 0], "backward": [0, 1, 0], "left": [-1, 0, 0], "right": [1, 0, 0]},
+  "forces_bw": [0, 0.15, 0.3],
+  "phases": [0, 0.25, 0.5, 0.75],
+  "contact_phase": {"heel_bodies": ["calcn_r"], "phase": 0, "stride_index": 2},
+  "criteria": {
+    "target_speed_mps": 1.0,
+    "target_speed_tolerance_mps": 0.35,
+    "require_baseline_tracking": true
+  }
+}
