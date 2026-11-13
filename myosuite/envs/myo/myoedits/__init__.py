@@ -8,7 +8,11 @@ import mujoco
 
 import myosuite.core.registry as _registry
 from myosuite.envs.wrappers import condition_wrapper_specs
-from myosuite.utils.spec_processing import recursive_immobilize
+from myosuite.utils.spec_processing import (
+    delete_joint,
+    delete_tendon,
+    recursive_immobilize,
+)
 import numpy as np
 
 # Arm Reaching ==============================
@@ -30,11 +34,17 @@ def edit_fn_arm_reaching(
 
     if remove_wrist:
         root_list = ["lunate_r"]
-        spec.delete(spec.joint("pro_sup_r"))
+        delete_joint(spec, spec.joint("pro_sup_r"))
 
+    # Delete each joint with the tendons/equalities that use it (e.g. the passive
+    # limit tendons and tendon-tied lumbrical/junction nodes of newer myo_sim hands).
     for root in root_list:
         recursive_immobilize(
-            spec, spec.copy().compile(), spec.body(root), remove_sites=False
+            spec,
+            spec.copy().compile(),
+            spec.body(root),
+            remove_sites=False,
+            remove_dependents=True,
         )
 
     _m = spec.compile()
@@ -50,10 +60,7 @@ def edit_fn_arm_reaching(
 
     for t in spec.tendons:
         if np.sum(np.abs(J_tendon[_m.tendon(t.name).id, :])) < min_moment:
-            for a in spec.actuators:
-                if a.target == t.name:
-                    spec.delete(a)
-            spec.delete(t)
+            delete_tendon(spec, t)
 
     # Original site name, we'll duplicate the site to match both this site name and the one without the suffix
     og_site = spec.site("IFtip_r")

@@ -29,6 +29,57 @@ def compile_with_options(spec: mujoco.MjSpec, model: mujoco.MjModel) -> mujoco.M
     return spec.compile()
 
 
+def delete_tendon(spec: mujoco.MjSpec, tendon: mujoco.MjsTendon) -> None:
+    """Delete *tendon* together with the actuators, equalities and sensors on it.
+
+    Args:
+        spec: Spec that owns *tendon*.
+        tendon: Tendon to delete.
+    """
+    name = tendon.name
+    for a in list(spec.actuators):
+        if a.trntype == mujoco.mjtTrn.mjTRN_TENDON and a.target == name:
+            spec.delete(a)
+    for e in list(spec.equalities):
+        if e.type == mujoco.mjtEq.mjEQ_TENDON and name in (e.name1, e.name2):
+            spec.delete(e)
+    for s in list(spec.sensors):
+        if s.objtype == mujoco.mjtObj.mjOBJ_TENDON and s.objname == name:
+            spec.delete(s)
+    spec.delete(tendon)
+
+
+def delete_joint(spec: mujoco.MjSpec, joint: mujoco.MjsJoint) -> None:
+    """Delete *joint* together with every element that references it.
+
+    Removes the fixed tendons that use the joint (with their own dependents,
+    see :func:`delete_tendon`), joint equalities, joint actuators and joint
+    sensors, so the spec still compiles afterwards.
+
+    Args:
+        spec: Spec that owns *joint*.
+        joint: Joint to delete.
+    """
+    name = joint.name
+    for t in list(spec.tendons):
+        if any(
+            w.type == mujoco.mjtWrap.mjWRAP_JOINT
+            and getattr(w.target, "name", None) == name
+            for w in t.path
+        ):
+            delete_tendon(spec, t)
+    for e in list(spec.equalities):
+        if e.type == mujoco.mjtEq.mjEQ_JOINT and name in (e.name1, e.name2):
+            spec.delete(e)
+    for a in list(spec.actuators):
+        if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == name:
+            spec.delete(a)
+    for s in list(spec.sensors):
+        if s.objtype == mujoco.mjtObj.mjOBJ_JOINT and s.objname == name:
+            spec.delete(s)
+    spec.delete(joint)
+
+
 def recursive_immobilize(
     spec,
     temp_model,
@@ -36,13 +87,32 @@ def recursive_immobilize(
     remove_eqs=False,
     remove_actuators=False,
     remove_sites=True,
+    remove_dependents=False,
 ):
+    """Delete every joint in the subtree of *parent*.
+
+    Args:
+        spec: Spec to edit.
+        temp_model: Model compiled from *spec* before the edit (for qpos addresses).
+        parent: Root body of the subtree.
+        remove_eqs: Also delete joint equalities on the removed joints.
+        remove_actuators: Also delete joint actuators on the removed joints.
+        remove_sites: Also delete the sites of the subtree.
+        remove_dependents: Delete each joint with :func:`delete_joint`, i.e. with
+            all fixed tendons, equalities, actuators and sensors that use it.
+
+    Returns:
+        qpos addresses of the removed joints.
+    """
     removed_joint_ids = []
     if remove_sites:
         for s in parent.sites:
             spec.delete(s)
     for j in parent.joints:
         removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
+        if remove_dependents:
+            delete_joint(spec, j)
+            continue
         if remove_eqs:
             for e in spec.equalities:
                 if e.type == mujoco.mjtEq.mjEQ_JOINT and (
@@ -57,7 +127,13 @@ def recursive_immobilize(
     for child in parent.bodies:
         removed_joint_ids.extend(
             recursive_immobilize(
-                spec, temp_model, child, remove_eqs, remove_actuators, remove_sites
+                spec,
+                temp_model,
+                child,
+                remove_eqs,
+                remove_actuators,
+                remove_sites,
+                remove_dependents,
             )
         )
     return removed_joint_ids
