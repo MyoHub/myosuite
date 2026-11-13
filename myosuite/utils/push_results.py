@@ -149,7 +149,9 @@ def summarize_conditions(
                     confidence_level=confidence,
                     n_resamples=resamples,
                     method="percentile",
-                    rng=np.random.default_rng(seed),
+                    random_state=np.random.default_rng(
+                        seed
+                    ),  # Also supports SciPy <1.15.
                 ).confidence_interval
                 item["paired_mean_speed_delta_bootstrap_ci"] = [
                     float(ci.low),
