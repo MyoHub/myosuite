@@ -77,7 +77,9 @@ def skip_if_hf_gated(env_id: str, exc: Exception) -> None:
     bug: treat it as an unavailable optional dependency.
 
     Also skips an env whose motion clips are not on the machine
-    (``MissingMotionData``: ``myoMimic-v0``'s retargeted clips need the AMASS licence).
+    (``MissingMotionData``: ``myoMimic-v0``'s retargeted clips need the AMASS licence)
+    and a Hub outage (HTTP 429 or 5xx). A wrong repo id, revision or file name is
+    not skipped: the caller re-raises it.
 
     Args:
         env_id: The env being tested.
@@ -88,8 +90,11 @@ def skip_if_hf_gated(env_id: str, exc: Exception) -> None:
     if isinstance(exc, MissingMotionData):
         pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
     try:
-        from huggingface_hub.errors import HfHubHTTPError
+        from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
     except ImportError:
         return
-    if isinstance(exc, HfHubHTTPError):
+    if isinstance(exc, GatedRepoError):
         pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(exc, HfHubHTTPError) and (status == 429 or (status or 0) >= 500):
+        pytest.skip(f"{env_id}: Hugging Face unavailable (HTTP {status})")
