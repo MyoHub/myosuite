@@ -1,0 +1,50 @@
+{
+  "hf_checkpoint": {
+    "sha256": "f7f0e16ae3449f4174ec6f9a2fd5a165cd0e1f335c1aeece32a8d28cb2c302e6",
+    "size_bytes": 3832147,
+    "source": {
+      "repo_id": "myohub/myosuite-3-baselines",
+      "filename": "checkpoints/myoLegDirectionalForward-v0/model_583.pt",
+      "revision": "ecfd7ed0d8b2b3211fe73b14d9538b419970d6df"
+    }
+  },
+  "model": {
+    "algorithm": "mujoco-public-fields-v1",
+    "physical_sha256": "fb73c628f4d8d009dbd4a634510e49d921620b0287adb0d3f57c131119ca9d8c",
+    "mujoco_version": "3.11.0",
+    "kinematic_fingerprint": "72bb9da0db906caf",
+    "kinematic_scope": "body-tree-joints-couplings; no landmark or sole targets"
+  },
+  "timing": {
+    "physics_dt": 0.001,
+    "control_dt": 0.005,
+    "decimation": 5
+  },
+  "target_runtime": {
+    "mujoco": "3.11.0",
+    "onnxruntime-web": "1.29.0",
+    "three": "0.181.2",
+    "mjswan_builder_commit": "2c76c56c78452fa433663e98b4f905a8acded6a7"
+  },
+  "observations": 153,
+  "actions": 80,
+  "onnx_graphs_checked": 5,
+  "bundle_files": 23,
+  "bundle_bytes": 30907949,
+  "policy_parity": {
+    "samples": 64,
+    "max_absolute_action_error": 1.9073486328125e-06,
+    "shipped_policy": {
+      "samples": 64,
+      "max_absolute_action_error": 1.9073486328125e-06
+    }
+  },
+  "manual_browser_check": {
+    "walking_playback_observed": true,
+    "reset_verified": true,
+    "quantified_browser_robustness": false
+  },
+  "verified_platform": "Windows; Python3.12.7; MuJoCo3.11.0; pinned requirements",
+  "reproduce": "python scripts/build_browser_walk.py --output tasks/browser-walk",
+  "scope": "Published directional-forward policy on its own published myo-sim0.2.5 model. Not a SuperMimic motion/history browser port or human validation."
+}

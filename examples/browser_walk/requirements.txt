@@ -1,0 +1,6 @@
+# Keep this build environment separate from GPU training environments.
+mjswan @ git+https://github.com/M-Colley/mjswan.git@2c76c56c78452fa433663e98b4f905a8acded6a7
+mjlab==1.6.0
+mjviser==0.0.14
+myo-sim==0.2.5
+onnxruntime>=1.20
