@@ -12,6 +12,7 @@ import pytest
 
 from myosuite.core.model_builder import build_from_recipe
 from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
+from myosuite.utils.spec_processing import delete_joint
 
 pytestmark = pytest.mark.tier2
 
@@ -75,3 +76,73 @@ def test_hand_is_rigid_no_thumb_muscles_or_hand_joints() -> None:
     assert not joints & {"cmc_flexion", "cmc_abduction"}
     assert not any(n.startswith(("mcp", "pm", "md", "ip_", "mp_")) for n in joints)
     assert model.nu == 45
+
+
+_NODE_XML = """
+<mujoco>
+  <worldbody>
+    <body name="a">
+      <joint name="hinge" type="hinge" axis="0 1 0"/>
+      <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.2"/>
+      <site name="s1" pos="0.05 0 0"/>
+      <body name="node" pos="0 0 -0.1">
+        <joint name="slide" type="slide" axis="0 0 1"/>
+        <geom type="sphere" size="0.01"/>
+        <site name="s2" pos="0.05 0 0"/>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="slide_t"><joint joint="slide" coef="1"/></fixed>
+    <spatial name="path_t"><site site="s1"/><site site="s2"/></spatial>
+  </tendon>
+  <equality>
+    <tendon tendon1="slide_t" tendon2="path_t"/>
+    <joint joint1="slide" joint2="hinge"/>
+  </equality>
+  <actuator>
+    <motor name="m_slide" joint="slide"/>
+    <motor name="m_t" tendon="slide_t"/>
+    <motor name="m_path" tendon="path_t"/>
+  </actuator>
+  <sensor>
+    <jointpos joint="slide"/>
+    <tendonpos tendon="slide_t"/>
+  </sensor>
+</mujoco>
+"""
+
+
+def test_delete_joint_removes_its_dependents() -> None:
+    """A tendon-tied node joint is deleted with its tendon, equalities, actuators and sensors."""
+    spec = mujoco.MjSpec.from_string(_NODE_XML)
+    delete_joint(spec, spec.joint("slide"))
+    model = spec.compile()
+    assert model.njnt == 1 and model.neq == 0 and model.nsensor == 0
+    assert [model.tendon(i).name for i in range(model.ntendon)] == ["path_t"]
+    assert [model.actuator(i).name for i in range(model.nu)] == ["m_path"]
+
+
+def test_edit_builds_with_lumbrical_nodes() -> None:
+    """The edit compiles on hands with tendon-tied lumbrical nodes (myo_sim#147).
+
+    Skipped when the installed myo_sim hand has no such nodes.
+    """
+    original, spec = build_from_recipe("full_arm")
+    names = {original.joint(i).name for i in range(original.njnt)}
+    if not any(n.startswith("node_LUM") for n in names):
+        pytest.skip("installed myo_sim hand has no lumbrical junction nodes")
+    edit_fn_arm_reaching(spec)
+    model = spec.compile()
+    hand = set()
+    for i in range(model.njnt):
+        if any(
+            model.body(b).name.endswith("mc_r")
+            for b in _ancestors(model, model.jnt_bodyid[i])
+        ):
+            hand.add(model.joint(i).name)
+    assert not hand
+    assert {"IFtip", "IFtip_target"} <= {model.site(i).name for i in range(model.nsite)}
+    data = mujoco.MjData(model)
+    mujoco.mj_step(model, data, nstep=10)
+    assert np.isfinite(data.qpos).all()

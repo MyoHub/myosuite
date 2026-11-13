@@ -32,13 +32,14 @@ from myosuite.core.model_builder import cached_spec
 from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
-    _translate_finger_token,
+    native_finger_names,
 )
 from myosuite.integrations.musclemimic.model_versions import (
     apply_models_version,
     resolve_models_version,
 )
 from myosuite.terms.mimic_reward import MimicTrackingConfig
+from myosuite.utils.spec_processing import delete_joint, delete_tendon
 
 NATIVE_FULLBODY_MODEL = "myofullbody"
 """The myo_sim model the native full body is built from (``model_name`` overrides it)."""
@@ -296,8 +297,9 @@ def _apply_mimic_fullbody_spec_changes(
     """
     if disable_fingers:
         joints_to_remove = [j for j in spec.joints if j.name in finger_joint_tokens]
+        # With the tendons/equalities that use them (passive limits, tied nodes).
         for joint in joints_to_remove:
-            spec.delete(joint)
+            delete_joint(spec, joint)
 
         actuators_to_remove = [
             a for a in spec.actuators if a.name in finger_muscle_tokens
@@ -309,7 +311,7 @@ def _apply_mimic_fullbody_spec_changes(
             t for t in spec.tendons if any(m in t.name for m in finger_muscle_tokens)
         ]
         for tendon in tendons_to_remove:
-            spec.delete(tendon)
+            delete_tendon(spec, tendon)
 
     for body_name, site_name in FULLBODY_BODY2SITES_FOR_MIMIC.items():
         body = spec.body(body_name)
@@ -444,14 +446,7 @@ def _build_native_mimic_fullbody_spec(
     if config.disable_fingers:
         # From the spec: compiling here would leave its sizes stale after the deletions,
         # and MjSpec.attach checks keyframes against those.
-        joint_pool = frozenset(joint.name for joint in spec.joints)
-        actuator_pool = frozenset(actuator.name for actuator in spec.actuators)
-        joint_tokens = tuple(
-            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
-        )
-        muscle_tokens = tuple(
-            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
-        )
+        joint_tokens, muscle_tokens = native_finger_names(spec)
     else:
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS

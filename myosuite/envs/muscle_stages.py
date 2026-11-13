@@ -36,7 +36,7 @@ Two kinds of custom stages exist:
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from typing import Any
 
 import mujoco
@@ -345,10 +345,27 @@ def fatigue_stage(
     return apply, reset
 
 
+def resolve_right_name(name: str, names: Collection[str]) -> str:
+    """*name*, or its other right-side spelling (``EPL`` / ``EPL_r``) if only that exists.
+
+    myo_sim releases differ in whether right-side names carry ``_r``.
+
+    Raises:
+        KeyError: If neither spelling is in *names*.
+    """
+    if name in names:
+        return name
+    other = name[:-2] if name.endswith("_r") else name + "_r"
+    if other in names:
+        return other
+    raise KeyError(f"No actuator {name!r} (or {other!r}) in the model")
+
+
 def reroute_stage(model: Any, suffix: str) -> CtrlStage:
     """Reafferentation: EIP's command drives EPL and EIP is silenced."""
-    epl = model.actuator(f"EPL{suffix}").id
-    eip = model.actuator(f"EIP{suffix}").id
+    names = [model.actuator(i).name for i in range(model.nu)]
+    epl = model.actuator(resolve_right_name(f"EPL{suffix}", names)).id
+    eip = model.actuator(resolve_right_name(f"EIP{suffix}", names)).id
 
     def apply(env: Any, ctrl: np.ndarray) -> np.ndarray:
         ctrl[epl] = ctrl[eip].copy()
