@@ -195,3 +195,29 @@ def test_samples_keep_the_nominal_weights(
     )
     nominal = StaticOptimizer(elbow).config
     assert len(seen) == 4 and all(c == nominal for c in seen)
+
+
+def test_perturbed_model_leaves_a_non_muscle_bias_alone() -> None:
+    xml = """
+    <mujoco><worldbody><site name="o" pos="0 0 .1"/>
+      <body><joint name="j" axis="0 1 0"/><geom type="capsule" fromto="0 0 0 .3 0 0" size=".02" mass="1"/>
+        <site name="i" pos=".2 0 .05"/></body></worldbody>
+      <tendon><spatial name="t"><site site="o"/><site site="i"/></spatial></tendon>
+      <actuator><general name="m" tendon="t" dyntype="muscle" gaintype="muscle" biastype="affine"
+        gainprm="0.75 1.05 200 200 0.5 1.6 1.5 1.3 1.2" biasprm="0 0 -10"/></actuator></mujoco>"""
+    model = mujoco.MjModel.from_xml_string(xml)
+    for cv in (0.0, 0.5):
+        sample = perturbed_model(
+            model,
+            np.random.default_rng(0),
+            UncertaintyConfig(strength_cv=cv, mass_cv=0.0),
+        )
+        np.testing.assert_array_equal(sample.actuator_biasprm, model.actuator_biasprm)
+    force = []
+    for m in (model, sample):
+        d = mujoco.MjData(m)
+        d.qvel[0] = 2.0
+        mujoco.mj_forward(m, d)
+        force.append(d.actuator_force[0])
+    assert force[0] != 0.0
+    assert force[1] == pytest.approx(force[0])
