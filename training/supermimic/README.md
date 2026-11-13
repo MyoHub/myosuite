@@ -26,7 +26,8 @@ Every ported file says so in its header (`Copyright 2026 The muscle-supermimic A
 names its upstream file in its docstring.
 
 New MyoSuite code (header `Copyright (c) MyoSuite Authors`): `supermimic/env.py` (the task through `make_env`),
-`supermimic/train.py`, `supermimic/finetune.py`, `scripts/train.py`, `scripts/evaluate.py`, `scripts/finetune.py`, the
+`supermimic/train.py`, `supermimic/finetune.py`, `supermimic/steering.py`, `supermimic/steer_eval.py`,
+`scripts/train.py`, `scripts/evaluate.py`, `scripts/finetune.py`, `scripts/eval_steering.py`, the
 tests not marked as ported, and in the ported files the changes for MyoSuite's task: the task's pure term functions
 evaluated on imagined states, myo_sim's body and its joint couplings, the action map and the checkpoint layout.
 
@@ -123,6 +124,42 @@ to 0.950 (upstream: 0.923 to 0.946) and lowered the MPJPE from 23.0 to 18.6 mm (
 failed clip. One fine-tuning example (`finetune.py`, 6 minutes including about 5 minutes of compilation) used that
 checkpoint on the held-out clip it tracked worst (KIT 348 `turn_right02`): the return on that clip went from 0.47 to
 0.93 and the MPJPE from 46 to 23 mm.
+
+## Steering the tracker: directional walking and ChaseTag
+
+`scripts/eval_steering.py` scores a myoSuperMimic checkpoint on two CPU tasks, with the tracker following a looped
+walking clip (by default KIT 167 `walking_medium06`, the directional env's and the ChaseTag teacher's gait clip;
+it is one of the 108 held-out clips):
+
+- `myoFullBodyDirectional-v0`, with tutorial 5.4's protocol (8 headings x 10 seeds, 200 steps at 100 Hz from the
+  env's own reset; survival, steps alive, alignment of the displacement with the heading), so the table compares
+  with the tutorial's walker. `--turns` adds heading changes mid-episode.
+- `myoChallengeChaseTagFBVs-v0` matches under the scored rules: against a player that does nothing, against
+  itself, and against an ONNX player (`--baseline-onnx hf`: the published baseline). The output has the same
+  columns as the table in `docs/baseline_checkpoints.md`.
+
+**Status: not validated.** So far this has run only on untrained checkpoints, which tests the mechanics, not
+the results. Test it on the full body (with the elastic tendons) and a trained checkpoint before reporting
+any numbers.
+
+Before reading those numbers, check that the tracker tracks in CPU MuJoCo as it does on the GPU: `--track`
+plays held-out clips without steering in the directional env's body. It reports the task's normalized return and
+the share of clips completed, which compare with `scripts/evaluate.py`.
+
+```bash
+python training/supermimic/scripts/eval_steering.py --checkpoint <run>/model_013993.pt --turns 90 180 \
+    --baseline-onnx hf --track held_out --out results.json
+# training curves: every 4th checkpoint of a run, one CSV row each (with its training clock)
+python training/supermimic/scripts/eval_steering.py --run <run> --every 4 --episodes 4 --out curves.csv
+```
+
+The tracker's observation is MuscleMimic's, in world axes (the absolute root quaternion, world-frame site offsets
+and reference displacements), so it is not heading-invariant: a reference clip turned to a new heading would be
+out of its training distribution. `supermimic/steering.py` therefore keeps the clip as trained and turns the robot's
+observed state by `-delta` into the clip's frame. Flat-ground physics is invariant to that turn, so the robot walks
+the clip's path turned by `delta`. `delta` follows the commanded heading at no more than `--max-rate` rad/s.
+Joints and muscles are matched by name (`myosuite.core.model_names` aliases), so the same tracker drives both full
+bodies.
 
 ## Planned: DynSyn action groups
 
