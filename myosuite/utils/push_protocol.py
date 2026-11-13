@@ -174,6 +174,9 @@ class PushProtocol:
             "ground_body_ids": ground,
             "contact_threshold_n": self.contact_threshold_bw * mass * g,
             "muscle_state_indices": muscle_states,
+            "muscle_actuator_ids": np.flatnonzero(
+                model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+            ).tolist(),
             "wrench_sampling": "control_step_zero_order_hold",
             "phase_origin": "reset_clock_nominal_stride",
         }
