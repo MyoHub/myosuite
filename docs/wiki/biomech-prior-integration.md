@@ -44,11 +44,48 @@ The artifact manifest should also identify the architecture, scaler, training ve
 
 Match the upstream inference objective: standardize the input, encode it and decode the latent mean deterministically. Unscale the decoded mean with the paired scaler and the decoded variance with its squared scale, floor that physical variance at `1e-6`, and average Gaussian NLL over features for each state. Do not sample the latent variable or add the training KL term during evaluation. Averaging standardized-space NLL would define a different score.
 
+### MyoFullBody arm coordinates
+
+The prior's arm coordinates follow the Rajagopal2015 arm used by AddBiomechanics. Its standardized skeleton ([`Rajagopal2015_passiveCal_hipAbdMoved.osim`](https://github.com/keenon/AddBiomechanics/blob/fd55fe0dec453df1f447e0b046d33607ab6255b6/server/data/StandardizedModels/Rajagopal2015_passiveCal_hipAbdMoved.osim)) and the upstream simulation model ([`sipp_generic_runmad.osim`](https://github.com/gambimar/BiomechPriorVAE/blob/2ae9d2d3d542646316c13b69fa06ef087a624136/data/model/sipp_generic_runmad.osim)) have the same arm joints to 1e-5. The MyoFullBody arm (musclemimic_models 1.0.6 and myo_sim 0.2.5 agree) differs in two ways. In optimal-control tests with the prior, the forearm [swung outward](https://github.com/MyoHub/myosuite/pull/567#issuecomment-6848992290) as the elbow flexed:
+
+- **Elbow-axis orientation.** The Rajagopal elbow axis is rotated 13.1° about the humeral long axis, MyoFullBody's 2.8°. A constant humerus rotation removes this 10.3° difference.
+- **Forearm-to-axis angle.** The forearm (elbow to wrist centre) makes 87.5° with the elbow axis in Rajagopal and 81.9° in MyoFullBody. This 5.6° is a difference in anatomy; no constant offset removes it.
+
+Map each arm as below. The left arm uses the same constants on its `_l` coordinates, because both models mirror across the sagittal plane.
+
+| Prior coordinates | MyoFullBody source |
+|---|---|
+| `arm_flex`, `arm_add`, `arm_rot` | Intrinsic Z-X-Y Euler angles (the `acromial` joint order) of `R_h · C`. `R_h` is the thorax-to-humerus rotation, the identity at shoulder zero in both models. `C` aligns the functional humerus frames (z = elbow axis, y = long axis); its rotation vector is (−1.05, −10.28, −1.54)°. |
+| `elbow_flex` | `elbow_flexion` + 7.83°. |
+| `pro_sup` | `pro_sup` + 100.22°. The Rajagopal zero is supinated and MyoFullBody's is neutral. |
+| Velocities | The map's Jacobian times the MyoFullBody coordinate velocities. |
+
+The scapula and clavicle couplings cancel, so `R_h = R(a_y, elv_angle) · R(a_x, shoulder_elv) · R(a_y, shoulder_rot − elv_angle)`. Here `a_y` is the `elv_angle` and `shoulder_rot` axis, and `a_x` the `shoulder_elv` axis. This closed form is within 0.07° of MuJoCo forward kinematics. Read `R_h` from the simulation where it is available; the closed form suits differentiable settings such as direct collocation.
+
+To validate the mapping, 4000 random arm poses were sampled with every coupled joint set from its equality constraint: `elv_angle` −90 to 100°, `shoulder_elv` 0 to 70°, `shoulder_rot` −40 to 60°, `elbow_flexion` 0 to 130°, `pro_sup` −70 to 70°. Rajagopal forward kinematics at the mapped coordinates was compared with MyoFullBody's in the thorax frame (mean errors):
+
+| Mapping | Elbow axis | Forearm direction | Wrist position |
+|---|---|---|---|
+| Euler angles without `C`; elbow unchanged; `pro_sup` + 90° | 10.3° | 14.0° | 5.7 cm |
+| Mapping above | 0° | 5.6° | 1.7 cm |
+| Offsets fitted to segment directions: `C` = (−0.13, −17.09, −1.97)°, elbow + 8.70° | 6.9° | 1.8° | 1.4 cm |
+
+Without `C`, the forearm error grows with flexion, from 9.8° at 0–30° to 16.1° at 60–90°. With `C`, it stays at 5.6° for every flexion angle. The fitted offsets trade elbow-axis error for forearm direction. Choose between the two by the prior's NLL on real MyoFullBody gait; that comparison is still open.
+
+Limits of this mapping:
+
+- With the arm hanging (`shoulder_elv` = 0), `elv_angle` does not change `R_h`, and the map's Jacobian loses rank. The prior cannot constrain `elv_angle` near rest, so optimal control may need to regularize it.
+- MyoFullBody pronation beyond about 50° maps past the Rajagopal `pro_sup` limit of 150°.
+- The constants come from the unscaled models. AddBiomechanics scales each subject, which changes segment proportions and may shift the offsets slightly.
+- Frame alignment does not cover differences in the subjects' resting thorax or arm posture.
+
+The stage 1 feature fixtures should pin these constants with matched poses of both arms.
+
 ## Existing implementation hooks
 
 These hooks exist on MyoSuite `dev`:
 
-- [MuscleMimic model bridge](../../myosuite/integrations/musclemimic/model_bridge.py) defines `FULLBODY_NAME_ALIASES`, including the elbow naming differences. Reuse its name mapping while validating the additional anatomical transforms against the training convention.
+- [MuscleMimic model bridge](../../myosuite/integrations/musclemimic/model_bridge.py) defines `FULLBODY_NAME_ALIASES`, including the elbow naming differences. Reuse its name mapping while validating the additional anatomical transforms against the training convention (see [MyoFullBody arm coordinates](#myofullbody-arm-coordinates)).
 - [CPU MuscleMimic tasks](../../myosuite/envs/myo/tasks/mimic/cpu.py) and [clip playback](../../myosuite/envs/myo/tasks/mimic/clip_env.py) expose reward/evaluation points for full-body motion.
 - [MuscleMimic mjlab configuration](../../myosuite/envs/myo/backends/mjlab/mimic_mjlab_env.py) builds the GPU task rewards. A future online scorer must preserve the same feature and score contract as CPU evaluation.
 - A separately trained leg prior could later use [CPU walking](../../myosuite/envs/myo/tasks/basic/leg/walk.py), [mjlab walking terms](../../myosuite/envs/myo/backends/mjlab/tasks/leg/walk_mdp.py) and [walking configuration](../../myosuite/envs/myo/backends/mjlab/tasks/leg/walk_env_cfg.py).
