@@ -12,7 +12,19 @@ Changes since **v3.1.0** (2026-11-11).
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
+* **Steering a myoSuperMimic tracker on directional walking and ChaseTag (CPU,
+  `training/supermimic/scripts/eval_steering.py`, [#638]).** The tracker follows a
+  looped walking clip toward a commanded heading: its observation is in world axes, so
+  the robot's observed state is turned into the clip's frame, not the clip. One
+  checkpoint, or every checkpoint of a run as training curves, is scored on
+  `myoFullBodyDirectional-v0` with tutorial 5.4's protocol (plus mid-episode turns) and
+  in `myoChallengeChaseTagFBVs-v0` matches against a player that does nothing, against
+  itself and against the published ONNX baseline. `--track` first checks CPU tracking
+  of held-out clips against `evaluate.py`'s GPU numbers. Joints and muscles are matched
+  by name (`myosuite.core.model_names` aliases), so the same tracker drives both full
+  bodies.
 
+[#638]: https://github.com/MyoHub/myosuite/pull/638
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11
