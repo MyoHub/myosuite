@@ -126,31 +126,37 @@ def summarize_trial(
     for signals, diagnostics in ((base, baseline), (push, pushed)):
         error = (
             None
-            if criteria.target_speed_mps is None
+            if criteria.target_speed_mps is None or end >= len(signals["speed_mps"])
             else float(
-                np.mean(
-                    np.abs(
-                        signals["speed_mps"][min(end, len(signals["speed_mps"]) - 1) :]
-                        - criteria.target_speed_mps
-                    )
-                )
+                np.mean(np.abs(signals["speed_mps"][end:] - criteria.target_speed_mps))
             )
         )
         diagnostics["post_push_mean_target_speed_error_mps"] = error
         diagnostics["tracks_target_speed"] = (
-            None if error is None else error <= criteria.target_speed_tolerance_mps
+            None
+            if error is None
+            else bool(error <= criteria.target_speed_tolerance_mps)
         )
     eligible = (
         baseline["reached_horizon"]
         and not baseline["fall"]
         and not trial.baseline.terminated
         and cfg.get("phase_available", True)
-        and (not criteria.require_baseline_tracking or baseline["tracks_target_speed"])
+        and (
+            not criteria.require_baseline_tracking
+            or baseline["tracks_target_speed"] is True
+        )
     )
     reason = None if eligible else "baseline_fall_or_incomplete"
     if not cfg.get("phase_available", True):
         reason = "contact_phase_unavailable"
-    elif criteria.require_baseline_tracking and not baseline["tracks_target_speed"]:
+    elif (
+        criteria.require_baseline_tracking
+        and baseline["tracks_target_speed"] is False
+        and baseline["reached_horizon"]
+        and not baseline["fall"]
+        and not trial.baseline.terminated
+    ):
         reason = "baseline_does_not_track_command"
     good = (
         (speed_error <= criteria.speed_error_natural)

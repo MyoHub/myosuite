@@ -127,7 +127,10 @@ def test_native_muscle_trace_separates_commands_states_and_force() -> None:
         env.close()
 
 
-def test_stationary_baseline_cannot_pass_declared_walking_command_eligibility() -> None:
+@pytest.mark.parametrize("tolerance", [0.2, np.float64(0.2)])
+def test_stationary_baseline_cannot_pass_declared_walking_command_eligibility(
+    tolerance,
+) -> None:
     cfg = make_push_protocol(force_n=0)
     trial = run_paired_push(
         PushEnv(), ReplayPolicy.stateless(lambda obs: np.zeros(1)), cfg, seed=0
@@ -137,7 +140,7 @@ def test_stationary_baseline_cannot_pass_declared_walking_command_eligibility() 
         RecoveryCriteria(
             min_height_L=0.01,
             target_speed_mps=1,
-            target_speed_tolerance_mps=0.2,
+            target_speed_tolerance_mps=tolerance,
             require_baseline_tracking=True,
         ),
     )
@@ -156,3 +159,26 @@ def test_post_push_foot_placement_is_unavailable_without_new_contact_entry() -> 
     result = summarize_trial(trial, RecoveryCriteria(min_height_L=0.01))
     assert result["post_push_foot_placement"][0]["baseline"] is None
     assert result["post_push_foot_placement"][0]["world_position_delta_m"] is None
+
+
+def test_native_termination_before_dose_has_no_post_push_tracking_samples() -> None:
+    class EarlyEnding(PushEnv):
+        def step(self, action):
+            obs, reward, _, _, info = super().step(action)
+            return obs, reward, self.data.time >= 0.05 - 1e-10, False, info
+
+    trial = run_paired_push(
+        EarlyEnding(),
+        ReplayPolicy.stateless(lambda obs: np.zeros(1)),
+        make_push_protocol(),
+        seed=0,
+    )
+    criteria = RecoveryCriteria(
+        min_height_L=0.01, target_speed_mps=0, require_baseline_tracking=True
+    )
+    result = summarize_trial(trial, criteria)
+    for arm in ("baseline", "pushed"):
+        assert result[arm]["post_push_mean_target_speed_error_mps"] is None
+        assert result[arm]["tracks_target_speed"] is None
+    assert not result["eligible"] and result["exposed_transitions"] == 0
+    assert result["ineligible_reason"] == "baseline_fall_or_incomplete"
