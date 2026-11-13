@@ -34,6 +34,13 @@ excitations (``MotorNoiseCfg``, off by default). Both backends apply it after
 the action -> excitation mapping and before fatigue; see
 ``docs/wiki/cross-backend-contract.md``.
 
+Saturation
+----------
+``muscle_saturation_bounds`` gives the policy actions whose excitation is within
+a margin of 0 or 1 (or clamped), where the action map is flat. The mjlab muscle
+action terms use it for the ``muscle_saturation`` metric and the opt-in
+saturation penalty (MyoHub/myosuite#566).
+
 ``MuscleActionTerm`` is the mjlab (Isaac Lab manager API) integration wrapper.
 """
 
@@ -45,6 +52,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+from myosuite.biomechanics.effort import (
+    MUSCLE_SATURATION_MARGIN as MUSCLE_SATURATION_MARGIN,
+    muscle_saturation_bounds as muscle_saturation_bounds,
+)
+
 
 if TYPE_CHECKING:
     from myosuite.core.protocols import EnvAccessor
@@ -61,6 +74,35 @@ def sigmoid_muscle_activation(action: Any, xp: Any) -> Any:
         Array with element-wise ``1 / (1 + exp(-5 * (a - 0.5)))``.
     """
     return 1.0 / (1.0 + xp.exp(-5.0 * (action - 0.5)))
+
+
+def muscle_saturated(action: Any, lo: Any, hi: Any) -> Any:
+    """Boolean mask of saturated muscle commands (see :func:`muscle_saturation_bounds`).
+
+    Args:
+        action: Policy actions of the muscles, any shape.
+        lo: Lower bound, broadcastable to *action*.
+        hi: Upper bound, broadcastable to *action*.
+
+    Returns:
+        ``(action <= lo) | (action >= hi)``.
+    """
+    return (action <= lo) | (action >= hi)
+
+
+def muscle_saturation_excess(action: Any, lo: Any, hi: Any, xp: Any) -> Any:
+    """Distance of each muscle action beyond its saturation bounds (0 inside).
+
+    Args:
+        action: Policy actions of the muscles, any shape.
+        lo: Lower bound, broadcastable to *action*.
+        hi: Upper bound, broadcastable to *action*.
+        xp: Array module (``numpy``, ``jax.numpy`` or ``torch``).
+
+    Returns:
+        ``max(action - hi, 0) + max(lo - action, 0)``.
+    """
+    return xp.clip(action - hi, 0.0, None) + xp.clip(lo - action, 0.0, None)
 
 
 def muscle_normalize_action(accessor: EnvAccessor, action: Any, **kwargs: Any) -> Any:

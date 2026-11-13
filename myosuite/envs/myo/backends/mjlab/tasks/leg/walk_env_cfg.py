@@ -166,6 +166,8 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
         # Share of the episode's steps on target (the CPU "on_target" flag).
         "on_target": MetricsTermCfg(func=walk_mdp.walk_on_target, reduce="mean"),
     }
+    if info.na > 0:
+        metrics[mdp.SATURATION_TERM] = mdp.muscle_saturation_metric()
     # CPU reset_type "init": keyframe 2 (qpos and qvel), on the joint couplings.
     events = {
         "reset_scene_to_default": EventTermCfg(

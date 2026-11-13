@@ -120,6 +120,8 @@ def make_leg_directional_env_cfg(
             func=dmdp.heading_on_target, params=reward_params, reduce="mean"
         ),
     }
+    if info.na > 0:
+        metrics[mdp.SATURATION_TERM] = mdp.muscle_saturation_metric()
     # ModularTaskEnv.reset: keyframe 0 (qpos and qvel), on the joint couplings.
     events = {
         "reset_scene_to_default": EventTermCfg(
