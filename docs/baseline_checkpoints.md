@@ -64,7 +64,7 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹                        |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
 | myoLegStandRandom-v0         | `model_3500.pt`  | 34.1%                         |
-| myoLegWalk-v0                | `model_3000.pt`  | 100.0%⁴ (0% from 3.1's reset) |
+| myoLegWalk-v0                | `model_3000.pt`  | 100.0%⁴ (**incompatible with 3.1.0**: 0% from its reset) |
 | myoTorsoExoPoseFixed-v0      | `model_188.pt`   | 100.0%                        |
 | myoTorsoPoseFixed-v0         | `model_103.pt`   | 100.0%                        |
 
@@ -77,7 +77,7 @@ name walks in the opposite direction of the new one.
 ³ Mean of seeds 1-3 with 256 episodes each. The earlier 26.6% was a single draw of 64 episodes; the twin bakes one terrain per seed,
 so one draw varies a lot. The released 3.0.0 code gives 18.4, 19.9 and 14.1% on the same seeds, so the change is not a regression.
 
-⁴ Measured before 3.1 from the old start. From 3.1 the leg tasks reset with the coupled knee joints on their polynomials (#630), and this checkpoint falls from that start (0% success, *Coupled knee joints at reset (leg tasks)* below). A checkpoint trained from the new start follows in 3.2.
+⁴ **Incompatible with MyoSuite 3.1.0.** Measured before 3.1 from the old start. From 3.1 the leg tasks reset with the coupled knee joints on their polynomials (#630), and this checkpoint falls from that start (0% success, *Coupled knee joints at reset (leg tasks)* below). A checkpoint trained from the new start follows in 3.2.
 
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
