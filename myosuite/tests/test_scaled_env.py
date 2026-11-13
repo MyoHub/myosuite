@@ -24,6 +24,7 @@ from myosuite.utils.checkpoint_manifest import (
     read_manifest,
     write_manifest,
 )
+from myosuite.utils.deployment_manifest import model_identity
 
 pytestmark = pytest.mark.tier1
 
@@ -174,10 +175,17 @@ def test_mjx_refuses_scales() -> None:
 def test_manifest_records_the_subject_and_a_strict_check_rejects_another(
     tmp_path: Path,
 ) -> None:
-    write_manifest(tmp_path, ENV_ID, scales=SCALES, total_mass=70.0)
-    subject = read_manifest(tmp_path)["subject"]
+    action_map = {"manifest": {"kind": "dynsyn"}, "env_steps": 123}
+    write_manifest(
+        tmp_path, ENV_ID, scales=SCALES, total_mass=70.0, action_map=action_map
+    )
+    manifest = read_manifest(tmp_path)
+    subject = manifest["subject"]
     assert subject["scales"] == SCALES and subject["total_mass"] == 70.0
     assert len(subject["model_digest"]) == 64
+    assert manifest["action_map"] == action_map
+    with make_env(ENV_ID, scales=SCALES, total_mass=70.0) as env:
+        assert manifest["deployment"]["model"] == model_identity(env.unwrapped.model)
     assert check_contract(ENV_ID, tmp_path, scales=SCALES, total_mass=70.0, strict=True)
     # The same body written differently is the same subject.
     same = {"femur_r": np.array([1.02, 1.07, 0.98]), "tibia_l": [1.04] * 3}

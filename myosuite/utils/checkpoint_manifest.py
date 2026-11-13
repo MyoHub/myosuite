@@ -182,7 +182,7 @@ def write_manifest(
         action_map: Manifest of the action map the policy acts through, if any.
         deployment: Explicit deployment provenance (actual model/I/O/reference data).
         env: Actual CPU env, including configured physical edits. When no explicit
-            contract is supplied, a default env is constructed and recorded. Passing
+            contract is supplied, an env for the supplied subject is constructed. Passing
             a contract alone preserves the inexpensive legacy metadata-only path.
 
     Returns:
@@ -196,7 +196,11 @@ def write_manifest(
         from myosuite.utils.deployment_manifest import env_deployment_manifest
 
         owned_env = env is None
-        env = make_env(env_id) if owned_env else env
+        if owned_env:
+            kwargs = {}
+            if scales is not None or total_mass is not None:
+                kwargs = {"scales": scales, "total_mass": total_mass}
+            env = make_env(env_id, **kwargs)
         try:
             if contract is None:
                 contract = contract_from_env(env)
