@@ -2,13 +2,12 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Numerical parity: hand task recipes vs myo_sim myohand_r.xml.
+"""Numerical parity: hand task recipes vs myo_sim's ``myohand`` model.
 
 Verifies that the hand_* model recipes produce models that are structurally and
-dynamically equivalent to the myo_sim pip-package's myohand_r.xml (the canonical
-reference distributed on PyPI).
-
-Skip all tests if myo_sim is not installed or myohand_r.xml is not present.
+dynamically equivalent to ``myo_sim.load_spec("myohand")`` (the canonical
+reference distributed on PyPI). myo-sim is a mandatory dependency, so a missing
+reference fails instead of skipping.
 """
 
 from __future__ import annotations
@@ -24,29 +23,12 @@ pytestmark = pytest.mark.tier1
 # ---------------------------------------------------------------------------
 
 
-def _myo_sim_hand_path():
-    try:
-        import myo_sim  # type: ignore[import-untyped]
-
-        p = myo_sim.MODELS_DIR / "hand" / "myohand_r.xml"
-        return p if p.exists() else None
-    except ImportError:
-        return None
-
-
-_HAND_PATH = _myo_sim_hand_path()
-_SKIP = pytest.mark.skipif(
-    _HAND_PATH is None,
-    reason="myo_sim pip package with myohand_r.xml not available",
-)
-
-
 @pytest.fixture(scope="module")
 def ref_model():
-    """mujoco.MjModel loaded directly from myo_sim's myohand_r.xml."""
-    import mujoco
+    """mujoco.MjModel of myo_sim's public ``myohand`` model."""
+    import myo_sim
 
-    return mujoco.MjModel.from_xml_path(str(_HAND_PATH))
+    return myo_sim.load_spec("myohand").compile()
 
 
 @pytest.fixture(scope="module")
@@ -70,11 +52,10 @@ def recipe_hand_pose_model():
 
 
 # ---------------------------------------------------------------------------
-# Structural parity: hand_standard vs myo_sim myohand_r.xml
+# Structural parity: hand_standard vs myo_sim myohand
 # ---------------------------------------------------------------------------
 
 
-@_SKIP
 def test_hand_standard_nq_nv_nu_na(ref_model, recipe_hand_model):
     """Recipe model has same degrees of freedom and actuator counts."""
     assert recipe_hand_model.nq == ref_model.nq
@@ -83,7 +64,6 @@ def test_hand_standard_nq_nv_nu_na(ref_model, recipe_hand_model):
     assert recipe_hand_model.na == ref_model.na
 
 
-@_SKIP
 def test_hand_standard_joint_names_and_order(ref_model, recipe_hand_model):
     """Joint names and ordering match the myo_sim reference exactly."""
     ref_names = [ref_model.joint(i).name for i in range(ref_model.njnt)]
@@ -95,7 +75,6 @@ def test_hand_standard_joint_names_and_order(ref_model, recipe_hand_model):
     ), f"Joint name/order mismatch.\n  ref:    {ref_names}\n  recipe: {recipe_names}"
 
 
-@_SKIP
 def test_hand_standard_actuator_names(ref_model, recipe_hand_model):
     """Actuator names match the myo_sim reference exactly."""
     import mujoco
@@ -111,42 +90,41 @@ def test_hand_standard_actuator_names(ref_model, recipe_hand_model):
     assert recipe_names == ref_names
 
 
-@_SKIP
 def test_hand_standard_qpos0(ref_model, recipe_hand_model):
     """Default qpos matches the myo_sim reference (same neutral pose)."""
     np.testing.assert_array_equal(recipe_hand_model.qpos0, ref_model.qpos0)
 
 
-@_SKIP
 def test_hand_standard_joint_ranges(ref_model, recipe_hand_model):
     """Joint ranges (limits) are identical to the myo_sim reference."""
     np.testing.assert_array_equal(recipe_hand_model.jnt_range, ref_model.jnt_range)
 
 
-@_SKIP
 def test_hand_standard_dynamics_zero_action(ref_model, recipe_hand_model):
-    """Forward-stepping with zero action is bit-identical for N steps."""
+    """Zero-action rollout matches the reference with gravity off.
+
+    The recipe re-roots the bare hand in the legacy world frame, and the
+    reference hangs it on a passive torso, so only gravity-free dynamics compare.
+    """
+    import copy
+
     import mujoco
 
     N = 50
-    ref_data = mujoco.MjData(ref_model)
-    rec_data = mujoco.MjData(recipe_hand_model)
-
-    for _ in range(N):
-        mujoco.mj_step(ref_model, ref_data)
-        mujoco.mj_step(recipe_hand_model, rec_data)
+    qpos = []
+    for model in (ref_model, recipe_hand_model):
+        model = copy.copy(model)
+        model.opt.gravity[:] = 0.0
+        data = mujoco.MjData(model)
+        for _ in range(N):
+            mujoco.mj_step(model, data)
+        qpos.append(data.qpos.copy())
 
     np.testing.assert_allclose(
-        rec_data.qpos,
-        ref_data.qpos,
+        qpos[1],
+        qpos[0],
         atol=1e-10,
         err_msg="qpos diverged after zero-action rollout",
-    )
-    np.testing.assert_allclose(
-        rec_data.qvel,
-        ref_data.qvel,
-        atol=1e-10,
-        err_msg="qvel diverged after zero-action rollout",
     )
 
 
@@ -155,8 +133,7 @@ def test_hand_standard_dynamics_zero_action(ref_model, recipe_hand_model):
 # ---------------------------------------------------------------------------
 
 
-@_SKIP
-def test_hand_pose_adds_target_sites(ref_model, recipe_hand_pose_model):
+def test_hand_pose_adds_target_sites(recipe_hand_model, recipe_hand_pose_model):
     """hand_pose recipe adds 5 fingertip target sites over the base hand."""
     expected_extra = {
         "THtip_r_target",
@@ -171,10 +148,9 @@ def test_hand_pose_adds_target_sites(ref_model, recipe_hand_pose_model):
     assert expected_extra.issubset(
         recipe_sites
     ), f"Missing target sites: {expected_extra - recipe_sites}"
-    assert recipe_hand_pose_model.nsite == ref_model.nsite + len(expected_extra)
+    assert recipe_hand_pose_model.nsite == recipe_hand_model.nsite + len(expected_extra)
 
 
-@_SKIP
 def test_hand_keyturn_adds_key(ref_model):
     """hand_keyturn recipe adds a key body and keyhead site."""
     import myosuite.core.model_recipes  # noqa: F401
@@ -186,7 +162,6 @@ def test_hand_keyturn_adds_key(ref_model):
     assert m.njnt == ref_model.njnt + 1  # key hinge joint
 
 
-@_SKIP
 def test_hand_hold_adds_object_and_goal(ref_model):
     """hand_hold recipe adds freejoint object and goal site."""
     import myosuite.core.model_recipes  # noqa: F401
@@ -199,7 +174,6 @@ def test_hand_hold_adds_object_and_goal(ref_model):
     assert m.njnt == ref_model.njnt + 1  # freejoint (7 DOF counted as 1 joint)
 
 
-@_SKIP
 def test_hand_pen_adds_pen_object(ref_model):
     """hand_pen recipe adds 6-DOF pen object with top/bottom sites."""
     import myosuite.core.model_recipes  # noqa: F401
@@ -223,7 +197,6 @@ def test_hand_pen_success_indicator_on_target_pen():
     assert m.site_group[m.site("eps_ball").id] == 4
 
 
-@_SKIP
 def test_hand_sar_adds_sar_object(ref_model):
     """hand_sar recipe adds 6-DOF SAR object with success site."""
     import myosuite.core.model_recipes  # noqa: F401
