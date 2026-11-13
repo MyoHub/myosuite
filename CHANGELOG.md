@@ -31,6 +31,13 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`myoFullBodyWalkSAR-v0` rewards walking forwards.** The forward-velocity term tracked the root's world `+y`
+  velocity, but the MuscleMimic full body faces `-y` (heel to toe is `(0, -1, 0)` at the keyframe), so the reward
+  peaked for walking backwards: at the 1.2 m/s target it paid 5 x 0.003 forwards and 5 x 1.0 backwards. It now tracks
+  the root velocity along the body's heading (the pelvis' anterior axis, read from the model, turned by the root
+  yaw) instead of a fixed world axis. Observations and actions are unchanged; policies trained on the old reward walk
+  backwards and score low on the new one. Tutorial 5.5's random-action comparison reports displacement along the
+  same direction.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
