@@ -152,7 +152,7 @@ class MJRenderer(Renderer):
 
     # viewer callback
     def key_callback(self, keycode):
-        if chr(keycode) == " ":
+        if 0 <= keycode < 0x110000 and chr(keycode) == " ":
             self._paused = not self._paused
 
         # Escape
@@ -199,11 +199,11 @@ class MJRenderer(Renderer):
         self._window.sync()
 
         # Keep checking to unpause if paused
-        while self._paused and not self._user_exit:
+        while self._paused and not self._user_exit and self._window.is_running():
             # print("paused")
             time.sleep(0.2)
 
-        if self._user_exit:
+        if self._user_exit or not self._window.is_running():
             self.close()
 
     def render_offscreen(

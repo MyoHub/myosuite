@@ -228,7 +228,7 @@ def _rewrite_relative_package_path(raw: str) -> Path | None:
 
 
 _PATCHED_INCLUDE_CACHE: dict[Path, Path] = {}
-_PATCHED_BUNDLED_CACHE: dict[Path, Path] = {}
+_PATCHED_BUNDLED_CACHE: dict[tuple[Path, Path | None], Path] = {}
 
 
 def patched_xml_dir() -> Path:
@@ -352,13 +352,16 @@ def _anchor_to_model_dir(root: ET.Element, model_dir: Path) -> None:
 def _patch_bundled_include(source: Path, old_meshdir: Path | None = None) -> Path:
     """Rewrite sim-package paths inside a locally-bundled include file."""
     source = source.resolve()
-    if source in _PATCHED_BUNDLED_CACHE:
-        return _PATCHED_BUNDLED_CACHE[source]
+    norm_old_meshdir = old_meshdir.resolve() if old_meshdir is not None else None
+    cache_key = (source, norm_old_meshdir)
+    cached = _PATCHED_BUNDLED_CACHE.get(cache_key)
+    if cached is not None and (cached == source or cached.exists()):
+        return cached
 
     try:
         tree = ET.parse(source)
     except (FileNotFoundError, ET.ParseError):
-        _PATCHED_BUNDLED_CACHE[source] = source
+        _PATCHED_BUNDLED_CACHE[cache_key] = source
         return source
 
     changed = False
@@ -396,11 +399,11 @@ def _patch_bundled_include(source: Path, old_meshdir: Path | None = None) -> Pat
                     changed = True
 
     if not changed:
-        _PATCHED_BUNDLED_CACHE[source] = source
+        _PATCHED_BUNDLED_CACHE[cache_key] = source
         return source
 
     out_path = write_patched_xml(tree, source, "bundled")
-    _PATCHED_BUNDLED_CACHE[source] = out_path
+    _PATCHED_BUNDLED_CACHE[cache_key] = out_path
     return out_path
 
 
@@ -423,8 +426,10 @@ def _absolutize_include(source: Path) -> Path:
     Results are cached by source path. Returns the source path unchanged when
     no patches are needed.
     """
-    if source in _PATCHED_INCLUDE_CACHE:
-        return _PATCHED_INCLUDE_CACHE[source]
+    source = source.resolve()
+    cached = _PATCHED_INCLUDE_CACHE.get(source)
+    if cached is not None and (cached == source or cached.exists()):
+        return cached
 
     try:
         tree = ET.parse(source)

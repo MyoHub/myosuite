@@ -312,6 +312,8 @@ def export_rollout(
         option.tendongroup[:] = 1
         muscles = muscle_actuators(model)
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
+        if clip is not None and len(clip.qpos) < 2:
+            raise ValueError("The episode contains no motion samples.")
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         skin_frames = []
         previous = None  # muscle lengths of the last sample (motion activation)
@@ -1559,7 +1561,14 @@ def render_rollout(
 
         from myosuite.utils.video_io import write_video
 
-        frames = sorted((config.output / "frames").glob("frame_*.png"))
+        frames = sorted(
+            (config.output / "frames").glob("frame_*.png"),
+            key=lambda p: (
+                0 if (s := p.stem.rsplit("_", 1)[-1]).isdigit() else 1,
+                int(s) if s.isdigit() else 0,
+                p.name,
+            ),
+        )
         write_video(
             config.output / "video.mp4",
             [iio.imread(f)[..., :3] for f in frames],
