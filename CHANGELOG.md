@@ -12,7 +12,24 @@ Changes since **v3.1.0** (2026-11-11).
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
+* **Muscle saturation metric and opt-in penalty on mjlab ([#566], [#588]).** Every muscle task logs `Episode_Metrics/muscle_saturation`:
+  - It is the fraction of muscle commands whose excitation is within 0.05 of 0 or 1, or whose action is clamped. There the action map is flat, so the policy gradient through the action vanishes and exploration only switches muscles on or off.
+  - During training the actions include the exploration noise. `scripts/eval_mjlab_policy.py` also prints the value for the evaluated policy.
+  - `scripts/train_mjlab.py --saturation-penalty W` adds a reward term `muscle_saturation` with weight `-W`: the mean squared distance of the muscle actions beyond those bounds. It is off by default, and no registered task's reward changes.
+  - The muscle action terms report their actions and saturation bounds through `muscle_action_bounds(margin)`. The bounds come from `myosuite.terms.base_action.muscle_saturation_bounds`.
+  - `myo_ppo_runner_cfg` takes `desired_kl` (default 0.03, see Changed).
+  - The table-tennis action term now stores the unclamped policy action as `raw_action`; the ctrl is unchanged.
 
+### Changed
+
+* **`myo_ppo_runner_cfg` uses `desired_kl` 0.03 (was 0.01) ([#566], [#588]).**
+  - This changes the training of pose, reach, leg, torso and `motorFinger*`. The MuscleMimic, ChaseTag, table-tennis and elbow configs keep 0.01.
+  - Why: the KL of a diagonal Gaussian sums over the action dimensions, so with many muscles 0.01 keeps the adaptive learning rate at its 1e-5 floor. That held for 65% of the iterations on `myoLegWalk-v0` (80 muscles) and 91% on `myoArmReachRandom-v0` (50 muscles); with 0.03 it fell to 1% and 20%.
+  - In an A/B of 3 seeds × 3000 iterations at 1024 envs, 0.03 solved leg walk in 3/3 runs (0.01: 0/3). On arm reach it raised deterministic success from 76% to 90%.
+  - Training defaults only. Observations, actions and dynamics are unchanged, and published checkpoints load and evaluate as before.
+
+[#566]: https://github.com/MyoHub/myosuite/issues/566
+[#588]: https://github.com/MyoHub/myosuite/pull/588
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11

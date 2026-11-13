@@ -164,6 +164,8 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
             func=mdp.pose_solved, params=pose_params, reduce="last"
         )
     }
+    if info.na > 0:
+        metrics[mdp.SATURATION_TERM] = mdp.muscle_saturation_metric()
 
     events = {
         "reset_scene_to_default": EventTermCfg(

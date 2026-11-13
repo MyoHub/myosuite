@@ -195,6 +195,7 @@ def make_mimic_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
         events={},
         rewards=rewards,
         terminations=terminations,
+        metrics={base_mdp.SATURATION_TERM: base_mdp.muscle_saturation_metric()},
         viewer=ViewerConfig(
             origin_type=ViewerConfig.OriginType.ASSET_BODY,
             entity_name=ENTITY,

@@ -36,7 +36,7 @@ from __future__ import annotations
 import functools
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 import torch
@@ -51,7 +51,9 @@ from myosuite.envs.muscle_stages import (
     warn_order_clash,
 )
 from myosuite.terms.base_action import (
+    MUSCLE_SATURATION_MARGIN,
     MotorNoiseCfg,
+    muscle_saturation_bounds,
     sample_motor_noise,
     sigmoid_muscle_activation,
 )
@@ -294,6 +296,30 @@ class MyoAction(ActionTerm):
         for stage in self._stages:
             ctrl = stage(ctrl)
         self._processed_actions[:] = ctrl
+
+    def muscle_action_bounds(
+        self, margin: float = MUSCLE_SATURATION_MARGIN
+    ) -> tuple[torch.Tensor, Any, Any]:
+        """Policy actions of the muscles and their saturation bounds.
+
+        Args:
+            margin: See :func:`~myosuite.terms.base_action.muscle_saturation_bounds`.
+
+        Returns:
+            ``(actions, lo, hi)``, actions of shape ``(num_envs, n_muscles)``.
+        """
+        actions = self._raw_actions[:, self._muscle_cols]
+        if self.cfg.normalize_act:
+            lo, hi = muscle_saturation_bounds(
+                sigmoid=self.cfg.muscle_sigmoid,
+                clip=self.cfg.action_range,
+                margin=margin,
+            )
+            return actions, lo, hi
+        # Identity map clamped to each muscle's ctrl range.
+        lo_t = torch.clamp(self._ctrl_lo[self._muscle_cols], min=margin)
+        hi_t = torch.clamp(self._ctrl_hi[self._muscle_cols], max=1.0 - margin)
+        return actions, lo_t, hi_t
 
     def _build_stages(self, model: mujoco.MjModel) -> list[_TermStage]:
         """The stages that are configured (noise: always, it can be switched on later), by order."""

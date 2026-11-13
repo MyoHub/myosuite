@@ -60,3 +60,15 @@ don't get an entry here.
   and each episode starts from `mj_resetData` plus `policy_runner.reset()`.
 - Why: bridged policies drove every muscle at half excitation and dropped the left arm. SAR synergies were fit on
   clip tails with state carried over between episodes. Re-collect cached activations and re-extract synergy models.
+
+## [2026-10-31] feature | Muscle saturation metric and opt-in penalty (branch: feat/566-saturation-kl)
+
+- Every mjlab muscle task logs `Episode_Metrics/muscle_saturation`: the fraction of muscle commands with excitation
+  within 0.05 of 0 or 1, or a clamped action. Action terms report their muscle actions and saturation bounds through
+  `muscle_action_bounds(margin)`; `scripts/eval_mjlab_policy.py` prints the value for the evaluated policy.
+- `scripts/train_mjlab.py --saturation-penalty W` adds the reward term `muscle_saturation` (weight `-W`); off by default.
+- `myo_ppo_runner_cfg(desired_kl=...)` exposes the adaptive schedule's KL target. Its default is now 0.03 (was
+  0.01): in the #566 A/B (3 seeds, 3000 iterations) 0.01 kept the learning rate at its floor, and 0.03 solved
+  `myoLegWalk-v0` in 3/3 seeds and raised `myoArmReachRandom-v0` success from 76% to 90%.
+- Why: issue #566 found 99% bang-bang muscle controls after a long MuscleMimic run; the std was logged, the saturation
+  was not.

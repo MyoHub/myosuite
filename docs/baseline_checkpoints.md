@@ -199,6 +199,13 @@ published ones. This includes pose, reach, leg, torso and `motorFinger*`, whose 
 run without the bound took its smallest std below 0.05 after 220 iterations). The run times and results quoted in
 tutorial 5.5 were measured with the earlier defaults.
 
+**KL target 0.03 in the pose, reach, leg, torso and `motorFinger*` PPO defaults (#566).** `myo_ppo_runner_cfg` now
+sets the adaptive learning-rate schedule's `desired_kl` to 0.03 (was 0.01). With 0.01 the learning rate sat at its
+1e-5 floor for most of training on `myoLegWalk-v0` and `myoArmReachRandom-v0`. The checkpoints above were trained with
+0.01. They load and evaluate as before, since the KL target only affects training. A run with the new default can
+reach a different policy and success rate, and resuming one of these checkpoints continues with the new target
+unless `--agent.algorithm.desired-kl 0.01` is passed.
+
 **`myoChallengeChaseTagFBP2-v0`** (success: the agent tags the opponent) and
 **`myoChallengeTableTennisP{0,1,2}-v0`** have no trained checkpoint available yet to evaluate.
 

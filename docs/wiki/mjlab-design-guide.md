@@ -103,6 +103,8 @@ EventTermCfg(
 
 Custom action classes must subclass `ActionTermCfg` + `ActionTerm` so `ActionManager` can type-check, call `reset()`, and access `action_dim`. A plain class is not recognized.
 
+A term that drives muscles implements `muscle_action_bounds(margin) -> (actions, lo, hi)`: its muscle actions and the bounds beyond which they saturate (`myosuite.terms.base_action.muscle_saturation_bounds` for its action map). The `muscle_saturation` metric and the opt-in penalty (`tasks/mdp/saturation.py`) read every term that has it.
+
 ---
 
 ## Per-env State and Caches
