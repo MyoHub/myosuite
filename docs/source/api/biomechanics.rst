@@ -15,6 +15,18 @@ OpenSim motions
 .. automodule:: myosuite.biomechanics.opensim_motion
    :members:
 
+Motion retargeting
+------------------
+
+.. automodule:: myosuite.biomechanics.retarget
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_smplh
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_instanthmr
+   :members:
+
 Inverse dynamics
 ----------------
 

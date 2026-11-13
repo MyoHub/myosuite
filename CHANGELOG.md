@@ -8,6 +8,11 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
+* Native InstantHMR (`MHR70` 70-keypoint, metric camera-space) motion retargeting
+  source (`myosuite.biomechanics.retarget_instanthmr`) for
+  `myosuite.biomechanics.retarget.LandmarkIK` on `myofullbody` and `myolegs`, with
+  `scripts/mimic/retarget_instanthmr.py` for batch `.npz` retargeting and optional
+  single-camera video extraction into `myoMimic-v0` clips.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
