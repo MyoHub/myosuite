@@ -60,7 +60,7 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoLegDirectionalBackward-v0 | `model_681.pt`   | 100.0%²                       |
 | myoLegDirectionalForward-v0  | `model_583.pt`   | 96.9%²                        |
 | myoLegDirectionalRandom-v0   | `model_2000.pt`  | 53.8%                         |
-| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 15.3%³                        |
+| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 0%³ (20.7% with random hill heights) |
 | myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹                        |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
 | myoLegStandRandom-v0         | `model_3500.pt`  | 34.1%                         |
@@ -74,8 +74,7 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 walks along `-y` is now the forward one. Each checkpoint moved with its task definition; a checkpoint downloaded under the old
 name walks in the opposite direction of the new one.
 
-³ Mean of seeds 1-3 with 256 episodes each. The earlier 26.6% was a single draw of 64 episodes; the twin bakes one terrain per seed,
-so one draw varies a lot. The released 3.0.0 code gives 18.4, 19.9 and 14.1% on the same seeds, so the change is not a regression.
+³ The registered env is deterministic: `variant="fixed"` (hill height 0.63) and a fixed start, so the mean-action policy plays a single trajectory, which falls at step 673 (CPU, 3.1 start). With `task_kwargs={"variant": "random"}` (hill height drawn from U(0.53, 0.73) at every reset), 256 CPU episodes give 20.7% (95% Wilson interval 16.2-26.1%) from the 3.1 start and 9.4% (128 episodes) from the old start; sampled actions on the registered env give 43.0% (128 episodes). The earlier 26.6% (one draw of 64 episodes) and 15.3% (mean of seeds 1-3) were measured on the mjlab twin, whose variation between seeds is not explained yet; the released 3.0.0 code gives 18.4, 19.9 and 14.1% on the same seeds, so 3.1 did not regress.
 
 ⁴ **Incompatible with MyoSuite 3.1.0.** Measured before 3.1 from the old start. From 3.1 the leg tasks reset with the coupled knee joints on their polynomials (#630), and this checkpoint falls from that start (0% success, *Coupled knee joints at reset (leg tasks)* below). A checkpoint trained from the new start follows in 3.2.
 
@@ -122,8 +121,8 @@ noticeably (with 64 episodes, differences of a few points are noise). Success ra
 
 **Terrain and CPU evaluation.** A deterministic CPU evaluation is a single trajectory. The mjlab twins of the
 rough, hilly and stairs walk tasks bake one terrain into the height field (Warp shares one `hfield_data` between
-worlds), while the CPU envs draw a new terrain at every reset, so CPU and mjlab success rates on these ids
-measure different things. Tiling several height-field patches in one field, one per env, would match the CPU
+worlds), while the CPU rough-terrain walk draws a new terrain at every reset, so CPU and mjlab success rates on that id
+measure different things. The hilly and stairs walks are registered with one fixed terrain (`variant="fixed"`) on both backends. Tiling several height-field patches in one field, one per env, would match the CPU
 distribution; this is not implemented.
 
 **Older policies and datasets.** Policies trained on the earlier CPU `myoChallengeChaseTagFBP2-v0` contract
@@ -181,7 +180,7 @@ The walk policies were trained from one deterministic start. The walk policy dep
 exact state: with N(0, σ) noise on every joint (CPU env, 24 starts each) it solves 16, 13 and 4 of 24 runs from the old
 keyframe at σ = 0.005, 0.01 and 0.02 rad, and 0, 4 and 3 of 24 from the new start (without noise it falls at step 232
 there). The rough-terrain policy, from the same keyframe, is unaffected, and the hilly policy goes the other way on this
-seed (its 15.3% above is a mean over seeds 1-3). Retrain or fine-tune the `myoLegWalk-v0` checkpoint before using it
+seed (on the CPU with random hill heights it goes from 9.4% to 20.7%, footnote ³). Retrain or fine-tune the `myoLegWalk-v0` checkpoint before using it
 with this version. The directional walks, whose start moved by 3.5e-5, were not re-evaluated.
 
 **Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
