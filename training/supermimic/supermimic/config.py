@@ -194,6 +194,30 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     gc_freeze: bool = True
     """gc.freeze() after setup: the garbage collector skips the objects of setup and compilation."""
 
+    # ---- NablaMimic options (github.com/sailab-ai/NablaMimic; pods.py). Off by default: the runner above unchanged ----
+    act_grad_clip: float = 0.0
+    """At every imagined step, clip each trajectory's gradient with respect to the policy's action to this many times
+    the median over the trajectories that carry gradient (NablaMimic's --act-cot-clip, 3 there); with pods also the
+    targets' gradients, against one median over all live rows. Backward pass only. 0: off."""
+    pods: bool = False
+    """PODS-style action targets (NablaMimic's --action-target) instead of one policy step on the window gradient:
+    dJ/da_t of every imagined step (from a zero offset added to the action after act_grad_clip's clip, so it holds
+    every path through dynamics, reward and history), targets clamp(a_t + eta dJ/da_t, 0, 1) with eta set so the RMS
+    step over the rows with a finite nonzero gradient is pods_step, and pods_iters regression steps of the policy
+    optimizer onto them. Rows of ended trajectories, or with a non-finite gradient or policy input, get weight 0."""
+    pods_step: float = 0.03
+    """RMS target step in excitation units at the start; it follows the learning rate's cosine down to
+    pods_step_floor x this."""
+    pods_step_floor: float = 0.3
+    """Fraction of pods_step the step anneals to with the learning-rate schedule (NablaMimic: 0.3)."""
+    pods_iters: int = 8
+    """Regression minibatch steps per policy update (NablaMimic: 8)."""
+    pods_batch: int = 16384
+    """Samples per regression minibatch, drawn with replacement from the window's horizon x pi_batch rows."""
+    pods_lr_mult: float = 3.0
+    """With pods the policy optimizer's learning rate is the policy learning rate x this (NablaMimic: 6e-4 against
+    its actor's 2e-4): eight steps at 1x fall short of the target step."""
+
 
 def fast_runner_cfg(**overrides: object) -> SuperMimicRunnerCfg:
     """muscle-supermimic's fast recipe (``scripts/train_blink.sh`` at 8a6244b, 50 Hz control).
