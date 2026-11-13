@@ -2,7 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.1.0] - unreleased
+## [Unreleased]
+
+Changes since **v3.1.0** (2026-11-11).
+
+### Added
+
+* Configurable preprocessing workers and an opt-in validated NumPy disk cache for
+  `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
+  CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
+  versions; execution settings leave task fingerprints unchanged ([#672]).
+
+[#672]: https://github.com/MyoHub/myosuite/pull/672
+
+## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
 
@@ -61,11 +74,6 @@ Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full com
   - `checkpoint_utils.load_policy(..., strict=True)` raises instead of falling back to a random policy.
 
 ### Added
-
-* Configurable preprocessing workers and an opt-in validated NumPy disk cache for
-  `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
-  CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
-  versions; execution settings leave task fingerprints unchanged.
 
 * **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks the AMASS KIT
   motions retargeted onto the task model (by default MuscleMimic's 972 KIT training motions, `motion.clips="kit_train"`,
