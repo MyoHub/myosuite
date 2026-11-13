@@ -585,7 +585,7 @@ def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
 
 
 def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
-    """An edit_fn runs once, on the compiled recipe spec; the plain recipe stays unedited."""
+    """An edit_fn runs once, on the uncompiled recipe spec; the plain recipe stays unedited."""
     from myosuite.core import model_builder
 
     calls: list[int] = []
@@ -607,6 +607,54 @@ def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
     assert len(calls) == 3
     assert [model.nsite for model in edited] == [1, 1, 1]
     assert plain.nsite == 0
+
+
+def test_recipe_edit_fn_and_recursive_immobilize_skip_throwaway_compiles() -> None:
+    """Recipe edits run before compilation and recursive_immobilize accepts temp_model=None."""
+    import mujoco
+
+    from myosuite.core import model_builder
+    from myosuite.core.model_builder import ModelBuilder
+    from myosuite.tests.support.model_compare import assert_same_model
+    from myosuite.utils.spec_processing import recursive_immobilize
+
+    spec_a = mujoco.MjSpec()
+    child_a = spec_a.worldbody.add_body(name="arm")
+    child_a.add_geom(size=[0.05, 0.0, 0.0])
+    child_a.add_joint(name="hinge_a", type=mujoco.mjtJoint.mjJNT_HINGE)
+    child_a.add_site(name="tip_a")
+    spec_b = spec_a.copy()
+
+    removed = recursive_immobilize(spec_a, spec_a.copy().compile(), spec_a.body("arm"))
+    assert removed == [0]
+    assert recursive_immobilize(spec_b, None, spec_b.body("arm")) == []
+    assert_same_model(spec_a.compile(), spec_b.compile())
+
+    seen_specs: list[mujoco.MjSpec] = []
+
+    def _prune(spec: mujoco.MjSpec) -> None:
+        seen_specs.append(spec)
+        spec.delete(spec.meshes[0])
+        spec.delete(spec.worldbody.bodies[0])
+
+    def _recipe(builder: ModelBuilder) -> ModelBuilder:
+        def _seed(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+            spec.add_mesh(name="pruned_before_compile", file="missing_pruned_mesh.stl")
+            body = spec.worldbody.add_body(name="tmp")
+            body.add_geom(size=[0.02, 0.0, 0.0])
+            return spec
+
+        return builder.apply_transform(_seed)
+
+    model_builder._RECIPES["_test_uncompiled_edit"] = _recipe
+    try:
+        model, _ = model_builder.build_from_recipe(
+            "_test_uncompiled_edit", edit_fn=_prune
+        )
+        assert model.nbody == 1
+        assert len(seen_specs) == 1
+    finally:
+        model_builder._RECIPES.pop("_test_uncompiled_edit", None)
 
 
 def test_spec_cache_opt_out_builds_every_call(monkeypatch):

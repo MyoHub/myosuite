@@ -33,11 +33,9 @@ def edit_fn_arm_reaching(
         spec.delete(spec.joint("pro_sup_r"))
 
     for root in root_list:
-        recursive_immobilize(
-            spec, spec.copy().compile(), spec.body(root), remove_sites=False
-        )
+        recursive_immobilize(spec, None, spec.body(root), remove_sites=False)
 
-    _m = spec.compile()
+    _m = spec.copy().compile()
     _d = mujoco.MjData(_m)
     mujoco.mj_step(_m, _d, nstep=100)
 
