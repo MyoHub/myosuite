@@ -7,8 +7,9 @@
 
 Rolls a :class:`~...LocalPolicyRunner` through a list of motion clips and
 collects ``data.act`` (post-dynamics muscle activations, shape ``(nu,)`` per
-step) from episodes whose mean per-step tracking reward clears a percentile
-threshold.
+step) from fixed-length episodes whose mean per-step tracking reward clears a
+percentile threshold. Episodes that fall are rejected, and the activation
+ramp after the ``act = 0`` reset is left out.
 The filtered activations from all clips are concatenated into a single
 ``(T, n_muscles)`` array that feeds the SAR extraction pipeline.
 
@@ -69,13 +70,18 @@ class CollectionConfig:
         n_episodes_per_clip: Number of rollout episodes per motion clip.
         reward_percentile: Only episodes whose mean per-step tracking reward
             reaches this percentile of the preview episodes contribute
-            activations. The original SAR filter ranks fixed-horizon episodes
-            by total reward; the mean ranks them the same way and stays
-            comparable when random starts and the clip end vary the length.
-        max_steps_per_episode: Cap on steps per episode.  ``None`` means
-            run the full clip length.
+            activations. As in the original SAR filter, every episode has the
+            same length, so the tracking error of all of them has grown for
+            the same time since the start on the reference.
+        max_steps_per_episode: Control steps of every episode. ``None`` means
+            half the clip; random starts are drawn so that the episode ends
+            inside the clip.
         use_random_start: Whether to initialise each episode at a random
             clip frame, improving activation diversity.
+        warmup_steps: Leading steps of each episode whose activations are left
+            out: every episode starts from ``act = 0``.
+        min_root_height: An episode whose free root drops below this height (m)
+            has fallen and is rejected. Ignored for models without a free root.
         seed: RNG seed for reproducible random starts.
     """
 
@@ -83,6 +89,8 @@ class CollectionConfig:
     reward_percentile: int = 80
     max_steps_per_episode: int | None = None
     use_random_start: bool = True
+    warmup_steps: int = 10
+    min_root_height: float = 0.5
     seed: int = 0
 
 
@@ -134,6 +142,13 @@ def _tracking_reward(
     return 0.0 if err is None else -float(err)
 
 
+def _has_fallen(model: mujoco.MjModel, data: mujoco.MjData, min_height: float) -> bool:
+    """True when the model has a free root and it is below *min_height*."""
+    if not int(model.njnt) or int(model.jnt_type[0]) != mujoco.mjtJoint.mjJNT_FREE:
+        return False
+    return bool(data.qpos[int(model.jnt_qposadr[0]) + 2] < min_height)
+
+
 def _run_episode(
     policy_runner: LocalPolicyRunner | OnnxPolicyRunner,
     model: mujoco.MjModel,
@@ -143,8 +158,13 @@ def _run_episode(
     max_steps: int,
     *,
     obs_adapter: FullbodyObsAdapter | None = None,
+    warmup_steps: int = 0,
+    min_root_height: float | None = None,
 ) -> tuple[np.ndarray, float]:
     """Run one episode; return ``(activations (T, nu), mean per-step reward)``.
+
+    After each step the data is forwarded and scored against the clip frame
+    the step has reached.
 
     Each episode starts from a fresh MjData state and a reset runner (running
     normaliser and observation history), so it does not depend on the episodes
@@ -160,11 +180,13 @@ def _run_episode(
         obs_adapter: Optional :class:`FullbodyObsAdapter` for this *clip* (must
             match ``clip`` trajectory length when the runner's default adapter
             was built from a different clip).
+        warmup_steps: Leading steps whose activations are not returned.
+        min_root_height: Fall threshold of the free root (m); ``None`` disables it.
 
     Returns:
-        Tuple of activation array ``(steps, nu)`` and mean per-step tracking
-        reward. A sum would favour short episodes, since rewards are negative
-        errors.
+        Tuple of activation array ``(steps - warmup_steps, nu)`` and mean
+        per-step tracking reward; a fallen episode returns no activations and
+        ``-inf``.
     """
     _init_episode(model, data, clip, start_frame=start_frame)
     policy_runner.reset()
@@ -177,10 +199,14 @@ def _run_episode(
             data, clip, state.frame_idx, obs_adapter=obs_adapter
         )
         policy_runner.step(model, data, action)
-        state.activations.append(np.asarray(data.act, dtype=np.float32).copy())
-        state.total_reward += _tracking_reward(model, data, clip, state.frame_idx)
+        mujoco.mj_forward(model, data)
         state.frame_idx = min(state.frame_idx + 1, n_frames - 1)
         state.step_count += 1
+        if min_root_height is not None and _has_fallen(model, data, min_root_height):
+            return np.empty((0, model.nu), dtype=np.float32), -np.inf
+        if state.step_count > warmup_steps:
+            state.activations.append(np.asarray(data.act, dtype=np.float32).copy())
+        state.total_reward += _tracking_reward(model, data, clip, state.frame_idx)
         if state.frame_idx >= n_frames - 1:
             break
 
@@ -214,7 +240,21 @@ def collect_activations_from_clip(
         Empty array with shape ``(0, nu)`` if no episode clears the threshold.
     """
     n_frames = int(clip.qpos.shape[0])
-    max_steps = config.max_steps_per_episode or n_frames
+    max_steps = min(
+        config.max_steps_per_episode or max(1, (n_frames - 1) // 2),
+        max(1, n_frames - 1),
+    )
+    if config.warmup_steps >= max_steps:
+        raise ValueError(
+            f"warmup_steps={config.warmup_steps} leaves no activations of a "
+            f"{max_steps}-step episode"
+        )
+    last_start = n_frames - 1 - max_steps
+    episode = {
+        "max_steps": max_steps,
+        "warmup_steps": config.warmup_steps,
+        "min_root_height": config.min_root_height,
+    }
     data = mujoco.MjData(model)
     clip_obs_adapter: FullbodyObsAdapter | None = None
     if policy_runner.obs_adapter is not None:
@@ -226,19 +266,24 @@ def collect_activations_from_clip(
     n_preview = max(10, config.n_episodes_per_clip // 10)
     preview_rewards: list[float] = []
     for _ in range(n_preview):
-        start = int(rng.integers(0, n_frames)) if config.use_random_start else 0
+        start = int(rng.integers(0, last_start + 1)) if config.use_random_start else 0
         _, r = _run_episode(
             policy_runner,
             model,
             data,
             clip,
             start,
-            max_steps,
             obs_adapter=clip_obs_adapter,
+            **episode,
         )
         preview_rewards.append(r)
 
-    threshold = float(np.percentile(preview_rewards, config.reward_percentile))
+    standing = [r for r in preview_rewards if np.isfinite(r)]
+    threshold = (
+        float(np.percentile(standing, config.reward_percentile))
+        if standing
+        else -np.inf
+    )
     logger.debug(
         "Clip %s: mean-reward threshold (p%d over %d preview) = %.4f",
         getattr(clip, "source_path", "?"),
@@ -251,18 +296,18 @@ def collect_activations_from_clip(
     # Pass 2: full collection, keep episodes above threshold.
     # ------------------------------------------------------------------
     kept: list[np.ndarray] = []
-    for ep_idx in range(config.n_episodes_per_clip):
-        start = int(rng.integers(0, n_frames)) if config.use_random_start else 0
+    for _ in range(config.n_episodes_per_clip):
+        start = int(rng.integers(0, last_start + 1)) if config.use_random_start else 0
         acts, r = _run_episode(
             policy_runner,
             model,
             data,
             clip,
             start,
-            max_steps,
             obs_adapter=clip_obs_adapter,
+            **episode,
         )
-        if r >= threshold and acts.shape[0] > 0:
+        if np.isfinite(r) and r >= threshold and acts.shape[0] > 0:
             kept.append(acts)
 
     if not kept:
