@@ -154,7 +154,7 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
     # Standard success metric (Episode_Metrics/success): the CPU "solved" flag.
     metrics = {
         "success": MetricsTermCfg(
-            func=walk_mdp.walk_solved,
+            func=walk_mdp.WalkSolved,
             params={
                 "target_x_vel": walk.target_vel[0],
                 "target_y_vel": walk.target_vel[1],
@@ -162,7 +162,9 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
                 "asset_cfg": robot,
             },
             reduce="last",
-        )
+        ),
+        # Share of the episode's steps on target (the CPU "on_target" flag).
+        "on_target": MetricsTermCfg(func=walk_mdp.walk_on_target, reduce="mean"),
     }
     # CPU reset_type "init": keyframe 2 (qpos and qvel), on the joint couplings.
     events = {

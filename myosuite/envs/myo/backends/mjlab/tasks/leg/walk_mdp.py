@@ -25,7 +25,12 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.terms.base_reward import locomotion_solved, walk_env_reward
+from myosuite.terms.base_reward import (
+    locomotion_solved,
+    locomotion_streak,
+    locomotion_sustained,
+    walk_env_reward,
+)
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -280,17 +285,38 @@ def walk_term(
     return _step_components(env)[key].float()
 
 
-def walk_solved(
-    env: ManagerBasedRlEnv,
-    target_x_vel: float,
-    target_y_vel: float,
-    walk: WalkParams,
-    asset_cfg: SceneEntityCfg,
-) -> torch.Tensor:
-    """CPU ``solved``: upright and within the tolerance of the target velocity.
+def _on_target(env: ManagerBasedRlEnv) -> torch.Tensor:
+    comps = _step_components(env)
+    return locomotion_solved(torch, comps["vel_error"], comps["done"].bool())
 
+
+def walk_on_target(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """CPU ``on_target``: upright and within the tolerance of the target velocity."""
+    return _on_target(env).float()
+
+
+class WalkSolved(ManagerTermBase):
+    """CPU ``solved``: on target on every control step of the last second.
+
+    Holds the count of consecutive on-target steps of every env; a reset clears it.
     ``target_x_vel`` / ``target_y_vel`` duplicate ``walk.target_vel`` so tools (the eval
     videos) can read the commanded velocity from the metric's parameters.
     """
-    comps = _step_components(env)
-    return locomotion_solved(torch, comps["vel_error"], comps["done"].bool()).float()
+
+    def __init__(self, cfg: ManagerTermBaseCfg, env: ManagerBasedRlEnv) -> None:
+        super().__init__(env)
+        self._steps = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        self._steps[slice(None) if env_ids is None else env_ids] = 0
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        target_x_vel: float,
+        target_y_vel: float,
+        walk: WalkParams,
+        asset_cfg: SceneEntityCfg,
+    ) -> torch.Tensor:
+        self._steps = locomotion_streak(self._steps, _on_target(env))
+        return locomotion_sustained(self._steps, env.step_dt).float()
