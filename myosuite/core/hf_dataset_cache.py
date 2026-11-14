@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -20,17 +21,22 @@ def download_hf_dataset_file(
     remote_path: str,
     local_path: Path,
 ) -> Path | None:
-    """Download one dataset file from Hugging Face."""
+    """Download a dataset file, publishing it atomically after a complete copy."""
     from huggingface_hub import hf_hub_download
 
-    local_path.parent.mkdir(parents=True, exist_ok=True)
     try:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
         downloaded = hf_hub_download(
             repo_id=repo_id,
             filename=remote_path,
             repo_type="dataset",
         )
-        shutil.copy2(downloaded, local_path)
+        with tempfile.TemporaryDirectory(
+            dir=local_path.parent, prefix=".myosuite-download-"
+        ) as directory:
+            staged = Path(directory) / local_path.name
+            shutil.copy2(downloaded, staged)
+            staged.replace(local_path)
         return local_path
     except Exception as err:
         logger.warning(
