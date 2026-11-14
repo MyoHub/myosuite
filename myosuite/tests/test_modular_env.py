@@ -850,3 +850,19 @@ def test_make_env_unknown_backend_raises() -> None:
 
     with pytest.raises(ValueError, match="Unknown backend"):
         make_env("TestMakeEnv-v0", backend="foobar")
+
+
+def test_normalize_actions_is_refused_not_ignored() -> None:
+    """The CPU env writes actions to ctrl as they are; a sigmoid request must not pass silently."""
+    from dataclasses import replace
+
+    from myosuite.core.config import ActuatorGroupSpec
+    from myosuite.envs.myo.tasks.basic.specs.elbow_pose_spec import ElbowPoseFixedTask
+
+    task = ElbowPoseFixedTask()
+    assert not any(g.normalize_actions for g in task.actuators)
+    mapped = replace(
+        task, actuators=[ActuatorGroupSpec(name="m", normalize_actions=True)]
+    )
+    with pytest.raises(ValueError, match="normalize_actions"):
+        ModularTaskEnv(mapped)

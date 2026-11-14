@@ -33,12 +33,13 @@ class ModularActionTermEntry:
     Args:
         name: Logical group name.
         actuator_type: ``"muscle"`` or ``"motor"``.
-        normalize_actions: Whether to apply sigmoid normalization.
+        normalize_actions: Mirrors :class:`~myosuite.core.config.ActuatorGroupSpec`
+            (reserved; actions are written to ``ctrl`` as they are).
     """
 
     name: str
     actuator_type: str = "muscle"
-    normalize_actions: bool = True
+    normalize_actions: bool = False
 
 
 @dataclass

@@ -274,6 +274,12 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         # unpickle, which drops the stages that wrappers installed (they install them again).
         EzPickle.__init__(self, task_config, render_mode=render_mode, **kwargs)
         self._task_config = task_config
+        mapped = [g.name for g in task_config.actuators if g.normalize_actions]
+        if mapped:
+            raise ValueError(
+                f"normalize_actions=True for {mapped}: ModularTaskEnv writes actions "
+                "in [0, 1] to ctrl as they are and has no action map."
+            )
 
         # Resolve obs/reward callables once at construction time
         self._obs_fns: list[tuple[str, Any]] = [
