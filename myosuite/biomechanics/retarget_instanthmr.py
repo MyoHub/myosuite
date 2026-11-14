@@ -1307,12 +1307,13 @@ def scale_spec_from_instanthmr(
             raise ValueError(f"Scale for {k!r} must be finite and positive, got {s}")
         scalar_scales[k] = s
 
-    m0 = spec.compile()
     body_names = {b.name for b in spec.bodies}
     unknown = sorted(set(scalar_scales) - body_names)
     if unknown:
         raise ValueError(f"Unknown body names in scales: {unknown}")
 
+    out = spec.copy()
+    m0 = spec.copy().compile()
     q0 = m0.qpos0.copy()
     project_joint_couplings(JointCouplings.from_model(m0), q0)
     d0 = mujoco.MjData(m0)
@@ -1320,7 +1321,6 @@ def scale_spec_from_instanthmr(
     mujoco.mj_forward(m0, d0)
     z0 = _sole_lowest_z(m0, q0)
 
-    out = spec.copy()
     for i, ac in enumerate(out.actuators):
         if ac.gaintype == mujoco.mjtGain.mjGAIN_MUSCLE and ac.gainprm[2] <= 0:
             f_peak = float(m0.actuator_gainprm[i, 3]) / max(
@@ -1342,6 +1342,7 @@ def scale_spec_from_instanthmr(
 
     subject_bodies: list[Any] = []
     body_scales: dict[str, float] = {}
+    body_parent_scale: dict[str, float | None] = {}
     jnt_parent_scale: dict[str, float] = {}
     jnt_types: dict[str, Any] = {}
     mesh_scales: dict[str, float] = {}
@@ -1349,6 +1350,7 @@ def scale_spec_from_instanthmr(
     def walk(body: Any, s_par: float, is_root: bool) -> None:
         s_b = scalar_scales.get(body.name, s_par)
         body_scales[body.name] = s_b
+        body_parent_scale[body.name] = None if is_root else s_par
         subject_bodies.append(body)
         if not is_root:
             body.pos = s_par * np.asarray(body.pos, dtype=np.float64)
@@ -1434,6 +1436,27 @@ def scale_spec_from_instanthmr(
             key.qvel = kv
 
     m1 = out.compile()
+    recompiled_frames = False
+    for b in subject_bodies:
+        sp = body_parent_scale[b.name]
+        if sp is None:
+            continue
+        bid = m0.body(b.name).id
+        err_par = sp * m0.body_pos[bid] - m1.body_pos[bid]
+        if float(np.linalg.norm(err_par)) > 1e-12:
+            R_b = np.empty(9, dtype=np.float64)
+            mujoco.mju_quat2Mat(R_b, m0.body_quat[bid])
+            b_quat = np.asarray(b.quat, dtype=np.float64)
+            if float(np.linalg.norm(b_quat)) > 1e-12:
+                R_loc = np.empty(9, dtype=np.float64)
+                mujoco.mju_quat2Mat(R_loc, b_quat / np.linalg.norm(b_quat))
+                R_frm = R_b.reshape(3, 3) @ R_loc.reshape(3, 3).T
+            else:
+                R_frm = R_b.reshape(3, 3)
+            b.pos = np.asarray(b.pos, dtype=np.float64) + R_frm.T @ err_par
+            recompiled_frames = True
+    if recompiled_frames:
+        m1 = out.compile()
     if body_mass is not None:
         cur_mass = float(sum(m1.body_mass[m1.body(b.name).id] for b in subject_bodies))
         if cur_mass <= 0:
@@ -1516,7 +1539,7 @@ def scale_model_from_instanthmr(
     bounds: tuple[float, float] = (0.5, 2.0),
 ) -> tuple[mujoco.MjModel, mujoco.MjSpec, dict[str, float]]:
     """Estimate anthropometric scales from *clip* and compile a subject-scaled model."""
-    nominal = spec.compile()
+    nominal = spec.copy().compile()
     scales = estimate_instanthmr_scales(
         clip,
         nominal,
