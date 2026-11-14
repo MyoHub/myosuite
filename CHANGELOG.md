@@ -87,6 +87,7 @@ Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full com
 
 ### Added
 
+* **Live joint kinematics** (`myosuite.biomechanics.streaming_kinematics`): `StreamingKinematics.push(time, qpos)` estimates positions, velocities and accelerations of a pose stream a fixed number of frames behind the newest pose, with a local polynomial (Savitzky-Golay) fit on the poses' own timestamps (jitter and dropped frames are fine) in the tangent space of free and ball joints, coupled joints projected. It feeds inverse dynamics and static optimization in a live shadow model. On myoArm reaches tracked at 90 Hz with 0.5 deg noise, the static-optimization activations' RMS error falls from 0.32 with no delay to 0.13 at 56 ms and 0.05 at 111 ms.
 * **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks the AMASS KIT
   motions retargeted onto the task model (by default MuscleMimic's 972 KIT training motions, `motion.clips="kit_train"`,
   the clips its released checkpoints were trained on; any clip, directory or `.txt` list works too; read from the local retarget cache that `scripts/mimic/retarget_amass.py` fills from an AMASS download,

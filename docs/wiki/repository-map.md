@@ -22,7 +22,7 @@ training/          # self-contained training projects outside the package, one p
 | `core/` | Registry and `make_env`, config dataclasses (`EnvConfig`, `TaskConfig`), model builder/recipes, muscle conditions |
 | `terms/` | Backend-agnostic pure term functions (obs, reward, action, event, termination) |
 | `physics/` | Model-level runtime math — quaternions, fatigue, joint couplings, min-jerk. No backend imports. |
-| `biomechanics/` | Musculoskeletal analysis of motions (inverse kinematics and dynamics, static optimization, OpenSim motions). NumPy / SciPy / MuJoCo only. |
+| `biomechanics/` | Musculoskeletal analysis of motions (inverse kinematics and dynamics, static optimization, streaming kinematics, OpenSim motions). NumPy / SciPy / MuJoCo only. |
 | `envs/` | `gymnasium_env.py` (CPU base), `modular_env.py` and `multi_agent_modular_env.py` (data-driven envs), `wrappers.py` and `muscle_stages.py` (muscle noise / fatigue / reafferentation / sarcopenia as wrappers) |
 | `envs/myo/tasks/` | Task definitions organized by collection (`basic/`, `challenge/`, `mimic/`) |
 | `envs/myo/backends/` | `mjx/` (JAX) and `mjlab/` (Warp) execution backends |

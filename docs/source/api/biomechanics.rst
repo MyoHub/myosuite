@@ -32,3 +32,9 @@ Uncertainty bands
 
 .. automodule:: myosuite.biomechanics.uncertainty
    :members:
+
+Streaming kinematics
+--------------------
+
+.. automodule:: myosuite.biomechanics.streaming_kinematics
+   :members:
