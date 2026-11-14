@@ -79,8 +79,9 @@ def read_opensim_motion(
         path: File with a header ending in ``endheader``, a line of column
             labels starting with ``time``, and one row per frame.
         in_degrees: Units of rotational coordinates; ``None`` reads the header's
-            ``inDegrees``, and degrees when it has none (the SIMM ``.mot``
-            convention).
+            ``inDegrees``. Without it, legacy SIMM ``.mot`` uses degrees; legacy
+            ``.sto`` uses radians unless its header says ``Angles are in degrees.``.
+            Versioned storage defaults to radians.
 
     Returns:
         The file's columns.
@@ -104,7 +105,15 @@ def read_opensim_motion(
         raise ValueError(f"{path}: the first column is {labels[0]!r}, not 'time'")
     data = np.loadtxt(lines[end + 2 :], ndmin=2)
     if in_degrees is None:
-        in_degrees = header.get("indegrees", "yes") == "yes"
+        if "indegrees" in header:
+            in_degrees = header["indegrees"] in ("yes", "y")
+        else:
+            legacy = int(header.get("version", "0")) < 1
+            simm = Path(path).suffix.lower() == ".mot"
+            degrees_note = any(
+                line.strip() == "Angles are in degrees." for line in lines[:end]
+            )
+            in_degrees = legacy and (simm or degrees_note)
     return OpenSimMotion(
         time=data[:, 0],
         labels=tuple(labels[1:]),
