@@ -599,7 +599,8 @@ def compare_onnx_across_backends(
 
     Returns:
         Dict with ``max_obs_diff_cpu_mjx``, ``max_rew_diff_cpu_mjx``, and
-        ``passed`` (bool).
+        ``passed`` (bool). ``passed`` is ``False`` when a backend cannot run
+        (``mjx_error`` then says why) or a difference exceeds ``atol``.
     """
     from myosuite.utils.onnxruntime_utils import require_onnxruntime
 
@@ -642,12 +643,18 @@ def compare_onnx_across_backends(
         )
         results["max_obs_diff_cpu_mjx"] = max_obs
         results["max_rew_diff_cpu_mjx"] = max_rew
-        if max_obs > atol:
+        if max_obs > atol or max_rew > atol:
             results["passed"] = False
-            log.warning("CPU vs MJX max obs diff %.4f > atol %.4f", max_obs, atol)
+            log.warning(
+                "CPU vs MJX max obs diff %.4f, reward diff %.4f (atol %.4f)",
+                max_obs,
+                max_rew,
+                atol,
+            )
     except Exception as exc:
         log.warning("MJX backend unavailable for comparison: %s", exc)
         results["mjx_error"] = str(exc)
+        results["passed"] = False
 
     return results
 
