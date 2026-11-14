@@ -13,6 +13,36 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Fixed
+
+* **MyoChallenge resets start with the coupled joints on their joint couplings.** The `reset` overrides of the
+  ChaseTag, Soccer, OslRun, Relocate and Bimanual envs wrote keyframes and reset noise into `qpos` without the
+  projection of `MyoGymnasiumEnv.reset` ([#630] had left the MyoChallenge envs as expected failures, pending
+  maintainer sign-off), so MuJoCo pulled the dependent joints of the `mjEQ_JOINT` couplings back during the first
+  steps. Offsets right after `reset`, and what the projection changes:
+  * `myoChallengeChaseTagP1/P2/P2eval-v0`: patella rotation 0.74 rad and 3.6 rad/s off (walk keyframes 2 and 3, as in
+    `myoLegWalk-v0`); largest `|qacc|` at t=0 1355 -> 391 rad/s^2 (P1). The patella moves 3.6 cm and the feet up to
+    1.6 cm (tibial rotation; under 3 mm in height). P2 also drew its N(0, 0.02) reset noise on the coupled joints.
+  * `myoChallengeRelocateP1/P2/P2eval-v0`: shoulder rhythm up to 0.16 rad off; largest coupling force 602 -> 5.5 and
+    `|qacc|` 410 -> 115 rad/s^2 (P1). The palm starts 4.3 cm (P1) and 3.0 cm (P2, mean) from its former place, and
+    the reset noise of P2 no longer moves the coupled shoulder joints (largest palm std 6 -> 2 mm).
+  * `myoChallengeOslRunFixed/Random-v0`: 0.16 rad (keyframes 0-2; the patella of keyframe 0 is 5.2 cm off); the
+    biological foot moves up to 1.4 cm.
+  * `myoChallengeBimanual-v0` 0.034 rad (ring abduction of the prosthesis, 2.5 mm), `myoChallengeSoccerP2-v0`
+    0.025 rad (reset noise on the coupled lumbar and knee joints), `myoChallengeSoccerP1-v0` 3.5e-5,
+    `myoChallengeChaseTagFBP2-v0` 4.2e-4 (0.054 in velocity, 0.4 mm).
+
+  These resets now call `MyoGymnasiumEnv._project_joint_couplings` before `mj_forward` (a no-op for the die-reorient
+  and Baoding models, which have no couplings), the mjlab twin of `myoChallengeChaseTagFBP2-v0` projects in
+  `reset_to_cpu_state`, and the couplings are read once per model instead of at every reset. This changes the start
+  state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
+  unchanged, and the parity baseline of `myoChallengeRelocateP1-v0` is regenerated. Two families are **not** changed
+  and stay expected failures of `test_joint_coupling.py`: `myoChallengeTableTennisP{0,1,2}-v0`, whose keyframe holds
+  the paddle with the shoulder rhythm 0.59 rad off its couplings (projected, the grasp site is 6.9 cm from the
+  paddle handle instead of 1.7 cm, so it first needs a keyframe on the couplings), and
+  `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off). See `docs/baseline_checkpoints.md`.
+
+[#630]: https://github.com/MyoHub/myosuite/pull/630
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11
