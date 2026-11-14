@@ -78,11 +78,53 @@ def test_clip_row_grad_bounds_each_row_over_the_group() -> None:
     assert len(stats) == 1 and abs(float(stats[0]) - 2 / 3) < 1e-6
 
 
+# Largest gap between the runner's policy observation and the env's per term, about 3x the gap measured on this
+# test's 12 steps (root and muscle-command terms are exact: float32 floors). Muscle state: relative to the step's
+# largest value (MuJoCo's tendon geometry vs the method's analytic one; velocity and force keep the earlier 0.1, as
+# 3x their measured 0.056 / 0.052 would loosen it).
+_OBS_ATOL = {
+    "root_pos": 1e-5, "joint_pos": 1.5e-2, "root_vel": 1e-5, "joint_vel": 0.45, "muscle_excitation": 1e-6,
+    "muscle_activation": 1e-6, "touch": 1e-3, "site_rpos": 4e-3, "site_rangles": 3.5e-3, "site_rvel": 0.15,
+}  # fmt: skip
+_OBS_RTOL_OF_MAX = {"muscle_length": 0.011, "muscle_velocity": 0.1, "muscle_force": 0.1}
+
+
+def _obs_violations(ours: Any, env_obs: Any, om: Any) -> dict[str, float]:
+    """``term -> largest gap`` of every policy observation term outside its tolerance."""
+    out, start = {}, 0
+    for name, dim in zip(
+        om.active_terms["policy"], om.group_obs_term_dim["policy"], strict=True
+    ):
+        sl = slice(start, start + dim[0])
+        start += dim[0]
+        gap = float((ours[:, sl] - env_obs[:, sl]).abs().max())
+        rel = _OBS_RTOL_OF_MAX.get(name)
+        bound = (
+            _OBS_ATOL[name] if rel is None else rel * float(env_obs[:, sl].abs().max())
+        )
+        if gap > bound:
+            out[name] = gap
+    return out
+
+
+def _policy_slice(om: Any, term: str) -> slice:
+    dims = dict(
+        zip(om.active_terms["policy"], om.group_obs_term_dim["policy"], strict=True)
+    )
+    start = sum(
+        dims[n][0]
+        for n in om.active_terms["policy"][: om.active_terms["policy"].index(term)]
+    )
+    return slice(start, start + dims[term][0])
+
+
 def test_runner_scores_like_the_env(setup: Any) -> None:
     """The runner's reward, failure terminations and both observation groups (the task's pure terms on the method's
     kinematics, what imagination evaluates) match the env's managers (the same terms on MuJoCo's state) on the states
     the simulator reaches. They differ by the coupled joints' constraint violation, which the kinematics projects
-    away (sub-millimetre; velocities more)."""
+    away (sub-millimetre; velocities more). The policy terms' tolerances catch a left/right site swap and a stale
+    previous action."""
+    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
     from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM
     from supermimic.heads import StepCtx, analytic
 
@@ -114,21 +156,22 @@ def test_runner_scores_like_the_env(setup: Any) -> None:
         ctx = cmd.obs_ctx()
         ours, env_obs = runner.obs_policy.assemble(None, ctx), obs["policy"]
         om = u.observation_manager
-        start = 0
-        for name, dim in zip(
-            om.active_terms["policy"], om.group_obs_term_dim["policy"], strict=True
-        ):
-            sl = slice(start, start + dim[0])
-            start += dim[0]
-            # muscle state: MuJoCo's tendon geometry vs the method's analytic one
-            loose = name in ("muscle_length", "muscle_velocity", "muscle_force")
-            if loose:
-                scale = env_obs[:, sl].abs().max()
-                assert ((ours[:, sl] - env_obs[:, sl]).abs() <= 0.1 * scale).all(), name
-            else:
-                torch.testing.assert_close(
-                    ours[:, sl], env_obs[:, sl], atol=0.5, rtol=0.05, msg=name
-                )
+        assert _obs_violations(ours, env_obs, om) == {}
+        # mutations the comparison must catch: talus_l / talus_r rows swapped, excitation of the step before
+        sites = _policy_slice(om, "site_rpos")
+        bodies = model_cfg(cmd.cfg.model).tracked_bodies
+        i, j = (
+            bodies.index("talus_l") - 1,
+            bodies.index("talus_r") - 1,
+        )  # the rows skip the root body
+        swapped = ours.clone()
+        rows = swapped[:, sites].reshape(len(ours), -1, 3)
+        rows[:, [i, j]] = rows[:, [j, i]].clone()
+        swapped[:, sites] = rows.flatten(1)
+        assert "site_rpos" in _obs_violations(swapped, env_obs, om)
+        stale = ours.clone()
+        stale[:, _policy_slice(om, "muscle_excitation")] = a_prev
+        assert "muscle_excitation" in _obs_violations(stale, env_obs, om)
         torch.testing.assert_close(
             runner.obs_goal.assemble(None, ctx), obs["goal"], atol=1e-6, rtol=0
         )
@@ -280,6 +323,13 @@ def _short_episodes(u: Any) -> None:
     u.termination_manager.get_term_cfg("root_pos_dev").params["threshold"] = 0.015
 
 
+# Gap of the policy observation means between the eager env step and the collector, about 3x the measured one.
+_OBS_NORM_ATOL = {
+    "root_pos": 1e-5, "joint_pos": 4e-3, "root_vel": 1e-5, "joint_vel": 0.065, "muscle_excitation": 1e-6,
+    "muscle_activation": 1e-6, "site_rpos": 3.5e-3, "site_rangles": 2.5e-3, "site_rvel": 0.065,
+}  # fmt: skip
+
+
 def test_collector_matches_the_eager_env_step(clips: Path) -> None:
     """The graphed collection's wrapper (eager on a CPU) writes the transitions, episode ends, resets, bin and
     normalizer statistics and simulator state of mjlab's ``env.step`` + ``env.reset(ids)``."""
@@ -338,16 +388,27 @@ def test_collector_matches_the_eager_env_step(clips: Path) -> None:
         torch.testing.assert_close(
             getattr(dg, key)._tensor, getattr(de, key)._tensor, **tol, msg=key
         )
-    for ne, ng, t in (
-        (
-            eager.pi.obs_norm,
-            graphed.pi.obs_norm,
-            {"atol": 0.05, "rtol": 0.2},
-        ),  # touch: see above
-        (eager.wm.inc_norm, graphed.wm.inc_norm, tol),
+    for ne, ng in (
+        (eager.pi.obs_norm, graphed.pi.obs_norm),
+        (eager.wm.inc_norm, graphed.wm.inc_norm),
     ):
         assert float(ne.count) == float(ng.count) == n * 6
-        torch.testing.assert_close(ng.mean, ne.mean, **t)
+    torch.testing.assert_close(graphed.wm.inc_norm.mean, eager.wm.inc_norm.mean, **tol)
+    # policy observation means per term: about 3x the measured gap; touch keeps 0.05 + 20 % (see above)
+    om, start = eager.uenv.observation_manager, 0
+    for name, dim in zip(
+        om.active_terms["policy"], om.group_obs_term_dim["policy"], strict=True
+    ):
+        sl = slice(start, start + dim[0])
+        start += dim[0]
+        t = (
+            {"atol": 0.05, "rtol": 0.2}
+            if name == "touch"
+            else {"atol": _OBS_NORM_ATOL[name], "rtol": 0.0}
+        )
+        e, g = eager.pi.obs_norm.mean[sl], graphed.pi.obs_norm.mean[sl]
+        torch.testing.assert_close(g, e, **t, msg=name)
+    assert start == len(eager.pi.obs_norm.mean)
 
 
 def test_batched_evaluation_and_refinement(clips: Path, tmp_path: Path) -> None:
