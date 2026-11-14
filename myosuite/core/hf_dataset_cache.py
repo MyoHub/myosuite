@@ -11,6 +11,8 @@ import logging
 import shutil
 from pathlib import Path
 
+from myosuite.core.hf_io import pinned_revision
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,8 +21,9 @@ def download_hf_dataset_file(
     repo_id: str,
     remote_path: str,
     local_path: Path,
+    revision: str | None = None,
 ) -> Path | None:
-    """Download one dataset file from Hugging Face."""
+    """Download one dataset file from Hugging Face (at :func:`pinned_revision` by default)."""
     from huggingface_hub import hf_hub_download
 
     local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -29,6 +32,7 @@ def download_hf_dataset_file(
             repo_id=repo_id,
             filename=remote_path,
             repo_type="dataset",
+            revision=pinned_revision(repo_id, revision),
         )
         shutil.copy2(downloaded, local_path)
         return local_path

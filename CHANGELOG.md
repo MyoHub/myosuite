@@ -31,6 +31,17 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **Hugging Face downloads are pinned to tested commits.** The reference clips of `myoFullBodyDirectional-v0` and
+  `myoChallengeChaseTagFBVs-v0`, the MuscleMimic teacher `amathislab/mm-10m-2` (`hf://` checkpoint paths, the steered
+  teacher), the demo motions, the Blender muscle meshes, the tracking dataset of `myoMimic-v0` and the clips of
+  tutorials 5.2 and 5.3 were downloaded from each repo's moving `main` branch, so the tracking targets, rewards and
+  teacher policy of a fixed MyoSuite version could change with an upload. They now come from the commit in
+  `myosuite.core.hf_io.HF_REVISIONS` (one table, TERRA-4B's pin included). `resolve_hf_snapshot` and
+  `download_hf_dataset_file` take a `revision`, `hf://owner/repo@<revision>/...` selects another commit, and
+  `$MYOSUITE_MIMIC_DATASET` accepts `owner/name@<revision>`; repos outside the table keep their default branch. The
+  baselines keep following the release tags, but a revision passed to `download_baseline_file` is no longer replaced
+  by `main` when it is missing (pass `fallback_to_main=True` for that), and the release-tag fallback to `main` now
+  warns, naming the missing tag.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808

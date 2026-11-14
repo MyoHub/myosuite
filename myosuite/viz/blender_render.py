@@ -608,12 +608,15 @@ def _resolve_muscle_mesh(spec: str) -> Path:
         return Path(spec)
     from huggingface_hub import hf_hub_download
 
+    from myosuite.core.hf_io import pinned_revision
+
     try:
         return Path(
             hf_hub_download(
                 repo_id=MUSCLE_MESH_REPO,
                 filename=MUSCLE_MESHES[spec],
                 repo_type="dataset",
+                revision=pinned_revision(MUSCLE_MESH_REPO),
             )
         )
     except Exception as err:

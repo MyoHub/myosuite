@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,27 @@ _MUSCLEMIMIC_CACHE_ENV_VARS = (
     "CONVERTED_AMASS_PATH",
 )
 
+HF_REVISIONS: dict[str, str] = {
+    "amathislab/mm-10m-2": "651078fcdd84bd4fa45a096dc0564125c4bb8a25",
+    "amathislab/musclemimic-retargeted": "c3327a8013bf5213d0afe736f68b6393da10d84a",
+    "amathislab/musclemimic-bimanual-retargeted": "54f108ad04de069dfdbc4363eb6ad5bb7e8778bc",
+    "amathislab/demo_dataset": "4b503756673152e8867165c3f790db260113bcff",
+    "myohub/myosuite-assets": "afa8427188c8bd054925200c70db6757908dee45",
+    "merc-s/TERRA-4B": "b89a604d0687549f2678bb1b6a436dea058cd8b9",
+}
+"""Tested commit of each Hugging Face repo MyoSuite downloads from, so a MyoSuite version
+always gets the same files (the baselines repo follows release tags instead,
+:func:`baseline_revisions`). Move a SHA only after testing the repo's new content."""
+
+
+def pinned_revision(repo_id: str, revision: str | None = None) -> str | None:
+    """*revision* if given, else the tested commit of *repo_id* in :data:`HF_REVISIONS`.
+
+    Returns:
+        The revision to download, or ``None`` (the repo's default branch) for an unlisted repo.
+    """
+    return revision or HF_REVISIONS.get(repo_id)
+
 
 @dataclass(frozen=True)
 class HfRef:
@@ -26,16 +48,17 @@ class HfRef:
 
     repo_id: str
     subpath: str
+    revision: str | None = None
 
 
 def parse_hf_ref(path: str) -> HfRef:
-    """Parse ``hf://owner/repo[/subpath]``.
+    """Parse ``hf://owner/repo[@revision][/subpath]``.
 
     Args:
-        path: Hugging Face-style path.
+        path: Hugging Face-style path; the revision is a commit, tag or branch without ``/``.
 
     Returns:
-        Parsed repository id and optional subpath.
+        Parsed repository id, optional subpath and optional revision.
     """
     if not path.startswith("hf://"):
         raise ValueError(f"Not an hf path: {path}")
@@ -47,16 +70,28 @@ def parse_hf_ref(path: str) -> HfRef:
         raise ValueError(
             "hf:// path must include owner/repo, e.g. hf://amathislab/mm-10m-2"
         )
-    repo_id = "/".join(parts[:2])
+    name, _, revision = parts[1].partition("@")
+    repo_id = f"{parts[0]}/{name}"
     subpath = "/".join(parts[2:])
-    return HfRef(repo_id=repo_id, subpath=subpath)
+    return HfRef(repo_id=repo_id, subpath=subpath, revision=revision or None)
 
 
 def resolve_hf_snapshot(
     hf_path: str,
     repo_type: str = "model",
+    revision: str | None = None,
 ) -> Path:
-    """Resolve a Hugging Face path to a local snapshot path."""
+    """Resolve a Hugging Face path to a local snapshot path.
+
+    Args:
+        hf_path: ``hf://owner/repo[@revision][/subpath]``.
+        repo_type: ``"model"`` or ``"dataset"``.
+        revision: Commit, tag or branch; defaults to the path's ``@revision``, else
+            :func:`pinned_revision`.
+
+    Returns:
+        The local file or folder of the subpath in the snapshot.
+    """
     ref = parse_hf_ref(hf_path)
     try:
         from huggingface_hub import snapshot_download
@@ -70,6 +105,7 @@ def resolve_hf_snapshot(
         snapshot_download(
             repo_id=ref.repo_id,
             repo_type=repo_type,
+            revision=pinned_revision(ref.repo_id, revision or ref.revision),
         )
     ).resolve()
     local = snapshot_dir / ref.subpath if ref.subpath else snapshot_dir
@@ -121,14 +157,15 @@ def _download_at_revision(
     repo_id: str,
     revision: str | None,
     *,
-    fallback_to_main: bool = True,
+    fallback_to_main: bool | None = None,
 ) -> Any | None:
     """Run ``download(revision)`` for the release tags, then for ``main`` if none of them exists
     or none of them holds the file (a baseline added after the release's tag).
 
-    ``fallback_to_main=False`` keeps downloads at the requested revisions only.
-    Prints the repo revision that was used. Returns ``None`` (after printing why) on network,
-    auth or repo errors.
+    ``fallback_to_main`` defaults to falling back only for the release tags: a requested
+    *revision* is a pin and is never replaced by ``main`` unless asked. A fallback to ``main``
+    warns, naming the revision that was missing. Prints the repo revision that was used.
+    Returns ``None`` (after printing why) on network, auth or repo errors.
     """
     from huggingface_hub.errors import (  # noqa: PLC0415
         EntryNotFoundError,
@@ -137,6 +174,8 @@ def _download_at_revision(
 
     wanted = [revision] if revision else baseline_revisions()
     missing = "tag"  # what was missing at wanted[0]: the tag itself, or the file in it
+    if fallback_to_main is None:
+        fallback_to_main = revision is None
     revisions = [*wanted, "main"] if fallback_to_main else wanted
     for rev in dict.fromkeys(revisions):
         try:
@@ -160,6 +199,11 @@ def _download_at_revision(
         )
         note = "" if rev == wanted[0] else f" ({what}{latest})"
         print(f"Using baselines of {repo_id} at revision {rev!r}{note}")
+        if rev == "main" and "main" not in wanted:
+            warnings.warn(
+                f"{repo_id}: {what}; downloaded the moving 'main' branch instead",
+                stacklevel=3,
+            )
         return result
     return None
 
@@ -215,7 +259,7 @@ def download_baseline_file(
     repo_id: str = BASELINES_REPO_ID,
     revision: str | None = None,
     *,
-    fallback_to_main: bool = True,
+    fallback_to_main: bool | None = None,
 ) -> Path | None:
     """Download one file of the baselines Hugging Face repo, at the revision of this release.
 
@@ -226,8 +270,9 @@ def download_baseline_file(
         filename: Path of the file inside the repo.
         repo_id: Hugging Face repo id to download from.
         revision: Commit, branch or tag; defaults as in :func:`download_baseline_checkpoint`.
-        fallback_to_main: Try the moving ``main`` branch when the requested revision
-            or file is missing. Set ``False`` with a commit SHA for a pinned download.
+        fallback_to_main: Try the moving ``main`` branch when the revision or file is
+            missing (with a warning). Default: only for the release tags, never for an
+            explicit *revision*.
 
     Returns:
         The local file, or ``None`` when huggingface_hub is missing or the download failed.
@@ -278,6 +323,8 @@ def default_musclemimic_cache_root() -> Path:
 
 __all__ = [
     "BASELINES_REPO_ID",
+    "HF_REVISIONS",
+    "pinned_revision",
     "download_baseline_file",
     "default_baseline_revision",
     "HfRef",
