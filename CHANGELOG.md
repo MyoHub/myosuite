@@ -31,6 +31,13 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`myosuite-musclemimic-fullbody-eval --path` no longer replays the clip in place of a failed policy.** When the
+  checkpoint's policy could not be loaded (for example without `orbax-checkpoint`, which installs on Linux only) or the
+  checkpoint had no policy, native playback logged a warning, played the reference motion, printed its tracking error
+  and exited with 0. It now exits with an error that names the cause; `--replay` (or
+  `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY=1`) plays the reference motion on request. The ONNX policy video of
+  `--backend mjlab --onnx --record` is written at the control rate (100 fps for 5 physics steps of 2 ms per frame);
+  it played 5x too fast.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808

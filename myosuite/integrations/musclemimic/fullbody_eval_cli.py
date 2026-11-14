@@ -486,7 +486,8 @@ def _mjlab_onnx_main(
             renderer.close()
         out = _Path(record_path).expanduser().resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
-        fps = max(1, int(round(1.0 / float(model.opt.timestep))))
+        # One frame per control step of frame_skip physics steps.
+        fps = max(1, int(round(1.0 / (float(model.opt.timestep) * runner.frame_skip))))
         write_video(str(out), np.asarray(frames), outputdict={"-r": str(fps)})
         print(f"Saved {len(frames)}-frame policy rollout to {out}")
         return 0
@@ -558,6 +559,7 @@ def _mjlab_play_main(argv: list[str]) -> int:
         "--record",
         "--stochastic",
         "--no_show_targets",
+        "--replay",
     }
     _CPU_ONLY_VALUE_FLAGS = {
         "--record_path",

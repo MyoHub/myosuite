@@ -77,6 +77,7 @@ class NativePlaybackArgs:
     record_fps: int | None
     show_targets: bool = True
     onnx: str | None = None
+    replay: bool = False
 
 
 def parse_native_playback_argv(argv: list[str]) -> NativePlaybackArgs:
@@ -112,6 +113,11 @@ def parse_native_playback_argv(argv: list[str]) -> NativePlaybackArgs:
             "(as produced by: export_onnx.py export --framework orbax …)."
         ),
     )
+    p.add_argument(
+        "--replay",
+        action="store_true",
+        help="Play the reference motion states instead of a policy.",
+    )
     ns = p.parse_args(argv)
     return NativePlaybackArgs(
         checkpoint_path=ns.path,
@@ -126,6 +132,7 @@ def parse_native_playback_argv(argv: list[str]) -> NativePlaybackArgs:
         record_fps=(int(ns.record_fps) if ns.record_fps is not None else None),
         show_targets=not bool(ns.no_show_targets),
         onnx=ns.onnx if ns.onnx else None,
+        replay=bool(ns.replay),
     )
 
 
@@ -210,9 +217,7 @@ class FullbodyNativePlaybackRunner(PlaybackRunner):
                 "--mujoco_viewer is ignored when --record is enabled in native "
                 "playback (offscreen render is used for MP4 export)."
             )
-        warnings.append(
-            "Checkpoint inference is not wired yet; replay uses motion states."
-        )
+        warnings.append("Replay mode: reference motion states, no policy.")
         return PlaybackResult(
             frames_executed=n_steps,
             mean_tracking_error=mean_err,
@@ -596,14 +601,18 @@ def run_native_playback(parsed: NativePlaybackArgs) -> int:
         except Exception as err:
             logger.error("Failed to initialize ONNX policy runner (%s). Aborting.", err)
             return 2
-    disable_local_policy = (
-        os.environ.get("MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY", "0") == "1"
+    replay = (
+        parsed.replay
+        or os.environ.get("MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY", "0") == "1"
     )
-    if (
-        onnx_path is None
-        and has_local_policy_artifacts(ckpt.local_path)
-        and not disable_local_policy
-    ):
+    if onnx_path is None and not replay:
+        if not has_local_policy_artifacts(ckpt.local_path):
+            logger.error(
+                "No policy in %s (needs train_state and config/metadata). Pass "
+                "--onnx, or --replay to play the reference motion.",
+                ckpt.local_path,
+            )
+            return 2
         try:
             local_policy = load_local_policy_artifacts(ckpt.local_path)
             cfg_meta = read_checkpoint_config_metadata(ckpt.local_path)
@@ -632,19 +641,18 @@ def run_native_playback(parsed: NativePlaybackArgs) -> int:
                 local_policy.action_dim,
             )
         except (ImportError, KeyError, FileNotFoundError, ValueError) as err:
-            err_msg = str(err)
-            if "orbax.checkpoint is required" in err_msg:
-                logger.warning(
-                    "Local policy artifacts found but Orbax is unavailable. "
-                    "Install `orbax-checkpoint` in this environment to enable "
-                    "policy actions; falling back to trajectory replay."
-                )
-            else:
-                logger.warning(
-                    "Local policy artifacts found but failed to initialize (%s). "
-                    "Falling back to trajectory replay.",
-                    err,
-                )
+            hint = (
+                "Install `orbax-checkpoint` (Linux only) or pass --onnx."
+                if "orbax.checkpoint is required" in str(err)
+                else "Pass --onnx to play an exported policy."
+            )
+            logger.error(
+                "Local policy failed to initialize (%s). %s --replay plays the "
+                "reference motion instead.",
+                err,
+                hint,
+            )
+            return 2
     result = runner.run(request, artifacts)
     for warn in result.warnings:
         logger.warning("%s", warn)
@@ -652,7 +660,7 @@ def run_native_playback(parsed: NativePlaybackArgs) -> int:
         print(f"Saved video to {Path(parsed.record_path).expanduser().resolve()}")
     if result.mean_tracking_error is not None:
         logger.info(
-            "Native replay mean site-tracking error over %d frames: %.6f",
+            "Mean site-tracking error over %d frames: %.6f",
             result.frames_executed,
             result.mean_tracking_error,
         )
