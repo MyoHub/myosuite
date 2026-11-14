@@ -47,6 +47,7 @@ from myosuite.core.model_recipes import (
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import mujoco_cfg_from_model
 from myosuite.envs.myo.backends.mjlab.tasks.rl import (
     MUSCLE_ENTROPY_COEF,
@@ -688,8 +689,9 @@ class TableTennisReward(ManagerTermBase):
 
 
 class TableTennisReset(ManagerTermBase):
-    """CPU ``reset()``: keyframe pose (+ optional joint noise), paddle back in
-    the hand and the ball (re)launched from the keyframe or a sampled state."""
+    """CPU ``reset()``: keyframe pose (+ optional joint noise) on the joint
+    couplings, paddle back in the hand and the ball (re)launched from the
+    keyframe or a sampled state."""
 
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedRlEnv) -> None:
         super().__init__(env)
@@ -698,6 +700,11 @@ class TableTennisReset(ManagerTermBase):
         self._paddle = env.scene[_TT_PADDLE_ENTITY_NAME]
         self._ball = env.scene[_TT_BALL_ENTITY_NAME]
         self.launch = _ball_launch(tt_cfg, env.device)
+        # The athlete's joints lead the CPU qpos in the same order, so the CPU
+        # couplings index the entity's joint vector directly.
+        self._couplings = JointCouplings.from_model(_reference_model()).as_torch(
+            device=env.device, dtype=torch.float32
+        )
         self._noise: tuple[torch.Tensor, ...] | None = None
         if tt_cfg.qpos_noise_range is not None:
             # CPU: uniform fraction of each joint range, clipped to the raw
@@ -733,7 +740,9 @@ class TableTennisReset(ManagerTermBase):
             low, high, j_lo, j_hi = self._noise
             frac = low + torch.rand_like(pos) * (high - low)
             pos = torch.clamp(pos + frac * (j_hi - j_lo), j_lo, j_hi)
-        self._arm.write_joint_state_to_sim(pos, torch.zeros_like(pos), env_ids=env_ids)
+        vel = torch.zeros_like(pos)
+        project_joint_couplings(self._couplings, pos, vel)
+        self._arm.write_joint_state_to_sim(pos, vel, env_ids=env_ids)
         self._paddle.write_root_state_to_sim(
             self._paddle.data.default_root_state[env_ids], env_ids=env_ids
         )

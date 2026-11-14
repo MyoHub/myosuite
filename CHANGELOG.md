@@ -36,11 +36,20 @@ Changes since **v3.1.0** (2026-11-11).
   and Baoding models, which have no couplings), the mjlab twin of `myoChallengeChaseTagFBP2-v0` projects in
   `reset_to_cpu_state`, and the couplings are read once per model instead of at every reset. This changes the start
   state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
-  unchanged, and the parity baseline of `myoChallengeRelocateP1-v0` is regenerated. Two families are **not** changed
-  and stay expected failures of `test_joint_coupling.py`: `myoChallengeTableTennisP{0,1,2}-v0`, whose keyframe holds
-  the paddle with the shoulder rhythm 0.59 rad off its couplings (projected, the grasp site is 6.9 cm from the
-  paddle handle instead of 1.7 cm, so it first needs a keyframe on the couplings), and
-  `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off). See `docs/baseline_checkpoints.md`.
+  unchanged, and the parity baseline of `myoChallengeRelocateP1-v0` is regenerated. Table tennis follows in the next
+  entry; `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off) is **not** changed and stays an
+  expected failure of `test_joint_coupling.py`. See `docs/baseline_checkpoints.md`.
+* **Table-tennis resets start on the joint couplings, with the paddle still in the hand.** The `default` keyframe of
+  `myoChallengeTableTennisP{0,1,2}-v0` set the right shoulder rhythm (sternoclavicular, acromioclavicular, scapula and
+  humerus rotations, `shoulder1_r2_r`) up to 0.59 rad and the lumbar `L3_L4_FE` 0.097 rad off their couplings, and
+  projecting it as it was would have moved the grasp site 7.9 cm, off the paddle handle. The seven right-arm joints
+  (`elv_angle_r` to `deviation_r`) are re-solved, by up to 0.42 rad (`shoulder_rot_r`), so that every coupled joint is
+  on its polynomial while `S_grasp` keeps its pose (5e-6 m, 2e-4 rad) and the wrist stays 2 degrees inside its flexion
+  limit. The paddle spawn, the 1.7 cm handle-to-grasp distance and the seven hand-paddle and arm-torso contacts are
+  unchanged; the largest coupling force at t=0 falls from 928 to 190. The CPU reset and the mjlab twins
+  (`TableTennisReset`, also after joint noise) now project like the other MyoChallenge envs. This changes the start
+  state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
+  unchanged, and no parity baseline covers them.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#672]: https://github.com/MyoHub/myosuite/pull/672

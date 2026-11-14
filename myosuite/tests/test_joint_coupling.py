@@ -41,10 +41,6 @@ _ALL_ENV_IDS = sorted(
 _RESET_ATOL = 1e-9
 # Envs that still reset off their couplings, with the reason.
 _OFF_COUPLING_CHALLENGES = {
-    r"myo(Fati|Sarc)?ChallengeTableTennis(P0|P1|P2)-v0": (
-        "keyframe 0 holds the paddle with the shoulder rhythm 0.59 rad off its couplings; "
-        "projected, the grasp site is 6.9 cm from the handle (needs a keyframe on them)"
-    ),
     r"myoChallengeChaseTagFBVs-v0": (
         "the two-agent env resets to its standing pose, patella 5.2 cm off its coupling"
     ),
@@ -216,6 +212,21 @@ def test_challenge_reset_has_no_coupling_transient(env_id: str) -> None:
     finally:
         env.close()
     assert raw > 3 * projected, (raw, projected)
+
+
+def test_tabletennis_keyframe_is_on_its_joint_couplings() -> None:
+    """The keyframe the table-tennis reset projects is already on the couplings.
+
+    Its shoulder rhythm was 0.59 rad off them; projected as it was, the grasp site
+    moved 7.9 cm and left the paddle handle.
+    """
+    env = make_env("myoChallengeTableTennisP0-v0")
+    model = env.unwrapped.model
+    try:
+        pos, _ = joint_equality_residuals(model, model.key_qpos[0])
+    finally:
+        env.close()
+    assert np.abs(pos).max() < _RESET_ATOL
 
 
 def _dense_moment(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:

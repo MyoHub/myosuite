@@ -1541,8 +1541,12 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 # for the episode's initial pose, so this keyframe is load-bearing, not
 # cosmetic (unlike the legacy XML's "dribble" keyframe, which nothing reads
 # and is intentionally not reproduced here).
-# The paddle freejoint (qpos 58:65) is the legacy world spawn verbatim; the
-# legacy arm pose already reaches it, so the handle lands in ``S_grasp``.
+# The paddle freejoint (qpos 58:65) is the legacy world spawn verbatim. The
+# legacy pose had the shoulder rhythm up to 0.59 rad and the lumbar L3_L4_FE
+# 0.097 rad off their joint couplings, so the right arm (elv_angle_r ..
+# deviation_r) is re-solved with every coupled joint on its polynomial and
+# ``S_grasp`` at its legacy pose (5e-6 m, 2e-4 rad), the wrist 2 deg inside its
+# flexion limit: the handle still lands in ``S_grasp``.
 _TABLETENNIS_DEFAULT_KEY_QPOS = [
     -0.4205,
     0,
@@ -1555,7 +1559,6 @@ _TABLETENNIS_DEFAULT_KEY_QPOS = [
     0,
     0,
     0,
-    -0.0971634,
     0,
     0,
     0,
@@ -1565,23 +1568,24 @@ _TABLETENNIS_DEFAULT_KEY_QPOS = [
     0,
     0,
     0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0.1368,
-    0.14842,
-    0.70695,
-    -0.7405,
-    -0.343225,
-    0.805495,
-    -0.10284,
-    -0.08288,
-    -0.730422,
+    -0.178146364,
+    0.075454555,
+    -0.075454555,
+    0.178146364,
+    -0.036070958,
+    0.291512232,
+    0.131033276,
+    -0.131033276,
+    -0.291512232,
+    0.036070958,
+    0.370028,
+    0.736142,
+    -0.370028,
+    -0.76636,
+    0.568194,
+    0.020786,
+    0.013715,
+    -0.750491,
     0.7,
     0.0632,
     0.07503,

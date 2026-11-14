@@ -590,6 +590,9 @@ COUPLED_TWIN_IDS = (
     "myoArmReachFixed-v0",
     "myoArmReachRandom-v0",
     "myoChallengeChaseTagFBP2-v0",
+    "myoChallengeTableTennisP0-v0",
+    "myoChallengeTableTennisP1-v0",
+    "myoChallengeTableTennisP2-v0",
     "myoFullBodyWaypoint-v0",
     "myoLegDirectionalBackward-v0",
     "myoLegDirectionalForward-v0",
@@ -602,13 +605,6 @@ COUPLED_TWIN_IDS = (
     "myoMimic-v0",
     "myoTorsoExoPoseFixed-v0",
     "myoTorsoPoseFixed-v0",
-)
-# Table tennis: the CPU env does not project at reset yet (its keyframe holds the
-# paddle off the shoulder couplings), so neither do the twins.
-_PENDING_COUPLED_TWINS = (
-    "myoChallengeTableTennisP0-v0",
-    "myoChallengeTableTennisP1-v0",
-    "myoChallengeTableTennisP2-v0",
 )
 # float32 states: rounding leaves ~1e-7 (positions) and ~1e-6 (velocities up to 5 rad/s).
 _TWIN_COUPLING_ATOL = 1e-5
@@ -667,6 +663,35 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
         cpu.close()
 
 
+def test_tabletennis_twin_projects_its_joint_noise() -> None:
+    """The table-tennis twin puts its noisy reset on the couplings, as the CPU env.
+
+    The registered phases draw no joint noise, so ``qpos_noise_range`` is set here.
+    """
+    import dataclasses  # noqa: PLC0415
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+
+    cfg = load_env_cfg("myoChallengeTableTennisP0-v0")
+    cfg.scene.num_envs = 4
+    params = cfg.events["tt_reset"].params
+    params["tt_cfg"] = dataclasses.replace(
+        params["tt_cfg"], qpos_noise_range={"low": -0.02, "high": 0.02}
+    )
+    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    try:
+        mj.reset()
+        qpos = mj.sim.data.qpos[:].cpu().numpy().astype(np.float64)
+        for i in range(cfg.scene.num_envs):
+            pos, _ = joint_equality_residuals(mj.sim.mj_model, qpos[i])
+            assert np.abs(pos).max() < _TWIN_COUPLING_ATOL, f"env {i}: {pos}"
+        athlete = mj.scene.entities["table_tennis_robot"].data
+        noise = athlete.joint_pos - athlete.default_joint_pos
+        assert noise.abs().max() > 1e-3  # the noise was drawn
+    finally:
+        mj.close()
+
+
 def test_every_coupled_twin_is_listed() -> None:
     """Each base twin of a CPU env with joint couplings is in COUPLED_TWIN_IDS."""
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
@@ -681,7 +706,7 @@ def test_every_coupled_twin_is_listed() -> None:
         if _joint_equality_count(env.unwrapped.model):
             unlisted.append(env_id)
         env.close()
-    assert sorted(unlisted) == sorted(_PENDING_COUPLED_TWINS), unlisted
+    assert not unlisted, unlisted
 
 
 def test_every_twin_logs_a_success_metric() -> None:

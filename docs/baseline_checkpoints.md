@@ -195,9 +195,11 @@ env contract hash does not warn. No checkpoint of these ids is published in `myo
 above has none for `myoChallengeChaseTagFBP2-v0`), so none was re-evaluated. Policies trained on these ids with
 MyoSuite 3.1.0 or earlier, or with the PyPI 2.x MyoChallenge envs, were trained from the old starts: re-evaluate them
 before comparing, in particular ChaseTag P1/P2 policies, which share the keyframe from whose projected start the
-`myoLegWalk-v0` checkpoint falls. `myoChallengeTableTennisP{0,1,2}-v0` and `myoChallengeChaseTagFBVs-v0` are
-unchanged: the table-tennis keyframe holds the paddle with the shoulder rhythm 0.59 rad off its couplings and needs a
-keyframe on them first, and the tutorial files below were measured on the unchanged two-agent reset.
+`myoLegWalk-v0` checkpoint falls. `myoChallengeTableTennisP{0,1,2}-v0` (and their mjlab twins) start from a
+re-solved right-arm pose on the couplings: the seven arm joints move by up to 0.42 rad and the shoulder rhythm by up to
+0.59 rad, while the hand keeps its grasp on the paddle (grasp site within 5e-6 m and 2e-4 rad, same contacts); no
+table-tennis checkpoint is published, but policies trained on the old keyframe start from a different arm pose.
+`myoChallengeChaseTagFBVs-v0` is unchanged, and the tutorial files below were measured on its two-agent reset.
 
 **Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
 (whose actions are clipped before the linear map to `ctrlrange`) now keep the policy's action std in [0.05, 1.0]. The
