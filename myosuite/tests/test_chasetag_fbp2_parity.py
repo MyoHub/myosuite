@@ -164,12 +164,9 @@ def test_spaces_timing_physics_and_reward_terms_match(pair) -> None:
     assert cpu.dt == pytest.approx(mj.step_dt) == pytest.approx(0.01)
     assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 1000
     assert cpu_env.spec.max_episode_steps * cpu.dt == pytest.approx(10.0)
-    # CHASE also loses past maxTime; the float64 time after the last step is
-    # within rounding of it, so the horizon is a truncation on both.
-    time = 0.0
-    for _ in range(cpu_env.spec.max_episode_steps * cpu.frame_skip):
-        time += cpu.model.opt.timestep
-    assert time == pytest.approx(cpu.maxTime, abs=1e-10)
+    # CHASE also loses one control step past maxTime, so the horizon is a
+    # truncation on both.
+    assert cpu._horizon_steps() == cpu_env.spec.max_episode_steps
 
     assert cfg.sim.mujoco == mujoco_cfg_from_model(cpu.model)
     for field in (
