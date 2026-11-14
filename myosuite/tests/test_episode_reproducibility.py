@@ -34,14 +34,6 @@ _KNOWN = {
         ),
         "the first reset keeps the nominal box size (ignore_first_scale)",
     ),
-    **dict.fromkeys(
-        (
-            "myoChallengeDieReorientP2-v0",
-            "myoFatiChallengeDieReorientP2-v0",
-            "myoSarcChallengeDieReorientP2-v0",
-        ),
-        "reset takes a sign from the previous episode's geom_pos",
-    ),
 }
 
 
