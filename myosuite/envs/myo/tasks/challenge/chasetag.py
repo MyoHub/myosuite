@@ -44,7 +44,8 @@ class ChallengeOpponent:
         rng: NumPy random generator.
         probabilities: Policy probabilities (static_stationary, stationary, random).
         min_spawn_distance: Minimum spawn radius from agent.
-        chase_vel_range: Velocity range for the chase policy.
+        chase_vel_range: Speed range (m/s) of the chase policy, drawn once per
+            episode. ``move_opponent`` caps every speed at 2 m/s.
         random_vel_range: Velocity range for the random policy.
         dt: Control timestep.
         pelvis_body_name: Name of the agent body used to track the agent's
@@ -89,11 +90,11 @@ class ChallengeOpponent:
         self.mj_data.mocap_quat[0, :] = euler2quat([0, 0, pose[-1]])
 
     def move_opponent(self, vel: list) -> None:
-        """Move opponent by velocity [lin_vel, rot_vel]."""
-        self.opponent_vel = vel
+        """Move opponent by velocity [lin_vel, rot_vel], capped at 2 m/s and 2 rad/s."""
         assert len(vel) == 2
-        vel[0] = np.abs(vel[0])
-        vel = np.clip(vel, -2, 2)
+        vel = np.clip([np.abs(vel[0]), vel[1]], -2, 2)
+        # Observed as ``opponent_vel``: the applied velocity, not the policy command.
+        self.opponent_vel = vel
         pose = self.get_opponent_pose()
         x_vel = vel[0] * np.cos(pose[-1] + 0.5 * np.pi)
         y_vel = vel[0] * np.sin(pose[-1] + 0.5 * np.pi)
