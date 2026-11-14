@@ -63,6 +63,20 @@ def _quaternion_addresses(model: mujoco.MjModel) -> list[int]:
     ]
 
 
+def _quaternion_norms(qpos: np.ndarray, address: int, name: str = "qpos") -> np.ndarray:
+    """Norms ``(T, 1)`` of valid rotations, with the first invalid frame identified."""
+    with np.errstate(over="ignore", under="ignore"):
+        norms = np.linalg.norm(qpos[:, address : address + 4], axis=1, keepdims=True)
+    invalid = ~np.isfinite(norms[:, 0]) | (norms[:, 0] < mujoco.mjMINVAL)
+    if invalid.any():
+        frame = int(np.flatnonzero(invalid)[0])
+        raise ValueError(
+            f"{name} quaternion at frame {frame}, qpos address {address} must have "
+            f"a finite norm >= {mujoco.mjMINVAL:g}; got {norms[frame, 0]:g}"
+        )
+    return norms
+
+
 def clip_kinematics(
     model: mujoco.MjModel,
     qpos: np.ndarray,
@@ -82,7 +96,8 @@ def clip_kinematics(
     Args:
         model: Compiled model the clip is expressed in.
         qpos: ``(T, nq)`` positions, ``T >= 4``, e.g. from
-            ``expand_motion_clip_to_model(clip, model).qpos``.
+            ``expand_motion_clip_to_model(clip, model).qpos``. Every free/ball
+            quaternion must have finite norm at least ``mujoco.mjMINVAL``.
         dt: Frame period [s].
         lowpass_hz: Cut-off of a zero-phase (forward-backward) Butterworth filter
             applied to every coordinate before differentiation; ``None`` (as in
@@ -101,7 +116,8 @@ def clip_kinematics(
         The positions, velocities and accelerations of every frame.
 
     Raises:
-        ValueError: If the shapes, ``dt`` or the cut-off are invalid.
+        ValueError: If the shapes, ``dt`` or the cut-off are invalid, or a free/ball
+            quaternion is degenerate before or after filtering.
     """
     qpos = np.array(qpos, dtype=np.float64)
     if qpos.ndim != 2 or qpos.shape[1] != model.nq or len(qpos) < 4:
@@ -113,6 +129,7 @@ def clip_kinematics(
 
     quats = _quaternion_addresses(model)
     for a in quats:
+        _quaternion_norms(qpos, a)
         q = qpos[:, a : a + 4]
         flips = np.sign(np.einsum("ij,ij->i", q[1:], q[:-1]))
         flips[flips == 0] = 1.0
@@ -127,7 +144,10 @@ def clip_kinematics(
         padlen = min(len(qpos) - 1, int(np.ceil(2.0 / (lowpass_hz * dt))))
         qpos = signal.sosfiltfilt(sos, qpos, axis=0, padlen=padlen)
     for a in quats:
-        qpos[:, a : a + 4] /= np.linalg.norm(qpos[:, a : a + 4], axis=1, keepdims=True)
+        norms = _quaternion_norms(
+            qpos, a, "filtered qpos" if lowpass_hz is not None else "qpos"
+        )
+        qpos[:, a : a + 4] /= norms
 
     if project_couplings:
         project_joint_couplings(JointCouplings.from_model(model), qpos)
