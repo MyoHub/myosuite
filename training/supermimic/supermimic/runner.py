@@ -1272,7 +1272,9 @@ class SuperMimicRunner:
         """The env settings a policy depends on, stored in each checkpoint so evaluation can match them."""
         return {"decimation": self.uenv.cfg.decimation, "ctrl_dt": self.uenv.step_dt, "model": self.cmd.cfg.model,
                 "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
-                "muscle_obs": self.cmd.observes_muscles, "obs_dim": self.obs_policy.dim, "goal_dim": self.obs_goal.dim}  # fmt: skip
+                "muscle_obs": self.cmd.observes_muscles, "obs_dim": self.obs_policy.dim, "goal_dim": self.obs_goal.dim,
+                "task": {f.name: copy.deepcopy(getattr(self.cmd.task, f.name)) for f in fields(self.cmd.task)
+                         if f.name not in ("motion", "reset", "episode_length_s")}}  # fmt: skip
 
     def get_inference_policy(self, device=None):
         pi = self.deployed

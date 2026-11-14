@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -130,6 +131,7 @@ def settings_cfg(settings: dict, **overrides: Any) -> TaskEnvCfg:
             setattr(cfg, key, settings[key])
     if "stride" in settings:
         cfg.goal_stride = settings["stride"]
+    cfg.task = {**copy.deepcopy(settings.get("task", {})), **cfg.task}
     return cfg
 
 

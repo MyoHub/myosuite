@@ -544,3 +544,51 @@ def test_a_checkpoint_with_another_task_contract_is_rejected(
     torch.save(ck, tmp_path / "old_wide.pt")
     with pytest.raises(ValueError, match="obs_dim"):
         runner.load(str(tmp_path / "old_wide.pt"))
+
+
+def test_checkpoint_settings_preserve_task_semantics(tmp_path: Path) -> None:
+    """Evaluation restores same-width goal changes and reward/failure overrides."""
+    from types import SimpleNamespace
+
+    from supermimic.env import settings_cfg, task_overrides
+    from supermimic.runner import SuperMimicRunner
+    from myosuite.envs.myo.tasks.mimic.tracking.config import resolve_task
+
+    task = resolve_task(
+        "supermimic",
+        {
+            "obs.goal_frame": "r_ulna_radius_hand",
+            "obs.goal_bodies": ("hand_tip",),
+            "failure.rel_site": 0.4,
+            "reward.scale": 0.3,
+        },
+    )
+    runner = SimpleNamespace(
+        uenv=SimpleNamespace(cfg=SimpleNamespace(decimation=10), step_dt=0.02),
+        cmd=SimpleNamespace(
+            cfg=SimpleNamespace(model="myoelbow2dof"),
+            stride=10,
+            lookahead=5,
+            observes_muscles=False,
+            task=task,
+        ),
+        obs_policy=SimpleNamespace(dim=37),
+        obs_goal=SimpleNamespace(dim=21),
+    )
+    saved = SuperMimicRunner.env_settings(runner)
+    torch.save(saved, tmp_path / "settings.pt")
+    restored = settings_cfg(
+        torch.load(tmp_path / "settings.pt", weights_only=False),
+        motion_file="evaluation.npz",
+        sampling_mode="start",
+        time_limit=False,
+    )
+    loaded = resolve_task("supermimic", task_overrides(restored))
+    assert loaded.obs == task.obs
+    assert loaded.reward == task.reward
+    assert loaded.failure == task.failure
+    assert loaded.motion.clips == "evaluation.npz"
+    assert loaded.reset.mode == "start" and loaded.episode_length_s is None
+    restored.task["failure.rel_site"] = 0.7
+    assert saved["task"]["failure"].rel_site == 0.4
+    assert settings_cfg({}).task == {}
