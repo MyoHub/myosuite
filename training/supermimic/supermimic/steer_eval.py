@@ -90,7 +90,7 @@ def default_walk_clip() -> Path:
     )
 
 
-def prepare_walk(src: str | Path, dst: str | Path, seconds: float = 15.0) -> dict:
+def prepare_walk(src: str | Path, dst: str | Path, seconds: float = 30.0) -> dict:
     """Loop a walking clip for the tracker's body (:func:`.steering.loop_clip`) and return the cycle."""
     kin = SkeletonKinematics(TRACKED_BODIES, "cpu", compiled_body(DEFAULT_MODEL))
     return loop_clip(src, dst, kin.info, kin.R_off.double().numpy(), seconds=seconds)
@@ -429,7 +429,7 @@ class TrackerPlayer:
             pos = {int(u): k for k, u in enumerate(a.idx.actuators)}
             self._order[key] = np.array([pos[int(u)] for u in meta.act_indices[agent]])
             self.agents[key] = a
-        self.agents[key].reset(raw.data)
+        self.agents[key].reset(raw.data, minimum_steps=raw.max_episode_steps)
 
     def heading(self, raw: Any, agent: str, task: str) -> float:
         from myosuite.integrations.musclemimic.steering import aim_heading_xy  # noqa: PLC0415

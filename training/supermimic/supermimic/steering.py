@@ -465,12 +465,22 @@ class TrackerAgent:
     def state(self, data: mujoco.MjData) -> State:
         return read_state(self.host, data, self.idx, self.R_off, self.tracker.device)
 
-    def match_frame(self, data: mujoco.MjData, first: int = 0) -> int:
+    def match_frame(
+        self, data: mujoco.MjData, first: int = 0, minimum_steps: int = 0
+    ) -> int:
         """The reference frame (from ``first``, keeping the lookahead inside the clip) nearest the body's joint
-        positions and velocities: a phase match independent of position and heading."""
+        positions and velocities, reserving ``minimum_steps`` host steps: a phase match independent of position and heading."""
         S = self.state(data)
         m, h = self.tracker.motion, self.tracker.heads
-        last = int(m.clip_end[0]) - h.stride * (h.lookahead - 1)
+        last = (
+            int(m.clip_end[0])
+            - h.stride * (h.lookahead - 1)
+            - math.ceil(minimum_steps / self.hold)
+        )
+        if last <= first:
+            raise ValueError(
+                "reference clip is too short for the episode; prepare a longer loop"
+            )
         cols = torch.as_tensor(self.tracker.info.indep_cols, device=h.q.device)
         q = h.q[first:last]
         qd = m.frames["joint_vel"][first:last][:, cols]
@@ -478,11 +488,19 @@ class TrackerAgent:
         return first + int(cost.argmin())
 
     def reset(
-        self, data: mujoco.MjData, frame: int | None = None, first: int = 0
+        self,
+        data: mujoco.MjData,
+        frame: int | None = None,
+        first: int = 0,
+        minimum_steps: int = 0,
     ) -> None:
         """Start an episode from the body's current state: reference frame ``frame`` (default: the phase match from
-        ``first``), and ``delta`` so that the body faces the clip's heading at that frame."""
-        f = self.match_frame(data, first) if frame is None else int(frame)
+        ``first`` with ``minimum_steps`` host steps remaining), and ``delta`` so that the body faces the clip's heading at that frame."""
+        f = (
+            self.match_frame(data, first, minimum_steps)
+            if frame is None
+            else int(frame)
+        )
         S = self.state(data)
         dev = self.tracker.device
         self.reset_frame = f
