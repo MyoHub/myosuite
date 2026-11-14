@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Install packages required by tutorials.
-uv pip install scikit-learn jupyter ipykernel tabulate matplotlib pandas torch h5py tqdm osqp stable-baselines3
+uv pip install "mujoco<4" "mink<1.2" quadprog scikit-learn jupyter ipykernel tabulate matplotlib pandas torch h5py tqdm osqp stable-baselines3
 
 uv run python -m ipykernel install --user --name=myosuite_uv
 

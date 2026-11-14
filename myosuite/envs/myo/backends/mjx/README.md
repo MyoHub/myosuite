@@ -8,10 +8,10 @@ This directory contains [MJX (MuJoCo XLA)](https://mujoco.readthedocs.io/en/stab
 # MyoSuite MJX and MJWarp
 
 
-1. Switch to python 3.10 and install dependencies:
+1. Switch to python 3.11 and install dependencies:
    ```bash
    # With uv:
-   uv sync --extra mjx -p 3.10 # replace "mjx" with "mjx-cuda" for jax with cuda support
+   uv sync --extra mjx -p 3.11 # replace "mjx" with "mjx-cuda" for jax with cuda support
 
    # With pip:
    pip install -e ".[mjx]" # replace "mjx" with "mjx-cuda" for jax with cuda support

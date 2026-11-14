@@ -488,7 +488,7 @@ class TestChaseTagFullbodyBody:
                 )
 
     def test_baseline_policy_tags_an_idle_player(self) -> None:
-        import onnxruntime as ort
+        ort = pytest.importorskip("onnxruntime")
 
         from myosuite.core.hf_io import download_baseline_file
 

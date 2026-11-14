@@ -30,7 +30,7 @@ python3 -m twine upload --repository pypi dist/*
 ### Verify proper upload
 
 ```bash
-conda create --name test_myosuite python=3.10
+conda create --name test_myosuite python=3.11
 conda activate test_myosuite
 pip install myosuite
 python3 -c "import myosuite; print(f'MyoSuite version: {myosuite.__version__}')"

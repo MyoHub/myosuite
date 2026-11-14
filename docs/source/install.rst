@@ -1,7 +1,7 @@
 Installation
 ============
 
-Python 3.10–3.14 is supported (the GPU ``[mjlab]`` extra needs Python ≤3.13).
+Python 3.11+ is recommended (Python 3.10–3.14 is supported; the GPU ``[mjlab]`` extra needs Python ≤3.13).
 
 Security updates
 ~~~~~~~~~~~~~~~~
@@ -48,7 +48,7 @@ From source
    git clone https://github.com/MyoHub/myosuite.git
    cd myosuite
    pip install -e ".[rl]"        # CPU training (Stable-Baselines3)
-   # or with uv: uv sync -p 3.10 --extra rl
+   # or with uv: uv sync -p 3.11 --extra rl
 
 GPU training (mjlab)
 ~~~~~~~~~~~~~~~~~~~~

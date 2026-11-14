@@ -13,6 +13,13 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Changed
+
+* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
+  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
+  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
+  Python 3.15 on Linux for the ONNX-free native CPU path.
+
 ### Fixed
 
 * **ChaseTag EVADE episodes can be won again.** Since 3.1.0 `ChaseTagEnv` compared the summed `data.time` with
@@ -26,6 +33,7 @@ Changes since **v3.1.0** (2026-11-11).
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#808]: https://github.com/MyoHub/myosuite/pull/808
 
 ## [3.1.0] - 2026-11-11
 
