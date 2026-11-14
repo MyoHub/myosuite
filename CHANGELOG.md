@@ -31,6 +31,10 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `opensim_motion_to_qpos` warns when a mapped coordinate leaves its joint range by more than 5 % of the range,
+  naming the joints and the share of frames. Its default `signs` are gait2392's (knee flexion negative), so a
+  Rajagopal-family file (OpenCap, AddBiomechanics) mapped with the defaults had its knees mirrored into
+  hyperextension without a message; such files need `signs={}`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
