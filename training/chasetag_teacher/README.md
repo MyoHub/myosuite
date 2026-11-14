@@ -64,8 +64,10 @@ ChaseTag student (`onnx/chasetag_supermimic_student.onnx`, and a self-play refin
 - **Tracker.** Train one with `training/supermimic` (its fast recipe; a 30-minute run was the teacher of the results
   below). The tracker must be trained on the same myo_sim version as the FBVs body (`check_same_body`).
 
-The library of the 860 locomotion clips is built once and cached in `$CHASETAG_TEACHER_CACHE` (default
-`~/.cache/myosuite/chasetag_teacher`, about 100 MB).
+The motion data of the 860 locomotion clips is built once and cached in `$CHASETAG_TEACHER_CACHE` (default
+`~/.cache/myosuite/chasetag_teacher`, about 100 MB) as NumPy arrays without pickles. The cache is keyed by the bytes
+of every clip, the body, the control step and the preprocessing code, so re-retargeted clips rebuild it; `lib_*.pt`
+files of earlier versions are no longer read and can be deleted.
 
 ## Install
 
