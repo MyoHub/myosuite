@@ -82,6 +82,8 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants pay the EVADE win again: the last step of an EVADE episode that reaches the time limit has `solved = 1` (+1000) and score 1.0. In 3.1.0 that win could not fire, so EVADE returns and `get_metrics` scores measured on 3.1.0 are too low for policies that survive; reevaluate them. Observations, actions and dynamics are unchanged, and no checkpoint of these ids is published here.
 
+`myoChallengeDieReorientDemo/P1/P2-v0` and `myoChallengeRelocateP1/P2/P2eval-v0` (and their variants) compute the rotation error as the angle between the object and the goal, not as the norm of Euler-angle differences. Die Reorient success rates rise for policies that end near the goal (a die 0.05 rad off its goal was counted as failed for 9 % of the P2 goals), and the `rot_dist` reward changes on all six ids. Observations are unchanged, so checkpoints still load; reevaluate success rates and retrain reward-sensitive comparisons. No checkpoint of these ids is published here.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.

@@ -22,6 +22,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     solved_step_count,
 )
 from myosuite.physics.quat_math import euler2quat, mat2euler
+from myosuite.terms.mimic_track import rotation_angle
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
@@ -180,6 +181,16 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.data.site_xmat[self.goal_sid].reshape(3, 3)
         )
         obs_dict["rot_err"] = obs_dict["goal_rot"] - obs_dict["obj_rot"]
+        # Reward and success use the geodesic angle: Euler differences jump at +-pi.
+        obs_dict["rot_angle"] = np.array(
+            [
+                rotation_angle(
+                    np,
+                    self.data.site_xmat[self.object_sid].reshape(3, 3),
+                    self.data.site_xmat[self.goal_sid].reshape(3, 3),
+                )
+            ]
+        )
         if self.model.na > 0:
             obs_dict["act"] = accessor.muscle_act()
         return obs_dict
@@ -189,7 +200,7 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         pos_dist = float(np.abs(np.linalg.norm(obs_dict["pos_err"], axis=-1)))
-        rot_dist = float(np.abs(np.linalg.norm(obs_dict["rot_err"], axis=-1)))
+        rot_dist = float(np.squeeze(obs_dict["rot_angle"]))
         act_mag = (
             float(np.linalg.norm(obs_dict["act"], axis=-1)) / self.model.na
             if self.model.na != 0 and "act" in obs_dict

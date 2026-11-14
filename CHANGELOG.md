@@ -31,6 +31,16 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **Die Reorient and Relocate measure the rotation error as the angle between the object and the goal.** They used
+  the norm of the difference of Euler angles, which jumps by up to 2 pi at the +-pi wrap and near gimbal lock and
+  does not equal the rotation angle elsewhere. In `myoChallengeDieReorientP2-v0` a die 0.05 rad (3 deg) from its goal
+  missed the 0.262 rad (15 deg) tolerance for 9 % of the goals, and one 0.25 rad away for 68 %; the `rot_dist` reward
+  reached 8.3 for a 0.25 rad error. The `rot_dist` reward, the `sparse` score and `solved` now use the geodesic angle
+  (`myosuite.terms.mimic_track.rotation_angle`, also in `obs_dict["rot_angle"]`). This changes success and rewards of
+  `myoChallengeDieReorientDemo/P1/P2-v0` and the rewards of `myoChallengeRelocateP1/P2/P2eval-v0` (their `rot_th`
+  is infinite), with the `myoSarc` / `myoFati` variants. The observations, including the Euler `obj_rot`,
+  `goal_rot` and `rot_err`, are unchanged. The `myoChallengeRelocateP1-v0` parity baseline is regenerated (its
+  observations are identical, its rewards differ by up to 0.64).
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
