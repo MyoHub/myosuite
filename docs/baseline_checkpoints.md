@@ -141,6 +141,13 @@ rotators `SUP`/`PT`/`PQ` the `Elbow` row and `APL` the wrist-extensor row, and t
 and every muscle of two-agent scenes get their muscle group's row. The checkpoints above (base envs) are unchanged; fatigue results of these variants from earlier
 builds are not comparable.
 
+**Passive force of the sarcopenia variants (after 3.1.0).** The `myoSarc*` ids, their mjlab twins and the
+`elbow_sarcopenia` recipe now scale the passive muscle force with the peak force: `biasprm[2]` of every muscle bias
+gets the same factor (0.5) as `gainprm[2]`, with automatic peak forces (`force="-1"`) resolved first. Up to 3.1.0 the
+passive force stayed at full strength (ratio 1.000 on every id), as in 2.x. The table lists no `myoSarc*`
+checkpoint (they use the checkpoint of their base env, whose dynamics are unchanged), but results and policies on
+the sarcopenia variants from earlier builds are not comparable: passive joint torques are now half as large.
+
 **Exact fatigue step.** The 3CC-r fatigue state of the `myoFati*` variants is now integrated exactly over each control step
 (`MA` over the step instead of its start value). `MA` and `MF` change by up to about 4e-4 per step and the fatigue a policy
 accumulates differs by a few percent of `MF` under fast-changing commands. The checkpoints above (base envs) are unchanged;
