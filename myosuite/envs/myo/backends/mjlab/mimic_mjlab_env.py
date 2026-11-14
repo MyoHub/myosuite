@@ -2427,12 +2427,11 @@ def _make_mimic_sar_env_cfg(
 #
 # Observations: qpos (without root XY), qvel (scaled), act, root_vel (xyz)
 # Actions:      SAR synergies → SARMuscleActivationAction → MuJoCo ctrl
-# Reward:       5 × exp(−(v_fwd − v_target)²)
+# Reward:       5 × exp(−(v_fwd − v_target)²), v_fwd along the body's heading
 #             + alive_bonus × (height > min_height)
 #             − act_reg_weight × mean(act²)
 # ---------------------------------------------------------------------------
 
-_DIR_FWD_IDX: int = 1  # qvel index for the forward (Y) direction
 _DIR_MIN_HEIGHT: float = 0.5  # root z-pos fall threshold for fullbody model
 
 
@@ -2454,18 +2453,49 @@ def _dir_obs_root_vel(entity_name: str) -> Callable[[Any], Any]:
     return _fn
 
 
+def _anterior_axis_xy(mj_model: Any, body_name: str = "pelvis") -> tuple[float, float]:
+    """Horizontal anterior axis of *body_name* in the free-root frame.
+
+    OpenSim body frames point ``+x`` forward. The free root has no such
+    convention: the MuscleMimic full body faces root ``-y``.
+    """
+    import mujoco  # noqa: PLC0415
+
+    data = mujoco.MjData(mj_model)
+    mujoco.mj_kinematics(mj_model, data)
+    root = data.xmat[int(mj_model.jnt_bodyid[0])].reshape(3, 3)
+    axis = root.T @ data.xmat[mj_model.body(body_name).id].reshape(3, 3)[:, 0]
+    x, y = axis[:2] / np.linalg.norm(axis[:2])
+    return float(x), float(y)
+
+
 def _dir_vel_reward(
     entity_name: str,
     *,
     target_vel: float,
-    fwd_idx: int = _DIR_FWD_IDX,
+    forward_xy: tuple[float, float],
 ) -> Callable[[Any], Any]:
-    """exp(−(target_vel − qvel[fwd_idx])²). Shape (N,)."""
+    """exp(−(target_vel − v_fwd)²), v_fwd the root speed along its heading. Shape (N,).
+
+    Args:
+        entity_name: Scene entity name.
+        target_vel: Target forward speed in m/s.
+        forward_xy: Anterior axis in the free-root frame (:func:`_anterior_axis_xy`).
+    """
+    from myosuite.physics.quat import quat_yaw  # noqa: PLC0415
 
     def _fn(env: Any) -> Any:
         import torch  # noqa: PLC0415
 
-        fwd_vel = env.scene[entity_name].data.data.qvel[:, fwd_idx]
+        index = env.scene[entity_name].indexing
+        # Free-joint state: the root_link_* API lags one substep until forward().
+        quat = env.sim.data.qpos[:, index.free_joint_q_adr[3:7].long()]
+        vel = env.sim.data.qvel[:, index.free_joint_v_adr[:2].long()]
+        yaw = quat_yaw(torch, quat)
+        cos, sin = torch.cos(yaw), torch.sin(yaw)
+        heading_x = cos * forward_xy[0] - sin * forward_xy[1]
+        heading_y = sin * forward_xy[0] + cos * forward_xy[1]
+        fwd_vel = heading_x * vel[:, 0] + heading_y * vel[:, 1]
         return torch.exp(-torch.square(target_vel - fwd_vel))
 
     return _fn
@@ -2600,7 +2630,13 @@ def _make_directional_sar_env_cfg(
 
     rewards = {
         "forward_vel": RewardTermCfg(
-            func=_dir_vel_reward(entity_name, target_vel=target_vel),
+            func=_dir_vel_reward(
+                entity_name,
+                target_vel=target_vel,
+                forward_xy=_anterior_axis_xy(
+                    mj_model if mj_model is not None else spec_fn().compile()
+                ),
+            ),
             weight=5.0,
         ),
         "alive": RewardTermCfg(
