@@ -33,6 +33,7 @@ MODELS_VERSION_ENV_VAR = "MYOSUITE_MUSCLEMIMIC_MODELS_VERSION"
 # The release each published checkpoint was trained on; unlisted ones get the
 # default. MyoSuite's myoMimicFullbody-v0 walking_medium06 baseline was trained on
 # 1.0.6. List new checkpoints too, so they keep their release if the default moves.
+# Each holds for the commit pinned in myosuite.core.hf_io.HF_REVISIONS.
 PUBLISHED_CHECKPOINT_MODELS_VERSIONS: dict[str, str] = {"amathislab/mm-10m-2": "1.0.5"}
 
 _EQ_POLYCOEF = "eq_polycoef"

@@ -324,11 +324,14 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
             return
         from huggingface_hub import hf_hub_download
 
+        from myosuite.core.hf_io import pinned_revision
+
         path = Path(
             hf_hub_download(
                 repo_id=self.gait_clip_repo,
                 filename=self.gait_clip_filename,
                 repo_type="dataset",
+                revision=pinned_revision(self.gait_clip_repo),
             )
         )
         npz = np.load(path)

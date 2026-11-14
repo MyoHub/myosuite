@@ -380,6 +380,8 @@ def test_muscle_mesh_option_checks_env_and_downloads_on_use(
     """Atlas meshes come from the Hugging Face dataset; any env may ask for them."""
     import huggingface_hub
 
+    from myosuite.core.hf_io import HF_REVISIONS
+
     RenderConfig(env="myoArmReachRandom-v0", output=tmp_path, muscle_mesh="atlas")
     with pytest.raises(ValueError, match="not found"):
         RenderConfig(env="test", output=tmp_path, muscle_mesh=str(tmp_path / "x.glb"))
@@ -397,6 +399,7 @@ def test_muscle_mesh_option_checks_env_and_downloads_on_use(
             "repo_id": "myohub/myosuite-assets",
             "filename": "muscles/fullbody_atlas.glb",
             "repo_type": "dataset",
+            "revision": HF_REVISIONS["myohub/myosuite-assets"],
         }
     ]
     assert blender_render._resolve_muscle_mesh("own.glb") == Path("own.glb")

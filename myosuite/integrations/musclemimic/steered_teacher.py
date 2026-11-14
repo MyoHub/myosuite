@@ -221,6 +221,7 @@ class ChaseTagSteeredPair:
         """Download ``mm-10m-2`` and compass clips, then :meth:`create`."""
         from huggingface_hub import hf_hub_download, snapshot_download
 
+        from myosuite.core.hf_io import pinned_revision
         from myosuite.integrations.musclemimic.fullbody_model import (
             compile_mimic_fullbody_mjmodel,
             default_mimic_fullbody_config,
@@ -230,7 +231,11 @@ class ChaseTagSteeredPair:
         )
 
         raw = fbvs_env.unwrapped
-        root = Path(teacher_root or snapshot_download(repo_id="amathislab/mm-10m-2"))
+        teacher = "amathislab/mm-10m-2"
+        root = Path(
+            teacher_root
+            or snapshot_download(repo_id=teacher, revision=pinned_revision(teacher))
+        )
         cfg = default_mimic_fullbody_config()
         cfg.model_version = checkpoint_models_version("hf://amathislab/mm-10m-2")
         shadow, _, _ = compile_mimic_fullbody_mjmodel(cfg)
@@ -239,6 +244,7 @@ class ChaseTagSteeredPair:
                 repo_id="amathislab/musclemimic-retargeted",
                 filename=DEFAULT_WALK,
                 repo_type="dataset",
+                revision=pinned_revision("amathislab/musclemimic-retargeted"),
             )
         )
         cache = Path(
