@@ -246,12 +246,10 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.model.geom_size[self.object_gidn - 3 : self.object_gidn] = (
             self.object_default_size[-3:] + del_size
         )
-        object_gpos = self.model.geom_pos[self.object_gid0 : self.object_gidn]
-        self.model.geom_pos[self.object_gid0 : self.object_gidn] = (
-            object_gpos
-            / abs(object_gpos + 1e-16)
-            * (abs(self.object_default_pos) + del_size)
-        )
+        # Sign from the compiled defaults: the current geom_pos holds the last episode's draw.
+        self.model.geom_pos[self.object_gid0 : self.object_gidn] = np.sign(
+            self.object_default_pos
+        ) * (np.abs(self.object_default_pos) + del_size)
         refresh_geom_derived_fields(
             self.model, self._mj_spec, (self.object_bid, self.goal_bid)
         )
