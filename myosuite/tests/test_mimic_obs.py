@@ -83,21 +83,35 @@ def test_lookahead_shift_consistency():
 
 
 # ---------------------------------------------------------------------------
-# Boundary wrapping
+# Clip end
 # ---------------------------------------------------------------------------
 
 
-def test_lookahead_wraps_at_boundary():
+def test_lookahead_holds_the_last_frame():
+    """Past the clip end every slot shows the last frame, where the episode stops."""
     site_xpos, root_pos, root_vel = _make_clip()
-    # Frame near end: should not raise
+    root = np.array([0.1, -0.2, 0.9], dtype=np.float32)
+    k, stride, start = 5, 20, T - 30
     obs = mimic_lookahead_obs(
-        current_frame=T - 2,
+        current_frame=start,
         clip_site_xpos=site_xpos,
         clip_root_pos=root_pos,
         clip_root_vel=root_vel,
-        current_root_pos=np.zeros(3, dtype=np.float32),
+        current_root_pos=root,
+        k=k,
+        stride=stride,
     )
-    assert np.all(np.isfinite(obs))
+    for i, slot in enumerate(obs.reshape(k, -1), start=1):
+        frame = min(start + i * stride, T - 1)
+        expected = np.concatenate(
+            [
+                (site_xpos[frame] - root).reshape(-1),
+                root_pos[frame] - root,
+                root_vel[frame],
+                [frame / (T - 1)],
+            ]
+        )
+        np.testing.assert_allclose(slot, expected, rtol=0, atol=1e-6)
 
 
 # ---------------------------------------------------------------------------

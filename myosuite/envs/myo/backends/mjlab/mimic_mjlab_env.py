@@ -1146,7 +1146,11 @@ def _mimic_obs_lookahead(
         step = _mimic_episode_steps(env)  # (N,)
         clip_lengths = clip_source.clip_lengths(step)
         cur_frames = clip_source.frame_indices(step)
-        frames = [(cur_frames + i * stride) % clip_lengths for i in range(1, k + 1)]
+        # Held at the last frame, where the episode truncates (clip_end).
+        last_frame = clip_lengths - 1
+        frames = [
+            torch.minimum(cur_frames + i * stride, last_frame) for i in range(1, k + 1)
+        ]
         sites = torch.stack([clip_source.site_targets_at_frames(f) for f in frames], 1)
         rpos = rvel = None
         if root_pos and clip_source.ref_qpos(step) is not None:

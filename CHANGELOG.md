@@ -24,6 +24,14 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **The MuscleMimic clip lookahead holds the last frame at the clip end.** The 5-slot, 20-frame lookahead of the
+  clip-mode mjlab tasks (`myoMimicFullbody-v0`, `myoMimicBimanual-v0`, the `myoMuscleMimic*` aliases and the SAR
+  tasks) and of the CPU `MuscleMimicClipEnvV0` indexed future frames modulo the clip length, while the episode holds
+  the last frame and truncates there. In the last 100 frames of every clip the policy was shown targets from the clip
+  start: on a 300-frame walk at 1.2 m/s the root delta of a slot jumped from +0.48 m to -2.88 m. Both now hold the last
+  frame (`terms.mimic_obs.mimic_lookahead_obs` and the mjlab lookahead term), as MuscleMimic's own lookahead
+  (`FullbodyObsAdapter`), `MimicEnv` and the episode itself do. Observation sizes, rewards and dynamics are
+  unchanged; only lookahead values within 100 frames of a clip end change. See `docs/baseline_checkpoints.md`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
