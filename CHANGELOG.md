@@ -31,6 +31,10 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`ChaseTagSteeredPair` teacher sees its previous action.** The 354 muscle-excitation entries of the `mm-10m-2`
+  teacher's observation read the shadow body's `ctrl`, which was never written, so they were always 0. In training
+  they hold the previous action. `SteeredTeacher.action` now keeps the raw action (`[-1, 1]`) in the shadow's `ctrl`
+  and clears it on `reset`; the excitations sent to the FBVs agent are unchanged (`clip(action, 0, 1)`).
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808

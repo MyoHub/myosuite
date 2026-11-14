@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import mujoco
 import numpy as np
@@ -318,3 +319,46 @@ def test_write_clip_pose_alpha_blends_hinge() -> None:
     assert fd.qpos[knee] == pytest.approx(0.2)
     write_clip_pose(fd, amap, clip_qpos, clip_qvel, alpha=1.0, act=None)
     assert fd.qpos[knee] == pytest.approx(0.4)
+
+
+class _RecordingRunner:
+    """Teacher runner stub: returns fixed raw actions, records the excitation it sees."""
+
+    def __init__(self, actions: list[np.ndarray]) -> None:
+        self.obs_adapter = SimpleNamespace(with_clip=lambda clip: self.obs_adapter)
+        self._actions = iter(actions)
+        self.seen_ctrl: list[np.ndarray] = []
+
+    def action_for(self, data, clip, frame_idx, *, history_idx=None) -> np.ndarray:
+        self.seen_ctrl.append(data.ctrl.copy())
+        return next(self._actions)
+
+    def reset(self) -> None:
+        pass
+
+
+def test_teacher_observes_its_previous_raw_action_as_excitation() -> None:
+    """The excitation block holds the last raw action, as ``ctrl`` did in training."""
+    from myosuite.integrations.musclemimic.steered_teacher import SteeredTeacher
+
+    fbvs, shadow = _tiny_pair_models()
+    amap = build_agent_shadow_map(fbvs, shadow, "a0_", [0])
+    actions = [np.array([-0.6], np.float32), np.array([0.8], np.float32)] * 2
+    runner = _RecordingRunner(actions)
+    clip = SimpleNamespace(qpos=np.zeros((4, shadow.nq)))
+    teacher = SteeredTeacher(
+        runner=runner,
+        clips=dict.fromkeys(COMPASS_LABELS, clip),
+        shadow_model=shadow,
+        shadow_data=mujoco.MjData(shadow),
+    )
+    fd = mujoco.MjData(fbvs)
+
+    assert teacher.action(fd, amap) == pytest.approx([0.0])
+    assert teacher.action(fd, amap) == pytest.approx([0.8])
+    teacher.reset("E")
+    teacher.action(fd, amap)
+    teacher.action(fd, amap)
+
+    seen = [float(c[0]) for c in runner.seen_ctrl]
+    assert seen == pytest.approx([0.0, -0.6, 0.0, -0.6])
