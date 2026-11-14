@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 
 import mujoco
@@ -45,6 +46,46 @@ def _site_positions(
     return positions
 
 
+def _kinematic_model_key(model: mujoco.MjModel, ids: tuple[int, ...]) -> bytes:
+    """Digest of all kinematic and joint-coupling fields affecting *ids*."""
+    idx = list(ids)
+    h = hashlib.sha256()
+    h.update(
+        repr(
+            (model.nq, model.nv, model.njnt, model.nbody, model.nsite, model.neq, ids)
+        ).encode()
+    )
+    for arr in (
+        model.qpos0,
+        model.body_parentid,
+        model.body_jntadr,
+        model.body_jntnum,
+        model.body_pos,
+        model.body_quat,
+        model.jnt_type,
+        model.jnt_bodyid,
+        model.jnt_qposadr,
+        model.jnt_dofadr,
+        model.jnt_limited,
+        model.jnt_range,
+        model.jnt_pos,
+        model.jnt_axis,
+        model.site_bodyid[idx],
+        model.site_pos[idx],
+        model.site_quat[idx],
+        model.eq_type,
+        model.eq_obj1id,
+        model.eq_obj2id,
+        model.eq_objtype,
+        model.eq_active0,
+        model.eq_data,
+    ):
+        contig = np.ascontiguousarray(arr)
+        h.update(f"{contig.dtype.str}:{contig.shape}:".encode())
+        h.update(contig.tobytes())
+    return h.digest()
+
+
 def reachable_target_points(
     model: mujoco.MjModel,
     site_ids: Sequence[int],
@@ -80,12 +121,7 @@ def reachable_target_points(
         np.asarray(high, float).reshape(len(ids), 3),
     )
     key = (
-        model.jnt_range.tobytes(),
-        model.qpos0.tobytes(),
-        model.body_pos.tobytes(),
-        model.body_quat.tobytes(),
-        model.site_pos[list(ids)].tobytes(),
-        ids,
+        _kinematic_model_key(model, ids),
         low.tobytes(),
         high.tobytes(),
         n_samples,
@@ -135,20 +171,7 @@ def reachable_postures(
     """
     ids = tuple(int(i) for i in site_ids)
     key = (
-        *(
-            np.asarray(a).tobytes()
-            for a in (
-                model.jnt_range,
-                model.jnt_type,
-                model.qpos0,
-                model.body_pos,
-                model.body_quat,
-                model.site_pos[list(ids)],
-                model.eq_data,
-                model.eq_active0,
-            )
-        ),
-        ids,
+        _kinematic_model_key(model, ids),
         n_samples,
         seed,
     )

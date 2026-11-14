@@ -131,3 +131,41 @@ def test_reset_seed_determines_the_targets(mimic: gym.Env) -> None:
 def test_target_box_kwargs_are_rejected() -> None:
     with pytest.raises(TypeError, match="mimic_target_low"):
         make_env("myoMimicBimanual-v0", mimic_target_low=(0.0, 0.0, 0.0))
+
+
+def test_posture_and_target_caches_distinguish_hinge_axes() -> None:
+    from myosuite.utils.reach_workspace import (  # noqa: PLC0415
+        reachable_postures,
+        reachable_target_points,
+    )
+
+    xml = """
+    <mujoco>
+      <worldbody>
+        <body name="link">
+          <joint name="hinge" type="hinge" axis="{axis}" limited="true" range="-90 90"/>
+          <geom size="0.05"/>
+          <site name="tip" pos="0.3 0 0"/>
+        </body>
+      </worldbody>
+    </mujoco>
+    """
+    model_z = mujoco.MjModel.from_xml_string(xml.format(axis="0 0 1"))
+    model_y = mujoco.MjModel.from_xml_string(xml.format(axis="0 1 0"))
+
+    qpos_z, pos_z = reachable_postures(model_z, [0], n_samples=32, seed=0)
+    qpos_y, pos_y = reachable_postures(model_y, [0], n_samples=32, seed=0)
+    assert not np.allclose(pos_z, pos_y)
+
+    data_y = mujoco.MjData(model_y)
+    for q, expected in zip(qpos_y, pos_y, strict=True):
+        data_y.qpos[:] = q
+        mujoco.mj_kinematics(model_y, data_y)
+        np.testing.assert_allclose(data_y.site_xpos[0], expected[0], atol=1e-12)
+
+    low = np.array([[-1.0, -1.0, -1.0]])
+    high = np.array([[1.0, 1.0, 1.0]])
+    pts_z = reachable_target_points(model_z, [0], low, high, n_samples=32, seed=0)
+    pts_y = reachable_target_points(model_y, [0], low, high, n_samples=32, seed=0)
+    assert not np.allclose(pts_z, pts_y)
+    np.testing.assert_allclose(pts_y[:, 0, 1], 0.0, atol=1e-12)
