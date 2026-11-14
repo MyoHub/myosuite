@@ -31,6 +31,11 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* DynSyn grouping (`training/dynsyn`, `python -m myosuite_dynsyn.groups`) puts the dependents of joint equalities on
+  their couplings after every random velocity draw. They had their own random velocities, so on `myoLegWalk-v0`
+  the knee translations left their range by up to 121 ranges and every knee-crossing muscle changed length
+  together: `bfsh_r` was grouped with `bflh_r`, `semimem_r` and `grac_r`, `sart_r` with `tfl_r`. Groups of models
+  with joint couplings change; DynSyn checkpoints keep the groups they recorded.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
