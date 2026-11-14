@@ -218,7 +218,11 @@ def _rollout_score(
     seed: int,
     max_steps: int,
 ) -> dict[str, Any]:
-    """Evaluate one deterministic rollout without rendering."""
+    """Evaluate one deterministic rollout without rendering.
+
+    ``solved`` is the flag of the last step, as in ``train_sb3.py``'s evaluation:
+    reaching a target on the way through it is not a success.
+    """
     from myosuite.utils.sb3_sweep import solved_from_info
 
     obs, _ = env.reset(seed=seed)
@@ -229,7 +233,7 @@ def _rollout_score(
         action = policy(obs)
         obs, reward, terminated, truncated, info = env.step(action)
         episode_return += float(np.asarray(reward).sum())
-        solved = solved or solved_from_info(info)
+        solved = solved_from_info(info)
         if terminated or truncated:
             break
     return {
@@ -248,7 +252,11 @@ def _best_rollout(
     candidates: int,
     max_steps: int,
 ) -> dict[str, Any]:
-    """Choose solved rollouts first, then the highest-return rollout."""
+    """The median-return rollout of *candidates* seeds, with the share that solved.
+
+    Returns the chosen rollout's row plus ``solved_count`` over all candidates; the
+    median keeps the video representative instead of the luckiest seed.
+    """
     rows = [
         _rollout_score(
             env,
@@ -258,7 +266,8 @@ def _best_rollout(
         )
         for offset in range(candidates)
     ]
-    return max(rows, key=lambda row: (bool(row["solved"]), float(row["return"])))
+    median = sorted(rows, key=lambda row: float(row["return"]))[len(rows) // 2]
+    return {**median, "solved_count": sum(bool(row["solved"]) for row in rows)}
 
 
 def render_one(
@@ -320,7 +329,7 @@ def render_one(
             action = policy(obs)
             obs, reward, terminated, truncated, info = env.step(action)
             ep_r += float(np.asarray(reward).sum())
-            solved = solved or solved_from_info(info)
+            solved = solved_from_info(info)
             frames.append(
                 _capture_frame(
                     renderer,
@@ -332,8 +341,8 @@ def render_one(
                     overlay_lines=[
                         env_id,
                         (
-                            f"best of {candidates}  seed={best['seed']}  "
-                            f"{'SUCCESS' if best['solved'] else 'UNSOLVED'}"
+                            f"median of {candidates}  seed={best['seed']}  "
+                            f"solved {best['solved_count']}/{candidates}"
                         ),
                         f"step={step + 1}  R={ep_r:.2f}",
                     ],
@@ -353,6 +362,7 @@ def render_one(
             "return": ep_r,
             "solved": solved,
             "candidate_solved": bool(best["solved"]),
+            "solved_count": int(best["solved_count"]),
             "candidate_seed": int(best["seed"]),
             "candidates": candidates,
             "vec_normalize": str(vec_normalize_path) if vec_normalize_path else None,
@@ -364,10 +374,9 @@ def render_one(
 
 def _write_index(out_dir: Path, rows: list[dict[str, Any]]) -> Path:
     """Write a markdown gallery of rendered videos."""
-    success_count = sum(bool(row.get("solved")) for row in rows)
-    unsolved_count = sum(
-        row.get("status") == "ok" and not row.get("solved") for row in rows
-    )
+    rated = [row for row in rows if "solved_count" in row]
+    solved = sum(row["solved_count"] for row in rated)
+    episodes = sum(row["candidates"] for row in rated)
     lines = [
         "# SB3 policy rollout audit",
         "",
@@ -375,22 +384,23 @@ def _write_index(out_dir: Path, rows: list[dict[str, Any]]) -> Path:
         "",
         (
             "These checkpoints passed the reward-improvement smoke gate. "
-            "Only rows marked **success** reached the environment's `solved` condition; "
-            "unsolved rows are not task solutions."
+            "*Solved* counts the deterministic rollouts over all candidate seeds whose "
+            "last step met the environment's `solved` condition; the video shows the "
+            "median-return rollout."
         ),
         "",
-        f"**{success_count} successful rollouts · {unsolved_count} unsolved rollouts**",
+        f"**{solved}/{episodes} rollouts solved over {len(rated)} envs**",
         "",
-        "| Env | Rollout | Frames | Return | Video |",
+        "| Env | Solved | Frames | Return | Video |",
         "|---|---|---:|---:|---|",
     ]
     for row in rows:
         eid = row.get("env_id", "?")
         status = row.get("status", "?")
         rollout = (
-            "success"
-            if row.get("solved")
-            else ("unsolved" if status == "ok" else status)
+            f"{row['solved_count']}/{row['candidates']}"
+            if "solved_count" in row
+            else status
         )
         frames = row.get("frames", "")
         ret = row.get("return", "")

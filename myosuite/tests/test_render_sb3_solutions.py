@@ -76,3 +76,26 @@ def test_sb3_policy_normalizes_with_the_saved_vec_normalize(tmp_path: Path) -> N
     policy, stats = _sb3_policy(tmp_path / "ppo_final.zip")
     assert stats == tmp_path / "vecnormalize.pkl"
     np.testing.assert_allclose(policy(raw), expected, atol=1e-6)
+
+
+class _PassThroughEnv:
+    """Solved at step 3 of 5, not at the end; the return grows with the seed."""
+
+    def reset(self, seed: int = 0):  # noqa: ANN201
+        self.seed, self.t = seed, 0
+        return np.zeros(1), {}
+
+    def step(self, action):  # noqa: ANN001, ANN201
+        self.t += 1
+        solved = self.t == 3 or (self.seed == 4 and self.t == 5)
+        return np.zeros(1), float(self.seed), False, self.t == 5, {"solved": solved}
+
+
+def test_rollouts_count_as_solved_only_on_their_last_step() -> None:
+    from scripts.render_sb3_solutions import _best_rollout, _rollout_score
+
+    env, policy = _PassThroughEnv(), lambda obs: np.zeros(1)
+    assert _rollout_score(env, policy, seed=0, max_steps=10)["solved"] is False
+    best = _best_rollout(env, policy, seed=0, candidates=5, max_steps=10)
+    assert best["solved_count"] == 1
+    assert best["seed"] == 2  # median return, not the solved seed 4
