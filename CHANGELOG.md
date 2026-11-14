@@ -40,7 +40,8 @@ Changes since **v3.1.0** (2026-11-11).
   divergence check, and `MjInstabilityTerminationWrapper` found none to call, so after MuJoCo reset a diverged
   simulation to `qpos0` the match went on from that state and could be scored as a tag. Its `step` now uses the same
   check as `MyoGymnasiumEnv` (`mj_diverged`): the diverged step deals no damage, sees no falls, pays no positive
-  reward to either agent and terminates both; `info["mj_unstable"]` is on every step, and
+  reward or `info["score"]` (even on the final time-limit step of an `EVADE` bout) to either agent and terminates
+  both; `info["mj_unstable"]` is on every step so evaluators can record diverged bouts as void/draw, and
   `env.unwrapped.mj_instability_termination = False` switches it off.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
