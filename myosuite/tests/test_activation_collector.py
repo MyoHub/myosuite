@@ -390,6 +390,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
             n_episodes_per_clip=n_episodes,
             reward_percentile=percentile,
             max_steps_per_episode=5,
+            warmup_steps=0,
             use_random_start=True,
             seed=0,
         )
@@ -431,6 +432,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
             n_episodes_per_clip=10,
             reward_percentile=80,
             max_steps_per_episode=5,
+            warmup_steps=0,
         )
 
         rewards = iter([0.0] * 200)
@@ -504,6 +506,90 @@ class TestRewardFilterLengthBias(unittest.TestCase):
         self.assertLess(min(kept_starts), 100)
 
 
+class TestFixedLengthEpisodes(unittest.TestCase):
+    """Episodes start on the reference, so their error grows with time since the start."""
+
+    def _collect(self, **overrides):  # noqa: ANN003, ANN202
+        from myosuite.integrations.musclemimic import activation_collector as ac
+
+        model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+        clip = _slider_clip(300)
+        runner = _EpisodeMarkingRunner()
+        quality_rng = np.random.default_rng(1)
+        episodes: list[dict] = []
+        init_episode = ac._init_episode
+
+        def _init(model, data, clip, *, start_frame=0):  # noqa: ANN001
+            episodes.append(
+                {"start": start_frame, "quality": quality_rng.uniform(1, 2), "steps": 0}
+            )
+            runner.episode_id = len(episodes) - 1
+            init_episode(model, data, clip, start_frame=start_frame)
+
+        def _drifting_error(model, data, clip, frame_idx):  # noqa: ANN001
+            episode = episodes[-1]
+            episode["steps"] += 1
+            episode.setdefault("frames", []).append(frame_idx)
+            return -1e-3 * episode["quality"] * episode["steps"]
+
+        config = ac.CollectionConfig(
+            n_episodes_per_clip=200, reward_percentile=80, **overrides
+        )
+        with (
+            patch.object(ac, "_init_episode", side_effect=_init),
+            patch.object(ac, "_tracking_reward", side_effect=_drifting_error),
+        ):
+            acts = ac.collect_activations_from_clip(
+                runner, model, clip, config, rng=np.random.default_rng(0)
+            )
+        return acts, episodes, config
+
+    def test_every_episode_has_the_same_length_and_quality_decides(self) -> None:
+        acts, episodes, config = self._collect()
+        self.assertEqual({e["steps"] for e in episodes}, {149})
+        n_preview = len(episodes) - config.n_episodes_per_clip
+        worst = np.percentile([e["quality"] for e in episodes[:n_preview]], 20)
+        expected = [
+            i
+            for i, e in enumerate(episodes)
+            if i >= n_preview and e["quality"] <= worst
+        ]
+        self.assertEqual(sorted({int(i) for i in acts[:, 0]}), expected)
+
+    def test_warmup_activations_are_left_out(self) -> None:
+        acts, _, _ = self._collect(warmup_steps=10)
+        counts = np.unique(acts[:, 0], return_counts=True)[1]
+        self.assertTrue(np.all(counts == 149 - 10))
+
+    def test_each_step_is_scored_against_the_frame_it_reached(self) -> None:
+        _, episodes, _ = self._collect()
+        for e in episodes:
+            self.assertEqual(e["frames"], list(range(e["start"] + 1, e["start"] + 150)))
+
+
+class TestFallenEpisodes(unittest.TestCase):
+    def test_a_fallen_episode_is_rejected(self) -> None:
+        from myosuite.integrations.musclemimic import activation_collector as ac
+
+        model = mujoco.MjModel.from_xml_string(
+            '<mujoco><worldbody><body><freejoint/><geom size=".1" mass="1"/></body>'
+            '</worldbody><actuator><general name="a" site="s" dyntype="filter"/>'
+            "</actuator></mujoco>".replace(
+                "<freejoint/>", '<freejoint/><site name="s"/>'
+            )
+        )
+        qpos = np.tile([0.0, 0.0, 0.3, 1.0, 0.0, 0.0, 0.0], (40, 1))
+        clip = types.SimpleNamespace(
+            qpos=qpos, qvel=None, site_xpos=None, source_path="low.npz"
+        )
+        config = ac.CollectionConfig(n_episodes_per_clip=5, warmup_steps=0)
+        with patch.object(ac, "_tracking_reward", return_value=0.0):
+            acts = ac.collect_activations_from_clip(
+                _StubRunner(), model, clip, config, rng=np.random.default_rng(0)
+            )
+        self.assertEqual(acts.shape, (0, model.nu))
+
+
 # ---------------------------------------------------------------------------
 # Tests: collect_activations (multi-clip)
 # ---------------------------------------------------------------------------
@@ -523,7 +609,9 @@ class TestCollectActivations(unittest.TestCase):
         )
 
         runner, model, clips = self._build_inputs(n_clips=3)
-        config = CollectionConfig(n_episodes_per_clip=5, max_steps_per_episode=3)
+        config = CollectionConfig(
+            n_episodes_per_clip=5, max_steps_per_episode=3, warmup_steps=0
+        )
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
@@ -547,7 +635,9 @@ class TestCollectActivations(unittest.TestCase):
         )
 
         runner, model, clips = self._build_inputs(n_clips=1)
-        config = CollectionConfig(n_episodes_per_clip=5, max_steps_per_episode=0)
+        config = CollectionConfig(
+            n_episodes_per_clip=5, max_steps_per_episode=0, warmup_steps=0
+        )
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
@@ -568,7 +658,9 @@ class TestCollectActivations(unittest.TestCase):
         )
 
         runner, model, clips = self._build_inputs(n_clips=2)
-        config = CollectionConfig(n_episodes_per_clip=5, max_steps_per_episode=3)
+        config = CollectionConfig(
+            n_episodes_per_clip=5, max_steps_per_episode=3, warmup_steps=0
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp) / "acts.npy"
@@ -601,7 +693,8 @@ class TestCollectActivations(unittest.TestCase):
             collect_activations,
         )
 
-        runner, model, clips = self._build_inputs(n_clips=1)
+        runner, model, _ = self._build_inputs(n_clips=1)
+        clips = [_make_clip(60)]  # the default warm-up needs a window over 10 steps
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
