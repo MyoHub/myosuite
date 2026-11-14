@@ -102,7 +102,8 @@ def perturbed_model(
     """A copy of *model* with sampled muscle strength and segment masses.
 
     Peak forces are written explicitly first, because an automatic peak force
-    (``force="-1"``) follows ``acc0``, which changes with the masses. Mass and
+    (``force="-1"``) follows ``acc0``, which changes with the masses. Only a muscle
+    bias holds a peak force; other bias types are left as they are. Mass and
     inertia scale together (each body keeps its inertial frame), then
     ``mj_setConst`` refreshes the derived constants.
 
@@ -116,14 +117,15 @@ def perturbed_model(
     """
     m = copy.deepcopy(model)
     muscle = m.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE
+    passive = muscle & (m.actuator_biastype == mujoco.mjtBias.mjBIAS_MUSCLE)
     bias = m.actuator_biasprm[:, 2].copy()
-    auto = muscle & (bias < 0)
+    auto = passive & (bias < 0)
     bias[auto] = m.actuator_biasprm[auto, 3] / np.maximum(
         m.actuator_acc0[auto], mujoco.mjMINVAL
     )
     strength = _lognormal(rng, config.strength_cv, m.nu)
     m.actuator_gainprm[muscle, 2] = _peak_force(m)[muscle] * strength[muscle]
-    m.actuator_biasprm[muscle, 2] = bias[muscle] * strength[muscle]
+    m.actuator_biasprm[passive, 2] = bias[passive] * strength[passive]
     moving = m.body_weldid != 0
     mass = _lognormal(rng, config.mass_cv, m.nbody)
     m.body_mass[moving] *= mass[moving]

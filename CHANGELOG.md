@@ -31,6 +31,9 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `myosuite.biomechanics.uncertainty.perturbed_model` scales the passive peak force only where the bias is a
+  muscle bias. For `gaintype="muscle"` with an affine bias it had replaced the velocity coefficient
+  (`biasprm="0 0 -10"` became 0), also with `strength_cv=0`, so every sample dropped that damping term.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
