@@ -13,6 +13,18 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Fixed
+
+* **ChaseTag EVADE episodes can be won again.** Since 3.1.0 `ChaseTagEnv` compared the summed `data.time` with
+  `maxTime + 1e-9`. After the last step the time limit allows, that sum is 20.00000000000146 s (20 s envs) or
+  10.000000000000009 s (10 s envs), so the win never fired: an evader that survived the whole episode ended with
+  `solved = 0` and score 0, while one tagged at 19.9 s scored 0.995. The time limit is now counted in control steps
+  (`round(maxTime / dt)`), and the last step of a survived EVADE episode terminates with `solved = 1` (reward weight
+  +1000) and score 1.0, as in 3.0. This changes the returns of the ids that sample EVADE:
+  `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
+  time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
+  on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11
