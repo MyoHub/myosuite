@@ -141,6 +141,55 @@ def test_expand_motion_clip_to_model_expands_named_subset() -> None:
     )
 
 
+@pytest.mark.parametrize("with_keyframe", [False, True])
+def test_partial_clip_preserves_unspecified_model_state(with_keyframe: bool) -> None:
+    """Missing joints use keyframe zero, or the model reference pose and rest velocity."""
+    keyframe = (
+        '<keyframe><key qpos="4 5 6 1 0 0 0 0.8 0.9" '
+        'qvel="0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8"/></keyframe>'
+        if with_keyframe
+        else ""
+    )
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><compiler angle="radian"/><worldbody>'
+        '<body pos="1 2 3" quat="0.9238795325 0 0 0.3826834324">'
+        '<freejoint name="root"/><geom size="0.1"/><body>'
+        '<joint name="joint_a"/><joint name="joint_b" axis="0 1 0" ref="0.4"/>'
+        f'<geom size="0.1"/></body></body></worldbody>{keyframe}</mujoco>'
+    )
+    clip = MotionClip(
+        qpos=np.array([[0.1], [0.2]]),
+        qvel=np.array([[0.3], [0.4]]),
+        site_xpos=None,
+        site_names=None,
+        qpos_joint_names=["joint_a"],
+        qvel_joint_names=["joint_a"],
+    )
+    model_reference = model.qpos0.copy()
+    expected_qpos = np.repeat(
+        (model.key_qpos[0] if with_keyframe else model.qpos0)[None, :], 2, axis=0
+    )
+    expected_qvel = np.repeat(
+        (model.key_qvel[0] if with_keyframe else np.zeros(model.nv))[None, :],
+        2,
+        axis=0,
+    )
+    expected_qpos[:, 7] = clip.qpos[:, 0]
+    expected_qvel[:, 6] = clip.qvel[:, 0]
+
+    expanded = expand_motion_clip_to_model(clip, model)
+
+    np.testing.assert_array_equal(expanded.qpos, expected_qpos)
+    np.testing.assert_array_equal(expanded.qvel, expected_qvel)
+    np.testing.assert_allclose(np.linalg.norm(expanded.qpos[:, 3:7], axis=1), 1.0)
+    np.testing.assert_array_equal(model.qpos0, model_reference)
+    np.testing.assert_array_equal(clip.qpos, [[0.1], [0.2]])
+    np.testing.assert_array_equal(clip.qvel, [[0.3], [0.4]])
+    again = expand_motion_clip_to_model(expanded, model)
+    np.testing.assert_array_equal(again.qpos, expanded.qpos)
+    np.testing.assert_array_equal(again.qvel, expanded.qvel)
+
+
 def test_motion_clip_weights_default_to_none(tmp_path: Path) -> None:
     """Backward compatible: clips without a weights entry have ``weights is None``."""
     p = tmp_path / "m.npz"
