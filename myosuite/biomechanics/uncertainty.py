@@ -19,7 +19,10 @@ quantile bands next to the nominal solution::
 
 Joint noise is added to the measured angles (a parametric bootstrap): the bands
 are centred on the measured motion and have the right width when the noise
-level matches the tracker's. With ``n`` samples, an interpolated ``[q, 1 - q]``
+level matches the tracker's. ``joint_noise_deg`` is the error that remains after
+the analysis' low-pass filter, so the bands do not narrow when the same motion is
+sampled faster; ``joint_offset_deg`` adds a constant error per sample and joint
+(marker placement, soft-tissue offset). With ``n`` samples, an interpolated ``[q, 1 - q]``
 band holds a new draw with probability of about ``(n - 1)(1 - 2q) / (n + 1)``
 (0.86 for 50 samples and a nominal 90 % band); use a few hundred samples for
 calibrated bands.
@@ -32,6 +35,7 @@ from dataclasses import dataclass, fields
 
 import mujoco
 import numpy as np
+from scipy import signal
 
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics
@@ -49,8 +53,11 @@ class UncertaintyConfig:
 
     Attributes:
         samples: Number of Monte Carlo samples.
-        joint_noise_deg: Standard deviation of Gaussian noise added to every
-            hinge angle of every frame [deg].
+        joint_noise_deg: Standard deviation of the per-frame hinge-angle error
+            that remains after the analysis' low-pass filter [deg]; without a
+            filter it is white per-frame noise of that size.
+        joint_offset_deg: Standard deviation of a constant hinge-angle error per
+            sample and joint [deg].
         strength_cv: Coefficient of variation of a log-normal factor (mean 1)
             on each muscle's peak active and passive force.
         mass_cv: Coefficient of variation of a log-normal factor (mean 1) on
@@ -61,6 +68,7 @@ class UncertaintyConfig:
 
     samples: int = 50
     joint_noise_deg: float = 0.0
+    joint_offset_deg: float = 0.0
     strength_cv: float = 0.0
     mass_cv: float = 0.0
     quantiles: tuple[float, ...] = (0.05, 0.5, 0.95)
@@ -132,6 +140,46 @@ def perturbed_model(
     return m
 
 
+def _filter_noise_gain(dt: float, lowpass_hz: float, filter_order: int = 2) -> float:
+    """RMS gain on white noise of ``clip_kinematics``' zero-phase Butterworth filter."""
+    sos = signal.butter(filter_order, lowpass_hz, fs=1.0 / dt, output="sos")
+    n = 2 * int(np.ceil(20.0 / (lowpass_hz * dt))) + 1
+    impulse = np.zeros(n)
+    impulse[n // 2] = 1.0
+    return float(np.linalg.norm(signal.sosfiltfilt(sos, impulse, padlen=0)))
+
+
+def joint_noise(
+    rng: np.random.Generator,
+    frames: int,
+    joints: int,
+    dt: float,
+    lowpass_hz: float | None,
+    config: UncertaintyConfig,
+) -> np.ndarray:
+    """``(frames, joints)`` hinge-angle errors [rad] of one sample.
+
+    White per-frame noise scaled by the filter's noise gain at this frame rate,
+    so that after ``clip_kinematics(..., lowpass_hz=lowpass_hz)`` its standard
+    deviation is ``joint_noise_deg``, plus a constant offset per joint.
+
+    Args:
+        rng: Random generator.
+        frames: Number of frames.
+        joints: Number of hinge joints.
+        dt: Frame period [s].
+        lowpass_hz: The analysis' filter cut-off, or ``None``.
+        config: Noise levels.
+
+    Returns:
+        The errors to add to the hinge angles.
+    """
+    gain = 1.0 if lowpass_hz is None else _filter_noise_gain(dt, lowpass_hz)
+    noise = config.joint_noise_deg / gain * rng.standard_normal((frames, joints))
+    offset = config.joint_offset_deg * rng.standard_normal(joints)
+    return np.radians(noise + offset)
+
+
 def static_optimization_bands(
     model: mujoco.MjModel,
     qpos: np.ndarray,
@@ -174,9 +222,7 @@ def static_optimization_bands(
     for _ in range(cfg.samples):
         m = perturbed_model(model, rng, cfg)
         q = np.array(qpos, dtype=np.float64)
-        q[:, hinges] += np.radians(cfg.joint_noise_deg) * rng.standard_normal(
-            (len(q), len(hinges))
-        )
+        q[:, hinges] += joint_noise(rng, len(q), len(hinges), dt, lowpass_hz, cfg)
         samples.append(analyse(m, q))
     bands = {
         f.name: np.quantile(

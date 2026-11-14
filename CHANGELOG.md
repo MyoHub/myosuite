@@ -31,6 +31,11 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `static_optimization_bands`: `joint_noise_deg` is the standard deviation of the joint-angle error that remains
+  after the analysis' low-pass filter. It was white per-frame noise, of which the filter keeps about
+  `sqrt(2 fc / fs)`, so the same motion gave narrower bands at a higher frame rate (torque band 0.52 N m at 100 Hz,
+  0.28 N m at 400 Hz for 0.5 deg at 6 Hz on the elbow). Bands for a given `joint_noise_deg` are now wider and do not
+  depend on the frame rate. New `joint_offset_deg` adds a constant error per sample and joint.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
