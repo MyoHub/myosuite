@@ -313,6 +313,26 @@ def camargo2021_main(argv: Sequence[str] | None = None) -> int:
     return _dispatch_dataset("camargo2021", argv)
 
 
+def quesada2024_main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the Quesada et al. (2024) upper-limb reaching dataset."""
+    return _dispatch_dataset("quesada2024", argv)
+
+
+def emg2pose_main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the Salter et al. (2024) emg2pose hand dataset."""
+    return _dispatch_dataset("emg2pose", argv)
+
+
+def ninapro_db5_main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the Pizzolato et al. (2017) NinaPro DB5 forearm/hand dataset."""
+    return _dispatch_dataset("ninapro_db5", argv)
+
+
+def grabmyo_main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the Pradhan et al. (2022) GRABMyo forearm/wrist dataset."""
+    return _dispatch_dataset("grabmyo", argv)
+
+
 def custom_emg_main(argv: Sequence[str] | None = None) -> int:
     """Entry point for custom manifest or standardized ``EMGTrial`` ``.npz`` directories."""
     return _dispatch_dataset("custom", argv)

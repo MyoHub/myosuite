@@ -16,6 +16,15 @@ import pytest
 import scipy.io as sio
 
 from scripts.validation.emg_sources import CAMARGO_CHANNELS, Camargo2021Source
+from scripts.validation.emg_upper_limb import (
+    EMG2POSE_JOINT_NAMES,
+    GrabMyoSource,
+    map_cyberglove_to_hand_qpos,
+    map_emg2pose_to_hand_qpos,
+    map_upper_limb_to_qpos,
+    map_upper_limb_torques_to_qfrc,
+    read_wfdb_record,
+)
 from scripts.validation.validate_emg import main as cli_main
 
 pytestmark = pytest.mark.tier1
@@ -50,6 +59,59 @@ _TWO_MUSCLE_ARM_XML = """
     <muscle name="biceps_r" tendon="bic_tendon" force="120" lengthrange="0.09 0.20"/>
     <muscle name="triceps_r" tendon="tri_tendon" force="120" lengthrange="0.09 0.20"/>
   </actuator>
+</mujoco>
+"""
+
+_MINI_SCAPULOTHORACIC_XML = """
+<mujoco model="mini_scapulothoracic">
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="chest_r" pos="0 0 1.0">
+      <geom name="scapulothoracic_ellipsoid_r" type="ellipsoid" size="0.07 0.07 0.12"/>
+      <body name="clavicle_r" pos="0.01 0.08 0.10">
+        <joint name="sternoclavicular_r2_r" type="hinge" axis="0 0 1"/>
+        <joint name="sternoclavicular_r3_r" type="hinge" axis="1 0 0"/>
+        <joint name="sternoclavicular_r1_r" type="hinge" axis="0 1 0"/>
+        <inertial pos="0 0 0" mass="0.15" diaginertia="1e-4 1e-4 1e-4"/>
+        <body name="scapula_r" pos="-0.02 0.12 0.01">
+          <joint name="acromioclavicular_r" type="ball"/>
+          <inertial pos="0 0 0" mass="0.35" diaginertia="2e-4 2e-4 2e-4"/>
+          <body name="humerus_r" pos="0 0.02 -0.02">
+            <joint name="elv_angle_r" type="hinge" axis="0 0 1"/>
+            <joint name="shoulder_elv_r" type="hinge" axis="1 0 0"/>
+            <joint name="shoulder1_r2_r" type="hinge" axis="0 0 1"/>
+            <joint name="shoulder_rot_r" type="hinge" axis="0 0 1"/>
+            <inertial pos="0 0 -0.15" mass="1.8" diaginertia="0.01 0.01 0.002"/>
+            <body name="ulna_r" pos="0 0 -0.28">
+              <joint name="elbow_flexion_r" type="hinge" axis="0 1 0" range="0 2.3"/>
+              <inertial pos="0 0 -0.12" mass="1.0" diaginertia="0.005 0.005 0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+"""
+
+_MINI_HAND_XML = """
+<mujoco model="mini_hand">
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="palm" pos="0 0 0">
+      <body name="thumb" pos="0.02 0 0">
+        <joint name="cmc_abduction_r" type="hinge" axis="1 0 0" range="-0.5 0.8"/>
+        <joint name="cmc_flexion_r" type="hinge" axis="0 1 0" range="-0.5 0.9"/>
+        <inertial pos="0 0 0" mass="0.02" diaginertia="1e-5 1e-5 1e-5"/>
+      </body>
+      <body name="index" pos="0.04 0 0">
+        <joint name="mcp2_flexion_r" type="hinge" axis="0 1 0" range="-0.2 1.5"/>
+        <joint name="pm2_flexion_r" type="hinge" axis="0 1 0" range="0.0 1.6"/>
+        <joint name="md2_flexion_r" type="hinge" axis="0 1 0" range="0.0 1.4"/>
+        <inertial pos="0 0 0" mass="0.02" diaginertia="1e-5 1e-5 1e-5"/>
+      </body>
+    </body>
+  </worldbody>
 </mujoco>
 """
 
@@ -212,13 +274,18 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
     )
     assert "eval" in pyproject["project"]["optional-dependencies"]
     ds_eps = pyproject["project"]["entry-points"]["mm_evalkit.datasets"]
-    for ep_key in (
+    expected_plugins = {
         "rajagopal2016",
         "lencioni2019",
         "dimitrov2023",
         "camargo2021",
+        "quesada2024",
+        "emg2pose",
+        "ninapro-db5",
+        "grabmyo",
         "custom-emg",
-    ):
+    }
+    for ep_key in expected_plugins:
         assert ep_key in ds_eps
         mod_name, attr_name = ds_eps[ep_key].split(":")
         assert callable(getattr(importlib.import_module(mod_name), attr_name))
@@ -229,14 +296,7 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
         pass
     else:
         names = {d.name for d in registered_datasets()}
-        if "custom-emg" in names:
-            assert {
-                "rajagopal2016",
-                "lencioni2019",
-                "dimitrov2023",
-                "camargo2021",
-                "custom-emg",
-            } <= names
+        if expected_plugins <= names:
             reg_out = tmp_path / "registry_report"
             assert (
                 run_dataset(
@@ -253,6 +313,46 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
                 == 0
             )
             assert (reg_out / "emg_validation_summary.json").exists()
+
+
+def test_upper_limb_and_hand_coordinate_mappers() -> None:
+    m_st = mujoco.MjModel.from_xml_string(_MINI_SCAPULOTHORACIC_XML)
+    coords = {
+        "elv_angle": np.linspace(0.5, 1.2, 6),
+        "shoulder_elv": np.linspace(0.2, 1.4, 6),
+        "shoulder_rot": np.linspace(-0.3, 0.1, 6),
+        "elbow_flexion": np.linspace(0.4, 1.5, 6),
+    }
+    q_st, ctrl_adr, has_st = map_upper_limb_to_qpos(m_st, coords)
+    assert q_st.shape == (6, m_st.nq)
+    assert has_st is True
+    assert len(ctrl_adr) >= 4
+    ac_adr = int(m_st.jnt_qposadr[m_st.joint("acromioclavicular_r").id])
+    assert np.allclose(
+        np.linalg.norm(q_st[:, ac_adr : ac_adr + 4], axis=1), 1.0, atol=1e-7
+    )
+    torques = {
+        "elv_angle": np.full(6, 2.0),
+        "shoulder_elv": np.linspace(5.0, 15.0, 6),
+        "shoulder_rot": np.full(6, -1.0),
+        "elbow_flexion": np.linspace(3.0, 8.0, 6),
+    }
+    ext_qfrc = map_upper_limb_torques_to_qfrc(m_st, q_st, 0.02, coords, torques)
+    assert ext_qfrc.shape == (6, m_st.nv)
+    assert np.isfinite(ext_qfrc).all()
+
+    m_hand = mujoco.MjModel.from_xml_string(_MINI_HAND_XML)
+    pose_20 = np.full((8, len(EMG2POSE_JOINT_NAMES)), 0.35, dtype=np.float64)
+    q_e2p, e2p_adr = map_emg2pose_to_hand_qpos(m_hand, pose_20)
+    assert q_e2p.shape == (8, m_hand.nq)
+    assert len(e2p_adr) == 5
+
+    glove = np.tile(np.linspace(80.0, 140.0, 22), (8, 1))
+    rest_med = np.full(22, 90.0)
+    span = np.full(22, 60.0)
+    q_cg, cg_adr = map_cyberglove_to_hand_qpos(m_hand, glove, rest_med, span)
+    assert q_cg.shape == (8, m_hand.nq)
+    assert len(cg_adr) == 5
 
 
 def test_camargo2021_source_synthetic(tmp_path: Path) -> None:
@@ -382,3 +482,85 @@ def test_camargo2021_source_synthetic(tmp_path: Path) -> None:
     assert trial.qpos is not None and trial.external_qfrc is not None
     assert trial.meta["force_plates_matched"] is True
     assert 0.9 <= float(trial.time[-1]) <= 1.1
+
+
+def test_grabmyo_wfdb_and_source_synthetic(tmp_path: Path) -> None:
+    part_dir = tmp_path / "Session1" / "session1_participant1"
+    part_dir.mkdir(parents=True)
+    fs = 2048
+    n_samp = 2048
+    ch_names = ("F1", "F2", "U1", "W1", "W2")
+    rng = np.random.default_rng(11)
+
+    for gid, amp in ((11, 0.15), (12, 0.18), (13, 0.12), (17, 0.015)):
+        stem = f"session1_participant1_gesture{gid}_trial1"
+        phys = rng.normal(0.0, amp, size=(n_samp, len(ch_names)))
+        gain = 10000.0
+        base = 200
+        raw_i16 = np.clip(np.rint(phys * gain + base), -32768, 32767).astype("<i2")
+        (part_dir / f"{stem}.dat").write_bytes(raw_i16.tobytes())
+        hea_lines = [
+            f"{stem} {len(ch_names)} {fs} {n_samp}",
+            *[f"{stem}.dat 16 {gain}({base})/mV 16 0 0 0 0 {nm}" for nm in ch_names],
+        ]
+        (part_dir / f"{stem}.hea").write_text(
+            "\n".join(hea_lines) + "\n", encoding="utf-8"
+        )
+
+    fs_out, names_out, sig_out = read_wfdb_record(
+        part_dir / "session1_participant1_gesture11_trial1.hea"
+    )
+    assert fs_out == 2048.0
+    assert names_out == ch_names
+    assert sig_out.shape == (n_samp, 5)
+
+    hand_xml = """
+    <mujoco model="mini_wrist_hand">
+      <compiler angle="radian"/>
+      <worldbody>
+        <body name="forearm" pos="0 0 0">
+          <joint name="pro_sup_r" type="hinge" axis="0 0 1" range="-1.5 1.5"/>
+          <joint name="flexion_r" type="hinge" axis="0 1 0" range="-1.2 1.2"/>
+          <inertial pos="0 0 0" mass="0.5" diaginertia="1e-3 1e-3 1e-3"/>
+        </body>
+      </worldbody>
+      <actuator>
+        <general name="fcr_r" joint="flexion_r" gear="15"/>
+        <general name="ecrl_r" joint="flexion_r" gear="-15"/>
+        <general name="pt_r" joint="pro_sup_r" gear="12"/>
+        <general name="sup_r" joint="pro_sup_r" gear="-12"/>
+      </actuator>
+    </mujoco>
+    """
+    m_wh = mujoco.MjModel.from_xml_string(hand_xml)
+    src = GrabMyoSource(tmp_path, rest_slice_s=0.2, gesture_slice_s=0.4)
+    assert list(src.trial_ids()) == ["Session1/participant1/trial1_wrist_forearm"]
+    trial = src.get_trial("Session1/participant1/trial1_wrist_forearm", model=m_wh)
+    assert trial.channel_names == ("F1", "F2", "W1", "W2")
+    assert trial.qpos is not None
+    assert len(trial.meta["controlled_qpos_adr"]) == 2
+
+    xml_wh = tmp_path / "mini_wrist_hand.xml"
+    xml_wh.write_text(hand_xml, encoding="utf-8")
+    try:
+        from mm_evalkit.registry import registered_datasets, run_dataset
+    except ImportError:
+        pass
+    else:
+        if "grabmyo" in {d.name for d in registered_datasets()}:
+            grab_out = tmp_path / "grabmyo_plugin_report"
+            assert (
+                run_dataset(
+                    "grabmyo",
+                    [
+                        "--data-root",
+                        str(tmp_path),
+                        "--model",
+                        str(xml_wh),
+                        "--out-dir",
+                        str(grab_out),
+                    ],
+                )
+                == 0
+            )
+            assert (grab_out / "emg_validation_summary.json").exists()
