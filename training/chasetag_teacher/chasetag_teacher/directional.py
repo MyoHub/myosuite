@@ -212,10 +212,12 @@ class DirectionalScene:
         import mujoco  # noqa: PLC0415
 
         from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_scene  # noqa: PLC0415
+        from myosuite.physics.joint_coupling import JointCouplings  # noqa: PLC0415
 
         self.mj = mujoco
         self.model = compiled_scene("myofullbody")
         self.data = mujoco.MjData(self.model)
+        self._couplings = JointCouplings.from_model(self.model)
         self.frame_skip = frame_skip
         self.dt = frame_skip * float(self.model.opt.timestep)
         self.nq, self.nv = self.model.nq, self.model.nv
@@ -224,6 +226,8 @@ class DirectionalScene:
         self, yaw: float, rng: np.random.Generator, joint_noise: float = 0.02
     ) -> None:
         """Standing pose (``qpos0``) turned to the facing direction ``yaw`` (rad, world), small joint noise."""
+        from myosuite.physics.joint_coupling import project_joint_couplings  # noqa: PLC0415
+
         m, d = self.model, self.data
         self.mj.mj_resetData(m, d)
         q0 = m.qpos0.copy()
@@ -233,6 +237,7 @@ class DirectionalScene:
         q0[3:7] = out
         q0[7:] += rng.normal(0.0, joint_noise, self.nq - 7)
         d.qpos[:] = q0
+        project_joint_couplings(self._couplings, d.qpos, d.qvel)
         self.mj.mj_forward(m, d)
 
     def step(self, action: np.ndarray) -> None:

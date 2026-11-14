@@ -8,7 +8,7 @@
 MyoSuite tasks have two matched halves under one ``env_id`` (see
 ``docs/wiki/engineering-standards.md``):
 
-- **CPU** (`gym.make`, MuJoCo C++) — for playback, fine-tuning, and debugging.
+- **CPU** (`make_env`, MuJoCo C++) — for playback, fine-tuning, and debugging.
 - **GPU** (mjlab / MuJoCo-Warp) — thousands of envs in parallel for fast RL.
 
 ``myoLegDirectionalForward-v0`` / ``myoLegDirectionalBackward-v0`` exist on both:
@@ -47,9 +47,6 @@ ENV_ID = "myoLegDirectionalForward-v0"
 
 def cpu_demo() -> None:
     """Create the CPU env and roll out a random policy (works anywhere)."""
-    import gymnasium as gym
-    import numpy as np
-
     import myosuite  # noqa: F401 — registers all envs on import
 
     env = make_env(ENV_ID)
@@ -87,8 +84,10 @@ def gpu_train(iterations: int) -> None:
 
 
     # scripts/ is not importable as a package; add it to the path.
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    sys.path.insert(0, os.path.join(repo_root, "scripts"))
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    sys.path.insert(0, str(repo_root / "scripts"))
     from train_mjlab import TrainConfig, launch_training
 
     cfg = TrainConfig.from_task(ENV_ID)
@@ -114,8 +113,6 @@ def cpu_playback(checkpoint: str, episodes: int) -> None:
     --checkpoint CKPT --backend cpu`` does the same over a grid of envs, with video.
     """
     from pathlib import Path
-
-    import gymnasium as gym
 
     import myosuite  # noqa: F401
     from myosuite.utils.checkpoint_utils import load_policy

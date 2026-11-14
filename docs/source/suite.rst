@@ -278,7 +278,7 @@ Objective:
     Move elbow to a specified pose.
 
 Variants:
-    - **Easy**: Move to random joint poses using 1 muscle ``ElbowPose1D1MRandom-v0``
+    - **Easy**: Move to a fixed joint pose using 6 muscles ``myoElbowPose1D6MFixed-v0``
     - **Hard**: Move to random joint poses using 6 muscles ``myoElbowPose1D6MRandom-v0``
     - **More**: Random resets, no resets, dense rewards, sparse rewards
 
@@ -460,7 +460,7 @@ Objective:
 
 Variants:
     - **Easy**: Achieve a forward velocity in the y-direction without moving in the x-direction. ``myoLegWalk-v0``
-    - **Hard**: Achieve a forward velocity in the y-direction without moving in the x-direction on uneven terrain. ``myoLeg<Rough|Hilly|Stair>Walk-v0``
+    - **Hard**: Achieve a forward velocity in the y-direction without moving in the x-direction on uneven terrain. ``myoLeg<Rough|Hilly|Stair>TerrainWalk-v0``
 
 .. image:: images/myoLeg_walk.png
   :width: 200

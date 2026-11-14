@@ -197,21 +197,38 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
     if init is not None:
         net.load_state_dict(init["raw_state"])
     n = len(X)
+    if n == 0:
+        raise ValueError("obs must be non-empty")
     perm = torch.randperm(n, device=X.device)
-    val, tr = perm[: n // 50], perm[n // 50 :]
+    n_val = min(max(1, n // 50), n - 1) if n > 1 else 1
+    val = perm[:n_val]
+    tr = perm[n_val:] if n > 1 else perm
     params = list(net.trunk.parameters()) + list(net.actor_mean.parameters())
     opt = torch.optim.AdamW(params, lr=lr, weight_decay=1e-5)
-    nb = len(tr) // batch
-    sched = torch.optim.lr_scheduler.OneCycleLR(
-        opt, lr, total_steps=epochs * nb, pct_start=0.05
+    step_batch = min(batch, len(tr))
+    nb = len(tr) // step_batch
+    sched = (
+        torch.optim.lr_scheduler.OneCycleLR(
+            opt, lr, total_steps=epochs * nb, pct_start=0.05
+        )
+        if epochs * nb > 0
+        else None
     )
     f = lambda o: net.actor_mean(net.trunk((o.float() - mean) / std))  # noqa: E731  (o on the device)
+
+    def _val_mse() -> float:
+        net.eval()
+        with torch.no_grad():
+            return float(np.mean([((f(X[val[j : j + 8192]].to(device)).clamp(0, 1) - Y[val[j : j + 8192]].to(device).float()) ** 2).mean().item()
+                                  for j in range(0, len(val), 8192)]))  # fmt: skip
+
+    v = float("nan")
     for ep in range(epochs):
         net.train()
         idx = tr[torch.randperm(len(tr), device=X.device)]
         tot = 0.0
         for i in range(nb):
-            b = idx[i * batch : (i + 1) * batch]
+            b = idx[i * step_batch : (i + 1) * step_batch]
             x = X[b].to(device, non_blocking=True).float()
             if yaw_aug:
                 x = yaw_rotate(x, torch.rand(len(x), device=device) * 2 * np.pi)
@@ -219,13 +236,13 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
-            sched.step()
+            if sched is not None:
+                sched.step()
             tot += loss.item()
-        net.eval()
-        with torch.no_grad():
-            v = float(np.mean([((f(X[val[j : j + 8192]].to(device)).clamp(0, 1) - Y[val[j : j + 8192]].to(device).float()) ** 2).mean().item()
-                               for j in range(0, len(val), 8192)]))  # fmt: skip
+        v = _val_mse()
         log(f"epoch {ep} train {tot / max(nb, 1):.5f} val {v:.5f}")
+    if epochs == 0:
+        v = _val_mse()
     raw = {k: x.detach().cpu().clone() for k, x in net.state_dict().items()}
     net = net.cpu()
     fold_normalisation(net, mean.cpu(), std.cpu())
@@ -305,12 +322,15 @@ def load_data(
     """The (N, 546) observations and (N, 354) teacher excitations (float16) of the bout files (``b*.npz``) in
     ``dirs``, as :mod:`scripts.dagger` writes them."""
     files = sorted(f for d in dirs for f in Path(d).glob("b*.npz"))
-    sizes = [np.load(f)["act"].shape[0] for f in files]
+    sizes: list[int] = []
+    for f in files:
+        with np.load(f) as z:
+            sizes.append(int(z["act"].shape[0]))
     X = np.empty((sum(sizes), obs_dim), np.float16)
     Y = np.empty((sum(sizes), ACT_DIM), np.float16)
     k = 0
     for f, n in zip(files, sizes):
-        z = np.load(f)
-        X[k : k + n], Y[k : k + n] = z["obs"], z["act"]
+        with np.load(f) as z:
+            X[k : k + n], Y[k : k + n] = z["obs"], z["act"]
         k += n
     return X, Y
