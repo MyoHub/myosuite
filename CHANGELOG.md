@@ -31,6 +31,15 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **Soccer and Bimanual report their time limit as `truncated`.** Both ended a time-out as a task end: Soccer with
+  `terminated=True` at step 1001 (its 10 s rule compared the summed `data.time`, 9.99999999999989 s after 1000 steps;
+  the registered limit of 2000 steps never applied), Bimanual with `terminated=True` and `truncated=True` together at
+  step 1000 (summed time 10.000000000000009 s > 10 s). Learners that bootstrap on truncation treated the time-out as
+  a real end. Soccer now truncates after `max_time_sec / dt` control steps (1000), and its registered
+  `max_episode_steps` is 1000; Bimanual leaves the limit to `TimeLimit`. On the time-out step `rwd_dict["done"]` is
+  now false, so Soccer pays `alive` and no longer counts the time-out in `sparse` (the `points` metric) and reports
+  10.0 s instead of 10.01 s. Affects `myoChallengeSoccerP1/P2-v0`, `myoChallengeBimanual-v0` and their `myoSarc` /
+  `myoFati` variants; goal, fall and drop endings are unchanged.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
