@@ -360,6 +360,41 @@ def test_success_parity_near_target(env_id: str) -> None:
     assert solved_steps > 0, "the solved flag was never exercised"
 
 
+@pytest.mark.parametrize("env_id", ["myoLegWalk-v0", "myoLegRoughTerrainWalk-v0"])
+def test_walk_sustained_success_parity(env_id: str) -> None:
+    """The twin's success turns true on the CPU env's step: one second on target.
+
+    Random actions fall before that, so the CPU body is put back on its reset pose
+    before every step, translating rigidly at the target velocity, and synced.
+    """
+    cpu, mj = _make_pair(env_id)
+    qpos = cpu.data.qpos.copy()
+    action = np.zeros(cpu.action_space.shape, dtype=np.float32)
+    window = round(1.0 / cpu.dt)
+    solved, on_target = [], []
+    for _ in range(window + 3):
+        cpu.data.qpos[:] = qpos
+        cpu.data.qvel[:] = 0.0
+        cpu.data.qvel[:2] = -cpu.target_x_vel, -cpu.target_y_vel  # the model faces -y
+        _sync(cpu, mj)
+        _, _, cpu_term, _, cpu_info = cpu.step(action)
+        _, _, mj_term, _, _ = mj.step(torch.as_tensor(action[None]))
+        assert not cpu_term and not bool(mj_term[0])
+        values = dict(mj.metrics_manager.get_active_iterable_terms(0))
+        assert bool(values["success"][0]) == cpu_info["solved"]
+        solved.append(cpu_info["solved"])
+        on_target.append((values.get("on_target"), cpu_info.get("on_target")))
+    assert solved == [False] * (window - 1) + [True] * 4
+    assert on_target == [([1.0], True)] * len(solved)
+
+    # A reset clears the twin's count.
+    mj.reset()
+    _sync(cpu, mj)
+    mj.step(torch.as_tensor(action[None]))
+    values = dict(mj.metrics_manager.get_active_iterable_terms(0))
+    assert values["on_target"][0] and not values["success"][0]
+
+
 def test_fatigue_torch_matches_numpy() -> None:
     """Batched torch 3CC-r fatigue reproduces the CPU model step by step."""
     import mujoco  # noqa: PLC0415
