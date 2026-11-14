@@ -199,37 +199,59 @@ def test_free_falling_body_needs_no_residuals() -> None:
     assert np.abs(res.optimization.reserve[:, :6]).max() < 0.6  # N, N m
 
 
-def test_optimised_activations_are_reached() -> None:
-    """With one physics step per control step every target is reached exactly."""
+@pytest.mark.parametrize("actearly", [False, True])
+def test_optimised_activations_are_reached(actearly: bool) -> None:
+    """With one physics step per control step every target is reached and realised."""
     model = _elbow(2)
+    model.actuator_actearly[:] = int(actearly)
     ref = _simulated_motion(model, 1)
     res = computed_muscle_control(model, ref["qpos"], ref["qvel"], ref["qacc"], 0.002)
-    np.testing.assert_allclose(
-        res.activation, res.optimization.activation, rtol=0, atol=1e-9
-    )
+    if actearly:
+        np.testing.assert_allclose(
+            res.activation, res.optimization.activation, rtol=0, atol=1e-9
+        )
+    else:
+        np.testing.assert_allclose(
+            res.activation[:-1], res.optimization.activation[1:], rtol=0, atol=1e-9
+        )
     assert (np.ptp(res.activation, axis=0) > 0.1).sum() >= 3
 
 
-def _smoothed_elbow() -> mujoco.MjModel:
+def _mixed_filters() -> mujoco.MjModel:
+    model = mujoco.MjModel.from_xml_string(_FILTERS)
+    model.actuator_actearly[:] = [0, 1, 0]
+    return model
+
+
+def _smoothed_elbow(actearly: bool = False) -> mujoco.MjModel:
     model = _elbow(1)
     model.actuator_dynprm[:, 2] = 0.2  # tausmooth
+    model.actuator_actearly[:] = int(actearly)
     return model
 
 
 @pytest.mark.parametrize(
-    "make", [lambda: mujoco.MjModel.from_xml_string(_FILTERS), _smoothed_elbow]
+    "make",
+    [
+        lambda: mujoco.MjModel.from_xml_string(_FILTERS),
+        _mixed_filters,
+        lambda: _smoothed_elbow(False),
+        lambda: _smoothed_elbow(True),
+    ],
 )
 def test_any_activation_dynamics_is_inverted_exactly(
     make: Callable[[], mujoco.MjModel],
 ) -> None:
     """Filter, exact filter, integrator and smoothed muscle dynamics over 5 physics
-    steps: replaying the excitations gives the optimised mean activations."""
+    steps: replaying the excitations gives the optimised force-producing activations."""
     model = make()
     data = mujoco.MjData(model)
     data.qpos[0] = 1.0
     mujoco.mj_forward(model, data)
     cmc, zero = ComputedMuscleControl(model), np.zeros(1)
     stateful = np.flatnonzero(model.actuator_actadr >= 0)
+    actadr = model.actuator_actadr[stateful]
+    early = model.actuator_actearly[stateful] != 0
     lo, hi = model.actuator_ctrlrange[stateful].T
     reached = 0
     for k in range(40):
@@ -239,15 +261,16 @@ def test_any_activation_dynamics_is_inverted_exactly(
         step = cmc.step(data, target, zero, zero, n_substeps=5)
         replay.ctrl[:] = step.excitation
         replay.qfrc_applied += step.optimization.reserve
-        mean = np.zeros(model.na)
+        mean = np.zeros(len(stateful))
         for _ in range(5):
+            mean += np.where(early, 0.0, replay.act[actadr]) / 5
             mujoco.mj_step(cmc.sim_model, replay)
-            mean += replay.act / 5
+            mean += np.where(early, replay.act[actadr], 0.0) / 5
         u = step.excitation[stateful]
         free = (u > lo + 1e-9) & (u < hi - 1e-9)
         np.testing.assert_allclose(
-            mean[model.actuator_actadr[stateful]][free],
-            step.optimization.activation[stateful][free],
+            mean,
+            step.optimization.activation[stateful],
             rtol=0,
             atol=1e-9,
         )
@@ -255,9 +278,10 @@ def test_any_activation_dynamics_is_inverted_exactly(
     assert reached > 40
 
 
-def test_damping_is_realised_exactly() -> None:
-    """Joint damping (implicit in Euler) and a velocity servo (explicit) on a weightless
-    hinge: the step realises qacc* exactly over 1 and 5 physics steps."""
+@pytest.mark.parametrize("disable_eulerdamp", [False, True])
+def test_damping_is_realised_exactly(disable_eulerdamp: bool) -> None:
+    """Joint damping (implicit or explicit in Euler) and a velocity servo on a
+    weightless hinge: the step realises qacc* exactly over 1 and 5 physics steps."""
     model = mujoco.MjModel.from_xml_string(
         """
         <mujoco><option gravity="0 0 0"/><worldbody><body>
@@ -265,6 +289,8 @@ def test_damping_is_realised_exactly() -> None:
           <geom type="capsule" fromto="0 0 0 .3 0 0" size=".02" mass="1"/></body></worldbody>
           <actuator><motor joint="j" gear="5"/><velocity joint="j" kv="3"/></actuator></mujoco>"""
     )
+    if disable_eulerdamp:
+        model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP)
     zero = np.zeros(1)
     for n in (1, 5):
         data = mujoco.MjData(model)
@@ -312,36 +338,106 @@ def test_applied_loads_are_known_and_kept() -> None:
     assert error.max() < 1e-3  # the muscles start in equilibrium
     np.testing.assert_array_equal(data.xfrc_applied, xfrc)
     np.testing.assert_array_equal(data.qfrc_applied, qfrc)
+    with pytest.raises(ValueError, match="minimum reachable activation"):
+        cmc.step(data, hold, zero, zero, max_activation=np.full(6, 0.05))
+    data.qpos[:], data.qvel[:], data.act[:] = hold, zero, 0.01
+    mujoco.mj_forward(cmc.sim_model, data)
     capped = cmc.step(data, hold, zero, zero, max_activation=np.full(6, 0.05))
-    assert capped.optimization.activation.max() <= 0.05 + 1e-9
-    assert abs(capped.optimization.reserve[0]) > 1.0
+    np.testing.assert_allclose(
+        capped.qvel / model.opt.timestep, capped.qacc_desired, atol=1e-6
+    )
+    fatigued = [
+        cmc.step(data, hold, zero, zero, n_substeps=5, max_activation=np.full(6, 0.05))
+        for _ in range(20)
+    ]
+    assert max(s.optimization.activation.max() for s in fatigued) <= 0.05 + 1e-9
+    assert max(s.activation.max() for s in fatigued) <= 0.05 + 1e-9
+    assert min(abs(s.optimization.reserve[0]) for s in fatigued) > 1.0
+    assert np.degrees(max(abs(s.tracking_error[0]) for s in fatigued)) < 0.05
 
 
-def test_rejects_unsupported_set_ups() -> None:
-    with pytest.raises(ValueError, match="whole number of physics steps"):
-        computed_muscle_control(_elbow(1), *np.zeros((3, 4, 1)), 1 / 60)
-    unbounded = _FILTERS.replace('ctrlrange="-5 5" ', "")
-    with pytest.raises(ValueError, match="need a ctrlrange"):
-        ComputedMuscleControl(mujoco.MjModel.from_xml_string(unbounded))
+@pytest.mark.parametrize("actearly", [True, False])
+def test_rejects_unreachable_max_activation(actearly: bool) -> None:
+    """Caps below the step's minimum reachable activation fail before solving."""
+    model = mujoco.MjModel.from_xml_string(
+        f"""
+        <mujoco><option timestep="0.002" gravity="0 0 0"/>
+          <worldbody><body><joint name="j" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 .3 0 0" size=".02" mass="1"/>
+          </body></worldbody>
+          <actuator>
+            <general name="f" joint="j" dyntype="filterexact" dynprm="0.1"
+              gainprm="4" ctrlrange="0 1" actearly="{str(actearly).lower()}"/>
+          </actuator>
+        </mujoco>"""
+    )
+    cmc, data = ComputedMuscleControl(model), mujoco.MjData(model)
+    zero = np.zeros(1)
+    data.act[0] = 1.0
+    mujoco.mj_forward(cmc.sim_model, data)
+    act_before, qvel_before = data.act.copy(), data.qvel.copy()
+    for bad_cap in (0.05, np.array([0.05])):
+        with pytest.raises(ValueError, match="minimum reachable activation"):
+            cmc.step(data, zero, zero, zero, max_activation=bad_cap)
+    np.testing.assert_array_equal(data.act, act_before)
+    np.testing.assert_array_equal(data.qvel, qvel_before)
+
+    # A reachable cap just above the decay floor solves and realises zero qacc.
+    n = 1 if actearly else 5
+    reachable_cap = 0.985 if actearly else 0.965
+    res = cmc.step(data, zero, zero, zero, n_substeps=n, max_activation=reachable_cap)
+    assert res.optimization.status == "solved"
+    assert res.optimization.activation[0] <= reachable_cap + 1e-9
+    realised = data.qvel / (n * model.opt.timestep)
+    np.testing.assert_allclose(realised, zero, atol=1e-6)
 
 
 @pytest.mark.parametrize(
-    "actearly",
+    "integrator",
     [
-        pytest.param(
-            False,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="known limitation: the step plans with the post-update activation; "
-                "without actearly the force lags one physics step (see ComputedMuscleControl)",
-            ),
-        ),
-        True,
+        mujoco.mjtIntegrator.mjINT_IMPLICITFAST,
+        mujoco.mjtIntegrator.mjINT_IMPLICIT,
+        mujoco.mjtIntegrator.mjINT_RK4,
     ],
 )
+def test_rejects_non_euler_integrators(integrator: mujoco.mjtIntegrator) -> None:
+    """Non-Euler integrators are rejected at construction."""
+    model = mujoco.MjModel.from_xml_string(
+        """
+        <mujoco><option gravity="0 0 0"/><worldbody><body>
+          <joint name="j" axis="0 1 0" damping="2"/>
+          <geom type="capsule" fromto="0 0 0 .3 0 0" size=".02" mass="1"/></body></worldbody>
+          <actuator><motor joint="j" gear="5"/><velocity joint="j" kv="3"/></actuator></mujoco>"""
+    )
+    model.opt.integrator = int(integrator)
+    with pytest.raises(ValueError, match="mjINT_EULER"):
+        ComputedMuscleControl(model)
+    with pytest.raises(ValueError, match="mjINT_EULER"):
+        computed_muscle_control(model, *np.zeros((3, 4, 1)), model.opt.timestep)
+
+
+def test_rejects_unsupported_set_ups() -> None:
+    model = _elbow(1)
+    with pytest.raises(ValueError, match="whole number of physics steps"):
+        computed_muscle_control(model, *np.zeros((3, 4, 1)), 1 / 60)
+    unbounded = _FILTERS.replace('ctrlrange="-5 5" ', "")
+    with pytest.raises(ValueError, match="need a ctrlrange"):
+        ComputedMuscleControl(mujoco.MjModel.from_xml_string(unbounded))
+    cmc, data = ComputedMuscleControl(model), mujoco.MjData(model)
+    zero = np.zeros(1)
+    mujoco.mj_forward(cmc.sim_model, data)
+    with pytest.raises(ValueError, match="n_substeps"):
+        cmc.step(data, zero, zero, zero, n_substeps=0)
+    with pytest.raises(ValueError, match="max_activation"):
+        cmc.step(data, zero, zero, zero, max_activation=np.zeros(2))
+    with pytest.raises(ValueError, match="NaN"):
+        cmc.step(data, zero, zero, zero, max_activation=np.nan)
+
+
+@pytest.mark.parametrize("actearly", [False, True])
 def test_one_physics_step_realises_the_requested_acceleration(actearly: bool) -> None:
     """1-DoF elbow at 90 deg, one 2 ms step towards ``qpos + 0.01``: the realised
-    acceleration equals ``qacc*`` only when the force uses the updated activation."""
+    acceleration equals ``qacc*`` both with and without ``actearly``."""
     model = _elbow(1)
     model.actuator_actearly[:] = int(actearly)
     cmc, data = ComputedMuscleControl(model), mujoco.MjData(model)
@@ -354,3 +450,11 @@ def test_one_physics_step_realises_the_requested_acceleration(actearly: bool) ->
     realised = (data.qvel - qvel0) / model.opt.timestep
     assert np.abs(res.qacc_desired).max() > 1.0
     np.testing.assert_allclose(realised, res.qacc_desired, rtol=1e-3, atol=1e-6)
+    if not actearly:
+        qvel1 = data.qvel.copy()
+        res2 = cmc.step(data, qpos + 0.01, zero, zero, n_substeps=1)
+        realised2 = (data.qvel - qvel1) / model.opt.timestep
+        np.testing.assert_allclose(realised2, res2.qacc_desired, rtol=1e-3, atol=1e-6)
+        assert abs(res2.optimization.reserve[0]) < 0.2 * abs(
+            res.optimization.reserve[0]
+        )

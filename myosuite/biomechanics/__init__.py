@@ -7,6 +7,8 @@
 - :mod:`.inverse_kinematics`: inverse kinematics of site poses.
 - :mod:`.inverse_dynamics`: inverse dynamics of motion clips.
 - :mod:`.static_optimization`: muscle activations that reproduce a motion's inverse dynamics.
+- :mod:`.computed_muscle_control`: excitations that make a forward simulation track a motion.
+- :mod:`.uncertainty`: Monte Carlo uncertainty bands for muscle estimates.
 - :mod:`.opensim_motion`: OpenSim ``.mot`` / ``.sto`` motions on MyoSuite models.
 - :mod:`.retarget`: landmark IK of motion onto a body model, on its couplings.
 - :mod:`.smplh`: SMPL+H forward kinematics (AMASS motions) in NumPy.

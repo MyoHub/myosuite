@@ -16,9 +16,10 @@ Every control step from ``t`` to ``t + T`` (Thelen, Anderson & Delp 2003):
    (force-velocity, joint damping) are taken at the velocity that delivers
    ``qacc*`` over MuJoCo's Euler steps, which matters for light, stiffly damped
    segments such as the foot and the wrist.
-3. Excitations from inverting MuJoCo's own activation dynamics (any ``dyntype``,
-   ``tausmooth`` included): the mean activation over the step's physics steps is
-   the optimised one.
+3. Excitations from inverting MuJoCo's own Euler activation dynamics (any
+   ``dyntype``, ``tausmooth`` included). For actuators without ``actearly``, a
+   second solve holds their actual pre-update mean activations fixed so the step
+   still realises ``qacc*``.
 4. The simulation advances with them and, as in OpenSim, with the reserves and
    residuals applied. It has no contacts: the optimization's estimated contact
    forces (``contact_forces=True``) are applied instead, as OpenSim applies
@@ -37,7 +38,7 @@ Every control step from ``t`` to ``t + T`` (Thelen, Anderson & Delp 2003):
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from typing import Any
 
 import mujoco
@@ -102,18 +103,13 @@ class ComputedMuscleControlResult:
 
 
 class ComputedMuscleControl:
-    """Computed muscle control of one model, step by step.
+    """Computed muscle control of one model (``mjINT_EULER``), step by step.
 
-    Known limitation (``actuator_actearly``): the mean activation over a control step
-    is taken after each physics step's activation update, which is what MuJoCo uses
-    for the force only with ``actearly``. Without it (MuJoCo's default, and every
-    myo_sim muscle), a physics step's force uses the activation before the update, so
-    the first physics step of each control step cannot be changed by the new
-    excitation. With several physics steps per control step this one-step actuation
-    delay stays small (the bundled tests track within their tolerances); with a single
-    physics step per control step the muscles cannot change their force at all and the
-    requested acceleration is not realised. Use ``n_substeps > 1`` or ``actearly``
-    actuators until the step accounts for the delay.
+    Actuators without ``actearly`` apply pre-update activations during each physics
+    substep: excitations are planned on post-update mean activations (minimum-phase
+    under zero-order hold), then the step's static optimization is re-solved at the
+    actual force-producing mean activations so stateless actuators, ``actearly``
+    actuators and reserves supply the one-substep actuation lag.
     """
 
     def __init__(
@@ -122,13 +118,20 @@ class ComputedMuscleControl:
         """Prepare the static optimization of *model*.
 
         Args:
-            model: Compiled model of the forward simulation; it is not modified.
+            model: Compiled model of the forward simulation (``mjINT_EULER``); it is
+                not modified.
             config: Gains and settings (defaults if ``None``).
 
         Raises:
-            ValueError: For an actuator with activation state and no ``ctrlrange``
-                (other than a muscle), or what the static optimizer rejects.
+            ValueError: If *model* does not use ``mjINT_EULER``, has an actuator
+                with activation state and no ``ctrlrange`` (other than a muscle),
+                or is rejected by :class:`~myosuite.biomechanics.static_optimization.StaticOptimizer`.
         """
+        if int(model.opt.integrator) != int(mujoco.mjtIntegrator.mjINT_EULER):
+            integrator = mujoco.mjtIntegrator(int(model.opt.integrator)).name
+            raise ValueError(
+                f"ComputedMuscleControl requires mjINT_EULER, got {integrator}"
+            )
         self.model, self.config = model, config or ComputedMuscleControlConfig()
         # No contacts in the simulation: the estimated ones are applied (as OpenSim
         # applies measured ground reactions to a model without contacts).
@@ -137,6 +140,14 @@ class ComputedMuscleControl:
         self.optimizer = StaticOptimizer(model, self.config.optimization)
         self._stateful = idx = np.flatnonzero(model.actuator_actadr >= 0)
         self._actadr = model.actuator_actadr[idx]
+        self._early = self.sim_model.actuator_actearly[idx] != 0
+        self._lag_optimizer = (
+            self.optimizer
+            if self._early.all() or not self.config.optimization.contact_forces
+            else StaticOptimizer(
+                model, replace(self.optimizer.config, contact_forces=False)
+            )
+        )
         limited = model.actuator_ctrllimited != 0
         self._ctrl_lo = np.where(limited, model.actuator_ctrlrange[:, 0], -np.inf)
         self._ctrl_hi = np.where(limited, model.actuator_ctrlrange[:, 1], np.inf)
@@ -158,12 +169,12 @@ class ComputedMuscleControl:
         self._act_hi = np.where(act_limited, model.actuator_actrange[idx, 1], np.inf)
         self._probe = mujoco.MjData(self.sim_model)
         mujoco.mj_forward(self.sim_model, self._probe)
-        euler = model.opt.integrator == mujoco.mjtIntegrator.mjINT_EULER and not (
+        euler_damp = not (
             model.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_EULERDAMP
         )
         # Joint damping Euler integrates implicitly, and what it leaves explicit.
-        self._damping_implicit = model.dof_damping * euler
-        self._damping_explicit = model.dof_damping * (not euler)
+        self._damping_implicit = model.dof_damping * euler_damp
+        self._damping_explicit = model.dof_damping * (not euler_damp)
         self._moment = np.zeros((model.nu, model.nv))
         self.kp = self.config.kp
         self.kv = 2.0 * np.sqrt(self.kp) if self.config.kv is None else self.config.kv
@@ -222,7 +233,7 @@ class ComputedMuscleControl:
         qacc_ref: np.ndarray,
         *,
         n_substeps: int = 1,
-        max_activation: np.ndarray | None = None,
+        max_activation: np.ndarray | float | None = None,
     ) -> ComputedMuscleControlResult:
         """Advance *data* by one control step towards the reference.
 
@@ -236,13 +247,71 @@ class ComputedMuscleControl:
             qacc_ref: ``(nv,)`` mean reference acceleration over the step, e.g. the
                 mean of the accelerations at its start and end.
             n_substeps: Physics steps per control step.
-            max_activation: Optional ``(nu,)`` activation caps for this step (e.g.
-                ``1 - MF`` of fatigued muscles).
+            max_activation: Optional scalar or ``(nu,)`` activation caps for this
+                step (e.g. ``1 - MF`` of fatigued muscles).
 
         Returns:
             The step's excitations, simulated state and static optimization.
+
+        Raises:
+            ValueError: If ``n_substeps < 1`` or ``max_activation`` has an invalid
+                shape, contains ``NaN``, or lies below the minimum activation
+                reachable over the step.
         """
+        if n_substeps < 1:
+            raise ValueError(f"n_substeps must be >= 1, got {n_substeps}")
         m, idx = self.sim_model, self._stateful
+        current = data.act[self._actadr]
+        lo, hi = self._ctrl_lo[idx], self._ctrl_hi[idx]
+        lo_out, hi_out = (
+            self._rollout_activation(current, u, n_substeps) for u in (lo, hi)
+        )
+        reach_force = [lo_out[0], hi_out[0]]
+        reach_post = [lo_out[1], hi_out[1]]
+        reach_end = [lo_out[2], hi_out[2]]
+        low, high = np.full(m.nu, -np.inf), np.full(m.nu, np.inf)
+        low[idx], high[idx] = reach_post
+        if max_activation is not None:
+            cap = np.asarray(max_activation, dtype=np.float64)
+            if cap.ndim not in (0, 1) or (cap.ndim == 1 and cap.shape != (m.nu,)):
+                raise ValueError(
+                    f"max_activation must be a scalar or shape ({m.nu},), got {cap.shape}"
+                )
+            cap = np.broadcast_to(cap, (m.nu,))
+            if np.isnan(cap).any():
+                raise ValueError("max_activation must not contain NaN")
+            min_reachable = self.optimizer._lo.copy()
+            min_reachable[idx] = np.maximum(min_reachable[idx], reach_force[0])
+            below = cap < min_reachable - 1e-12
+            if below.any():
+                names = [m.actuator(int(i)).name for i in np.flatnonzero(below)]
+                raise ValueError(
+                    f"max_activation is below the minimum reachable activation "
+                    f"({min_reachable[below].tolist()}) for actuators: {names}"
+                )
+            high = np.minimum(high, cap)
+            if len(idx):
+                keep_end = reach_end[0] <= cap[idx] + 1e-12
+                peak_lo = np.where(
+                    keep_end, np.maximum(reach_force[0], reach_end[0]), reach_force[0]
+                )
+                peak_hi = np.where(
+                    keep_end, np.maximum(reach_force[1], reach_end[1]), reach_force[1]
+                )
+                binding = (cap[idx] < peak_hi) & (peak_hi > peak_lo)
+                if binding.any():
+                    u_cap = self._invert(
+                        current,
+                        np.clip(cap[idx], peak_lo, peak_hi),
+                        n_substeps,
+                        [peak_lo, peak_hi],
+                        keep_end=keep_end,
+                    )
+                    max_post = self._rollout_activation(current, u_cap, n_substeps)[1]
+                    high[idx] = np.where(
+                        binding, np.minimum(high[idx], max_post), high[idx]
+                    )
+
         qpos_ref = np.asarray(qpos_ref, dtype=np.float64)
         error = np.empty(m.nv)
         mujoco.mj_differentiatePos(m, error, 1.0, data.qpos, qpos_ref)
@@ -251,22 +320,40 @@ class ComputedMuscleControl:
         applied = data.qfrc_applied.copy()
         external = self._known_loads(data)
 
-        # Mean activations reachable over the step with the extreme controls.
-        current = data.act[self._actadr]
-        lo, hi = self._ctrl_lo[idx], self._ctrl_hi[idx]
-        reach = [self._mean_activation(current, u, n_substeps) for u in (lo, hi)]
-        low, high = np.full(m.nu, -np.inf), np.full(m.nu, np.inf)
-        low[idx], high[idx] = reach
-        if max_activation is not None:
-            high = np.minimum(high, max_activation)
         # Velocity-dependent forces at the velocity that delivers qacc* over the step.
         qvel = data.qvel + self._velocity_fraction(data, n_substeps) * qacc * (
             n_substeps * m.opt.timestep
         )
         res = self.optimizer.solve(data.qpos, qvel, qacc, external, high, low)
+        u_plan = self._invert(current, res.activation[idx], n_substeps, reach_post)
+        if not self._early.all():
+            actual = self._rollout_activation(current, u_plan, n_substeps)[0]
+            delayed = idx[~self._early]
+            low_f, high_f = low.copy(), high.copy()
+            low_f[delayed] = high_f[delayed] = actual[~self._early]
+            lag = self._lag_optimizer.solve(
+                data.qpos,
+                qvel,
+                qacc,
+                external + res.contact_qfrc,
+                high_f,
+                low_f,
+            )
+            res = replace(
+                lag,
+                joint_torque=res.joint_torque,
+                constraint_force=lag.constraint_force + res.contact_qfrc,
+                contact_force=res.contact_force,
+                contact_qfrc=res.contact_qfrc,
+            )
+            if self._early.any():
+                u_early = self._invert(
+                    current, res.activation[idx], n_substeps, reach_post
+                )
+                u_plan = np.where(self._early, u_early, u_plan)
 
         excitation = res.activation.copy()
-        excitation[idx] = self._invert(current, res.activation[idx], n_substeps, reach)
+        excitation[idx] = u_plan
         excitation = np.clip(excitation, self._ctrl_lo, self._ctrl_hi)
         data.ctrl[:] = excitation
         if self.config.apply_reserves:
@@ -331,26 +418,33 @@ class ComputedMuscleControl:
             smooth = (n - 1) / (2 * n) + np.where(b + g > 0, g / (b + g), 0.0) / n
         return np.clip(np.where(x > 1e-4, exact, smooth), 0.0, 1.0)
 
-    def _mean_activation(
+    def _rollout_activation(
         self, start: np.ndarray, control: np.ndarray, n_substeps: int
-    ) -> np.ndarray:
-        """Mean activation after each of *n_substeps* physics steps at constant *control*.
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Force-producing mean, post-update mean and end activation over *n_substeps*.
 
         Integrates MuJoCo's own ``act_dot`` (``mj_fwdActuation``) for every actuator
-        with activation state at once, as the simulation does: Euler steps (exact
-        for ``filterexact``), clamped to ``actrange``.
+        with activation state at once: Euler steps (exact for ``filterexact``),
+        clamped to ``actrange``.
         """
         m, d, adr = self.sim_model, self._probe, self._actadr
+        if not len(adr):
+            empty = start.copy()
+            return empty, empty, empty
         d.ctrl[self._stateful] = control
-        act, total = start.copy(), np.zeros_like(start)
+        act = start.copy()
+        pre, post = np.zeros_like(start), np.zeros_like(start)
         for _ in range(n_substeps):
+            pre += act
             d.act[adr] = act
             mujoco.mj_fwdActuation(m, d)
             act = np.clip(
                 act + self._act_step * d.act_dot[adr], self._act_lo, self._act_hi
             )
-            total += act
-        return total / n_substeps
+            post += act
+        mean_post = post / n_substeps
+        mean_force = np.where(self._early, mean_post, pre / n_substeps)
+        return mean_force, mean_post, act
 
     def _invert(
         self,
@@ -358,13 +452,15 @@ class ComputedMuscleControl:
         target: np.ndarray,
         n_substeps: int,
         reach: list[np.ndarray],
+        *,
+        keep_end: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Controls whose mean activation over the step is *target*.
+        """Controls whose step activation metric is *target*.
 
-        The mean activation is continuous and non-decreasing in the control (flat
-        where ``actrange`` clamps it), so a safeguarded secant iteration finds it
-        from the control bounds, whose mean activations are *reach*: secant steps,
-        bisection where they leave the bracket. Targets out of reach get the bound.
+        The metric is continuous and non-decreasing in the control (flat where
+        ``actrange`` clamps it), so a safeguarded secant iteration finds it from
+        the control bounds, whose values are *reach*: secant steps, bisection where
+        they leave the bracket. Targets out of reach get the bound.
         """
         a, b = self._ctrl_lo[self._stateful], self._ctrl_hi[self._stateful]
         fa, fb = reach[0] - target, reach[1] - target
@@ -379,7 +475,15 @@ class ComputedMuscleControl:
                 c = x1 - f1 * (x1 - x0) / (f1 - f0)
             c = np.where(np.isfinite(c) & (c > a) & (c < b), c, 0.5 * (a + b))
             c = np.where(active, c, u)
-            fc = self._mean_activation(start, c, n_substeps) - target
+            mean_force, mean_post, end_act = self._rollout_activation(
+                start, c, n_substeps
+            )
+            val = (
+                mean_post
+                if keep_end is None
+                else np.where(keep_end, np.maximum(mean_force, end_act), mean_force)
+            )
+            fc = val - target
             right = active & (fc > 0)
             left = active & (fc <= 0)
             a, fa = np.where(left, c, a), np.where(left, fc, fa)
