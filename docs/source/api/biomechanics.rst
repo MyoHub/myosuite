@@ -15,6 +15,18 @@ OpenSim motions
 .. automodule:: myosuite.biomechanics.opensim_motion
    :members:
 
+Motion retargeting
+------------------
+
+.. automodule:: myosuite.biomechanics.retarget
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_smplh
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_instanthmr
+   :members:
+
 Inverse dynamics
 ----------------
 
@@ -31,4 +43,10 @@ Uncertainty bands
 -----------------
 
 .. automodule:: myosuite.biomechanics.uncertainty
+   :members:
+
+Muscle mesh reconstruction
+--------------------------
+
+.. automodule:: myosuite.viz.muscle_meshes
    :members:

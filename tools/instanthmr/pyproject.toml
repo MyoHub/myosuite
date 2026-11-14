@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-instanthmr"
+version = "0.1.0"
+description = "Standalone InstantHMR video extraction and single-subject MHR70 tracking for MyoSuite"
+readme = "README.md"
+requires-python = ">=3.11"
+# Intentionally decoupled from `myosuite` so InstantHMR's `onnxruntime==1.26.*`
+# pin can live in its own virtual environment without colliding with MyoSuite's
+# `onnxruntime<1.21` constraint on Python <3.14.
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python>=4.8",
+    "huggingface_hub>=0.20",
+    "rfdetr>=1.6",
+    "onnxruntime==1.26.*; platform_system == 'Darwin'",
+    "onnxruntime-gpu[cuda,cudnn]==1.26.*; platform_system != 'Darwin'",
+    "instanthmr @ git+https://github.com/Naturalpad-studio/InstantHMR.git",
+]
+
+[project.optional-dependencies]
+cpu = ["onnxruntime==1.26.*"]
+test = ["pytest"]
+
+[project.scripts]
+myosuite-instanthmr-extract = "myosuite_instanthmr.extract:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_instanthmr*"]

@@ -27,8 +27,11 @@ placement as targets follows Mark Colley's ``refit_stale_couplings`` (MyoSuite P
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
+import math
+import os
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -182,6 +185,8 @@ class ClipTargets:
         contact: ``(T, 2)`` left/right foot contact of the source.
         posture: ``(T, P)`` per-frame values of the map's posture priors, or ``None``
             (the map's fixed values).
+        quat_mask: Optional ``(T, O)`` per-frame weight multiplier (or boolean mask)
+            suppressing degenerate orientation targets.
     """
 
     frequency: float
@@ -190,6 +195,7 @@ class ClipTargets:
     seed: np.ndarray
     contact: np.ndarray
     posture: np.ndarray | None = None
+    quat_mask: np.ndarray | None = None
 
 
 def file_sha256(path: str | Path) -> str:
@@ -329,6 +335,7 @@ class LandmarkIK:
     def _evaluate(
         self, qpos: np.ndarray, pos: np.ndarray, quat: np.ndarray,
         prev: np.ndarray | None, jac: bool, posture: np.ndarray | None = None,
+        quat_mask: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray | None]:  # fmt: skip
         m, d = self.model, self.data
         d.qpos[:] = qpos
@@ -340,10 +347,15 @@ class LandmarkIK:
         res = [((p - pos) * self.lm_w[:, None]).ravel()]
         qerr = np.empty(4)
         # per orientation target: world-frame weight matrix (axial component rescaled)
-        W = self.or_w[:, None, None] * np.eye(3)
+        or_w = (
+            self.or_w
+            if quat_mask is None
+            else self.or_w * np.asarray(quat_mask, np.float64)
+        )
+        W = or_w[:, None, None] * np.eye(3)
         for k, axis, drop in self.or_axes:
             a = d.xmat[self.or_body[k]].reshape(3, 3) @ axis
-            W[k] -= self.or_w[k] * drop * np.outer(a, a)
+            W[k] -= or_w[k] * drop * np.outer(a, a)
         for k, b in enumerate(self.or_body):
             # world-frame rotation error R_model R_target^T
             neg = np.empty(4)
@@ -422,6 +434,7 @@ class LandmarkIK:
     def solve(
         self, seed: np.ndarray, pos: np.ndarray, quat: np.ndarray,
         prev: np.ndarray | None = None, posture: np.ndarray | None = None,
+        quat_mask: np.ndarray | None = None,
     ) -> tuple[np.ndarray, int]:  # fmt: skip
         """Fit one frame.
 
@@ -432,13 +445,14 @@ class LandmarkIK:
             prev: Predicted pose of the smoothing term (constant velocity from the
                 previous frames), or ``None``.
             posture: ``(P,)`` values of the posture priors (``None``: the map's).
+            quat_mask: Optional ``(O,)`` orientation target weight multiplier.
 
         Returns:
             ``(qpos, iterations)``.
         """
         cfg = self.config
         q = self.project(seed)
-        r, J = self._evaluate(q, pos, quat, prev, True, posture)
+        r, J = self._evaluate(q, pos, quat, prev, True, posture, quat_mask)
         cost = r @ r
         lam = cfg.damping
         it = 0
@@ -448,7 +462,9 @@ class LandmarkIK:
             Hd = H + lam * np.diag(np.diag(H)) + 1e-9 * np.eye(self.nr)
             delta = self._box_step(Hd, g, q)
             q_new = self._step(q, delta)
-            r_new, J_new = self._evaluate(q_new, pos, quat, prev, True, posture)
+            r_new, J_new = self._evaluate(
+                q_new, pos, quat, prev, True, posture, quat_mask
+            )
             cost_new = r_new @ r_new
             if cost_new <= cost:
                 q, r, J, cost = q_new, r_new, J_new, cost_new
@@ -463,7 +479,7 @@ class LandmarkIK:
 
     def fit(
         self, pos: np.ndarray, quat: np.ndarray, seed: np.ndarray,
-        posture: np.ndarray | None = None,
+        posture: np.ndarray | None = None, quat_mask: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:  # fmt: skip
         """Fit a clip frame by frame, warm-started from the previous frame.
 
@@ -473,6 +489,7 @@ class LandmarkIK:
             seed: ``(nq,)`` start pose of the first frame (later frames start from
                 the constant-velocity prediction).
             posture: ``(T, P)`` per-frame posture values (``None``: the map's).
+            quat_mask: Optional ``(T, O)`` orientation target weight multipliers.
 
         Returns:
             ``(qpos (T, nq), iterations (T,))``.
@@ -493,7 +510,8 @@ class LandmarkIK:
                 mujoco.mj_integratePos(m, pred, vel, 1.0)
             start = seed if pred is None else pred
             ref = None if posture is None else posture[t]
-            out[t], iters[t] = self.solve(start, pos[t], quat[t], pred, ref)
+            mask = None if quat_mask is None else quat_mask[t]
+            out[t], iters[t] = self.solve(start, pos[t], quat[t], pred, ref, mask)
         return out, iters
 
 
@@ -650,6 +668,11 @@ def validate_refit(
     err = np.stack([np.linalg.norm(ik.landmarks(q) - p, axis=-1)
                     for q, p in zip(qpos, targets.pos)]) * 1e3  # fmt: skip
     ori = np.degrees(_orientation_errors(ik, qpos, targets.quat))
+    ori_vals = (
+        ori[np.asarray(targets.quat_mask) > 0]
+        if targets.quat_mask is not None
+        else ori.ravel()
+    )
     c = ik.couplings
     proj = qpos.copy()
     project_joint_couplings(c, proj)
@@ -683,8 +706,8 @@ def validate_refit(
         "landmark_max_by_site_mm": {
             lm.source: float(e) for lm, e in zip(lmap.landmarks, err.max(0))
         },
-        "orientation_mean_deg": float(ori.mean()),
-        "orientation_max_deg": float(ori.max()),
+        "orientation_mean_deg": float(ori_vals.mean()) if ori_vals.size else 0.0,
+        "orientation_max_deg": float(ori_vals.max()) if ori_vals.size else 0.0,
         "coupling_residual": coupling,
         "limit_violations": viol,
         "dependent_limit_violations": dep_viol,
@@ -738,6 +761,230 @@ class ClipSource(Protocol):
     ) -> tuple[np.ndarray, ClipTargets, dict[str, Any]]:
         """Post-process a fit (e.g. ground height); returns qpos, targets and metadata."""
         ...
+
+
+# ------------------------------------------------------------------ source helpers
+
+
+def _segment_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """Angle (rad) between the segments ``a->b`` and ``b->c``."""
+    u, v = b - a, c - b
+    denom = np.maximum(np.linalg.norm(u, axis=-1) * np.linalg.norm(v, axis=-1), 1e-12)
+    return np.arccos(np.clip((u * v).sum(-1) / denom, -1.0, 1.0))
+
+
+def _hinge_table(
+    m: mujoco.MjModel, d: mujoco.MjData, q: np.ndarray, h: Any
+) -> np.ndarray:
+    """``(2, 181)`` hinge values and model segment angles over ``h.joint``'s range."""
+    j = m.joint(h.joint).id
+    prox, mid, dist = (m.body(b).id for b in h.model)
+    d.qpos[:] = q
+    mujoco.mj_kinematics(m, d)
+    tip = d.xmat[mid].reshape(3, 3).T @ (d.xpos[dist] - d.xpos[mid])
+    phi = np.linspace(*m.jnt_range[j], 181)
+    theta = np.empty_like(phi)
+    x = q.copy()
+    for k, v in enumerate(phi):
+        x[m.jnt_qposadr[j]] = v
+        d.qpos[:] = x
+        mujoco.mj_kinematics(m, d)
+        end = d.xpos[mid] + d.xmat[mid].reshape(3, 3) @ tip
+        theta[k] = _segment_angle(d.xpos[prox], d.xpos[mid], end)
+    if np.any(np.diff(theta) <= 0):
+        raise ValueError(f"{h.joint}: segment angle not increasing over the range")
+    return np.stack([phi, theta])
+
+
+def _mat_to_quat(R: np.ndarray) -> np.ndarray:
+    """Convert ``(..., 3, 3)`` rotation matrices to ``(..., 4)`` ``wxyz`` quaternions."""
+    out = np.empty((*R.shape[:-2], 4))
+    flat_R, flat_q = R.reshape(-1, 9), out.reshape(-1, 4)
+    for i in range(len(flat_R)):
+        mujoco.mju_mat2Quat(flat_q[i], flat_R[i])
+    return out
+
+
+def _smooth(x: np.ndarray, sigma: float) -> np.ndarray:
+    """Gaussian smoothing along axis 0 (edge-padded)."""
+    if sigma <= 0:
+        return x
+    r = max(1, int(round(3 * sigma)))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    pad = np.pad(x, [(r, r)] + [(0, 0)] * (x.ndim - 1), mode="edge")
+    return np.apply_along_axis(lambda c: np.convolve(c, k, mode="valid"), 0, pad)
+
+
+def _smooth_quat(
+    quat: np.ndarray, sigma: float, mask: np.ndarray | None = None
+) -> np.ndarray:
+    """Hemisphere-continuous Gaussian smoothing of ``(T, O, 4)`` quaternions."""
+    if sigma <= 0:
+        return quat
+    q = quat.copy()
+    if mask is not None:
+        valid = np.asarray(mask) > 0
+        t_idx = np.arange(len(q))
+        for k in range(q.shape[1]):
+            ok = valid[:, k]
+            if ok.any() and not ok.all():
+                nearest = t_idx[ok][
+                    np.clip(np.searchsorted(t_idx[ok], t_idx), 0, int(ok.sum()) - 1)
+                ]
+                q[~ok, k] = q[nearest[~ok], k]
+    sign = np.cumprod(np.where((q[1:] * q[:-1]).sum(-1) < 0, -1.0, 1.0), axis=0)
+    q[1:] *= sign[..., None]
+    q = _smooth(q, sigma)
+    return q / np.maximum(np.linalg.norm(q, axis=-1, keepdims=True), 1e-12)
+
+
+def _calibration_pose(
+    m: mujoco.MjModel, calibration: dict[str, float]
+) -> tuple[mujoco.MjData, np.ndarray]:
+    """Evaluate *m* at ``qpos0`` overridden by *calibration* and projected onto couplings."""
+    d = mujoco.MjData(m)
+    q = m.qpos0.copy()
+    for name, v in calibration.items():
+        q[m.jnt_qposadr[m.joint(name).id]] = v
+    project_joint_couplings(JointCouplings.from_model(m), q)
+    d.qpos[:] = q
+    mujoco.mj_kinematics(m, d)
+    return d, q
+
+
+def _body_landmarks(
+    m: mujoco.MjModel, d: mujoco.MjData, points: Sequence[Any], pos: np.ndarray
+) -> tuple[Landmark, ...]:
+    """Build body-local :class:`Landmark` entries for weighted calibration points."""
+    out = []
+    for k, p in enumerate(points):
+        if p.weight > 0:
+            b = m.body(p.body).id
+            off = d.xmat[b].reshape(3, 3).T @ (pos[k] - d.xpos[b])
+            out.append(Landmark(p.name, p.body, None, tuple(map(float, off)), p.weight))
+    return tuple(out)
+
+
+def _orientation_targets(
+    m: mujoco.MjModel,
+    d: mujoco.MjData,
+    specs: Sequence[Any],
+    source_attr: str = "name",
+) -> tuple[OrientationTarget, ...]:
+    """Build :class:`OrientationTarget` entries with body-local long axes."""
+    out = []
+    for o in specs:
+        axis = None
+        if o.axis_to is not None:
+            b = m.body(o.body).id
+            a = d.xmat[b].reshape(3, 3).T @ (d.xpos[m.body(o.axis_to).id] - d.xpos[b])
+            axis = tuple(map(float, a / np.linalg.norm(a)))
+        out.append(
+            OrientationTarget(
+                getattr(o, source_attr), o.body, o.weight, axis, o.axis_weight
+            )
+        )
+    return tuple(out)
+
+
+def _foot_contacts(
+    sole: np.ndarray,
+    sole_floor: np.ndarray,
+    fps: float,
+    n_left: int,
+    contact_height: float,
+    contact_speed: float,
+) -> np.ndarray:
+    """``(T, 2)`` left/right foot contact mask from sole height and horizontal speed."""
+    h = sole[..., 2] - sole_floor
+    v = np.linalg.norm(np.gradient(sole[..., :2], 1.0 / fps, axis=0), axis=-1)
+    near = (h < contact_height) & (v < contact_speed)
+    return np.stack([near[:, :n_left].any(1), near[:, n_left:].any(1)], axis=1)
+
+
+def _start_pose(
+    m: mujoco.MjModel,
+    cal_qpos: np.ndarray,
+    root_model_pos: np.ndarray,
+    pelvis_pos: np.ndarray,
+    quat0: np.ndarray,
+    lmap: LandmarkMap,
+) -> np.ndarray:
+    """Place the calibration pose onto the first frame's pelvis position and orientation."""
+    q = cal_qpos.copy()
+    k = [o.body for o in lmap.orientations].index("pelvis")
+    d = mujoco.MjData(m)
+    d.qpos[:] = q
+    mujoco.mj_kinematics(m, d)
+    Rp = np.empty(9)
+    mujoco.mju_quat2Mat(Rp, quat0[k])
+    R_delta = Rp.reshape(3, 3) @ d.xmat[m.body("pelvis").id].reshape(3, 3).T
+    root_jnt = next(
+        j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+    )
+    root_body = int(m.jnt_bodyid[root_jnt])
+    qr = np.empty(4)
+    mujoco.mju_mat2Quat(qr, (R_delta @ d.xmat[root_body].reshape(3, 3)).ravel())
+    adr = int(m.jnt_qposadr[root_jnt])
+    q[adr + 3 : adr + 7] = qr
+    q[adr : adr + 3] = pelvis_pos - R_delta @ (root_model_pos - d.xpos[root_body])
+    return q
+
+
+def _ground_clip(
+    m: mujoco.MjModel,
+    lmap: LandmarkMap,
+    targets: ClipTargets,
+    qpos: np.ndarray,
+    contact: np.ndarray,
+    ground_sigma: float,
+) -> tuple[np.ndarray, ClipTargets, np.ndarray]:
+    """Shift free-joint root height and target ``z`` so standing feet touch ``z = 0``."""
+    low, _ = _foot_kinematics(m, lmap, qpos)
+    any_c = contact.any(1)
+    dz = np.full(len(qpos), np.nan)
+    dz[any_c] = -np.where(contact, low, np.inf)[any_c].min(1)
+    if any_c.any():
+        t = np.arange(len(qpos))
+        dz = np.interp(t, t[any_c], dz[any_c])
+    else:
+        dz[:] = -low.min()
+    lift = -low.min(1)
+    dz = np.maximum(
+        _smooth(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
+    )
+    root_jnt = next(
+        j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+    )
+    qpos_out = qpos.copy()
+    qpos_out[:, int(m.jnt_qposadr[root_jnt]) + 2] += dz
+    pos_out = targets.pos.copy()
+    pos_out[..., 2] += dz[:, None]
+    targets_out = ClipTargets(
+        targets.frequency,
+        pos_out,
+        targets.quat,
+        targets.seed,
+        targets.contact,
+        targets.posture,
+        targets.quat_mask,
+    )
+    return qpos_out, targets_out, dz
+
+
+def _knee_flexion_meta(
+    knee_flexion: dict[str, np.ndarray],
+) -> dict[str, dict[str, float]]:
+    """Summary statistics of per-side source knee flexion (hyperextension check)."""
+    return {
+        side: {
+            "min": float(np.degrees(f.min())),
+            "frames_below_minus2": float((f < np.radians(-2)).mean()),
+            "frames_below_minus5": float((f < np.radians(-5)).mean()),
+        }
+        for side, f in knee_flexion.items()
+    }
 
 
 # ----------------------------------------------------------------------- output files
@@ -1010,7 +1257,7 @@ def stamp_fingerprint(
 
 
 def refit_clip(
-    src: str | Path,
+    src: Any,
     model: mujoco.MjModel,
     model_name: str,
     model_version: str,
@@ -1020,11 +1267,12 @@ def refit_clip(
     thresholds: RefitThresholds | None = None,
     ik: LandmarkIK | None = None,
     model_fingerprint: str | None = None,
+    source_path: str | Path | None = None,
 ) -> tuple[np.ndarray, float, dict[str, Any]]:
     """Fit one clip onto the model and validate it.
 
     Args:
-        src: Source clip.
+        src: Source clip path or pre-loaded clip object accepted by *source*.
         model: Target model.
         model_name: Its name (metadata).
         model_version: Its version (metadata, e.g. the myo_sim version).
@@ -1034,6 +1282,8 @@ def refit_clip(
         thresholds: Validation limits.
         ik: A solver to reuse (built from *model*, *lmap*, *config* otherwise).
         model_fingerprint: The body's :func:`kinematic_fingerprint` (metadata).
+        source_path: Optional file path hashed for ``source_sha256`` when *src* is an
+            in-memory sub-clip dictionary.
 
     Returns:
         ``(qpos, frequency, meta)``; ``meta`` holds the source, its hash, the model
@@ -1042,17 +1292,20 @@ def refit_clip(
     """
     import time  # noqa: PLC0415
 
+    hash_src = source_path if source_path is not None else src
     ik = ik or LandmarkIK(model, lmap, config)
     targets = source.targets(src, model, lmap)
     t0 = time.perf_counter()
-    qpos, iters = ik.fit(targets.pos, targets.quat, targets.seed, targets.posture)
+    qpos, iters = ik.fit(
+        targets.pos, targets.quat, targets.seed, targets.posture, targets.quat_mask
+    )
     qpos, targets, extra = source.finish(ik, targets, qpos)
     seconds = time.perf_counter() - t0
     metrics = validate_refit(ik, targets, qpos, thresholds)
     meta = {
-        "source": str(src),
+        "source": str(hash_src),
         "source_format": source.name,
-        "source_sha256": file_sha256(src),
+        "source_sha256": file_sha256(hash_src),
         "model": model_name,
         "model_version": model_version,
         **({"model_fingerprint": model_fingerprint} if model_fingerprint else {}),
@@ -1066,6 +1319,16 @@ def refit_clip(
         **extra,
     }
     return qpos, targets.frequency, meta
+
+
+def merge_quality_flags(*flag_lists: Sequence[str] | None) -> list[str]:
+    """Order-preserving union of clip and curation quality-flag lists."""
+    seen: dict[str, None] = {}
+    for flags in flag_lists:
+        if flags:
+            for item in flags:
+                seen.setdefault(str(item), None)
+    return list(seen)
 
 
 def summarize(metas: Sequence[dict[str, Any]]) -> dict[str, Any]:
@@ -1086,15 +1349,245 @@ def summarize(metas: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }  # fmt: skip
     frames = sum(x["frames"] for x in ms)
     flagged = [
-        {"source": x["source"], "flags": x["metrics"]["flags"]}
-        for x in metas if x["metrics"]["flags"]
-    ]  # fmt: skip
+        {
+            "source": x["source"],
+            "flags": merge_quality_flags(x["metrics"]["flags"], x.get("quality_flags")),
+        }
+        for x in metas
+        if x["metrics"]["flags"] or x.get("quality_flags")
+    ]
     return {
         "clips": len(metas),
         "frames": frames,
         "fit_ms_per_frame": 1e3 * sum(x["fit_seconds"] for x in metas) / max(frames, 1),
         "stats": stats,
         "flagged": flagged,
+    }
+
+
+def is_cached_refit(
+    dst: str | Path,
+    src: str | Path,
+    *,
+    fingerprint: str,
+    model_version: str,
+    landmark_map_version: str,
+    solver: dict[str, Any],
+    extra_checks: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Return existing refit metadata at *dst* if up to date for *src*, else ``None``."""
+    dst_path = Path(dst)
+    if not dst_path.exists():
+        return None
+    meta = read_refit_meta(dst_path)
+    if not meta:
+        return None
+    same_body = (
+        meta["model_fingerprint"] == fingerprint
+        if "model_fingerprint" in meta
+        else meta.get("model_version") == model_version
+    )
+    if not (
+        same_body
+        and meta.get("source_sha256") == file_sha256(src)
+        and meta.get("landmark_map_version") == landmark_map_version
+        and meta.get("solver") == solver
+    ):
+        return None
+    if extra_checks and any(meta.get(k) != v for k, v in extra_checks.items()):
+        return None
+    return meta
+
+
+def pooled_twist(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Pooled regression of left-minus-right axial twist on the knee coupling term."""
+    out: dict[str, Any] = {}
+    tw = [r["twist"] for r in results if r.get("twist")]
+    for key in ("fit",):
+        xs = [t[key]["x"] for t in tw if key in t]
+        if not xs:
+            continue
+        x = np.concatenate(xs)
+        row = {}
+        for body in tw[0][key]["y"]:
+            y = np.concatenate([t[key]["y"][body] for t in tw if key in t])
+            A = np.stack([x, np.ones_like(x)], 1)
+            slope = float(np.linalg.lstsq(A, y, rcond=None)[0][0])
+            per = np.array([t[key]["slope"][body] for t in tw if key in t])
+            row[body] = {"pooled_slope": slope, "clip_median": float(np.median(per)),
+                         "clips_positive": int((per > 0).sum()), "clips": len(per)}  # fmt: skip
+        out[key] = row
+    return out
+
+
+def summary_markdown(summary: dict[str, Any], title: str = "Retarget") -> str:
+    """Render a batch retargeting summary dictionary as Markdown."""
+    s = summary
+    lines = [
+        f"# {title}: {s['model']} {s['model_version']} ({s['landmark_map']} v{s['landmark_map_version']})",
+        "",
+        f"{s['clips']} clips, {s['frames']} frames, {s['fit_ms_per_frame']:.2f} ms/frame per worker, "
+        f"{s['wall_s']:.1f} s wall on {s['workers']} workers. Errors: {len(s['errors'])}. "
+        f"Flagged: {len(s['flagged'])}.",
+        "",
+        "| metric | median | p95 | max |",
+        "|---|---|---|---|",
+    ]
+    for k, v in s["stats"].items():
+        lines.append(f"| {k} | {v['median']:.4g} | {v['p95']:.4g} | {v['max']:.4g} |")
+    lines += [
+        "",
+        "Thresholds: " + ", ".join(f"{k}={v}" for k, v in s["thresholds"].items()),
+        "",
+    ]
+    if s.get("twist"):
+        lines += ["## Left/right axial-twist asymmetry (straight walks)",
+                  "Slope of left-minus-right internal twist (half a stride apart) on the left "
+                  "knee coupling term; 0 is symmetric.", "",
+                  "| pose | " + " | ".join(next(iter(s["twist"].values()))) + " |",
+                  "|---|" + "---|" * len(next(iter(s["twist"].values())))]  # fmt: skip
+        for key, row in s["twist"].items():
+            cells = [f"{v['pooled_slope']:+.2f} ({v['clips_positive']}/{v['clips']} > 0)"
+                     for v in row.values()]  # fmt: skip
+            lines.append(f"| {key} | " + " | ".join(cells) + " |")
+        lines.append("")
+    lines += ["## Flagged clips", ""]
+    lines += [f"- {f['source']}: {', '.join(f['flags'])}" for f in s["flagged"]] or [
+        "none"
+    ]
+    if s["errors"]:
+        lines += ["", "## Errors", ""] + [
+            f"- {e['source']}: {e['error']}" for e in s["errors"]
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def write_refit_report(
+    report_dir: str | Path,
+    summary: dict[str, Any],
+    metas: Sequence[dict[str, Any]],
+    *,
+    title: str = "Retarget",
+) -> str:
+    """Write ``retarget_summary.{json,md}`` and ``retarget_clips.jsonl`` into *report_dir*."""
+    report = Path(report_dir)
+    report.mkdir(parents=True, exist_ok=True)
+    md = summary_markdown(summary, title=title)
+    (report / "retarget_summary.json").write_text(json.dumps(summary, indent=1))
+    (report / "retarget_summary.md").write_text(md)
+    with (report / "retarget_clips.jsonl").open("w") as f:
+        for m in sorted(metas, key=lambda m: m["source"]):
+            f.write(json.dumps(m) + "\n")
+    return md
+
+
+def stamp_tree(
+    root: str | Path,
+    model_name: str,
+    version: str,
+    fingerprint: str,
+    *,
+    skip_suffixes: tuple[str, ...] = (".tmp.npz", "_muscles.npz"),
+) -> int:
+    """Record *fingerprint* across all refitted clips under *root*; return count refused."""
+    counts = {"stamped": 0, "already": 0}
+    refused = []
+    for f in sorted(Path(root).rglob("*.npz")):
+        if f.name.endswith(skip_suffixes):
+            continue
+        try:
+            key = (
+                "stamped"
+                if stamp_fingerprint(f, model_name, version, fingerprint)
+                else "already"
+            )
+            counts[key] += 1
+        except ValueError as err:
+            refused.append(str(err))
+    print(
+        f"{model_name} myo_sim {version}, fingerprint {fingerprint}: {counts['stamped']} "
+        f"stamped, {counts['already']} already stamped, {len(refused)} refused"
+    )
+    for msg in refused:
+        print("  " + msg)
+    return len(refused)
+
+
+def _mem_available_gb() -> float:
+    meminfo = Path("/proc/meminfo")
+    if meminfo.is_file():
+        for line in meminfo.read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) / 2**20
+    return float("inf")
+
+
+def choose_workers(
+    requested: int,
+    *,
+    max_workers: int = 12,
+    min_free_gb: float = 12.0,
+    worker_gb: float = 0.6,
+    verbose: bool = True,
+) -> int:
+    """Choose worker count within CPU load and available RAM headroom."""
+    cores = os.cpu_count() or 1
+    load_fn = getattr(os, "getloadavg", None)
+    load = float(load_fn()[0]) if load_fn is not None else 0.0
+    idle = cores - math.ceil(load) - 4 if load_fn is not None else cores
+    mem = _mem_available_gb()
+    ram = int((mem - min_free_gb) / worker_gb) if math.isfinite(mem) else max_workers
+    n = max(1, min(requested, max_workers, max(1, idle), max(1, ram)))
+    if verbose:
+        print(
+            f"cores {cores}, load {load:.1f}, MemAvailable {mem:.1f} GB -> {n} workers",
+            flush=True,
+        )
+    return n
+
+
+def collect_clip_files(
+    input_path: str | Path,
+    *,
+    default_dataset: str = "",
+    limit: int = 0,
+    skip_suffixes: tuple[str, ...] = (".tmp.npz", "_muscles.npz"),
+) -> tuple[list[Path], Path, str]:
+    """Resolve a single ``.npz`` clip, directory or ``.txt`` list to ``(files, base, dataset)``."""
+    src = Path(input_path).expanduser()
+    if src.is_file() and src.suffix == ".txt":
+        files = [
+            Path(line.split("#", 1)[0].strip())
+            for line in src.read_text().splitlines()
+            if line.split("#", 1)[0].strip()
+        ]
+        base = Path(os.path.commonpath([str(f.parent) for f in files]))
+        dataset = default_dataset or base.name
+    elif src.is_file() and src.suffix == ".npz":
+        files, base = [src], src.parent
+        dataset = default_dataset or base.name
+    elif src.is_dir():
+        files = [
+            f for f in sorted(src.rglob("*.npz")) if not f.name.endswith(skip_suffixes)
+        ]
+        base = src
+        dataset = default_dataset or src.name
+    else:
+        raise FileNotFoundError(f"input not found or unsupported format: {src}")
+    if limit > 0:
+        files = files[:limit]
+    return files, base, dataset
+
+
+def empty_summary() -> dict[str, Any]:
+    """Empty summary dictionary when zero clips succeeded."""
+    return {
+        "clips": 0,
+        "frames": 0,
+        "fit_ms_per_frame": 0.0,
+        "stats": {},
+        "flagged": [],
+        "thresholds": dataclasses.asdict(RefitThresholds()),
     }
 
 
@@ -1109,16 +1602,25 @@ __all__ = [
     "RefitConfig",
     "RefitThresholds",
     "check_refit_meta",
+    "choose_workers",
+    "collect_clip_files",
     "default_cache_root",
+    "empty_summary",
     "file_sha256",
     "find_cache_root",
+    "is_cached_refit",
     "kinematic_fingerprint",
+    "merge_quality_flags",
     "model_tag",
+    "pooled_twist",
     "read_refit_meta",
     "refit_clip",
     "save_refit",
     "stamp_fingerprint",
+    "stamp_tree",
     "summarize",
+    "summary_markdown",
     "twist_asymmetry",
     "validate_refit",
+    "write_refit_report",
 ]

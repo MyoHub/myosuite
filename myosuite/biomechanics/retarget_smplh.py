@@ -50,11 +50,21 @@ import numpy as np
 
 from myosuite.biomechanics.retarget import (
     ClipTargets,
-    Landmark,
     LandmarkIK,
     LandmarkMap,
-    OrientationTarget,
+    _body_landmarks,
+    _calibration_pose,
+    _foot_contacts,
     _foot_kinematics,
+    _ground_clip,
+    _hinge_table,
+    _knee_flexion_meta,
+    _mat_to_quat,
+    _orientation_targets,
+    _segment_angle,
+    _smooth,
+    _smooth_quat,
+    _start_pose,
 )
 from myosuite.biomechanics.smplh import (
     SMPLH,
@@ -62,7 +72,6 @@ from myosuite.biomechanics.smplh import (
     SMPLH_VERTICES,
     load_amass,
 )
-from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 SMPL_TO_MODEL = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 """SMPL's canonical frame (x left, y up, z forward) in a model world frame facing +x
@@ -322,37 +331,6 @@ class Calibration:
     hinge_table: tuple[np.ndarray, ...] = ()
 
 
-def _segment_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """Angle (rad) between the segments a->b and b->c."""
-    u, v = b - a, c - b
-    cos = (u * v).sum(-1) / np.linalg.norm(u, axis=-1) / np.linalg.norm(v, axis=-1)
-    return np.arccos(np.clip(cos, -1.0, 1.0))
-
-
-def _hinge_table(
-    m: mujoco.MjModel, d: mujoco.MjData, q: np.ndarray, h: SMPLHHinge
-) -> np.ndarray:
-    """The model's segment angle over the hinge's range (calibration pose otherwise)."""
-    j = m.joint(h.joint).id
-    prox, mid, dist = (m.body(b).id for b in h.model)
-    d.qpos[:] = q
-    mujoco.mj_kinematics(m, d)
-    R = d.xmat[mid].reshape(3, 3)
-    tip = R.T @ (d.xpos[dist] - d.xpos[mid])  # distal point, fixed on the hinge body
-    phi = np.linspace(*m.jnt_range[j], 181)
-    theta = np.empty_like(phi)
-    x = q.copy()
-    for k, v in enumerate(phi):
-        x[m.jnt_qposadr[j]] = v
-        d.qpos[:] = x
-        mujoco.mj_kinematics(m, d)
-        end = d.xpos[mid] + d.xmat[mid].reshape(3, 3) @ tip
-        theta[k] = _segment_angle(d.xpos[prox], d.xpos[mid], end)
-    if np.any(np.diff(theta) <= 0):
-        raise ValueError(f"{h.joint}: segment angle not increasing over the range")
-    return np.stack([phi, theta])
-
-
 def _lowest_sole(m: mujoco.MjModel, smap: SMPLHMap, qpos: np.ndarray) -> float:
     proxy = LandmarkMap("", "", (), feet=smap.feet)
     return float(_foot_kinematics(m, proxy, qpos[None])[0].min())
@@ -370,13 +348,7 @@ def calibrate(model: mujoco.MjModel, smap: SMPLHMap, template: SMPLH) -> Calibra
         The calibration.
     """
     m = model
-    d = mujoco.MjData(m)
-    q = m.qpos0.copy()
-    for name, v in smap.calibration.items():
-        q[m.jnt_qposadr[m.joint(name).id]] = v
-    project_joint_couplings(JointCouplings.from_model(m), q)
-    d.qpos[:] = q
-    mujoco.mj_kinematics(m, d)
+    d, q = _calibration_pose(m, smap.calibration)
     Rc = np.asarray(smap.smpl_to_model)
     v0, J0 = template.shaped(np.zeros(template.num_betas))
     jidx = {n: i for i, n in enumerate(SMPLH_JOINTS)}
@@ -396,30 +368,14 @@ def calibrate(model: mujoco.MjModel, smap: SMPLHMap, template: SMPLH) -> Calibra
             )
             ref[k] = v0[SMPLH_VERTICES[p.smplh[0]]]
             pos[k] = pos[par] + s * Rc @ (ref[k] - ref[par])
-    landmarks = []
-    for k, p in enumerate(smap.points):
-        if p.weight > 0:
-            b = m.body(p.body).id
-            off = d.xmat[b].reshape(3, 3).T @ (pos[k] - d.xpos[b])
-            landmarks.append(
-                Landmark(p.name, p.body, None, tuple(map(float, off)), p.weight)
-            )
+    landmarks = _body_landmarks(m, d, smap.points, pos)
     rot = np.stack(
         [Rc.T @ d.xmat[m.body(o.body).id].reshape(3, 3) for o in smap.orientations]
     )
-    orientations = []
-    for o in smap.orientations:
-        axis = None
-        if o.axis_to is not None:  # long axis in the body frame
-            b = m.body(o.body).id
-            a = d.xmat[b].reshape(3, 3).T @ (d.xpos[m.body(o.axis_to).id] - d.xpos[b])
-            axis = tuple(map(float, a / np.linalg.norm(a)))
-        orientations.append(
-            OrientationTarget(o.joint, o.body, o.weight, axis, o.axis_weight)
-        )
+    orientations = _orientation_targets(m, d, smap.orientations, source_attr="joint")
     lmap = LandmarkMap(
-        name=smap.name, version=smap.version, landmarks=tuple(landmarks),
-        orientations=tuple(orientations),
+        name=smap.name, version=smap.version, landmarks=landmarks,
+        orientations=orientations,
         feet=smap.feet, twist_pairs=smap.twist_pairs,
         twist_reference=smap.twist_reference, coupling_term=smap.coupling_term,
         period_joint=smap.period_joint,
@@ -438,14 +394,6 @@ def _body_model(path: str) -> SMPLH:
     return SMPLH(path)
 
 
-def _mat_to_quat(R: np.ndarray) -> np.ndarray:
-    out = np.empty((*R.shape[:-2], 4))
-    flat_R, flat_q = R.reshape(-1, 9), out.reshape(-1, 4)
-    for i in range(len(flat_R)):
-        mujoco.mju_mat2Quat(flat_q[i], flat_R[i])
-    return out
-
-
 def _rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """``(T, 3, 3)`` shortest rotations taking the directions *a* onto *b*."""
     a = a / np.linalg.norm(a, axis=-1, keepdims=True)
@@ -455,17 +403,6 @@ def _rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     K = np.stack([zero, -v[:, 2], v[:, 1], v[:, 2], zero, -v[:, 0],
                   -v[:, 1], v[:, 0], zero], -1).reshape(-1, 3, 3)  # fmt: skip
     return np.eye(3) + K + K @ K / (1.0 + cos)[:, None, None]
-
-
-def _smooth(x: np.ndarray, sigma: float) -> np.ndarray:
-    """Gaussian smoothing along axis 0 (edge-padded)."""
-    if sigma <= 0:
-        return x
-    r = int(3 * sigma)
-    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
-    k /= k.sum()
-    pad = np.pad(x, [(r, r)] + [(0, 0)] * (x.ndim - 1), mode="edge")
-    return np.apply_along_axis(lambda c: np.convolve(c, k, mode="valid"), 0, pad)
 
 
 def knee_flexion(rotations: np.ndarray) -> dict[str, np.ndarray]:
@@ -599,13 +536,7 @@ class SMPLHSource:
         fps = s["amass"]["fps"]
         if self.target_sigma > 0:
             pos = _smooth(pos, self.target_sigma * fps)
-            # quaternions: same hemisphere as the previous frame, smoothed, normalised
-            sign = np.cumprod(
-                np.where((quat[1:] * quat[:-1]).sum(-1) < 0, -1.0, 1.0), 0
-            )
-            quat[1:] *= sign[..., None]
-            quat = _smooth(quat, self.target_sigma * fps)
-            quat /= np.linalg.norm(quat, axis=-1, keepdims=True)
+            quat = _smooth_quat(quat, self.target_sigma * fps)
         # hinges: SMPL+H's segment angle as the model's hinge value (per-frame priors)
         posture = None
         if smap.hinges:
@@ -614,67 +545,30 @@ class SMPLHSource:
                 a, b, e = (pose.joints[:, jidx[j]] for j in h.smplh)
                 theta = _smooth(_segment_angle(a, b, e), self.target_sigma * fps)
                 posture[:, len(smap.posture) + k] = np.interp(theta, tab[1], tab[0])
-        # contacts: a contact vertex near the floor and slow
-        h = sole[..., 2] - sole_floor
-        v = np.linalg.norm(np.gradient(sole[..., :2], 1.0 / fps, axis=0), axis=-1)
-        near = (h < self.contact_height) & (v < self.contact_speed)
-        n_l = len(smap.contact_vertices[0])
-        contact = np.stack([near[:, :n_l].any(1), near[:, n_l:].any(1)], 1)
-        # start pose: calibration pose turned and moved onto the first frame's pelvis
-        seed = self._start_pose(model, pos[0], quat[0], lmap)
+        contact = _foot_contacts(
+            sole,
+            sole_floor,
+            fps,
+            len(smap.contact_vertices[0]),
+            self.contact_height,
+            self.contact_speed,
+        )
+        seed = _start_pose(model, c.qpos, c.model_pos[0], pos[0, 0], quat[0], lmap)
         self._last = {"floor": floor, "s_root": float(s_root), "contact": contact,
                       "gender": s["amass"]["gender"], "frames_source": len(s["amass"]["poses"]),
                       "edge_ratio": {names[k]: float(r) for k, r in ratio.items()},
                       "knee_flexion": knee_flexion(pose.rotations)}  # fmt: skip
         return ClipTargets(fps, pos, quat, seed, contact, posture)
 
-    def _start_pose(
-        self, m: mujoco.MjModel, pos: np.ndarray, quat: np.ndarray, lmap: LandmarkMap
-    ) -> np.ndarray:
-        c = self.calibration
-        q = c.qpos.copy()
-        k = [o.body for o in lmap.orientations].index("pelvis")
-        d = mujoco.MjData(m)
-        d.qpos[:] = q
-        mujoco.mj_kinematics(m, d)
-        Rp = np.empty(9)
-        mujoco.mju_quat2Mat(Rp, quat[k])
-        R_root = Rp.reshape(3, 3) @ d.xmat[m.body("pelvis").id].reshape(3, 3).T
-        qr = np.empty(4)
-        mujoco.mju_mat2Quat(qr, R_root.ravel())
-        q[3:7] = qr
-        q[:3] = pos[0] - R_root @ (c.model_pos[0] - q[:3])
-        return q
-
     def finish(
         self, ik: LandmarkIK, targets: ClipTargets, qpos: np.ndarray
     ) -> tuple[np.ndarray, ClipTargets, dict[str, Any]]:
-        """Ground the fit: shift the root (and the targets) so standing feet touch z = 0.
-
-        The lowest sole point of the feet in contact goes to the ground (interpolated
-        over flight phases, smoothed); frames where a foot would still be below the
-        ground are lifted out of it (as GMR does per frame).
-        """
+        """Ground the fit: shift the root (and the targets) so standing feet touch z = 0."""
         info = self._last
         contact = info["contact"]
-        low, _ = _foot_kinematics(ik.model, ik.lmap, qpos)
-        any_c = contact.any(1)
-        dz = np.full(len(qpos), np.nan)
-        dz[any_c] = -np.where(contact, low, np.inf)[any_c].min(1)
-        if any_c.any():
-            t = np.arange(len(qpos))
-            dz = np.interp(t, t[any_c], dz[any_c])
-        else:  # never on the ground (should not happen): lowest point to 0
-            dz[:] = -low.min()
-        lift = -low.min(1)
-        dz = _smooth(np.maximum(dz, lift), self.ground_sigma * targets.frequency)
-        dz = np.maximum(dz, lift)
-        qpos = qpos.copy()
-        qpos[:, 2] += dz
-        pos = targets.pos.copy()
-        pos[..., 2] += dz[:, None]
-        targets = ClipTargets(targets.frequency, pos, targets.quat, targets.seed,
-                              targets.contact, targets.posture)  # fmt: skip
+        qpos, targets, dz = _ground_clip(
+            ik.model, ik.lmap, targets, qpos, contact, self.ground_sigma
+        )
         meta = {
             "smplh_map": self.smap.name,
             "smplh_map_version": self.smap.version,
@@ -687,13 +581,7 @@ class SMPLHSource:
             "ground_shift_m": {"mean": float(dz.mean()), "min": float(dz.min()),
                                "max": float(dz.max())},
             "contact_fraction": [float(x) for x in contact.mean(0)],
-            # the source's knee hyperextension (e.g. a fit beyond the model's knee range)
-            "source_knee_flexion_deg": {
-                side: {"min": float(np.degrees(f.min())),
-                       "frames_below_minus2": float((f < np.radians(-2)).mean()),
-                       "frames_below_minus5": float((f < np.radians(-5)).mean())}
-                for side, f in info["knee_flexion"].items()
-            },
+            "source_knee_flexion_deg": _knee_flexion_meta(info["knee_flexion"]),
         }  # fmt: skip
         return qpos, targets, meta
 
