@@ -24,7 +24,11 @@ import torch
 from mjlab.managers.command_manager import CommandTerm, CommandTermCfg
 
 from myosuite.envs.myo.tasks.mimic.tracking.config import MimicTaskCfg
-from myosuite.envs.myo.tasks.mimic.tracking.models import ModelInfo, model_cfg
+from myosuite.envs.myo.tasks.mimic.tracking.models import (
+    ModelInfo,
+    goal_layout,
+    model_cfg,
+)
 from myosuite.envs.myo.tasks.mimic.tracking.motion import MotionLib, load_motion_lib
 from myosuite.terms import mimic_track as mt
 
@@ -58,7 +62,8 @@ class MotionCommand(CommandTerm):
         self.robot: Entity = env.scene[cfg.entity_name]
         mc = model_cfg(cfg.model)
         m = self.robot.cfg.spec_fn().compile()
-        self.info = ModelInfo(m)
+        self.info = ModelInfo(m, mc.motor_expr or None)
+        self.fixed_root = self.info.fixed_root
         dev = self.device
         lib = load_motion_lib(
             task.motion.clips, task.motion.root, cfg.model, task.self_collisions,
@@ -66,19 +71,29 @@ class MotionCommand(CommandTerm):
             workers=task.motion.workers, cache_dir=task.motion.cache_dir,
         )  # fmt: skip
         self.motion: MotionLib = lib.map(lambda x: torch.as_tensor(x, device=dev))
-        self.touch_sensor = env.scene[cfg.touch_sensor_name]
+        self.touch_sensor = (
+            None if cfg.touch_sensor_name is None else env.scene[cfg.touch_sensor_name]
+        )
         self._body_ids = torch.tensor(
             self.robot.find_bodies(mc.tracked_bodies, preserve_order=True)[0],
             device=dev,
         )
         idx = self.robot.indexing
+        mus = torch.as_tensor(self.info.muscle_ids, device=dev)
         self._act_adr = torch.tensor(
             env.sim.mj_model.actuator_actadr[idx.ctrl_ids.cpu().numpy()], device=dev
-        ).long()
+        ).long()[mus]
         self._ctrl_ids = idx.ctrl_ids.long()
+        self._muscle_ctrl_ids = self._ctrl_ids[mus]
         self._joint_qadr = torch.as_tensor(self.info.joint_qadr, device=dev)
         self._joint_dadr = torch.as_tensor(self.info.joint_dadr, device=dev)
         self.goal_stride = max(1, round(task.obs.goal_spacing_s / env.step_dt))
+        self.goal_frame, bodies, anchor = goal_layout(task, cfg.model)
+        # on the device: myoSuperMimic indexes with it inside a captured CUDA graph
+        self.goal_bodies = torch.as_tensor(bodies, dtype=torch.long, device=dev)
+        self.goal_anchor = tuple(
+            torch.as_tensor(x, dtype=torch.float32, device=dev) for x in anchor
+        )
         self._goal_offsets = self.goal_stride * torch.arange(
             1, task.obs.goal_frames, device=dev
         )
@@ -130,17 +145,22 @@ class MotionCommand(CommandTerm):
                 caller that steps the simulator without mjlab's scene updates).
         """
         d, sim = self.robot.data, self._env.sim.data
-        origins = self._env.scene.env_origins
-        R = mt.quat_to_mat(torch, d.root_link_quat_w)
-        ang_b = (R.transpose(-1, -2) @ d.root_link_ang_vel_w[..., None])[..., 0]
         ids = self._body_ids
-        sensor = self.touch_sensor
-        force = sensor._compute_data().force if fresh_touch else sensor.data.force
         quat = d.body_link_quat_w[:, ids]
+        if self.fixed_root:  # a fixed base stays where its model puts it in every world
+            origins = torch.zeros_like(self._env.scene.env_origins)
+            root_pos = root_quat = root_qvel = origins[:, :0]
+        else:
+            origins = self._env.scene.env_origins
+            R = mt.quat_to_mat(torch, d.root_link_quat_w)
+            ang_b = (R.transpose(-1, -2) @ d.root_link_ang_vel_w[..., None])[..., 0]
+            root_pos = d.root_link_pos_w - origins
+            root_quat = d.root_link_quat_w
+            root_qvel = torch.cat((d.root_link_lin_vel_w, ang_b), -1)
         return mt.TrackState(
-            root_pos=d.root_link_pos_w - origins,
-            root_quat=d.root_link_quat_w,
-            root_qvel=torch.cat((d.root_link_lin_vel_w, ang_b), -1),
+            root_pos=root_pos,
+            root_quat=root_quat,
+            root_qvel=root_qvel,
             joint_pos=d.joint_pos,
             joint_vel=d.joint_vel,
             body_pos=d.body_link_pos_w[:, ids] - origins[:, None],
@@ -149,11 +169,23 @@ class MotionCommand(CommandTerm):
             body_ang_vel=d.body_link_ang_vel_w[:, ids],
             act=sim.act[:, self._act_adr],
             excitation=self._env.action_manager.action,
-            touch=force[..., 2].abs().reshape(self.num_envs, -1),
-            muscle_length=sim.actuator_length[:, self._ctrl_ids],
-            muscle_velocity=sim.actuator_velocity[:, self._ctrl_ids],
-            muscle_force=sim.actuator_force[:, self._ctrl_ids],
+            touch=self.read_touch(fresh_touch),
+            muscle_length=sim.actuator_length[:, self._muscle_ctrl_ids],
+            muscle_velocity=sim.actuator_velocity[:, self._muscle_ctrl_ids],
+            muscle_force=sim.actuator_force[:, self._muscle_ctrl_ids],
         )
+
+    def read_touch(self, fresh: bool = False) -> torch.Tensor:
+        """Normal ground force on the contact bodies ``(N, C)`` (``C = 0``: none).
+
+        Args:
+            fresh: Read the contact sensor itself, not its per-step cache.
+        """
+        sensor = self.touch_sensor
+        if sensor is None:
+            return torch.zeros(self.num_envs, 0, device=self.device)
+        force = sensor._compute_data().force if fresh else sensor.data.force
+        return force[..., 2].abs().reshape(self.num_envs, -1)
 
     def _cached(self, key: str, build) -> object:
         step = self._env.common_step_counter
@@ -185,11 +217,16 @@ class MotionCommand(CommandTerm):
 
     def goal(self) -> torch.Tensor:
         """The reference-only goal at the current frame."""
-        m, f = self.motion, self.f
+        # an ended episode not yet reset (auto_reset off) can sit one past the last frame
+        m = self.motion
+        f = self.f.clamp(max=m.num_frames - 1)
         fut = torch.minimum(
             f[:, None] + self._goal_offsets, m.clip_end[m.clip_id[f]][:, None]
         )
-        return mt.goal_observation(torch, m.ref(f), m.ref(fut), m.phase(f).float())
+        return mt.goal_observation(
+            torch, m.ref(f), m.ref(fut), m.phase(f).float(),
+            self.goal_frame, self.goal_bodies, self.goal_anchor,
+        )  # fmt: skip
 
     # ------------------------------------------------------------------ reset
     def reset(self, env_ids: torch.Tensor | slice | None) -> dict[str, float]:
@@ -284,6 +321,8 @@ class MotionCommand(CommandTerm):
     def _reference_state(self, frames: torch.Tensor):
         info, fr = self.info, self.motion.frames
         qpos, qvel = fr["reset_qpos"][frames], fr["reset_qvel"][frames]
+        if info.fixed_root:
+            return None, qpos[:, self._joint_qadr], qvel[:, self._joint_dadr]
         a, b = info.root_qadr, info.root_dadr
         quat = qpos[:, a + 3 : a + 7]
         w_body = qvel[:, b + 3 : b + 6]
@@ -295,11 +334,13 @@ class MotionCommand(CommandTerm):
         self, env_ids: torch.Tensor, frames: torch.Tensor
     ) -> None:
         """Put envs on the reference at *frames* (joints clamped to their ranges)."""
-        (p, quat, v, w), q, qd = self._reference_state(frames)
-        origins = self._env.scene.env_origins[env_ids]
-        self.robot.write_root_state_to_sim(
-            torch.cat((p + origins, quat, v, w), -1), env_ids=env_ids
-        )
+        root, q, qd = self._reference_state(frames)
+        if root is not None:
+            p, quat, v, w = root
+            origins = self._env.scene.env_origins[env_ids]
+            self.robot.write_root_state_to_sim(
+                torch.cat((p + origins, quat, v, w), -1), env_ids=env_ids
+            )
         self.robot.write_joint_state_to_sim(q, qd, env_ids=env_ids)
         self._env.sim.data.act[env_ids[:, None], self._act_adr] = (
             self.task.reset.init_activation
@@ -356,21 +397,19 @@ class MotionCommand(CommandTerm):
     ) -> None:  # fmt: skip
         """:meth:`write_reference_state` for the envs where ``done``, into the simulator's
         qpos, qvel and act tensors (MuJoCo-Warp's reset of those worlds runs first)."""
-        (p, quat, v, _), q, qd = self._reference_state(frames)
-        w_body = self.motion.frames["reset_qvel"][frames][
-            :, self.info.root_dadr + 3 : self.info.root_dadr + 6
-        ]
+        root, q, qd = self._reference_state(frames)
         idx, d = self.robot.indexing, done.unsqueeze(-1)
-        fq, fv, jq, jv = (
-            idx.free_joint_q_adr,
-            idx.free_joint_v_adr,
-            idx.joint_q_adr,
-            idx.joint_v_adr,
-        )
-        qpos[:, fq] = torch.where(
-            d, torch.cat((p + self._env.scene.env_origins, quat), -1), qpos[:, fq]
-        )
-        qvel[:, fv] = torch.where(d, torch.cat((v, w_body), -1), qvel[:, fv])
+        jq, jv = idx.joint_q_adr, idx.joint_v_adr
+        if root is not None:
+            p, quat, v, _ = root
+            w_body = self.motion.frames["reset_qvel"][frames][
+                :, self.info.root_dadr + 3 : self.info.root_dadr + 6
+            ]
+            fq, fv = idx.free_joint_q_adr, idx.free_joint_v_adr
+            qpos[:, fq] = torch.where(
+                d, torch.cat((p + self._env.scene.env_origins, quat), -1), qpos[:, fq]
+            )
+            qvel[:, fv] = torch.where(d, torch.cat((v, w_body), -1), qvel[:, fv])
         qpos[:, jq] = torch.where(d, q, qpos[:, jq])
         qvel[:, jv] = torch.where(d, qd, qvel[:, jv])
         act[:, self._act_adr] = torch.where(
@@ -409,7 +448,7 @@ class MotionCommandCfg(CommandTermCfg):
     task: MimicTaskCfg
     model: str
     entity_name: str = "robot"
-    touch_sensor_name: str = "foot_touch"
+    touch_sensor_name: str | None = "foot_touch"
     resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
 
     def build(self, env: ManagerBasedRlEnv) -> MotionCommand:

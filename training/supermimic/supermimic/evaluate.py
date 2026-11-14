@@ -17,7 +17,9 @@ against its reference frame (``METRICS``):
   term is 0); ``mpjpe_root_mm`` and ``mpjpe_heading_mm`` with the offsets in the root's frame and in its heading
   (yaw) frame;
 * world: ``g_mpjpe_mm`` the tracked bodies' positions, pelvis included; ``root_ori_rad`` the root's rotation angle;
-  ``body_vel_mps`` the tracked bodies' linear velocities.
+  ``body_vel_mps`` the tracked bodies' linear velocities;
+* effectors (a model with ``effectors``, e.g. fingertips): their mean world position error, under the model's
+  ``effector_metric`` name and unit.
 
 Each is pooled over all counted states of all clips, and with the suffix ``_clip`` averaged per clip first, then over
 the clips that counted a state; ``per_clip_err`` holds each clip's pooled values.
@@ -142,7 +144,25 @@ def _track_errors(cmd) -> dict[str, torch.Tensor]:
         "b_root": (_in_frame(R, P) - _in_frame(rR, rP)).norm(dim=-1).mean(-1),
         "b_heading": (_in_frame(_yaw(R), P) - _in_frame(_yaw(rR), rP)).norm(dim=-1).mean(-1),
         "g_d": (P - rP).norm(dim=-1).mean(-1), "root_ori": _angle(R, rR), "body_vel": (V - h.body_v[f]).norm(dim=-1).mean(-1),
+        **_effector_error(cmd, P, rP),
     }  # fmt: skip
+
+
+def _effector_error(cmd, P: torch.Tensor, rP: torch.Tensor) -> dict[str, torch.Tensor]:
+    """``eff``: the effectors' mean world position error [m] (empty for a model without effectors)."""
+    mc = cmd.model_cfg
+    if not mc.effectors:
+        return {}
+    idx = [mc.tracked_bodies.index(b) for b in mc.effectors]
+    return {"eff": (P[..., idx, :] - rP[..., idx, :]).norm(dim=-1).mean(-1)}
+
+
+def metrics_for(cmd) -> dict:
+    """``METRICS`` plus the model's effector metric, if any."""
+    mc = cmd.model_cfg
+    if not mc.effectors:
+        return METRICS
+    return {**METRICS, mc.effector_metric: ("eff", lambda x: mc.effector_scale * x)}
 
 
 _mm = lambda x: 1000.0 * x  # noqa: E731
@@ -162,12 +182,13 @@ METRICS = {  # name: (the per-state error it averages, the transform of that ave
 CSV_HEAD = "iteration,train_wall_h,saved_at,eval_at,norm_return,norm_return_framew,n_failed,failed"
 
 
-def _metrics(acc: dict, n: torch.Tensor, names) -> dict:
-    """``METRICS`` pooled over the counted states, per clip first (``_clip``), and each clip's (``per_clip_err``)."""
+def _metrics(acc: dict, n: torch.Tensor, names, metrics: dict | None = None) -> dict:
+    """``METRICS`` (or ``metrics``) pooled over the counted states, per clip first (``_clip``), and each clip's
+    (``per_clip_err``)."""
     acc, n = {k: v.double().cpu() for k, v in acc.items()}, n.double().cpu()
     counted = (n > 0).nonzero().flatten().tolist()
     out, per = {}, {names[i]: {} for i in counted}
-    for name, (k, fn) in METRICS.items():
+    for name, (k, fn) in (METRICS if metrics is None else metrics).items():
         out[name] = fn(float(acc[k].sum() / n.sum().clamp(min=1)))
         vals = [fn(float(acc[k][i] / n[i])) for i in counted]
         out[name + "_clip"] = sum(vals) / len(vals) if vals else float("nan")
@@ -196,7 +217,8 @@ def evaluate(
         alive = ~done_eval
         if record:
             qpos = u.sim.data.qpos[:, q_adr].clone()
-            qpos[:, :3] -= u.scene.env_origins
+            if not cmd.fixed_root:
+                qpos[:, :3] -= u.scene.env_origins
             # clone: cmd.f is updated in place and .cpu() aliases it on a CPU device
             (
                 traj["qpos"].append(qpos.cpu()),
@@ -227,7 +249,7 @@ def evaluate(
         if len(reset_ids) > 0:  # finished clips restart but no longer count
             obs = TensorDict(u.reset(env_ids=reset_ids)[0], batch_size=[C])
     norm = ret / ((m.clip_len - 1).float() * cmd.max_step_reward)
-    errs = _metrics(acc, n_ok, m.names)
+    errs = _metrics(acc, n_ok, m.names, metrics_for(cmd))
     res = {
         "norm_return": norm.mean().item(),
         "norm_return_framew": (
@@ -242,7 +264,7 @@ def evaluate(
         h = cmd.heads
         ref_q, ref_quat = h.ref_q, mat_to_quat(h.root_R @ cmd.kin.R_off.T)
         np.savez_compressed(record, names=np.array(m.names), **{k: torch.stack(v).numpy() for k, v in traj.items()},
-                            ref_qpos=torch.cat((h.root_p, ref_quat, ref_q), -1).cpu().numpy(),
+                            ref_qpos=(ref_q if cmd.fixed_root else torch.cat((h.root_p, ref_quat, ref_q), -1)).cpu().numpy(),
                             clip_start=m.clip_start.cpu().numpy(), clip_len=m.clip_len.cpu().numpy(), fps=1.0 / u.step_dt)  # fmt: skip
     return res
 
@@ -297,6 +319,7 @@ def evaluate_many(
             {key: a_[k * C : (k + 1) * C] for key, a_ in acc.items()},
             n_ok[k * C : (k + 1) * C],
             m.names,
+            metrics_for(cmd),
         )
         norm = rk / ((m.clip_len - 1).float() * cmd.max_step_reward)
         out.append({
@@ -349,7 +372,8 @@ def evaluate_run(
         done = {int(line.split(",")[0]) for line in lines[1:]}
         err_cols = lines[0].split(",")[len(CSV_HEAD.split(",")) :]
     else:
-        err_cols = [*METRICS, *(k + "_clip" for k in METRICS)]
+        mets = metrics_for(runner.cmd)
+        err_cols = [*mets, *(k + "_clip" for k in mets)]
         open(out_csv, "w").write(",".join([CSV_HEAD, *err_cols]) + "\n")
     pending = []  # (iteration, path, checkpoint dict, policy): evaluated `batch` at a time
 

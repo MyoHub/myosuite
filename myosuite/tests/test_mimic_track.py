@@ -12,8 +12,10 @@ seed 0) at a 0.02 s control step, and on 16 perturbed states of it.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
+import mujoco
 import numpy as np
 import pytest
 
@@ -30,6 +32,7 @@ from myosuite.envs.myo.tasks.mimic.tracking.config import (
 from myosuite.envs.myo.tasks.mimic.tracking.metrics import METRICS, evaluate, summarize
 from myosuite.envs.myo.tasks.mimic.tracking.models import (
     compiled_body,
+    compiled_scene,
     model_cfg,
     root_offset,
 )
@@ -428,3 +431,211 @@ def test_custom_reward_mjlab_matches_cpu(clip: str) -> None:
         assert float(task_reward[0]) == pytest.approx(float(r_base[0]), rel=1e-5)
         assert float(task_reward[0]) == pytest.approx(info["task_reward"], rel=1e-4)
     assert "task_reward" in mj.unwrapped.command_manager.get_term("motion").metrics
+
+
+# --------------------------------------------------------------------------- submodels
+
+
+def test_for_body_keeps_the_full_body_and_drops_root_terms() -> None:
+    from myosuite.envs.myo.tasks.mimic.tracking.config import for_body
+
+    task = resolve_task()
+    assert for_body(task, fixed_root=False, touch=True) is task
+    fixed = for_body(task, fixed_root=True, touch=False)
+    assert not {"root_pos", "root_vel", "touch"} & set(fixed.obs.policy)
+    assert {t.name for t in fixed.reward.terms} == set(KERNELS) - {
+        "root_pos",
+        "root_vel",
+    }
+    assert set(fixed.failure.thresholds()) == {"rel_site"}
+
+
+@pytest.fixture(scope="module", params=["myoelbow2dof", "mixed"])
+def submodel(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory):
+    """A fixed-base body (muscles only, or with a direct, a first-order and a site motor) and a clip."""
+    from myosuite.tests.mimic_toy import register_mixed_model
+
+    name = register_mixed_model().name if request.param == "mixed" else request.param
+    path = tmp_path_factory.mktemp("sub") / f"{name}.npz"
+    write_synthetic_clip(path, compiled_body(name), 2.0, 0.0, 0.3, 0, model_name=name)
+    return name, str(path)
+
+
+def test_motors_by_transmission() -> None:
+    """Joint and site motors are motors; the twin targets each by its transmission."""
+    from myosuite.envs.myo.tasks.mimic.tracking.models import body_info
+    from myosuite.tests.mimic_toy import register_mixed_model
+
+    info = body_info(register_mixed_model().name)
+    names = [info.actuator_names[a] for a in info.motor_ids]
+    assert names == ["shoulder_motor", "elbow_motor", "forearm_motor"]
+    assert info.motor_joint_names == ["r_shoulder_elev", "r_elbow_flex"]
+    assert info.motor_site_names == ["forearm_motor_site"]
+
+
+def test_a_model_may_bring_its_fingerprint() -> None:
+    """A body whose clips come from another retargeting names its own fingerprint."""
+    import dataclasses
+
+    from myosuite.envs.myo.tasks.mimic.tracking.models import (
+        MODELS,
+        kinematic_fingerprint,
+        register_model,
+    )
+
+    name = "myoelbow2dof_own_fingerprint"
+    if name not in MODELS:
+        register_model(
+            dataclasses.replace(
+                MODELS["myoelbow2dof"], name=name, fingerprint=lambda m: f"nq{m.nq}"
+            )
+        )
+    assert kinematic_fingerprint(name) == "nq2"
+    assert kinematic_fingerprint("myoelbow2dof") != "nq2"
+
+
+@pytest.mark.parametrize(
+    ("name", "frame", "bodies"),
+    [
+        ("myoelbow2dof", "r_ulna_radius_hand", ("hand_tip", "r_humerus")),
+        ("myofullbody", "lunate_r", ("head", "ulna_r")),
+    ],
+    ids=["fixed", "free"],
+)
+def test_frame_goal_matches_the_kinematics(
+    name: str, frame: str, bodies: tuple[str, ...], tmp_path: Path
+) -> None:
+    """A goal_frame goal is the goal bodies in the frame body's frame and its own future
+    motion, on the CPU and in the twin, as MuJoCo's kinematics of the reference poses
+    (the full body's anchor sits at an offset from its root body)."""
+    from myosuite.terms.mimic_track import so3_log
+
+    path = tmp_path / "clip.npz"
+    write_synthetic_clip(path, compiled_body(name), 2.0, 0.5, 0.2, 0, model_name=name)
+    ov = {"motion.clips": str(path), "reset.mode": "start", "obs.goal_frame": frame,
+          "obs.goal_bodies": bodies, "obs.goal_frames": 3, "obs.goal_spacing_s": 0.04}  # fmt: skip
+    tk = {"model": name, "overrides": ov}
+    cpu = make_env(EnvConfig(MIMIC_ENV_ID, task_kwargs=tk)).unwrapped
+    a = np.full(cpu.model.nu, 0.3, np.float32)
+    cpu.reset(seed=0, options={"clip": 0})
+    for _ in range(5):
+        obs, *_ = cpu.step(a)
+    goal = obs[-cpu.obs_dims["goal"] :]
+    assert goal.shape == (3 * 2 + 2 * (3 * 2 + 6),)
+    m = compiled_scene(name)
+    d, lib, info = mujoco.MjData(m), cpu.motion, cpu.info
+    end = int(lib.clip_end[lib.clip_id[cpu._f]])
+    poses = []
+    for f in np.minimum(cpu._f + cpu._goal_stride * np.arange(3), end):
+        r = lib.ref(f)
+        d.qpos[:] = m.qpos0
+        if not info.fixed_root:
+            d.qpos[info.root_qadr : info.root_qadr + 3] = r.root_pos
+            mujoco.mju_mat2Quat(
+                d.qpos[info.root_qadr + 3 : info.root_qadr + 7], r.root_rot.ravel()
+            )
+        d.qpos[info.joint_qadr] = r.joint_pos
+        mujoco.mj_kinematics(m, d)
+        x, R = (
+            d.xpos[m.body(frame).id].copy(),
+            d.xmat[m.body(frame).id].reshape(3, 3).copy(),
+        )
+        poses.append((x, R, [d.xpos[m.body(b).id].copy() for b in bodies]))
+    x0, R0, _ = poses[0]
+    want = [R.T @ (p - x) for x, R, ps in poses[:1] for p in ps]
+    for x, R, ps in poses[1:]:
+        want += [R.T @ (p - x) for p in ps] + [R0.T @ (x - x0), so3_log(np, R0.T @ R)]
+    np.testing.assert_allclose(goal, np.concatenate(want), atol=2e-5)
+    pytest.importorskip("mjlab")
+    torch = pytest.importorskip("torch")
+    mj = make_env(
+        EnvConfig(MIMIC_ENV_ID, backend="mjlab", num_envs=1, task_kwargs=tk),
+        device="cpu",
+    )
+    obs_mj, _ = mj.reset()
+    cpu.reset(seed=0, options={"clip": 0})
+    g_cpu = cpu._goal()
+    np.testing.assert_allclose(obs_mj["goal"][0].numpy(), g_cpu, atol=1e-5)
+    del torch
+
+
+def test_frame_goal_needs_tracked_bodies() -> None:
+    from myosuite.envs.myo.tasks.mimic.tracking.models import goal_layout
+
+    task = PRESETS["supermimic"]
+    ok = dataclasses.replace(
+        task,
+        obs=dataclasses.replace(
+            task.obs, goal_frame="r_humerus", goal_bodies=("hand_tip",)
+        ),
+    )
+    assert goal_layout(ok, "myoelbow2dof")[:2] == (0, [2])
+    for bodies in (("base",), ("nowhere",), ()):
+        bad = dataclasses.replace(
+            ok, obs=dataclasses.replace(ok.obs, goal_bodies=bodies)
+        )
+        with pytest.raises(ValueError, match="other than the anchor"):
+            goal_layout(bad, "myoelbow2dof")
+
+
+def test_submodel_motion_lib_has_no_root(submodel) -> None:
+    name, path = submodel
+    m = compiled_body(name)
+    lib = build_motion_lib([path], m, model_cfg(name).tracked_bodies, 0.02)
+    T = lib.num_frames
+    assert lib.frames["root_pos"].shape == (T, 0) and lib.frames["root_qvel"].shape == (
+        T,
+        0,
+    )
+    np.testing.assert_allclose(
+        lib.frames["root_rot"], np.broadcast_to(np.eye(3), (T, 3, 3))
+    )
+    assert lib.frames["site_rpos"].shape == (T, 3, 3)
+
+
+def test_submodel_mjlab_twin_parity(submodel) -> None:
+    """A fixed-base body (and its motors) observes and scores alike on the CPU and in the twin."""
+    pytest.importorskip("mjlab")
+    torch = pytest.importorskip("torch")
+    name, path = submodel
+    tk = {"model": name, "overrides": {"motion.clips": path, "reset.mode": "start"}}
+    cpu = make_env(EnvConfig(MIMIC_ENV_ID, task_kwargs=tk)).unwrapped
+    mj = make_env(
+        EnvConfig(MIMIC_ENV_ID, backend="mjlab", num_envs=2, task_kwargs=tk),
+        device="cpu",
+    )
+    assert cpu.info.fixed_root and "root_pos" not in cpu.obs_dims
+    obs_mj, _ = mj.reset()
+    obs_cpu, _ = cpu.reset(seed=0, options={"clip": 0})
+    o_mj = torch.cat((obs_mj["policy"][0], obs_mj["goal"][0])).numpy()
+    np.testing.assert_allclose(o_mj, obs_cpu, atol=1e-5)
+    a = np.linspace(0.1, 0.9, cpu.model.nu).astype(np.float32)
+    for _ in range(10):
+        obs_cpu, r_cpu, term_cpu, _, _ = cpu.step(a)
+        obs_mj, r_mj, term_mj, _, _ = mj.step(torch.tensor(a)[None].repeat(2, 1))
+        o_mj = torch.cat((obs_mj["policy"][0], obs_mj["goal"][0])).numpy()
+        assert float(r_mj[0]) == pytest.approx(r_cpu, rel=1e-4)
+        assert float(r_mj[1]) == float(
+            r_mj[0]
+        )  # a fixed base is not moved by env origins
+        assert bool(term_mj[0]) == term_cpu
+        np.testing.assert_allclose(o_mj, obs_cpu, atol=1e-4, rtol=1e-4)
+    ctrl = mj.unwrapped.sim.data.ctrl[0].cpu().numpy()
+    np.testing.assert_allclose(ctrl, cpu.data.ctrl, atol=1e-6)
+    np.testing.assert_allclose(cpu.data.ctrl, cpu.info.action_to_ctrl(np, a))
+
+
+def test_submodel_metrics_report_the_effector(submodel) -> None:
+    name, path = submodel
+    env = make_env(
+        EnvConfig(
+            MIMIC_ENV_ID,
+            task_kwargs={
+                "model": name,
+                "overrides": {"motion.clips": path, "episode_length_s": None},
+            },
+        )
+    )
+    nu = env.unwrapped.model.nu
+    rep = evaluate(lambda obs: np.full(nu, 0.5), env)
+    assert np.isfinite(rep["tip_err_cm"]) and np.isfinite(rep["mpjpe_mm"])

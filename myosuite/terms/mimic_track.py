@@ -16,6 +16,11 @@ muscle-supermimic (``tasks/tracking/mdp``, commit 8a6244b): the 16 relative site
 tracked bodies minus the first one (the pelvis), the reward is MimicReward
 (``exp(-kernel * mean squared error)`` per component) and the failure rule is
 MuscleMimic's mean relative site / root position / root orientation deviation.
+
+A body with a fixed root (no free joint) has zero-width root arrays (``root_pos``,
+``root_quat``, ``root_qvel`` and the reference's ``root_pos``, ``root_qvel``,
+``root_vel_local`` of size 0) and the identity as root rotation: its root terms are
+constant, and its task leaves them out (``config.for_body``).
 """
 
 from __future__ import annotations
@@ -33,7 +38,8 @@ class TrackState:
     """Body state of a tracking agent (arrays with leading batch axes ``...``).
 
     Attributes:
-        root_pos: ``(..., 3)`` free-joint position (env frame).
+        root_pos: ``(..., 3)`` free-joint position (env frame); ``(..., 0)`` for a
+            fixed root (likewise ``root_quat`` and ``root_qvel``).
         root_quat: ``(..., 4)`` free-joint orientation (wxyz).
         root_qvel: ``(..., 6)`` free-joint velocity ``[v world, w body]``.
         joint_pos: ``(..., J)`` every non-root joint, model order.
@@ -43,8 +49,9 @@ class TrackState:
         body_lin_vel: ``(..., B, 3)`` linear velocity of the body origins (world).
         body_ang_vel: ``(..., B, 3)`` angular velocity (world).
         act: ``(..., M)`` muscle activations.
-        excitation: ``(..., M)`` the last action (the commanded excitation).
-        touch: ``(..., 4)`` normal ground force on the heels and toes (N).
+        excitation: ``(..., U)`` the last action (one per actuator: the muscles'
+            excitation, the motors' normalized command).
+        touch: ``(..., C)`` normal ground force on the contact bodies (N).
         muscle_length: ``(..., M)`` optional.
         muscle_velocity: ``(..., M)`` optional.
         muscle_force: ``(..., M)`` optional.
@@ -186,6 +193,15 @@ def so3_log(xp: Any, R: Any) -> Any:
     return quat_to_rotvec(xp, mat_to_quat(xp, R))
 
 
+def so3_exp(xp: Any, v: Any) -> Any:
+    """Rotation vector -> rotation matrix (stable near 0)."""
+    th = xp.sqrt((v * v).sum(-1))[..., None]
+    scale = xp.where(
+        th < 1e-6, 0.5 - th * th / 48, xp.sin(th / 2) / xp.clip(th, 1e-12, None)
+    )
+    return quat_to_mat(xp, xp.concatenate((xp.cos(th / 2), v * scale), axis=-1))
+
+
 def rotation_angle(xp: Any, Ra: Any, Rb: Any) -> Any:
     """Geodesic angle between rotations (via the relative quaternion; exact near 0)."""
     q = mat_to_quat(xp, _t(Ra) @ Rb)
@@ -230,12 +246,23 @@ def root_vel_local(xp: Any, root_rot: Any, root_qvel: Any) -> Any:
     )
 
 
+def identity_rotations(xp: Any, like: Any) -> Any:
+    """Identity rotations ``(..., 3, 3)`` for the batch of ``like`` ``(..., n)``."""
+    batch = tuple(like.shape[:-1])
+    if xp.__name__ == "numpy":
+        return xp.broadcast_to(xp.eye(3, dtype=like.dtype), batch + (3, 3)).copy()
+    return xp.eye(3, dtype=like.dtype, device=like.device).expand(*batch, 3, 3)
+
+
 def features(xp: Any, s: TrackState) -> TrackFeatures:
     """The shared quantities of a state (relative sites, root rotation and velocity)."""
-    R = quat_to_mat(xp, s.root_quat)
     rpos, rangles, rvel = relative_sites(
         xp, s.body_pos, s.body_rot, s.body_lin_vel, s.body_ang_vel
     )
+    if s.root_quat.shape[-1] == 0:  # fixed root
+        R = identity_rotations(xp, s.body_pos[..., 0, :])
+        return TrackFeatures(R, s.root_qvel, rpos, rangles, rvel)
+    R = quat_to_mat(xp, s.root_quat)
     return TrackFeatures(R, root_vel_local(xp, R, s.root_qvel), rpos, rangles, rvel)
 
 
@@ -287,18 +314,68 @@ def observation(xp: Any, s: TrackState, f: TrackFeatures, name: str) -> Any:
     return OBSERVATIONS[name](xp, s, f)
 
 
-def goal_observation(xp: Any, now: TrackRef, future: TrackRef, phase: Any) -> Any:
-    """The reference-only goal: GoalTrajMimic's concise lookahead and the motion phase.
+def _frame_pose(xp: Any, r: TrackRef, frame: int, anchor: Any) -> tuple[Any, Any]:
+    """World position (up to a constant) and rotation of tracked body ``frame + 1``."""
+    R_off, p_off = anchor
+    pos = r.site_rpos[..., frame, :]
+    if r.root_pos.shape[-1]:  # a free root carries the anchor
+        pos = pos + r.root_pos + _mv(r.root_rot, p_off)
+    return pos, r.root_rot @ R_off @ so3_exp(xp, r.site_rangles[..., frame, :])
+
+
+def _frame_goal(
+    xp: Any, now: TrackRef, future: TrackRef, frame: int, bodies: Any, anchor: Any
+) -> Any:
+    def local(r: TrackRef, R: Any) -> Any:
+        rel = r.site_rpos[..., bodies, :] - r.site_rpos[..., frame : frame + 1, :]
+        return _flat((_t(R)[..., None, :, :] @ rel[..., None])[..., 0])
+
+    p0, R0 = _frame_pose(xp, now, frame, anchor)
+    p1, R1 = _frame_pose(xp, future, frame, anchor)
+    R0k = _t(R0)[..., None, :, :]
+    fut = xp.concatenate(
+        (
+            local(future, R1),
+            (R0k @ (p1 - p0[..., None, :])[..., None])[..., 0],
+            so3_log(xp, R0k @ R1),
+        ),
+        axis=-1,
+    )
+    return xp.concatenate((local(now, R0), _flat(fut)), axis=-1)
+
+
+def goal_observation(
+    xp: Any,
+    now: TrackRef,
+    future: TrackRef,
+    phase: Any,
+    frame: int | None = None,
+    bodies: Any = (),
+    anchor: Any = None,
+) -> Any:
+    """The reference-only goal: GoalTrajMimic's concise lookahead and the motion phase,
+    or (``frame`` set) the goal bodies in a frame body's frame.
 
     Args:
         xp: Array module.
         now: Reference at the current frame (batch ``...``).
         future: Reference at the K future frames (batch ``..., K``).
         phase: ``(...,)`` progress through the clip.
+        frame: Index into the relative sites (tracked body ``frame + 1``) of the goal's
+            frame body; ``None``: the lookahead goal.
+        bodies: With ``frame``: relative-site indices of the goal bodies (G).
+        anchor: With ``frame``: ``(R_off (3, 3), p_off (3,))``, the anchor's constant
+            pose in the root body's frame (a fixed root: in the world).
 
     Returns:
-        ``(..., 3 (B-1) + K (9 + 3 (B-1)) + 1)``.
+        Lookahead: ``(..., 3 (B-1) + K (9 + 3 (B-1)) + 1)`` (``K 9`` -> 0 for a fixed
+        root). Frame goal: ``(..., 3 G + K (3 G + 6))``: the goal bodies' positions in
+        the frame body's frame now and at each future frame, and the frame body's
+        position and rotation vector at each future frame in its current frame (no
+        phase).
     """
+    if frame is not None:
+        return _frame_goal(xp, now, future, frame, bodies, anchor)
     fut = xp.concatenate(
         (
             future.root_pos - now.root_pos[..., None, :],

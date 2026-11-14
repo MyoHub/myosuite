@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from dataclasses import dataclass
 from typing import Any, Literal
 
 from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
@@ -22,6 +22,8 @@ class TaskEnvCfg:
     points, and resets driven by the runner (``auto_reset`` off: it records each terminal state first).
     """
 
+    model: str = "myofullbody"
+    """The task's body model (``myoMimic-v0``'s models, or one added with ``register_model``)."""
     motion_file: str = "kit_train"
     """A clip, a directory of clips, a ``.txt`` clip list or ``"kit_train"`` (myoMimic-v0's default: MuscleMimic's 972
     KIT training motions)."""
@@ -38,10 +40,13 @@ class TaskEnvCfg:
     """Control steps between goal frames (default: 0.2 s)."""
     time_limit: bool = True
     auto_reset: bool = False
+    task: dict[str, Any] = field(default_factory=dict)
+    """Further ``MimicTaskCfg`` dotted-key overrides, applied last (e.g. a body's reward kernels or failure
+    threshold)."""
 
 
 TIMESTEP = 0.002
-"""The body's physics step (the task's models)."""
+"""The full body's physics step (checkpoints without ``ctrl_dt`` were trained on it)."""
 _MUSCLE_OBS = ("muscle_length", "muscle_velocity", "muscle_force")
 
 
@@ -67,7 +72,7 @@ def task_overrides(cfg: TaskEnvCfg) -> dict[str, Any]:
         out["obs.goal_spacing_s"] = cfg.goal_stride * cfg.ctrl_dt
     if not cfg.time_limit:
         out["episode_length_s"] = None
-    return out
+    return {**out, **cfg.task}
 
 
 def make_task_env(
@@ -90,13 +95,19 @@ def make_task_env(
     from myosuite.core.config import EnvConfig  # noqa: PLC0415
 
     extra = {} if seed is None else {"seed": seed}
+    task_kwargs: dict[str, Any] = {
+        "preset": "supermimic",
+        "overrides": task_overrides(cfg),
+    }
+    if cfg.model != "myofullbody":
+        task_kwargs["model"] = cfg.model
     env = make_env(
         EnvConfig(
             MIMIC_ENV_ID,
             backend="mjlab",
             num_envs=cfg.num_envs,
             ctrl_dt=cfg.ctrl_dt,
-            task_kwargs={"preset": "supermimic", "overrides": task_overrides(cfg)},
+            task_kwargs=task_kwargs,
         ),
         device=device,
         **extra,
@@ -105,10 +116,15 @@ def make_task_env(
 
 
 def settings_cfg(settings: dict, **overrides: Any) -> TaskEnvCfg:
-    """The task options a checkpoint's ``"env"`` entry (control rate, goal stride, muscle observations) asks for."""
+    """The task options a checkpoint's ``"env"`` entry (model, control rate, goal stride, muscle observations) asks
+    for."""
     cfg = TaskEnvCfg(**overrides)
-    if "decimation" in settings:
+    if "ctrl_dt" in settings:
+        cfg.ctrl_dt = settings["ctrl_dt"]
+    elif "decimation" in settings:
         cfg.ctrl_dt = settings["decimation"] * TIMESTEP
+    if "model" in settings and "model" not in overrides:
+        cfg.model = settings["model"]
     for key in ("lookahead", "muscle_obs"):
         if key in settings:
             setattr(cfg, key, settings[key])

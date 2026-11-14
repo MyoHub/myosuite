@@ -49,7 +49,6 @@ from supermimic.networks import (
 )
 from supermimic.optim import MuonAdam, gated_step
 from supermimic.heads import (
-    NUM_TOUCH,
     _goal,
     StepCtx,
     analytic,
@@ -60,6 +59,9 @@ from supermimic.mirror import Mirror
 from supermimic.task import TaskView
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM
 from myosuite.envs.myo.tasks.mimic.tracking.models import model_version
+
+_CONTRACT_BEFORE_SUBMODELS = {"root": "free", "motors": [], "effectors": []}
+"""The contract fields a checkpoint from before submodels leaves out (a free-root body of muscles only)."""
 
 
 class AnalyticObsGroup:
@@ -246,7 +248,9 @@ class SuperMimicRunner:
             self.cmd.muscle,
             self.cmd.motion,
         )
-        self.nq, self.nm = self.heads.nq, self.cmd.info.num_muscles
+        # nm: one action per actuator (the muscles' excitations, the motors' normalized commands)
+        self.nq, self.nm = self.heads.nq, self.cmd.num_actuators
+        self.num_touch = self.cmd.num_touch
         self.cmd.kin.unbind = cfg.kin_unbind
         self.obs_policy = AnalyticObsGroup(u, cfg.obs_groups["policy"][0], self.heads)
         self.obs_goal = AnalyticObsGroup(u, cfg.obs_groups["goal"][0], self.heads)
@@ -278,7 +282,11 @@ class SuperMimicRunner:
                 continue
             params = {k: v for k, v in tc.params.items() if k != "command_name"}
             self.fail_terms.append(
-                (analytic(tc.func), {**params, "soft_width": cfg.soft_width})
+                # the width relative to the threshold (the full body's thresholds are 1)
+                (
+                    analytic(tc.func),
+                    {**params, "soft_width": cfg.soft_width * params["threshold"]},
+                )
             )
         self.max_step_reward = self.cmd.max_step_reward
         self.reward_scale, self.reward_names = scale, list(rm._term_names)
@@ -294,12 +302,17 @@ class SuperMimicRunner:
         self.mirror = (
             None  # wm_mirror: the model's left-right maps (validated on the model here)
         )
-        if cfg.wm_mirror > 0:
+        sides = self.cmd.model_cfg.mirror_sides
+        if cfg.wm_mirror > 0 and sides is None:
+            print("wm_mirror: off (the body has no left-right mirror map)", flush=True)
+        elif cfg.wm_mirror > 0:
+            touch = self.cmd.touch_sensor
             self.mirror = Mirror(
                 self.cmd.kin,
                 self.cmd.geo,
-                tuple(self.cmd.touch_sensor.cfg.primary.pattern),
+                () if touch is None else tuple(touch.cfg.primary.pattern),
                 device,
+                sides=sides,
             )
             print(
                 "wm_mirror: "
@@ -307,6 +320,17 @@ class SuperMimicRunner:
                 flush=True,
             )
         self.collector = None  # collect_graph: the thin simulator wrapper (collector.py), built by learn()
+        # noise_free_frac: the envs that collect without noise; budget_schedules: the noise level as a device tensor
+        # (filled every iteration, read by captured collection steps)
+        n_det = round(cfg.noise_free_frac * u.num_envs)
+        self.det_mask = (
+            (torch.arange(u.num_envs, device=device) < n_det) if n_det > 0 else None
+        )
+        self.noise_t = (torch.tensor(float(cfg.action_noise), device=device)
+                        if cfg.budget_schedules or self.det_mask is not None else None)  # fmt: skip
+        self.stat_keys = STATS + (
+            ("det_ret", "det_len") if self.det_mask is not None else ()
+        )
         # per-component floors on the error normalization (pos, rot, lin vel, ang vel, q, qd increments)
         f = lambda n, v: torch.full((n,), v)  # noqa: E731
         self.err_floor = torch.cat(
@@ -343,10 +367,19 @@ class SuperMimicRunner:
 
     def _build_networks(self):
         c, dev = self.cfg, self.device
-        self.wm = WorldModel(self.nq, self.nm, NUM_TOUCH, c.wm_hidden, structured=c.wm_structured, dt=self.uenv.step_dt,
-                             substeps=self.uenv.cfg.decimation).to(dev)  # fmt: skip
+        self.wm = WorldModel(self.nq, self.nm, self.num_touch, c.wm_hidden, structured=c.wm_structured,
+                             dt=self.uenv.step_dt, substeps=self.uenv.cfg.decimation,
+                             fixed_root=self.cmd.fixed_root).to(dev)  # fmt: skip
+        init = c.init_excitation
+        if self.cmd.has_motors:  # motors start at zero command (their range's zero, clipped into the open box)
+            info = self.cmd.info
+            init = torch.full((self.nm,), c.init_excitation)
+            zero = -info.motor_lo / (info.motor_hi - info.motor_lo)
+            init[torch.as_tensor(info.motor_ids)] = torch.as_tensor(
+                zero, dtype=torch.float32
+            ).clamp(0.01, 0.99)
         self.pi = Policy(self.obs_policy.dim, self.obs_goal.dim, self.nm, c.enc_hidden, c.dec_hidden, c.latent_dim,
-                         c.init_excitation, action_map=ActionMap(self.nm)).to(dev)  # fmt: skip
+                         init, action_map=ActionMap(self.nm)).to(dev)  # fmt: skip
         # overlap_wm: imagination steps a copy of the world model taken at the start of each iteration (sync_wm_imag),
         # so that the world-model updates can run concurrently with the policy update
         self.wm_imag = (
@@ -460,7 +493,10 @@ class SuperMimicRunner:
             self.wm.state_error(S_hat[:6], unflatten_body(s1, self.nq)) / std
         ) ** 2  # (B, k, D)
         e = e.mean(-1)
-        e_touch = ((S_hat[6] - self.wm.touch_norm(touch1)) ** 2).mean(-1)
+        if self.num_touch:
+            e_touch = ((S_hat[6] - self.wm.touch_norm(touch1)) ** 2).mean(-1)
+        else:  # no contact bodies
+            e_touch = torch.zeros_like(e)
         loss = (e * mask).sum() / s1.shape[0] + self.cfg.touch_loss_weight * (
             e_touch * mask
         ).sum() / s1.shape[0]
@@ -541,8 +577,36 @@ class SuperMimicRunner:
             ):
                 pt.lerp_(p, 1 - self.cfg.critic_target_alpha)
 
-    def lr_at(self, it: int) -> float:
+    def explore_actions(self, a: torch.Tensor) -> torch.Tensor:
+        """Collection's exploration noise on the policy's actions (noise_free_frac envs: none)."""
         c = self.cfg
+        if self.noise_t is None:
+            return networks.explore(a, c.action_noise, c.action_noise_dist)
+        noisy = networks.explore(a, self.noise_t, c.action_noise_dist)
+        if self.det_mask is None:
+            return noisy
+        return torch.where(
+            self.det_mask.unsqueeze(-1), a.clamp(0.0, 1.0).to(noisy.dtype), noisy
+        )
+
+    def budget_progress(self, elapsed_s: float) -> float | None:
+        """budget_schedules: the share of the time budget spent (None: the schedules run over iterations)."""
+        c = self.cfg
+        if not (c.budget_schedules and c.max_hours > 0):
+            return None
+        return min(1.0, elapsed_s / (c.max_hours * 3600))
+
+    def noise_at(self, progress: float) -> float:
+        """budget_schedules: the action noise at a share of the time budget (cosine from action_noise to the final)."""
+        c = self.cfg
+        return c.action_noise_final + (c.action_noise - c.action_noise_final) * 0.5 * (
+            1 + math.cos(math.pi * progress)
+        )
+
+    def lr_at(self, it: int, progress: float | None = None) -> float:
+        c = self.cfg
+        if progress is not None:  # budget_schedules: cosine over the time budget
+            return c.lr * (0.03 + 0.97 * 0.5 * (1 + math.cos(math.pi * progress)))
         if it >= c.lr_decay_iters:
             return c.lr * 0.03
         return c.lr * (
@@ -747,7 +811,7 @@ class SuperMimicRunner:
             u.num_envs,
             self.heads.body_state_dim,
             self.nm,
-            NUM_TOUCH,
+            self.num_touch,
             self.device,
         )
         self.ep_ret = torch.zeros(u.num_envs, device=self.device)
@@ -776,7 +840,7 @@ class SuperMimicRunner:
             for _ in range(n_steps):
                 out = self.collector.step()
                 self.sim_steps += N
-                for k in STATS:
+                for k in self.stat_keys:
                     v = out[k].clone()
                     if record is not None:
                         v.record_stream(record)
@@ -790,7 +854,7 @@ class SuperMimicRunner:
             self.pi.obs_norm.update(obs["policy"])
             self.pi.goal_norm.update(obs["goal"])
             a = self.pi(obs["policy"], obs["goal"])
-            a = networks.explore(a, self.cfg.action_noise, self.cfg.action_noise_dist)
+            a = self.explore_actions(a)
             obs, rew, dones, _ = self.env.step(a)
             S1 = cmd.read_state()
             done = dones.bool()
@@ -818,6 +882,14 @@ class SuperMimicRunner:
                 )
                 stats["term"].append(u.reset_terminated[ids].float().sum())
                 stats["done"].append(float(len(ids)))
+                if self.det_mask is not None:
+                    det = self.det_mask[ids]
+                    if det.any():
+                        Td = T[det]
+                        stats["det_ret"].append(
+                            (self.ep_ret[ids][det] / (Td * self.max_step_reward)).mean()
+                        )
+                        stats["det_len"].append(Td.mean())
                 self.ep_ret[ids] = 0.0
                 obs_dict, _ = u.reset(env_ids=ids)
                 obs = TensorDict(obs_dict, batch_size=[N])
@@ -933,7 +1005,7 @@ class SuperMimicRunner:
         ), "SuperMimic records terminal states: the training env needs auto_reset=False"
         self.init_collection()
         logger = self._make_logger()
-        stats = {k: [] for k in STATS}
+        stats = {k: [] for k in self.stat_keys}
         self.collect(max(c.warmup_steps, c.wm_window + self.hist + 1), stats)
         if c.cuda_graph:
             # captured sampling reads the buffer's write head and fill level on the device, so the updates are captured
@@ -963,7 +1035,10 @@ class SuperMimicRunner:
         }
         start_it = self.it
         for it in range(start_it, start_it + num_learning_iterations):
-            lr = self.lr_at(it)
+            progress = self.budget_progress(time.time() - t_start)
+            lr = self.lr_at(it, progress)
+            if progress is not None:
+                self.noise_t.fill_(self.noise_at(progress))
             pi_mult = c.pi_lr_mult  # lr_decay_ret: ramps to 1 after the trigger
             if self._decay_at is not None:
                 pi_mult = c.pi_lr_mult + (1.0 - c.pi_lr_mult) * min(
@@ -1008,6 +1083,13 @@ class SuperMimicRunner:
                             f"lr_decay_ret: {why} at it {self.it}: policy LR x{c.pi_lr_mult} -> x1 over {c.lr_decay_len} its",
                             flush=True,
                         )
+                if self.det_mask is not None:
+                    row["det_ret"], row["det_len"] = (
+                        mean(stats["det_ret"]),
+                        mean(stats["det_len"]),
+                    )
+                if progress is not None:
+                    row["action_noise"] = self.noise_at(progress)
                 if c.state_grad_clip > 0:
                     row["pi_state_clip"] = mean(agg["clip"])
                 if stats["r_terms"]:
@@ -1143,14 +1225,18 @@ class SuperMimicRunner:
 
     def task_contract(self) -> dict:
         """What the policy's inputs and outputs mean: every observation group's terms in order with their widths, the
-        actuators in action order, the model and its version, and the timing. Stored in checkpoints, checked on load."""
+        actuators in action order, the model and its version, its root kind, motors and effectors, and the timing.
+        Stored in checkpoints, checked on load."""
         om = self.uenv.observation_manager
         obs = {g: [[n, list(d)] for n, d in zip(om._group_obs_term_names[g], om._group_obs_term_dim[g], strict=True)]
                for g in om._group_obs_term_names}  # fmt: skip
-        model = self.cmd.cfg.model
-        return {"obs": obs, "actuators": list(self.cmd.info.muscle_names), "model": model,
+        model, info = self.cmd.cfg.model, self.cmd.info
+        return {"obs": obs, "actuators": list(info.actuator_names), "model": model,
                 "model_version": model_version(model), "step_dt": round(float(self.uenv.step_dt), 9),
-                "stride": self.cmd.stride, "lookahead": self.cmd.lookahead}  # fmt: skip
+                "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
+                "root": "fixed" if info.fixed_root else "free",
+                "motors": [info.actuator_names[a] for a in info.motor_ids],
+                "effectors": list(self.cmd.model_cfg.effectors)}  # fmt: skip
 
     def _check_contract(self, ck: dict) -> None:
         """Refuse a checkpoint trained on another task contract (unless accept_contract_mismatch). Checkpoints from
@@ -1167,6 +1253,10 @@ class SuperMimicRunner:
                 if v != mine_dims[k]
             ]
         else:
+            saved = {
+                **_CONTRACT_BEFORE_SUBMODELS,
+                **saved,
+            }  # contracts from before submodels: a free-root body
             diff = [
                 f"{k}: checkpoint {saved.get(k)!r} != env {mine[k]!r}"
                 for k in mine
@@ -1180,7 +1270,8 @@ class SuperMimicRunner:
 
     def env_settings(self) -> dict:
         """The env settings a policy depends on, stored in each checkpoint so evaluation can match them."""
-        return {"decimation": self.uenv.cfg.decimation, "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
+        return {"decimation": self.uenv.cfg.decimation, "ctrl_dt": self.uenv.step_dt, "model": self.cmd.cfg.model,
+                "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
                 "muscle_obs": self.cmd.observes_muscles, "obs_dim": self.obs_policy.dim, "goal_dim": self.obs_goal.dim}  # fmt: skip
 
     def get_inference_policy(self, device=None):

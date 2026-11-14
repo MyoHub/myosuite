@@ -97,6 +97,6 @@ _registry.register_env(
     entry_point="myosuite.envs.myo.tasks.mimic.tracking.env:MimicEnv",
     max_episode_steps=150_000,
     mjlab_task_kwargs=True,
-    models=("myofullbody",),
+    models=("myofullbody", "myoelbow2dof"),
     kwargs={"frame_skip": 10, "preset": "supermimic", "model": "myofullbody"},
 )

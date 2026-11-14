@@ -65,6 +65,12 @@ class ObsCfg:
         policy: Body-state terms (:data:`myosuite.terms.mimic_track.OBSERVATIONS`), in order.
         goal_frames: Reference frames in the goal, the current one included.
         goal_spacing_s: Time between them.
+        goal_frame: A tracked body (not the anchor): the goal is then ``goal_bodies``'
+            reference positions in its frame, now and at each future frame, and its own
+            future motion in its current frame (``mimic_track.goal_observation``), e.g.
+            fingertips in a palm frame; ``""``: the lookahead goal of every tracked body,
+            root motion and phase.
+        goal_bodies: The tracked bodies of a ``goal_frame`` goal.
     """
 
     policy: tuple[str, ...] = (
@@ -73,6 +79,8 @@ class ObsCfg:
     )  # fmt: skip
     goal_frames: int = 5
     goal_spacing_s: float = 0.2
+    goal_frame: str = ""
+    goal_bodies: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -124,21 +132,22 @@ class FailureCfg:
 
     Attributes:
         rel_site: Mean distance of the relative sites (m).
-        root_pos: Root position distance (m).
-        root_ori: Root geodesic angle (rad).
+        root_pos: Root position distance (m); ``None``: not checked (a fixed root).
+        root_ori: Root geodesic angle (rad); ``None``: not checked (a fixed root).
     """
 
     rel_site: float = 1.0
-    root_pos: float = 1.0
-    root_ori: float = 1.0
+    root_pos: float | None = 1.0
+    root_ori: float | None = 1.0
 
     def thresholds(self) -> dict[str, float]:
-        """``deviation name -> threshold``."""
-        return {
+        """``deviation name -> threshold`` of the checked deviations."""
+        out = {
             "rel_site": self.rel_site,
             "root_pos": self.root_pos,
             "root_ori": self.root_ori,
         }
+        return {k: v for k, v in out.items() if v is not None}
 
 
 @dataclass(frozen=True)
@@ -211,6 +220,39 @@ return-based resets with the bin fix and 30 % of the resets before recent failur
 
 PRESETS: dict[str, MimicTaskCfg] = {"supermimic": SUPERMIMIC}
 DEFAULT_PRESET = "supermimic"
+
+
+ROOT_OBSERVATIONS = ("root_pos", "root_vel")
+ROOT_REWARDS = ("root_pos", "root_vel")
+
+
+def for_body(task: MimicTaskCfg, fixed_root: bool, touch: bool) -> MimicTaskCfg:
+    """The task on a body: with a fixed root, no root observations, root reward
+    components or root failure checks; without contact bodies, no touch observation.
+    Unchanged for a free root with contact bodies (the full body).
+
+    Args:
+        task: The resolved task.
+        fixed_root: The body has no free joint.
+        touch: The body has contact bodies.
+
+    Returns:
+        The config.
+    """
+    drop = (ROOT_OBSERVATIONS if fixed_root else ()) + (() if touch else ("touch",))
+    if drop:
+        policy = tuple(n for n in task.obs.policy if n not in drop)
+        task = dataclasses.replace(
+            task, obs=dataclasses.replace(task.obs, policy=policy)
+        )
+    if fixed_root:
+        terms = tuple(t for t in task.reward.terms if t.name not in ROOT_REWARDS)
+        task = dataclasses.replace(
+            task,
+            reward=dataclasses.replace(task.reward, terms=terms),
+            failure=dataclasses.replace(task.failure, root_pos=None, root_ori=None),
+        )
+    return task
 
 
 def _replace_path(obj: Any, path: list[str], value: Any) -> Any:

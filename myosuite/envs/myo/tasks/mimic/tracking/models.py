@@ -4,11 +4,13 @@
 # this package for the notices of the code it includes.
 """Body models the tracking task runs on (the model layer), and their bookkeeping.
 
-A model adapter (:class:`MimicModelCfg`) names the bodies the task needs (17 tracked
-bodies, pelvis first, and the 4 foot bodies of the touch observation) and builds the
-body spec. The scene adds a ground plane and the foot contact sensors, as the mjlab
-twin's terrain and contact sensor do. ``myofullbody`` (myo_sim, fingers disabled) is
-the only model so far; register others in :data:`MODELS`.
+A model adapter (:class:`MimicModelCfg`) names the bodies the task needs (the tracked
+bodies, the first one the anchor of the relative sites, and the contact bodies of the
+touch observation) and builds the body spec. The root is free (one free joint, e.g. the
+full body) or fixed (no free joint, e.g. an arm on a fixed torso); actuators are muscles
+or, by name, motors. With contact bodies the scene adds a ground plane and their contact
+sensors, as the mjlab twin's terrain and contact sensor do. ``myofullbody`` (myo_sim,
+fingers disabled) is the built-in model; :func:`register_model` adds others.
 
 :class:`ModelInfo` is ported from muscle-supermimic (commit 8a6244b,
 ``src/muscle_supermimic/assets/robots/model_info.py``).
@@ -17,8 +19,10 @@ the only model so far; register others in :data:`MODELS`.
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import mujoco
 import numpy as np
@@ -31,18 +35,46 @@ TOUCH_SENSOR = "foot_touch"
 """Prefix of the foot contact sensors (mjlab's ``ContactSensorCfg`` name)."""
 _CONTACT_FORCE_BIT = 1  # mjlab _CONTACT_DATA_MAP["force"]
 _CONTACT_NETFORCE = 3  # mjlab _CONTACT_REDUCE_MAP["netforce"]
+MIRROR_SIDES = (("_r", "_l"), ("_R", "_L"), ("_right", "_left"))
+"""Left / right name suffixes of the bodies, joints and muscles of a symmetric body."""
+
+
+def _myo_sim_version() -> str:
+    import myo_sim  # noqa: PLC0415
+
+    return str(myo_sim.__version__)
 
 
 @dataclass(frozen=True)
 class MimicModelCfg:
     """A body the task can run on.
 
+    The root kind follows from the body: one free joint (a free root) or none (a fixed
+    root, welded to the world).
+
     Attributes:
         name: Model name (``EnvConfig.model``).
         build_spec: ``build_spec(self_collisions) -> MjSpec`` of the body alone.
-        tracked_bodies: The 17 tracked bodies, the one welded to the root first.
-        foot_bodies: Heel and toe bodies of the touch observation.
+        tracked_bodies: The tracked bodies (any number, at least two); the first is the
+            anchor of the relative sites (with a free root it must be welded to the root).
+        foot_bodies: Contact bodies of the touch observation (heels and toes); empty:
+            no touch observation and no ground.
         muscle_tendon_expr: Regexes of the muscle tendons (mjlab's actuator targets).
+        motor_expr: Regexes of the actuator names that are motors (joint or site
+            transmission, no or first-order dynamics); every other actuator is a tendon
+            muscle.
+        mirror_sides: Left / right suffix pairs of a left-right symmetric body (mirror
+            augmentation of a learning method); ``None``: not symmetric.
+        effectors: Tracked bodies whose world position error is a success metric
+            (e.g. fingertips); empty: none.
+        effector_metric: Name of that metric.
+        effector_scale: Its unit per metre (100: cm).
+        version: Version of the package the body comes from (the clips' refit metadata).
+        fingerprint: ``fingerprint(compiled body) -> str``, the kinematic fingerprint
+            its clips were fitted with (e.g. their retargeting's landmark bodies and
+            feet); ``None``: from the model's SMPL+H map (see :func:`kinematic_fingerprint`).
+        njmax: MuJoCo-Warp constraint rows per world.
+        nconmax: MuJoCo-Warp contacts per world.
     """
 
     name: str
@@ -50,6 +82,20 @@ class MimicModelCfg:
     tracked_bodies: tuple[str, ...]
     foot_bodies: tuple[str, ...]
     muscle_tendon_expr: tuple[str, ...]
+    motor_expr: tuple[str, ...] = ()
+    mirror_sides: tuple[tuple[str, str], ...] | None = None
+    effectors: tuple[str, ...] = ()
+    effector_metric: str = "effector_err_mm"
+    effector_scale: float = 1000.0
+    version: Callable[[], str] = _myo_sim_version
+    fingerprint: Callable[[mujoco.MjModel], str] | None = None
+    njmax: int = 768
+    nconmax: int = 96
+
+    @property
+    def ground(self) -> bool:
+        """The scene has a ground plane (a body with contact bodies)."""
+        return bool(self.foot_bodies)
 
 
 ROOT_BODY = "Full Body"
@@ -91,6 +137,25 @@ def _myofullbody_spec(self_collisions: bool = True) -> mujoco.MjSpec:
     return spec
 
 
+ELBOW_TIP = "hand_tip"
+"""Massless body at the middle fingertip of ``myoelbow2dof`` (its effector)."""
+
+
+def _myoelbow2dof_spec(self_collisions: bool = True) -> mujoco.MjSpec:
+    """myo_sim's 2-DoF elbow (shoulder elevation, elbow flexion, 6 muscles, fixed base)
+    with a fingertip body."""
+    import myo_sim  # noqa: PLC0415
+
+    del self_collisions  # the model has no contact pairs
+    spec = mujoco.MjSpec.from_file(
+        str(myo_sim.get_path("legacy/elbow/myoelbow_2dof6muscles.xml"))
+    )
+    for key in list(spec.keys):
+        spec.delete(key)
+    spec.body("r_ulna_radius_hand").add_body(name=ELBOW_TIP, pos=(0.027, -0.416, 0.065))
+    return spec
+
+
 MODELS: dict[str, MimicModelCfg] = {
     "myofullbody": MimicModelCfg(
         name="myofullbody",
@@ -116,9 +181,33 @@ MODELS: dict[str, MimicModelCfg] = {
         ),  # fmt: skip
         foot_bodies=("calcn_r", "toes_r", "calcn_l", "toes_l"),
         muscle_tendon_expr=(r".*_tendon(_l|_left)?",),
+        mirror_sides=MIRROR_SIDES,
+    ),
+    "myoelbow2dof": MimicModelCfg(
+        name="myoelbow2dof",
+        build_spec=_myoelbow2dof_spec,
+        tracked_bodies=("base", "r_humerus", "r_ulna_radius_hand", ELBOW_TIP),
+        foot_bodies=(),
+        muscle_tendon_expr=(".*",),
+        effectors=(ELBOW_TIP,),
+        effector_metric="tip_err_cm",
+        effector_scale=100.0,
+        njmax=64,
+        nconmax=16,
     ),
 }
 DEFAULT_MODEL = "myofullbody"
+
+
+def register_model(cfg: MimicModelCfg) -> None:
+    """Add a body the task can run on (select it with ``task_kwargs={"model": name}``).
+
+    Raises:
+        ValueError: If another model has that name.
+    """
+    if cfg.name in MODELS and MODELS[cfg.name] is not cfg:
+        raise ValueError(f"myoMimic already has a model {cfg.name!r}")
+    MODELS[cfg.name] = cfg
 
 
 def model_cfg(name: str) -> MimicModelCfg:
@@ -136,9 +225,12 @@ def scene_spec(model: MimicModelCfg, self_collisions: bool = True) -> mujoco.MjS
     """The body on a ground plane with the foot contact sensors (the CPU scene).
 
     Matches the mjlab twin: a plane terrain body ``terrain`` and one contact sensor
-    per foot body reading the net force of the ground on it (world frame).
+    per foot body reading the net force of the ground on it (world frame). A body
+    without contact bodies gets no ground.
     """
     spec = model.build_spec(self_collisions)
+    if not model.ground:
+        return spec
     spec.worldbody.add_body(name=GROUND_BODY).add_geom(
         name=GROUND_BODY, type=mujoco.mjtGeom.mjGEOM_PLANE, size=(0, 0, 0.01)
     )
@@ -156,11 +248,8 @@ def scene_spec(model: MimicModelCfg, self_collisions: bool = True) -> mujoco.MjS
 
 
 def model_version(name: str) -> str:
-    """Version of the package model *name* comes from (myo_sim for every model so far)."""
-    model_cfg(name)
-    import myo_sim  # noqa: PLC0415
-
-    return str(myo_sim.__version__)
+    """Version of the package model *name* comes from (myo_sim for the built-in model)."""
+    return model_cfg(name).version()
 
 
 @functools.lru_cache(maxsize=4)
@@ -169,8 +258,10 @@ def kinematic_fingerprint(name: str) -> str:
 
     :func:`~myosuite.biomechanics.retarget.kinematic_fingerprint` of
     :func:`compiled_body` (joints, body tree, coupling equalities, foot collision
-    geoms), with the landmark bodies and feet of the model's SMPL+H map. Clips whose
-    metadata carries it load whatever myo_sim version they were fitted under.
+    geoms), with the landmark bodies and feet of the model's SMPL+H map (a body
+    without one, e.g. a submodel: no landmarks, its contact bodies as the feet).
+    Clips whose metadata carries it load whatever myo_sim version they were fitted
+    under.
     """
     from myosuite.biomechanics.retarget import (  # noqa: PLC0415
         kinematic_fingerprint as fingerprint,
@@ -180,7 +271,12 @@ def kinematic_fingerprint(name: str) -> str:
         landmark_bodies,
     )
 
-    smap = SMPLH_MAPS[model_cfg(name).name]
+    mc = model_cfg(name)
+    if mc.fingerprint is not None:
+        return mc.fingerprint(compiled_body(name))
+    smap = SMPLH_MAPS.get(mc.name)
+    if smap is None:
+        return fingerprint(compiled_body(name), (), [[b] for b in mc.foot_bodies])
     return fingerprint(compiled_body(name), landmark_bodies(smap), smap.feet)
 
 
@@ -196,24 +292,95 @@ def compiled_body(name: str) -> mujoco.MjModel:
     return model_cfg(name).build_spec(True).compile()
 
 
-class ModelInfo:
-    """Joint and muscle bookkeeping of a compiled body.
+def body_info(name: str) -> ModelInfo:
+    """:class:`ModelInfo` of model *name* (its motors classified by ``motor_expr``)."""
+    return ModelInfo(compiled_body(name), model_cfg(name).motor_expr or None)
 
-    * root: the body carrying the model's free joint;
+
+def goal_layout(task: Any, name: str) -> tuple[int | None, list[int], tuple[Any, Any]]:
+    """``(frame, bodies, anchor)`` of a ``goal_frame`` goal of task config *task* on model
+    *name*: relative-site indices of the frame and goal bodies, and the anchor's constant
+    pose ``(R_off, p_off)`` in the root body's frame (a fixed root: in the world).
+    ``(None, [], (I, 0))``: the lookahead goal.
+
+    Raises:
+        ValueError: For an unknown body, the anchor, or no goal bodies.
+    """
+    obs = task.obs
+    eye = (np.eye(3), np.zeros(3))
+    if not obs.goal_frame:
+        return None, [], eye
+    tracked = list(model_cfg(name).tracked_bodies)
+    names = (obs.goal_frame, *obs.goal_bodies)
+    if not obs.goal_bodies or any(n not in tracked[1:] for n in names):
+        raise ValueError(
+            f"goal_frame / goal_bodies {names} must be tracked bodies of {name} other "
+            f"than the anchor {tracked[0]!r}, and goal_bodies non-empty"
+        )
+    info, m = body_info(name), compiled_body(name)
+    d = mujoco.MjData(m)
+    mujoco.mj_kinematics(m, d)
+    a, r = m.body(tracked[0]).id, info.root_id
+    Rr = d.xmat[r].reshape(3, 3)
+    anchor = (Rr.T @ d.xmat[a].reshape(3, 3), Rr.T @ (d.xpos[a] - d.xpos[r]))
+    return (
+        tracked.index(obs.goal_frame) - 1,
+        [tracked.index(n) - 1 for n in obs.goal_bodies],
+        anchor,
+    )
+
+
+def goal_dim(task: Any, name: str, num_tracked: int, fixed_root: bool) -> int:
+    """Width of the goal of task config *task* on model *name*."""
+    frame, bodies, _ = goal_layout(task, name)
+    k = task.obs.goal_frames - 1
+    if frame is not None:
+        return 3 * len(bodies) + k * (3 * len(bodies) + 6)
+    n_s = num_tracked - 1
+    return 3 * n_s + k * ((0 if fixed_root else 9) + 3 * n_s) + 1
+
+
+def task_on_model(task: Any, name: str) -> Any:
+    """The task config *task* (a ``MimicTaskCfg``) adapted to model *name*
+    (:func:`~.config.for_body`)."""
+    from .config import for_body  # noqa: PLC0415
+
+    return for_body(task, body_info(name).fixed_root, model_cfg(name).ground)
+
+
+class ModelInfo:
+    """Joint and actuator bookkeeping of a compiled body.
+
+    * root: the body carrying the model's free joint, or the world (body 0) for a
+      fixed root (no free joint; ``root_joint_name``, ``root_qadr`` and ``root_dadr``
+      are ``None``);
     * independent joints: every non-root joint that is not the driven side of a joint
       ``<equality>``, in model order (the joint coordinates of the clips);
     * coupled joints: set from an independent joint by the equality's polynomial;
-    * muscles: in actuator order, each driving one tendon.
+    * actuators: muscles (each driving one tendon) and motors (joint transmission, no
+      or first-order dynamics), in actuator order.
+
+    Args:
+        m: The compiled body.
+        motor_expr: Regexes of the motors' actuator names (``None``: every non-muscle
+            actuator is a motor).
     """
 
-    def __init__(self, m: mujoco.MjModel):
+    def __init__(self, m: mujoco.MjModel, motor_expr: Sequence[str] | None = None):
         free = [j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE]
-        if len(free) != 1:
-            raise ValueError(f"expected one free joint (the root), found {len(free)}")
-        self.root_joint_name = m.joint(free[0]).name
-        self.root_id = int(m.jnt_bodyid[free[0]])
-        self.root_qadr = int(m.jnt_qposadr[free[0]])
-        self.root_dadr = int(m.jnt_dofadr[free[0]])
+        if len(free) > 1:
+            raise ValueError(
+                f"expected at most one free joint (the root), found {len(free)}"
+            )
+        self.fixed_root = not free
+        if free:
+            self.root_joint_name = m.joint(free[0]).name
+            self.root_id = int(m.jnt_bodyid[free[0]])
+            self.root_qadr = int(m.jnt_qposadr[free[0]])
+            self.root_dadr = int(m.jnt_dofadr[free[0]])
+        else:
+            self.root_joint_name = self.root_qadr = self.root_dadr = None
+            self.root_id = 0
         self.m = m
         self.root_name = m.body(self.root_id).name
         coupled = {}
@@ -243,20 +410,98 @@ class ModelInfo:
         if not m.jnt_limited[self.indep_ids].all():
             raise ValueError("every independent joint needs a range")
         self.q_lo, self.q_hi = m.jnt_range[self.indep_ids].T.copy()
-        if not (m.actuator_trntype == mujoco.mjtTrn.mjTRN_TENDON).all():
-            raise ValueError("every actuator must be a tendon-driven muscle")
-        self.num_muscles = m.nu
-        self.muscle_names = [m.actuator(a).name for a in range(m.nu)]
+        names = [m.actuator(a).name for a in range(m.nu)]
+        is_muscle = m.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
+        if motor_expr is None:
+            is_motor = ~is_muscle
+        else:
+            pats = [re.compile(e) for e in motor_expr]
+            is_motor = np.array(
+                [any(p.fullmatch(n) for p in pats) for n in names], bool
+            )
+        muscles = [a for a in range(m.nu) if not is_motor[a]]
+        motors = [a for a in range(m.nu) if is_motor[a]]
+        if not (
+            is_muscle[muscles].all()
+            and (m.actuator_trntype[muscles] == mujoco.mjtTrn.mjTRN_TENDON).all()
+        ):
+            raise ValueError(
+                "every actuator but the motors must be a tendon-driven muscle"
+            )
+        motor_dyn = (mujoco.mjtDyn.mjDYN_NONE, mujoco.mjtDyn.mjDYN_FILTER)
+        trn = m.actuator_trntype[motors]
+        site = trn == mujoco.mjtTrn.mjTRN_SITE
+        if motors and not (
+            np.isin(m.actuator_dyntype[motors], motor_dyn).all()
+            and ((trn == mujoco.mjtTrn.mjTRN_JOINT) | site).all()
+            and (m.actuator_trnid[motors, 1][site] == -1).all()
+        ):
+            raise ValueError(
+                "motors need a joint or site (no refsite) transmission and no or "
+                "filter dynamics"
+            )
+        self.num_actuators = m.nu
+        self.actuator_names = names
+        self.muscle_ids = np.array(muscles, np.int64)
+        """Actuator ids (= action columns) of the muscles."""
+        self.motor_ids = np.array(motors, np.int64)
+        """Actuator ids (= action columns) of the motors."""
+        self.num_muscles = len(muscles)
+        self.muscle_names = [names[a] for a in muscles]
         self.muscle_tendon_names = [
-            m.tendon(int(t)).name for t in m.actuator_trnid[:, 0]
+            m.tendon(int(t)).name for t in m.actuator_trnid[muscles, 0]
         ]
+        self.motor_joint_names = [
+            m.joint(int(j)).name
+            for j, s in zip(m.actuator_trnid[motors, 0], site, strict=True)
+            if not s
+        ]
+        """Joints of the joint-transmission motors."""
+        self.motor_site_names = [
+            m.site(int(j)).name
+            for j, s in zip(m.actuator_trnid[motors, 0], site, strict=True)
+            if s
+        ]
+        """Sites of the site-transmission motors (a force / torque at the site)."""
         self.qpos0 = m.qpos0.copy()
-        self.act_adr = m.actuator_actadr.copy()
+        self.act_adr = m.actuator_actadr[muscles].copy()
+        """``act`` addresses of the muscles."""
+        lo, hi = m.actuator_ctrlrange[motors].T
+        self.motor_lo, self.motor_hi = lo.copy(), hi.copy()
+        """Control range of the motors (an action in [0, 1] maps onto it)."""
+
+    def action_to_ctrl(self, xp: Any, action: Any) -> Any:
+        """Control of an action in [0, 1] (clipped): the muscles' excitation as is, the
+        motors' mapped affinely onto their control range."""
+        ctrl = (
+            xp.clip(action, 0.0, 1.0)
+            if xp.__name__ == "numpy"
+            else action.clamp(0.0, 1.0)
+        )
+        if not len(self.motor_ids):
+            return ctrl
+        lo, hi = (_as(xp, x, ctrl) for x in (self.motor_lo, self.motor_hi))
+        mot = lo + ctrl[..., self.motor_ids] * (hi - lo)
+        if xp.__name__ == "numpy":
+            ctrl = ctrl.copy()
+            ctrl[..., self.motor_ids] = mot
+            return ctrl
+        return ctrl.index_copy(-1, _as(xp, self.motor_ids, ctrl, long=True), mot)
+
+
+def _as(xp: Any, x: np.ndarray, like: Any, long: bool = False) -> Any:
+    if xp.__name__ == "numpy":
+        return x
+    return xp.as_tensor(x, device=like.device, dtype=xp.long if long else like.dtype)
 
 
 def root_offset(m: mujoco.MjModel) -> np.ndarray:
-    """``R_off`` with ``R_root @ R_off = I`` in the default pose (canonical clip frame)."""
-    adr = m.jnt_qposadr[m.body_jntadr[ModelInfo(m).root_id]]
+    """``R_off`` with ``R_root @ R_off = I`` in the default pose (canonical clip frame);
+    the identity for a fixed root."""
+    info = ModelInfo(m)
+    if info.fixed_root:
+        return np.eye(3)
+    adr = m.jnt_qposadr[m.body_jntadr[info.root_id]]
     R_rest = np.zeros(9)
     mujoco.mju_quat2Mat(R_rest, m.qpos0[adr + 3 : adr + 7])
     return R_rest.reshape(3, 3).T.copy()
