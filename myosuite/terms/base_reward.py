@@ -464,7 +464,7 @@ def walk_env_reward(
         target_rot: Target torso quaternion (shape (4,)).
         target_vel: Tuple (target_x_vel, target_y_vel) in m/s.
         min_height: Minimum COM height before termination.
-        max_rot: Maximum |(R @ e_x)[0]| before termination.
+        max_rot: Maximum ``|(R @ e_x)[0]|`` before termination.
         com_height_index: Optional index into ``task_state["height_like"]`` if
             COM height is stored in a vector. If None, ``task_state["height"]``
             is treated as a scalar.

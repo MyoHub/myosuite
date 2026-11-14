@@ -454,11 +454,11 @@ def compile_myotorso_bimanual_mimic_mjmodel(
         Tuple of compiled model, post-edit spec, and tag string.
     """
     spec, tag = build_myotorso_bimanual_mimic_spec(config)
+    spec.option.timestep = float(config.sim_dt)
+    spec.option.iterations = int(config.model_iterations)
+    spec.option.ls_iterations = int(config.model_ls_iterations)
+    spec.option.disableflags = int(config.model_disableflags)
     mj_model = spec.compile()
-    mj_model.opt.timestep = float(config.sim_dt)
-    mj_model.opt.iterations = int(config.model_iterations)
-    mj_model.opt.ls_iterations = int(config.model_ls_iterations)
-    mj_model.opt.disableflags = int(config.model_disableflags)
     return mj_model, spec, tag
 
 

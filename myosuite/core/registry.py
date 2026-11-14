@@ -281,7 +281,7 @@ def _register_task_mjx(
         task_config: Task specification.
         features: Wrapper specs of the registration (see :func:`mjx_feature_overrides`).
     """
-    _MJX_TASKS.setdefault(env_id, (task_config, mjx_feature_overrides(features) or {}))
+    _MJX_TASKS[env_id] = (task_config, mjx_feature_overrides(features) or {})
 
 
 def _register_task_variants(
@@ -313,13 +313,15 @@ def _register_task_variants(
     for vspec in variants:
         if base_env_id.startswith("myo"):
             variant_id = "myo" + vspec.suffix + base_env_id[3:]
-        else:
+        elif "-" in base_env_id:
             # e.g. "ElbowPoseTask-v0" → "ElbowPoseTaskSarc-v0"
             base, ver = base_env_id.rsplit("-", 1)
             variant_id = f"{base}{vspec.suffix}-{ver}"
+        else:
+            variant_id = f"{base_env_id}{vspec.suffix}"
 
         # Build variant config by replacing fields from config_delta
-        variant_cfg = copy.copy(task_config)
+        variant_cfg = copy.deepcopy(task_config)
         for field_name, value in vspec.config_delta.items():
             if dataclasses.is_dataclass(variant_cfg):
                 object.__setattr__(variant_cfg, field_name, value)
