@@ -87,6 +87,7 @@ Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full com
 
 ### Added
 
+* **Subject-specific muscle strength** (`myosuite.core.muscle_strength`): `calibrate_muscle_strength` fits a strength factor per muscle to measured maximal voluntary torques (dynamometer trials: joint, posture, direction, gravity-corrected torque) by bounded least squares with a small pull towards a prior, e.g. `strength_factor_from_body_mass` (peak force scales with body mass when muscle volume scales with height x mass, Handsfield et al. 2014). Trial torques follow the joint's coupled motion and include every muscle's passive force and the joint springs. `scale_muscle_strength` / `scale_muscle_strength_spec` multiply each muscle's peak active and passive force (automatic `force="-1"` peaks resolved first). Steady probes preserve early-activation settings and reject force paths incompatible with the full-activation affine model.
 * **`myoMimic-v0`: multi-clip full-body motion tracking, on the CPU and on mjlab.** The task tracks the AMASS KIT
   motions retargeted onto the task model (by default MuscleMimic's 972 KIT training motions, `motion.clips="kit_train"`,
   the clips its released checkpoints were trained on; any clip, directory or `.txt` list works too; read from the local retarget cache that `scripts/mimic/retarget_amass.py` fills from an AMASS download,
