@@ -31,6 +31,13 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`myoChallengeChaseTagFBP2-v0`: the `rel_vel` slots of `opponent_relative` hold a velocity.** On both backends
+  the block subtracted the agent's world-frame root velocity (m/s) from the opponent's `[speed, turn rate, 0]`
+  command, so the slots mixed m/s with rad/s and could not tell the opponent's direction of motion (e.g. `rel_vel`
+  plus the agent velocity gave the command `[0.92, -1.82, 0]` for an opponent moving at `[0.44, -0.81, 0]` m/s). The
+  opponent's velocity is now its world-frame displacement over the last step divided by the control step (zero after
+  a reset), on the CPU env and on its mjlab twin. Observation contract change of the 537-dim FBP2 observation (3 of 537 values); no FBP2
+  checkpoint is published. `rel_pos` and `dist` are unchanged (the opponent stays at its mocap height, z = 0).
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
