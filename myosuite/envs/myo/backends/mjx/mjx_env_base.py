@@ -472,6 +472,28 @@ class MyoMjxEnvBase:
             info=new_info,
         )
 
+    def compute_obs(
+        self, data: mjx.Data, info: Mapping[str, Any]
+    ) -> dict[str, jax.Array]:
+        """Compute observation dict for *data* and *info* without stepping physics."""
+        ctrl_dt = float(self._config.ctrl_dt)
+        task_state = {
+            k: v
+            for k, v in info.items()
+            if k
+            not in (
+                "rng",
+                "step_count",
+                "steps",
+                "truncation",
+                "episode_done",
+                "episode_metrics",
+            )
+            and not k.startswith("AutoResetWrapper_")
+        }
+        accessor = MjxEnvAccessor(self._mjx_model, data, ctrl_dt)
+        return {"state": _obs_dict_to_vec(self.get_obs_dict(accessor, task_state))}
+
     # ------------------------------------------------------------------
     # Env interface (properties brax and the wrappers read)
     # ------------------------------------------------------------------

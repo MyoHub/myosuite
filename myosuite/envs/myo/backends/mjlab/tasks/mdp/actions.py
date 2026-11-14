@@ -252,6 +252,11 @@ class MyoAction(ActionTerm):
 
         # Global torch RNG on the sim device, seeded by mjlab (``seed_rng``).
         self._randn = functools.partial(torch.randn, device=self.device)
+        from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
+            MjlabEntityAccessor,
+        )
+
+        MjlabEntityAccessor(env, cfg.entity_name).warm_cache()
 
         self._stages = self._build_stages(model)
 

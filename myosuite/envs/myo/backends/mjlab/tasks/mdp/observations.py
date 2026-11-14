@@ -37,18 +37,37 @@ def qvel(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg = _ROBOT) -> torch.Te
     return MjlabEntityAccessor(env, asset_cfg.name).joint_vel() * env.step_dt
 
 
-def _hinge_quats(angles: torch.Tensor) -> tuple[torch.Tensor, ...]:
+_CHAIN_CACHE: dict[
+    tuple[tuple[FreeJointChain, ...], torch.device, torch.dtype],
+    tuple[torch.Tensor, tuple[tuple[torch.Tensor, torch.Tensor], ...]],
+] = {}
+
+
+def _chain_tensors(
+    chains: tuple[FreeJointChain, ...], like: torch.Tensor
+) -> tuple[torch.Tensor, tuple[tuple[torch.Tensor, torch.Tensor], ...]]:
+    key = (chains, like.device, like.dtype)
+    cached = _CHAIN_CACHE.get(key)
+    if cached is None:
+        eye = torch.eye(3, device=like.device, dtype=like.dtype)
+        poses = tuple(
+            (
+                torch.tensor(chain.pos0, device=like.device, dtype=like.dtype),
+                torch.tensor(chain.quat0, device=like.device, dtype=like.dtype),
+            )
+            for chain in chains
+        )
+        cached = (eye, poses)
+        _CHAIN_CACHE[key] = cached
+    return cached
+
+
+def _hinge_quats(angles: torch.Tensor, axes: torch.Tensor) -> tuple[torch.Tensor, ...]:
     """Quaternions of the rotations about x, y, z by the columns of *angles*."""
-    axes = torch.eye(3, device=angles.device, dtype=angles.dtype)
     return tuple(
         quat_from_angle_axis(angles[:, i], axes[i].expand(angles.shape[0], 3))
         for i in range(3)
     )
-
-
-def _quat0(chain: FreeJointChain, like: torch.Tensor) -> torch.Tensor:
-    quat0 = torch.tensor(chain.quat0, device=like.device, dtype=like.dtype)
-    return quat0.expand(like.shape[0], 4)
 
 
 def chains_to_qpos(q: torch.Tensor, chains: tuple[FreeJointChain, ...]) -> torch.Tensor:
@@ -58,13 +77,13 @@ def chains_to_qpos(q: torch.Tensor, chains: tuple[FreeJointChain, ...]) -> torch
     pose ``(pos0, quat0)``: the freejoint position is ``pos0 + R(quat0) s`` and the
     orientation ``quat0 * qx(a) * qy(b) * qz(c)``.
     """
+    eye, poses = _chain_tensors(chains, q)
     pieces, cursor = [], 0
-    for chain in chains:
+    for chain, (pos0, quat0_1d) in zip(chains, poses, strict=True):
         start = chain.chain_start
         pieces.append(q[:, cursor:start])
-        qx, qy, qz = _hinge_quats(q[:, start + 3 : start + 6])
-        pos0 = torch.tensor(chain.pos0, device=q.device, dtype=q.dtype)
-        quat0 = _quat0(chain, q)
+        qx, qy, qz = _hinge_quats(q[:, start + 3 : start + 6], eye)
+        quat0 = quat0_1d.expand(q.shape[0], 4)
         pieces.append(pos0 + quat_apply(quat0, q[:, start : start + 3]))
         pieces.append(quat_mul(quat_mul(quat_mul(quat0, qx), qy), qz))
         cursor = start + 6
@@ -80,16 +99,17 @@ def chains_to_qvel(
     Freejoint velocity: world linear velocity ``R(quat0) s_dot`` and the body-frame
     angular velocity ``qz^-1 (qy^-1 (a_dot x) + b_dot y) + c_dot z``.
     """
+    eye, poses = _chain_tensors(chains, v)
     pieces, cursor = [], 0
-    eye = torch.eye(3, device=v.device, dtype=v.dtype)
-    for chain in chains:
+    for chain, (_, quat0_1d) in zip(chains, poses, strict=True):
         start = chain.chain_start
         pieces.append(v[:, cursor:start])
-        _, qy, qz = _hinge_quats(q[:, start + 3 : start + 6])
+        _, qy, qz = _hinge_quats(q[:, start + 3 : start + 6], eye)
         rate = v[:, start + 3 : start + 6]
         omega = quat_apply_inverse(qy, rate[:, :1] * eye[0]) + rate[:, 1:2] * eye[1]
         omega = quat_apply_inverse(qz, omega) + rate[:, 2:3] * eye[2]
-        pieces.append(quat_apply(_quat0(chain, v), v[:, start : start + 3]))
+        quat0 = quat0_1d.expand(v.shape[0], 4)
+        pieces.append(quat_apply(quat0, v[:, start : start + 3]))
         pieces.append(omega)
         cursor = start + 6
     pieces.append(v[:, cursor:])

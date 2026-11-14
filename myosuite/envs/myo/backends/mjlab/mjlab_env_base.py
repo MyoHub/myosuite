@@ -54,6 +54,7 @@ class MjlabEnvAccessor(EnvAccessor):
         self._model = model
         self._data = data
         self._ctrl_dt = ctrl_dt
+        self._ctrl_range: torch.Tensor | None = None
 
     # ------------------------------------------------------------------
     # EnvAccessor protocol
@@ -96,7 +97,16 @@ class MjlabEnvAccessor(EnvAccessor):
         """Actuator control range, shape ``(nu, 2)``."""
         import torch
 
-        return torch.as_tensor(self._model.actuator_ctrlrange, dtype=torch.float32)
+        device = getattr(getattr(self._data, "qpos", None), "device", None)
+        if self._ctrl_range is None or (
+            device is not None and self._ctrl_range.device != device
+        ):
+            self._ctrl_range = torch.as_tensor(
+                self._model.actuator_ctrlrange,
+                dtype=torch.float32,
+                device=device,
+            )
+        return self._ctrl_range
 
     def dt(self) -> float:
         """Control timestep in seconds."""
@@ -132,6 +142,87 @@ class MjlabEntityAccessor(EnvAccessor):
     def __init__(self, env: Any, entity_name: str) -> None:
         self._env = env
         self._entity = env.scene[entity_name]
+        self._ctrl_range: torch.Tensor | None = None
+        self._act_ids: torch.Tensor | None = None
+        self._act_ids_resolved: bool = False
+
+    def warm_cache(self) -> None:
+        """Resolve per-entity activation indices and ``ctrl_range`` during setup."""
+        data_holder = getattr(self._entity, "data", None)
+        raw_data = getattr(data_holder, "data", None)
+        act = getattr(raw_data, "act", None)
+        device = act.device if act is not None else getattr(self._env, "device", None)
+        if device is not None:
+            self._resolve_act_ids(device)
+        mj_model = getattr(getattr(self._env, "sim", None), "mj_model", None)
+        ctrl_ids = getattr(getattr(self._entity, "indexing", None), "ctrl_ids", None)
+        if mj_model is not None and ctrl_ids is not None and device is not None:
+            self._resolve_ctrl_range(device)
+
+    def _resolve_act_ids(self, device: Any) -> torch.Tensor | None:
+        cache: dict[Any, torch.Tensor | None] | None = getattr(
+            self._entity, "_myosuite_act_ids_by_device", None
+        )
+        if cache is not None and device in cache:
+            return cache[device]
+        if self._act_ids_resolved:
+            return self._act_ids
+
+        act_ids: torch.Tensor | None = None
+        mj_model = getattr(getattr(self._env, "sim", None), "mj_model", None)
+        ctrl_ids = getattr(getattr(self._entity, "indexing", None), "ctrl_ids", None)
+        if mj_model is not None and ctrl_ids is not None and int(mj_model.na) > 0:
+            import torch
+
+            ids_np = ctrl_ids.detach().cpu().numpy()
+            adrs = mj_model.actuator_actadr[ids_np]
+            nums = mj_model.actuator_actnum[ids_np]
+            cols: list[int] = []
+            for adr, num in zip(adrs.tolist(), nums.tolist(), strict=False):
+                if adr >= 0 and num > 0:
+                    cols.extend(range(int(adr), int(adr) + int(num)))
+            if cols != list(range(int(mj_model.na))):
+                act_ids = torch.tensor(cols, dtype=torch.long, device=device)
+            elif len(cols) == 0:
+                act_ids = torch.empty(0, dtype=torch.long, device=device)
+
+        self._act_ids_resolved = True
+        self._act_ids = act_ids
+        if cache is None:
+            cache = {}
+            try:
+                setattr(self._entity, "_myosuite_act_ids_by_device", cache)
+            except AttributeError:
+                return act_ids
+        cache[device] = act_ids
+        return act_ids
+
+    def _resolve_ctrl_range(self, device: Any) -> torch.Tensor:
+        import torch
+
+        cache: dict[Any, torch.Tensor] | None = getattr(
+            self._entity, "_myosuite_ctrl_range_by_device", None
+        )
+        if cache is not None and device in cache:
+            return cache[device]
+        if self._ctrl_range is not None and self._ctrl_range.device == device:
+            return self._ctrl_range
+
+        ids = self._entity.indexing.ctrl_ids.detach().cpu().numpy()
+        ctrl_range = torch.as_tensor(
+            self._env.sim.mj_model.actuator_ctrlrange[ids],
+            dtype=torch.float32,
+            device=device,
+        )
+        self._ctrl_range = ctrl_range
+        if cache is None:
+            cache = {}
+            try:
+                setattr(self._entity, "_myosuite_ctrl_range_by_device", cache)
+            except AttributeError:
+                return ctrl_range
+        cache[device] = ctrl_range
+        return ctrl_range
 
     @property
     def physics_path(self) -> PhysicsPath:
@@ -168,7 +259,17 @@ class MjlabEntityAccessor(EnvAccessor):
     def muscle_act(self) -> torch.Tensor:
         """Muscle activation state, shape ``(N, na)``."""
         # accepted: no entity.data API for muscle activation — entity.data.data.act
-        return self._entity.data.data.act
+        act = self._entity.data.data.act
+        cache: dict[Any, torch.Tensor | None] | None = getattr(
+            self._entity, "_myosuite_act_ids_by_device", None
+        )
+        if cache is not None and act.device in cache:
+            act_ids = cache[act.device]
+        else:
+            act_ids = self._resolve_act_ids(act.device)
+        if act_ids is not None:
+            return act[:, act_ids]
+        return act
 
     def site_xpos(self, site_ids: Any) -> torch.Tensor:
         """Entity-local site positions in the CPU world frame, ``(N, k, 3)``.
@@ -192,14 +293,12 @@ class MjlabEntityAccessor(EnvAccessor):
 
     def ctrl_range(self) -> torch.Tensor:
         """Control range of the entity actuators, shape ``(nu, 2)``."""
-        import torch
-
-        ids = self._entity.indexing.ctrl_ids.cpu().numpy()
-        return torch.as_tensor(
-            self._env.sim.mj_model.actuator_ctrlrange[ids],
-            dtype=torch.float32,
-            device=self._env.device,
+        cache: dict[Any, torch.Tensor] | None = getattr(
+            self._entity, "_myosuite_ctrl_range_by_device", None
         )
+        if cache is not None and self._env.device in cache:
+            return cache[self._env.device]
+        return self._resolve_ctrl_range(self._env.device)
 
     def dt(self) -> float:
         """Control timestep in seconds."""
@@ -215,10 +314,11 @@ class MjlabEntityAccessor(EnvAccessor):
 try:
     from mjlab.envs.mdp.events import resolve_env_ids as normalize_mjlab_env_ids
 except ImportError:
-    import torch as _torch
 
-    def normalize_mjlab_env_ids(env: Any, env_ids: Any) -> _torch.Tensor:  # type: ignore[misc]
+    def normalize_mjlab_env_ids(env: Any, env_ids: Any) -> torch.Tensor:  # type: ignore[misc]
         """Normalise env_ids to a 1-D long tensor (mjlab < 1.4 fallback)."""
+        import torch as _torch
+
         if env_ids is None:
             return _torch.arange(env.num_envs, device=env.device, dtype=_torch.long)
         if isinstance(env_ids, slice):

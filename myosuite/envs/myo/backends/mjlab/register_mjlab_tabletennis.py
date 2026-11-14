@@ -47,7 +47,10 @@ from myosuite.core.model_recipes import (
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
-from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import mujoco_cfg_from_model
+from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
+    episode_length_s as _cpu_episode_length_s,
+    mujoco_cfg_from_model,
+)
 from myosuite.envs.myo.backends.mjlab.tasks.rl import (
     MUSCLE_ENTROPY_COEF,
     muscle_gaussian_distribution_cfg,
@@ -126,7 +129,7 @@ def _tt_reference() -> _TTReference:
 
     # Anchored: mjlab matches init_state joint patterns as regex prefixes.
     arm_joint_pos = {
-        re.escape(model.joint(j).name) + "$": float(key[model.jnt_qposadr[j]])
+        "^" + re.escape(model.joint(j).name) + "$": float(key[model.jnt_qposadr[j]])
         for j in range(model.njnt)
         if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
     }
@@ -158,10 +161,10 @@ def _tt_actuator_xml_groups() -> tuple[tuple[str, ...], tuple[str, ...]]:
             tid = int(m.actuator_trnid[i, 0])
             tname = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_TENDON, tid)
             if tname is not None:
-                tendons.append(tname)
+                tendons.append(f"^{re.escape(tname)}$")
         else:
             if aname is not None:
-                positions.append(aname)
+                positions.append(f"^{re.escape(aname)}$")
     return tuple(tendons), tuple(positions)
 
 
@@ -439,16 +442,22 @@ def _sample_ball_lin_vel(pos: torch.Tensor, launch: _BallLaunch) -> torch.Tensor
 
 
 def _ball_launch_state(
-    ball: Any, env_ids: torch.Tensor, launch: _BallLaunch
+    ball: Any,
+    env_ids: torch.Tensor,
+    launch: _BallLaunch,
+    env_origins: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Root state of a (re)launched ball: CPU keyframe or sampled pos/vel."""
     state = ball.data.default_root_state[env_ids].clone()
     n, device = state.shape[0], state.device
     if launch.xyz_low is not None and launch.xyz_high is not None:
         low, high = launch.xyz_low, launch.xyz_high
-        state[:, :3] = low + torch.rand(n, 3, device=device) * (high - low)
+        local_pos = low + torch.rand(n, 3, device=device) * (high - low)
         if launch.sample_vel:
-            state[:, 7:10] = _sample_ball_lin_vel(state[:, :3], launch)
+            state[:, 7:10] = _sample_ball_lin_vel(local_pos, launch)
+        if env_origins is not None:
+            local_pos = local_pos + env_origins.to(device=device, dtype=local_pos.dtype)
+        state[:, :3] = local_pos
     return state
 
 
@@ -535,19 +544,23 @@ class TableTennisObservation(ManagerTermBase):
         self._arm = env.scene[_TT_ENTITY_NAME]
         self._paddle = env.scene[_TT_PADDLE_ENTITY_NAME]
         self._ball = env.scene[_TT_BALL_ENTITY_NAME]
-        self._pelvis = self._arm.find_sites(["pelvis"])[0][0]
-        self._paddle_site = self._paddle.find_sites(["paddle"])[0][0]
-        self._ball_site = self._ball.find_sites(["pingpong"])[0][0]
+        self._pelvis = self._arm.find_sites(["^pelvis$"])[0][0]
+        self._paddle_site = self._paddle.find_sites(["^paddle$"])[0][0]
+        self._ball_site = self._ball.find_sites(["^pingpong$"])[0][0]
         self._ball_vel = env.scene[f"{_TT_BALL_ENTITY_NAME}/pingpong_vel_sensor"]
         self._paddle_vel = env.scene[f"{_TT_PADDLE_ENTITY_NAME}/paddle_vel_sensor"]
         self._contacts = _BallContacts(env)
         self._has_act = int(env.sim.mj_model.na) > 0
 
     def __call__(self, env: ManagerBasedRlEnv) -> torch.Tensor:
-        ball_pos = self._ball.data.site_pos_w[:, self._ball_site]
-        paddle_pos = self._paddle.data.site_pos_w[:, self._paddle_site]
+        origins = env.scene.env_origins
+        ball_pos = self._ball.data.site_pos_w[:, self._ball_site] - origins
+        paddle_pos = self._paddle.data.site_pos_w[:, self._paddle_site] - origins
+        pelvis_pos = self._arm.data.site_pos_w[:, self._pelvis]
+        if not self._arm.is_fixed_base:
+            pelvis_pos = pelvis_pos - origins
         parts = [
-            self._arm.data.site_pos_w[:, self._pelvis],
+            pelvis_pos,
             self._arm.data.joint_pos,
             self._arm.data.joint_vel,
             ball_pos,
@@ -594,7 +607,7 @@ class TableTennisRally(ManagerTermBase):
         self._contacts = _BallContacts(env)
         self._trajectory = _PingpongTrajectory(n, device)
         self._ball = env.scene[_TT_BALL_ENTITY_NAME]
-        self._ball_site = self._ball.find_sites(["pingpong"])[0][0]
+        self._ball_site = self._ball.find_sites(["^pingpong$"])[0][0]
         self._rally_count = int(tt_cfg.rally_count)
         # CPU compares the float64 sim time with 3 s (false at 300 steps of
         # 10 ms); counting steps avoids float32 time drift.
@@ -622,7 +635,8 @@ class TableTennisRally(ManagerTermBase):
         self.solved = outcome == _SOLVED
         self.done = _rally_done(
             env.episode_length_buf - self._rally_start > self._max_steps,
-            self._ball.data.site_pos_w[:, self._ball_site, 2],
+            self._ball.data.site_pos_w[:, self._ball_site, 2]
+            - env.scene.env_origins[:, 2],
             self.solved,
             outcome,
         )
@@ -649,10 +663,10 @@ class TableTennisReward(ManagerTermBase):
         self._arm = env.scene[_TT_ENTITY_NAME]
         self._paddle = env.scene[_TT_PADDLE_ENTITY_NAME]
         self._ball = env.scene[_TT_BALL_ENTITY_NAME]
-        self._grasp = self._arm.find_sites(["S_grasp"])[0][0]
-        self._paddle_site = self._paddle.find_sites(["paddle"])[0][0]
-        self._ball_site = self._ball.find_sites(["pingpong"])[0][0]
-        self._flex = self._arm.find_joints(["flex_extension"])[0][0]
+        self._grasp = self._arm.find_sites(["^S_grasp$"])[0][0]
+        self._paddle_site = self._paddle.find_sites(["^paddle$"])[0][0]
+        self._ball_site = self._ball.find_sites(["^pingpong$"])[0][0]
+        self._flex = self._arm.find_joints(["^flex_extension$"])[0][0]
         self._init_quat = torch.tensor(
             _tt_reference().init_paddle_quat, dtype=torch.float32, device=env.device
         )
@@ -661,9 +675,12 @@ class TableTennisReward(ManagerTermBase):
     def __call__(self, env: ManagerBasedRlEnv) -> torch.Tensor:
         rally = _rally_term(env)
         w = _TT_RWD_WEIGHTS
-        paddle_pos = self._paddle.data.site_pos_w[:, self._paddle_site]
-        ball_pos = self._ball.data.site_pos_w[:, self._ball_site]
+        origins = env.scene.env_origins
+        paddle_pos = self._paddle.data.site_pos_w[:, self._paddle_site] - origins
+        ball_pos = self._ball.data.site_pos_w[:, self._ball_site] - origins
         palm_pos = self._arm.data.site_pos_w[:, self._grasp]
+        if not self._arm.is_fixed_base:
+            palm_pos = palm_pos - origins
         reach_dist = torch.linalg.norm(paddle_pos - ball_pos, dim=-1)
         palm_dist = torch.linalg.norm(palm_pos - paddle_pos, dim=-1)
         quat_err = torch.linalg.norm(
@@ -738,7 +755,13 @@ class TableTennisReset(ManagerTermBase):
             self._paddle.data.default_root_state[env_ids], env_ids=env_ids
         )
         self._ball.write_root_state_to_sim(
-            _ball_launch_state(self._ball, env_ids, self.launch), env_ids=env_ids
+            _ball_launch_state(
+                self._ball,
+                env_ids,
+                self.launch,
+                env.scene.env_origins[env_ids],
+            ),
+            env_ids=env_ids,
         )
 
 
@@ -752,7 +775,10 @@ def _tt_relaunch_ball(
     if ids.numel():
         ball = env.scene[_TT_BALL_ENTITY_NAME]
         launch = env.event_manager.get_term_cfg("tt_reset").func.launch
-        ball.write_root_state_to_sim(_ball_launch_state(ball, ids, launch), env_ids=ids)
+        ball.write_root_state_to_sim(
+            _ball_launch_state(ball, ids, launch, env.scene.env_origins[ids]),
+            env_ids=ids,
+        )
 
 
 def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
@@ -871,7 +897,9 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
     )
 
     decimation = max(1, int(round(tt_cfg.ctrl_dt / tt_cfg.sim_dt)))
-    episode_length_s = float(tt_cfg.max_episode_steps) * float(tt_cfg.ctrl_dt)
+    episode_length_s = _cpu_episode_length_s(
+        int(tt_cfg.max_episode_steps), decimation * float(tt_cfg.sim_dt)
+    )
 
     observations = {
         "policy": ObservationGroupCfg(

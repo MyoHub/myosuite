@@ -44,11 +44,16 @@ class ReachTargetCommand(UniformVectorCommand):
     cfg: ReachTargetCommandCfg
 
     def __init__(self, cfg: ReachTargetCommandCfg, env: ManagerBasedRlEnv) -> None:
+        import re
+
         super().__init__(cfg, env)
-        ids, _ = env.scene[cfg.entity_name].find_sites(
-            cfg.tip_sites, preserve_order=True
+        patterns = tuple(
+            s if (s.startswith("^") and s.endswith("$")) else f"^{re.escape(s)}$"
+            for s in cfg.tip_sites
         )
-        self._tip_ids = ids
+        ids, _ = env.scene[cfg.entity_name].find_sites(patterns, preserve_order=True)
+        self._tip_id_list = tuple(int(i) for i in ids)
+        self._tip_ids = torch.as_tensor(ids, dtype=torch.long, device=self.device)
         self.metrics["reach_error"] = torch.zeros(self.num_envs, device=self.device)
 
     def _update_metrics(self) -> None:
@@ -106,7 +111,7 @@ class WorkspaceReachTargetCommand(ReachTargetCommand):
         super().__init__(cfg, env)
         # The table is built on the scene model: map entity-local site ids to scene ids.
         scene_site_ids = env.scene[cfg.entity_name].indexing.site_ids
-        sites = [int(scene_site_ids[i]) for i in self._tip_ids]
+        sites = [int(scene_site_ids[i]) for i in self._tip_id_list]
         points = reachable_target_points(
             env.sim.mj_model,
             sites,
