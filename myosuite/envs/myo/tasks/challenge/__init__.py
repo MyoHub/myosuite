@@ -375,6 +375,8 @@ _reg(
         "rough_range": (0.05, 0.1),
         "relief_range": (0.1, 0.3),
         "repeller_opponent": True,
+        # Applied capped at 2 m/s (move_opponent), as in the MyoChallenge 2023
+        # evaluation: 75 % of the EVADE episodes chase at 2 m/s.
         "chase_vel_range": (1, 5),
         "random_vel_range": (-2, 2),
         "repeller_vel_range": (0.3, 1),
