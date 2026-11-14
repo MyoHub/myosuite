@@ -13,6 +13,14 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Fixed
+
+* `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
+  per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
+  and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
+* `scripts/eval_mjlab_policy.py --stochastic` on the CPU backend draws the action noise from a generator seeded with
+  `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
+
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11
