@@ -146,17 +146,14 @@ class ClipTrajectorySource:
         assert self._last_step is not None and self._start_offsets is not None
 
         reset_mask = step < self._last_step  # (N,) bool
-        if reset_mask.any():
-            new_offsets = torch.randint(
-                0,
-                self.n_frames,
-                self._start_offsets.shape,
-                device=self._start_offsets.device,
-                dtype=torch.long,
-            )
-            self._start_offsets = torch.where(
-                reset_mask, new_offsets, self._start_offsets
-            )
+        new_offsets = torch.randint(
+            0,
+            self.n_frames,
+            self._start_offsets.shape,
+            device=self._start_offsets.device,
+            dtype=torch.long,
+        )
+        self._start_offsets = torch.where(reset_mask, new_offsets, self._start_offsets)
         self._last_step = step.clone()
 
     def _frame_indices(self, step: torch.Tensor) -> torch.Tensor:
@@ -519,16 +516,13 @@ class MultiClipTrajectorySource:
         assert self._start_offsets is not None
 
         reset_mask = step < self._last_step
-        if reset_mask.any():
-            new_clip_indices, new_offsets = self._sample_assignments(
-                int(step.shape[0]), step.device
-            )
-            self._clip_indices = torch.where(
-                reset_mask, new_clip_indices, self._clip_indices
-            )
-            self._start_offsets = torch.where(
-                reset_mask, new_offsets, self._start_offsets
-            )
+        new_clip_indices, new_offsets = self._sample_assignments(
+            int(step.shape[0]), step.device
+        )
+        self._clip_indices = torch.where(
+            reset_mask, new_clip_indices, self._clip_indices
+        )
+        self._start_offsets = torch.where(reset_mask, new_offsets, self._start_offsets)
         self._last_step = step.clone()
 
     def _frame_indices(self, step: torch.Tensor) -> torch.Tensor:

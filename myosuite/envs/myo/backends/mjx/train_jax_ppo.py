@@ -16,12 +16,17 @@ from brax.training.agents.ppo import train as ppo
 from myosuite.envs.myo.backends.mjx import ppo_config
 
 from myosuite.envs.myo.backends.mjx import make, get_default_config
-from tensorboardX import SummaryWriter
 
 from myosuite.envs.myo.backends.mjx.brax_env import wrap_for_brax_training
 from myosuite.envs.myo.backends.mjx.utils import make_policy_params_fn
 
-import wandb
+
+def _create_summary_writer(logdir: str):
+    try:
+        from torch.utils.tensorboard import SummaryWriter  # noqa: PLC0415
+    except ImportError:
+        from tensorboardX import SummaryWriter  # type: ignore[no-redef] # noqa: PLC0415
+    return SummaryWriter(logdir)
 
 
 def main(env_name, impl, log_to_wandb, log_to_tb, save_policy, render_evaluations):
@@ -31,9 +36,12 @@ def main(env_name, impl, log_to_wandb, log_to_tb, save_policy, render_evaluation
     env, ppo_params, network_factory = load_env_and_network_factory(env_name, impl)
 
     if log_to_wandb:
+        import wandb  # noqa: PLC0415
+
         wandb.init(project=env_name, config=ppo_params)
 
     os.makedirs(f"./mjx_logs/{env_name}", exist_ok=True)
+    tb_writer = _create_summary_writer(f"./mjx_logs/{env_name}") if log_to_tb else None
 
     # Train the model
     make_inference_fn, params, _ = ppo.train(
@@ -43,9 +51,7 @@ def main(env_name, impl, log_to_wandb, log_to_tb, save_policy, render_evaluation
         progress_fn=functools.partial(
             progress,
             log_to_wandb=log_to_wandb,
-            tb_writer=None
-            if not log_to_tb
-            else SummaryWriter(f"./mjx_logs/{env_name}"),
+            tb_writer=tb_writer,
         ),
         network_factory=network_factory,
         wrap_env_fn=wrap_for_brax_training,
@@ -55,6 +61,8 @@ def main(env_name, impl, log_to_wandb, log_to_tb, save_policy, render_evaluation
         else lambda *args: None,
         **ppo_params,
     )
+    if tb_writer is not None:
+        tb_writer.close()
 
     print(f"Time to JIT compile: {times[1] - times[0]}")
     print(f"Time to train: {times[-1] - times[1]}")
@@ -96,6 +104,8 @@ def progress(num_steps, metrics, log_to_wandb, tb_writer=None):
         f"Step {num_steps} at {times[-1]}: reward={metrics['eval/episode_reward']:.3f}"
     )
     if log_to_wandb:
+        import wandb  # noqa: PLC0415
+
         wandb.log(metrics, step=num_steps)
     if tb_writer:
         for key, value in metrics.items():

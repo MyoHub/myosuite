@@ -200,6 +200,7 @@ class MjxModularTaskEnv(MyoMjxEnvBase):
         # Keep MJX JAX backend compatible with plane/mesh/hfield margins and
         # unsupported cylinder/ellipsoid contacts used by modular recipes.
         spec = self._preprocess_spec(spec, impl=impl)
+        self._mj_spec = spec
         mj_model = spec.compile()
 
         # One control step is n_substeps steps of sim_dt, as on the CPU and mjlab.

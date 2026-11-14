@@ -213,7 +213,7 @@ def test_task_builder_default_carries_model_options() -> None:
         decimation=5,
     )
     assert not _opt_diff(_opt_values(spec_fn().compile()), _applied_opt(cfg))
-    assert cfg.episode_length_s == pytest.approx(10 * 5 * 0.001)
+    assert cfg.episode_length_s == pytest.approx((10 - 0.5) * 5 * 0.001)
 
 
 def test_mujoco_cfg_from_model_rejects_a_different_timestep() -> None:
