@@ -82,6 +82,8 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants pay the EVADE win again: the last step of an EVADE episode that reaches the time limit has `solved = 1` (+1000) and score 1.0. In 3.1.0 that win could not fire, so EVADE returns and `get_metrics` scores measured on 3.1.0 are too low for policies that survive; reevaluate them. Observations, actions and dynamics are unchanged, and no checkpoint of these ids is published here.
 
+`myoMimic-v0` uniform and return resets now exclude terminal-only reference bins on CPU and mjlab, so every reset has at least one reference transition. This corrects the random-start distribution for clips whose last frame starts a bin (for example, a one-second clip at 10 ms). The stored terminal frame remains the final scoring target. Reevaluate policies with the corrected distribution; adaptive per-bin training statistics from a library containing those empty bins must be rebuilt. Policy input/action layouts and clip-start evaluation are unchanged.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.
