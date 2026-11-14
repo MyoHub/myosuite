@@ -37,14 +37,25 @@ Typical usage::
     acts = collect_activations(policy, model, clips,
                                CollectionConfig(n_episodes_per_clip=100))
     # acts: (T, n_muscles), values in [0, 1]
+
+Disk reuse additionally requires ``cache_path`` and a caller-owned
+``policy_cache_key`` identifying immutable weights and inference/adapter settings.
+Omitting the key deliberately disables caching; arbitrary runners have no inferred
+stable identity.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
-from dataclasses import dataclass, field
+import os
+import tempfile
+import zlib
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
+from zipfile import BadZipFile
 
 import mujoco
 import numpy as np
@@ -84,6 +95,105 @@ class CollectionConfig:
     max_steps_per_episode: int | None = None
     use_random_start: bool = True
     seed: int = 0
+
+
+def _cache_metadata(
+    model: mujoco.MjModel,
+    clips: list[MotionClip],
+    config: CollectionConfig,
+    policy_cache_key: str,
+) -> str:
+    from myosuite.core.trajectory_io import MotionClip
+
+    model_bytes = np.empty(mujoco.mj_sizeModel(model), dtype=np.uint8)
+    mujoco.mj_saveModel(model, buffer=model_bytes)
+    clip_hashes = []
+    for clip in clips:
+        digest = hashlib.sha256()
+        for field_info in fields(MotionClip):
+            value = getattr(clip, field_info.name, None)
+            if isinstance(value, np.ndarray):
+                if value.dtype.hasobject:
+                    raise ValueError("Activation cache cannot hash object arrays.")
+                digest.update(
+                    json.dumps((field_info.name, value.shape, value.dtype.str)).encode()
+                )
+                digest.update(np.ascontiguousarray(value).reshape(-1).view(np.uint8))
+            else:
+                if isinstance(value, Path):
+                    value = str(value)
+                digest.update(
+                    json.dumps((field_info.name, value), allow_nan=False).encode()
+                )
+        clip_hashes.append(digest.hexdigest())
+    return json.dumps(
+        {
+            "collector_version": 1,
+            "mujoco_version": mujoco.__version__,
+            "numpy_version": np.__version__,
+            "model_sha256": hashlib.sha256(model_bytes).hexdigest(),
+            "clip_sha256": clip_hashes,
+            "config": asdict(config),
+            "policy_cache_key": policy_cache_key,
+        },
+        sort_keys=True,
+        allow_nan=False,
+    )
+
+
+def _valid_cached_activations(acts: np.ndarray, width: int) -> bool:
+    return (
+        acts.dtype == np.float32
+        and acts.ndim == 2
+        and acts.shape[0] > 0
+        and acts.shape[1] == width
+        and bool(np.all(np.isfinite(acts) & (acts >= 0) & (acts <= 1)))
+    )
+
+
+def _read_activation_cache(path: Path, metadata: str, width: int) -> np.ndarray | None:
+    try:
+        with path.open("rb") as handle:
+            loaded = np.load(handle, allow_pickle=False)
+            if not isinstance(loaded, np.lib.npyio.NpzFile):
+                raise ValueError("legacy array has no provenance")
+            with loaded:
+                if set(loaded.files) != {"activations", "metadata"}:
+                    raise ValueError("unexpected archive fields")
+                if loaded["metadata"].item() != metadata:
+                    raise ValueError("collection provenance changed")
+                acts = loaded["activations"]
+                if not _valid_cached_activations(acts, width):
+                    raise ValueError("invalid activation dtype, shape or values")
+                return acts
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        EOFError,
+        BadZipFile,
+        RuntimeError,
+        zlib.error,
+    ) as exc:
+        logger.warning("Ignoring activation cache %s: %s; recollecting", path, exc)
+        return None
+
+
+def _write_activation_cache(path: Path, metadata: str, acts: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            np.savez(handle, activations=acts, metadata=np.asarray(metadata))
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 @dataclass
@@ -291,13 +401,14 @@ def collect_activations(
     config: CollectionConfig | None = None,
     *,
     cache_path: Path | None = None,
+    policy_cache_key: str | None = None,
 ) -> np.ndarray:
     """Collect muscle activations across multiple motion clips.
 
     Iterates over all clips, filters per-clip activations by reward
-    percentile, and concatenates into one array.  When *cache_path* is
-    given and the file exists, it is loaded directly; otherwise the result
-    is saved there after collection.
+    percentile, and concatenates into one array. Caching requires an explicit
+    policy identity; the model, ordered clip contents and config are fingerprinted
+    automatically. Cache hits return prior samples without advancing the runner.
 
     Args:
         policy_runner: Loaded policy runner.
@@ -305,25 +416,46 @@ def collect_activations(
         clips: List of motion clips to collect from.
         config: Collection hyperparameters.  Defaults to
             :class:`CollectionConfig` with all defaults.
-        cache_path: Optional ``.npy`` path to cache / load results.
+        cache_path: Optional data-only NumPy archive path (prefer ``.npz``).
+            Legacy raw ``.npy`` caches and mismatched or invalid archives are
+            recollected and atomically replaced only after successful collection.
+        policy_cache_key: Caller-owned identity for immutable policy weights and
+            all inference/observation-adapter settings, including stochastic RNG
+            state when applicable. Change it whenever these change. No policy
+            identity or reproducibility is inferred from arbitrary runner objects.
+            When omitted, cache reads and writes are disabled with a warning.
 
     Returns:
         Concatenated activation array ``(T_total, n_muscles)``, dtype
         ``float32``, values in ``[0, 1]``.
 
     Raises:
-        ValueError: If no activations were collected from any clip.
+        ValueError: If no activations were collected, the policy key is empty,
+            or the collected data cannot be cached as float32 activations in [0, 1].
     """
     cfg = config or CollectionConfig()
+    metadata = None
+    if policy_cache_key is not None and (
+        not isinstance(policy_cache_key, str) or not policy_cache_key.strip()
+    ):
+        raise ValueError("policy_cache_key must be a nonempty string or None.")
 
     if cache_path is not None:
         cache_path = Path(cache_path)
-        if cache_path.exists():
-            acts = np.load(cache_path)
-            logger.info(
-                "Loaded cached activations from %s (%s)", cache_path, acts.shape
+        if policy_cache_key is None:
+            logger.warning(
+                "Ignoring activation cache %s: policy_cache_key is required", cache_path
             )
-            return acts
+            cache_path = None
+        else:
+            metadata = _cache_metadata(model, clips, cfg, policy_cache_key)
+            if cache_path.exists():
+                acts = _read_activation_cache(cache_path, metadata, model.na)
+                if acts is not None:
+                    logger.info(
+                        "Loaded cached activations from %s (%s)", cache_path, acts.shape
+                    )
+                    return acts
 
     rng = np.random.default_rng(cfg.seed)
     all_acts: list[np.ndarray] = []
@@ -355,8 +487,12 @@ def collect_activations(
     )
 
     if cache_path is not None:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        np.save(cache_path, result)
+        if not _valid_cached_activations(result, model.na):
+            raise ValueError(
+                "Collected activations have invalid shape or values for caching."
+            )
+        assert metadata is not None
+        _write_activation_cache(cache_path, metadata, result)
         logger.info("Saved activations to %s", cache_path)
 
     return result
