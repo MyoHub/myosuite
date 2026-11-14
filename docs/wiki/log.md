@@ -4,6 +4,10 @@ Append-only record of PRs to `dev` that introduced a new feature or a
 critical/breaking change, and why. Routine fixes, refactors, and doc edits
 don't get an entry here.
 
+## [2026-11-12] feature | data-only performance cards
+
+- Added typed run records, explicit measurement/quality contracts and a JSON CLI with independent-seed bootstrap intervals and observed crossing/censoring summaries. See [performance-cards.md](performance-cards.md).
+
 ## [2026-04-30] bootstrap | repository wiki initialized
 
 - Created initial wiki structure (`index`, repository map, standards, workflow, log).
