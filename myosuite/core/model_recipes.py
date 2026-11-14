@@ -1146,10 +1146,9 @@ def _immobilize_tabletennis_legs_and_left_arm(spec: mujoco.MjSpec) -> mujoco.MjS
     """
     from myosuite.utils.spec_processing import recursive_immobilize
 
-    temp_model = spec.compile()
-    recursive_immobilize(spec, temp_model, spec.body("femur_l"), remove_eqs=True)
-    recursive_immobilize(spec, temp_model, spec.body("femur_r"), remove_eqs=True)
-    recursive_immobilize(spec, temp_model, spec.body("myoarm_l_root"), remove_eqs=True)
+    recursive_immobilize(spec, None, spec.body("femur_l"), remove_eqs=True)
+    recursive_immobilize(spec, None, spec.body("femur_r"), remove_eqs=True)
+    recursive_immobilize(spec, None, spec.body("myoarm_l_root"), remove_eqs=True)
     return spec
 
 
