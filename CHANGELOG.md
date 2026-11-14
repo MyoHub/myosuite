@@ -12,6 +12,7 @@ Changes since **v3.1.0** (2026-11-11).
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
+* **Computed muscle control** (`myosuite.biomechanics.computed_muscle_control`): `computed_muscle_control(model, qpos, qvel, qacc, dt)` (or `ComputedMuscleControl.reset` and `.step` per control step) finds the excitations that make a forward simulation track a motion (Thelen, Anderson & Delp 2003) with `StaticOptimizer` and its per-frame `min_activation`. Every step bounds each actuator by the activations its dynamics can reach, takes velocity-dependent forces (force-velocity, joint damping) at the velocity that delivers the desired acceleration over MuJoCo's Euler steps, inverts MuJoCo's own activation dynamics exactly (any `dyntype`, `tausmooth` included) and applies the reserves and residuals, as OpenSim does. For standing and walking the simulation has no contacts and the estimated ground reactions (`contact_forces=True`) are applied, as OpenSim applies measured ones. A 37-degree motion that the 2-dof elbow's muscles produced in simulation is tracked within 0.03 deg at 500 Hz control and 0.25 deg at 100 Hz; myoArm reaches at 100 Hz within 2.4 deg (RMS 0.19 deg); MyoLeg stands on its estimated ground reactions within 0.1 mm; retargeted KIT walks on MyoFullBody (354 muscles, 100 Hz, about 25 ms per step) within 1.5 mm at the root and 0.27 deg RMS at the joints (6-8 deg max), with the residuals that static optimization of the same clips already needs ([#644]).
 
 ### Fixed
 
@@ -25,6 +26,7 @@ Changes since **v3.1.0** (2026-11-11).
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
 
+[#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11
