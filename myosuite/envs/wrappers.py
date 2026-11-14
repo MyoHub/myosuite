@@ -96,7 +96,11 @@ class AttributeForwardingWrapper(
 class MjInstabilityTerminationWrapper(
     _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
 ):
-    """Upgrade MuJoCo instability checks into termination after each step."""
+    """Upgrade MuJoCo instability checks into termination after each step.
+
+    The diverged step is flagged with ``info["mj_unstable"]`` and never pays a
+    positive reward: MuJoCo has reset the data, so the step scores ``qpos0``.
+    """
 
     def __init__(self, env: gym.Env):
         RecordConstructorArgs.__init__(self)
@@ -108,10 +112,20 @@ class MjInstabilityTerminationWrapper(
         else:
             obs, reward, terminated, truncated, info = super().step(action)
 
-        env = self.unwrapped
-        check = getattr(env, "_check_mj_instability_termination", None)
-        enabled = bool(getattr(env, "mj_instability_termination", False))
-        if not enabled or not callable(check) or not bool(check()):
+        unstable = info.get("mj_unstable")  # set by MyoGymnasiumEnv._finalize_step
+        if unstable is None:
+            env = self.unwrapped
+            check = getattr(env, "_check_mj_instability_termination", None)
+            enabled = bool(getattr(env, "mj_instability_termination", False))
+            unstable = enabled and callable(check) and bool(check())
+            if unstable:
+                info["mj_unstable"] = True
+                reward = (
+                    {key: min(value, 0.0) for key, value in reward.items()}
+                    if isinstance(reward, dict)
+                    else np.minimum(reward, 0.0)
+                )
+        if not unstable:
             return obs, reward, terminated, truncated, info
 
         if isinstance(terminated, dict):
