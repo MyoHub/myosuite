@@ -32,7 +32,6 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
-import math
 import multiprocessing as mp
 import os
 import re
@@ -54,22 +53,16 @@ STRAIGHT_WALK = re.compile(
 _STATE: dict[str, Any] = {}
 
 
-def _mem_available_gb() -> float:
-    for line in Path("/proc/meminfo").read_text().splitlines():
-        if line.startswith("MemAvailable:"):
-            return int(line.split()[1]) / 2**20
-    return float("inf")
-
-
 def choose_workers(requested: int) -> int:
     """Workers within the cap, the idle cores (load) and the RAM headroom."""
-    cores = os.cpu_count() or 1
-    idle = cores - math.ceil(os.getloadavg()[0]) - 4  # keep cores for other users
-    ram = int((_mem_available_gb() - MIN_FREE_GB) / WORKER_GB)
-    n = max(1, min(requested, MAX_WORKERS, idle, ram))
-    print(f"cores {cores}, load {os.getloadavg()[0]:.1f}, "
-          f"MemAvailable {_mem_available_gb():.1f} GB -> {n} workers", flush=True)  # fmt: skip
-    return n
+    from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
+
+    return rt.choose_workers(
+        requested,
+        max_workers=MAX_WORKERS,
+        min_free_gb=MIN_FREE_GB,
+        worker_gb=WORKER_GB,
+    )
 
 
 def _init(model_name: str, version: str, body_models: str, trim: int) -> None:
@@ -78,12 +71,12 @@ def _init(model_name: str, version: str, body_models: str, trim: int) -> None:
     import warnings  # noqa: PLC0415
 
     warnings.filterwarnings("ignore")
+    from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
+    from myosuite.biomechanics import retarget_smplh as rs  # noqa: PLC0415
     from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
         compiled_body,
         kinematic_fingerprint,
     )
-    from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
-    from myosuite.biomechanics import retarget_smplh as rs  # noqa: PLC0415
 
     model = compiled_body(model_name)
     src, lmap = rs.smplh_source(model, body_models, rs.SMPLH_MAPS[model_name],
@@ -110,35 +103,44 @@ def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
     src, dst, label, curation = job
     s = _STATE
     rt, model, lmap = s["rt"], s["model"], s["lmap"]
-    curation = {"quality_flags": [], **curation}
+    curation = dict(curation)
+    cur_flags = curation.pop("quality_flags", None)
     try:
-        if Path(dst).exists():
-            meta = rt.read_refit_meta(dst)
-            if meta and "model_fingerprint" in meta:
-                same_body = meta["model_fingerprint"] == s["fingerprint"]
-            else:  # fitted before the fingerprint was recorded
-                same_body = bool(meta) and meta.get("model_version") == s["version"]
-            if (
-                same_body
-                and meta.get("source_sha256") == rt.file_sha256(src)
-                and meta.get("landmark_map_version") == lmap.version
-                and meta.get("solver") == dataclasses.asdict(s["ik"].config)
-                and (meta.get("smplh_map_version"), meta.get("trim"))
-                == (s["source"].smap.version, list(s["source"].trim))
-            ):
-                curation = {"model_fingerprint": s["fingerprint"], **curation}
-                if any(meta.get(k) != v for k, v in curation.items()):
-                    meta.update(curation)  # curation or fingerprint new: metadata only
-                    with np.load(dst) as d:
-                        qpos, freq = d["qpos"], float(d["frequency"])
-                    rt.save_refit(dst, model, qpos, freq, meta)
-                return {"meta": meta, "skipped": True}
+        meta = rt.is_cached_refit(
+            dst,
+            src,
+            fingerprint=s["fingerprint"],
+            model_version=s["version"],
+            landmark_map_version=lmap.version,
+            solver=dataclasses.asdict(s["ik"].config),
+            extra_checks={
+                "smplh_map_version": s["source"].smap.version,
+                "trim": list(s["source"].trim),
+            },
+        )
+        if meta is not None:
+            updates = {
+                "model_fingerprint": s["fingerprint"],
+                "quality_flags": rt.merge_quality_flags(
+                    meta.get("quality_flags"), cur_flags
+                ),
+                **curation,
+            }
+            if any(meta.get(k) != v for k, v in updates.items()):
+                meta.update(updates)
+                with np.load(dst) as d:
+                    qpos, freq = d["qpos"], float(d["frequency"])
+                rt.save_refit(dst, model, qpos, freq, meta)
+            return {"meta": meta, "skipped": True}
         qpos, freq, meta = rt.refit_clip(
             src, model, s["name"], s["version"], lmap, s["source"], ik=s["ik"],
             model_fingerprint=s["fingerprint"],
         )  # fmt: skip
-        meta["source"] = label  # dataset-relative, no local paths in shared files
+        meta["source"] = label
         meta.update(curation)
+        meta["quality_flags"] = rt.merge_quality_flags(
+            meta.get("quality_flags"), cur_flags
+        )
         rt.save_refit(dst, model, qpos, freq, meta)
         res: dict[str, Any] = {"meta": meta, "skipped": False}
         if STRAIGHT_WALK.search(Path(src).name):
@@ -146,68 +148,6 @@ def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
         return res
     except Exception as err:  # reported per clip, the run goes on
         return {"error": f"{type(err).__name__}: {err}", "source": src}
-
-
-def _pooled_twist(results: list[dict]) -> dict[str, Any]:
-    """#651's pooled regression of the left-minus-right twist on the coupling term."""
-    out: dict[str, Any] = {}
-    tw = [r["twist"] for r in results if r.get("twist")]
-    for key in ("fit",):
-        xs = [t[key]["x"] for t in tw if key in t]
-        if not xs:
-            continue
-        x = np.concatenate(xs)
-        row = {}
-        for body in tw[0][key]["y"]:
-            y = np.concatenate([t[key]["y"][body] for t in tw if key in t])
-            A = np.stack([x, np.ones_like(x)], 1)
-            slope = float(np.linalg.lstsq(A, y, rcond=None)[0][0])
-            per = np.array([t[key]["slope"][body] for t in tw if key in t])
-            row[body] = {"pooled_slope": slope, "clip_median": float(np.median(per)),
-                         "clips_positive": int((per > 0).sum()), "clips": len(per)}  # fmt: skip
-        out[key] = row
-    return out
-
-
-def _markdown(summary: dict[str, Any]) -> str:
-    s = summary
-    lines = [
-        f"# AMASS retarget: {s['model']} {s['model_version']} ({s['landmark_map']} v{s['landmark_map_version']})",
-        "",
-        f"{s['clips']} clips, {s['frames']} frames, {s['fit_ms_per_frame']:.2f} ms/frame per worker, "
-        f"{s['wall_s']:.0f} s wall on {s['workers']} workers. Errors: {len(s['errors'])}. "
-        f"Flagged: {len(s['flagged'])}.",
-        "",
-        "| metric | median | p95 | max |",
-        "|---|---|---|---|",
-    ]
-    for k, v in s["stats"].items():
-        lines.append(f"| {k} | {v['median']:.4g} | {v['p95']:.4g} | {v['max']:.4g} |")
-    lines += [
-        "",
-        "Thresholds: " + ", ".join(f"{k}={v}" for k, v in s["thresholds"].items()),
-        "",
-    ]
-    if s.get("twist"):
-        lines += ["## Left/right axial-twist asymmetry (straight walks)",
-                  "Slope of left-minus-right internal twist (half a stride apart) on the left "
-                  "knee coupling term; 0 is symmetric.", "",
-                  "| pose | " + " | ".join(next(iter(s["twist"].values()))) + " |",
-                  "|---|" + "---|" * len(next(iter(s["twist"].values())))]  # fmt: skip
-        for key, row in s["twist"].items():
-            cells = [f"{v['pooled_slope']:+.2f} ({v['clips_positive']}/{v['clips']} > 0)"
-                     for v in row.values()]  # fmt: skip
-            lines.append(f"| {key} | " + " | ".join(cells) + " |")
-        lines.append("")
-    lines += ["## Flagged clips", ""]
-    lines += [f"- {f['source']}: {', '.join(f['flags'])}" for f in s["flagged"]] or [
-        "none"
-    ]
-    if s["errors"]:
-        lines += ["", "## Errors", ""] + [
-            f"- {e['source']}: {e['error']}" for e in s["errors"]
-        ]
-    return "\n".join(lines) + "\n"
 
 
 def stamp(root: Path, model_name: str) -> int:
@@ -220,22 +160,9 @@ def stamp(root: Path, model_name: str) -> int:
         kinematic_fingerprint,
     )
 
-    version, fp = str(myo_sim.__version__), kinematic_fingerprint(model_name)
-    counts = {"stamped": 0, "already": 0}
-    refused = []
-    for f in sorted(root.rglob("*.npz")):
-        if f.name.endswith(".tmp.npz"):
-            continue
-        try:
-            counts["stamped" if rt.stamp_fingerprint(f, model_name, version, fp)
-                   else "already"] += 1  # fmt: skip
-        except ValueError as err:
-            refused.append(str(err))
-    print(f"{model_name} myo_sim {version}, fingerprint {fp}: {counts['stamped']} "
-          f"stamped, {counts['already']} already stamped, {len(refused)} refused")  # fmt: skip
-    for msg in refused:
-        print("  " + msg)
-    return len(refused)
+    return rt.stamp_tree(
+        root, model_name, str(myo_sim.__version__), kinematic_fingerprint(model_name)
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -293,28 +220,20 @@ def main(argv: list[str] | None = None) -> int:
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
 
     version = str(myo_sim.__version__)
-    src = Path(args.input)
-    if src.suffix == ".txt":
-        files = [
-            Path(line.strip()) for line in src.read_text().splitlines() if line.strip()
-        ]
-        base = Path(os.path.commonpath([str(f.parent) for f in files]))
-    else:
-        files, base = sorted(src.rglob("*.npz")), src
-    if args.limit:
-        files = files[: args.limit]
+    files, base, dataset = rt.collect_clip_files(
+        args.input, default_dataset=args.dataset, limit=args.limit
+    )
     out_root = (
         Path(args.out_root)
         if args.out_root
         else rt.default_cache_root(args.model, version)
     )
-    dataset = args.dataset or base.name
     curation = (
         json.loads(Path(args.quality_flags).read_text()) if args.quality_flags else {}
     )
     jobs = []
     for f in files:
-        label = f"AMASS/{dataset}/{f.relative_to(base)}"
+        label = f"AMASS/{dataset}/{f.relative_to(base).as_posix()}"
         dst = str(out_root / dataset / f.relative_to(base))
         jobs.append((str(f), dst, label, curation.get(label, {})))
     workers = choose_workers(args.workers)
@@ -328,13 +247,12 @@ def main(argv: list[str] | None = None) -> int:
             results.append(r)
             if i % 25 == 0 or i == len(jobs):
                 print(f"{i}/{len(jobs)} clips, {time.time() - t0:.0f} s, "
-                      f"MemAvailable {_mem_available_gb():.1f} GB", flush=True)  # fmt: skip
+                      f"MemAvailable {rt._mem_available_gb():.1f} GB", flush=True)  # fmt: skip
     metas = [r["meta"] for r in results if "meta" in r]
     errors = [
         {"source": r["source"], "error": r["error"]} for r in results if "error" in r
     ]
-    summary = rt.summarize(metas) if metas else {"clips": 0, "frames": 0, "fit_ms_per_frame": 0,
-                                                  "stats": {}, "flagged": []}  # fmt: skip
+    summary = rt.summarize(metas) if metas else rt.empty_summary()
     from myosuite.biomechanics import retarget_smplh as rs  # noqa: PLC0415
 
     lmap = rs.SMPLH_MAPS[args.model]
@@ -342,15 +260,10 @@ def main(argv: list[str] | None = None) -> int:
                    landmark_map_version=lmap.version, trim=args.trim, out_root=str(out_root / dataset),
                    wall_s=time.time() - t0, workers=workers, errors=errors,
                    thresholds=dataclasses.asdict(rt.RefitThresholds()),
-                   twist=_pooled_twist(results))  # fmt: skip
-    report = Path(args.report_dir)
-    report.mkdir(parents=True, exist_ok=True)
-    (report / "retarget_summary.json").write_text(json.dumps(summary, indent=1))
-    (report / "retarget_summary.md").write_text(_markdown(summary))
-    with (report / "retarget_clips.jsonl").open("w") as f:
-        for m in sorted(metas, key=lambda m: m["source"]):
-            f.write(json.dumps(m) + "\n")
-    print(_markdown(summary))
+                   twist=rt.pooled_twist(results))  # fmt: skip
+    print(
+        rt.write_refit_report(args.report_dir, summary, metas, title="AMASS retarget")
+    )
     return len(errors)
 
 

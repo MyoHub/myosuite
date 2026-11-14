@@ -14,7 +14,8 @@ Changes since **v3.1.0** (2026-11-11).
   (`estimate_instanthmr_scales`, `scale_model_from_instanthmr`), metric/nominal
   `LandmarkIK` (`InstantHMRSource`, `solve_instanthmr_ik`), 3D deformed muscle mesh and
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
-  glTF 2.0 `.glb` export), and `scripts/mimic/retarget_instanthmr.py` ([#749]).
+  glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
+  monocular video extractor `tools/instanthmr` ([#749]).
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing

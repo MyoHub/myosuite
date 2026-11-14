@@ -2,15 +2,15 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Retarget, scale and reconstruct 3D muscles from InstantHMR MHR70 clips or videos.
+"""Retarget, scale and reconstruct 3D muscles from InstantHMR MHR70 ``.npz`` clips.
 
     python scripts/mimic/retarget_instanthmr.py /path/to/instanthmr_clips \
         --model myofullbody --scale --reconstruct-muscles volumetric --export-glb
 
-Accepts a single ``.npz`` clip, a directory of ``.npz`` clips, a ``.txt`` clip list, or
-a video file (``.mp4``, ``.mov``, ``.avi``, ``.mkv``, ``.webm``; requires optional
-``instanthmr`` and ``opencv-python``). Outputs are written in the layout read by
-``myoMimic-v0``'s motion library, stamped with ``model_fingerprint`` and accompanied by
+Accepts a single ``.npz`` clip, a directory of ``.npz`` clips, or a ``.txt`` clip list
+(for monocular video extraction, run ``myosuite-instanthmr-extract`` from
+``tools/instanthmr`` first). Outputs are written in the layout read by ``myoMimic-v0``'s
+motion library, stamped with ``model_fingerprint`` and accompanied by
 ``retarget_summary.json``, ``retarget_summary.md`` and ``retarget_clips.jsonl``.
 """
 
@@ -21,6 +21,7 @@ import dataclasses
 import json
 import multiprocessing as mp
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -30,121 +31,10 @@ import numpy as np
 
 MAX_WORKERS = 8
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+STRAIGHT_WALK = re.compile(
+    r"(?i)(walkingstraightforward|walking_(slow|medium|fast)|walk_6m|walking_forward_4steps)"
+)
 _STATE: dict[str, Any] = {}
-
-
-def _box_iou(a: np.ndarray, b: np.ndarray) -> float:
-    x1, y1 = max(float(a[0]), float(b[0])), max(float(a[1]), float(b[1]))
-    x2, y2 = min(float(a[2]), float(b[2])), min(float(a[3]), float(b[3]))
-    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    area_a = max(0.0, float(a[2] - a[0])) * max(0.0, float(a[3] - a[1]))
-    area_b = max(0.0, float(b[2] - b[0])) * max(0.0, float(b[3] - b[1]))
-    denom = area_a + area_b - inter
-    return inter / denom if denom > 0 else 0.0
-
-
-def extract_video_clip(
-    video_path: str | Path,
-    out_npz: str | Path,
-    *,
-    hmr_model: str = "medium-commercial",
-    fit: int = 2,
-    device: str = "cuda",
-    focal: float | None = None,
-    pose_filter: str | None = "one-euro",
-) -> Path:
-    """Run ``instanthmr.PosePipeline`` on a video and write an MHR70 ``.npz`` clip.
-
-    Tracks the primary person across frames (largest initial bounding box, then highest
-    IoU continuity) and records missed detections in ``valid`` so
-    :func:`~myosuite.biomechanics.retarget_instanthmr.load_instanthmr` interpolates
-    short gaps smoothly.
-    """
-    try:
-        import cv2  # noqa: PLC0415
-        from instanthmr import PosePipeline  # noqa: PLC0415
-    except ImportError as exc:
-        raise ImportError(
-            "Video extraction requires optional 'instanthmr' and 'opencv-python' "
-            "packages; pass pre-extracted InstantHMR .npz clips otherwise."
-        ) from exc
-
-    from myosuite.biomechanics.retarget_instanthmr import MHR70_JOINTS  # noqa: PLC0415
-
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise FileNotFoundError(f"cannot open video: {video_path}")
-    try:
-        fps = float(cap.get(cv2.CAP_PROP_FPS))
-        if not np.isfinite(fps) or fps <= 0:
-            fps = 30.0
-        pipeline = PosePipeline(
-            hmr_model, fit=fit, device=device, focal=focal, pose_filter=pose_filter
-        )
-        joints_list: list[np.ndarray] = []
-        shapes_list: list[np.ndarray | None] = []
-        valid_list: list[bool] = []
-        prev_box: np.ndarray | None = None
-        frame_idx = 0
-        while True:
-            ok, bgr = cap.read()
-            if not ok:
-                break
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            res = pipeline(rgb, timestamp=frame_idx / fps)
-            persons = res.persons
-            chosen = None
-            if persons:
-                if prev_box is None:
-                    chosen = max(
-                        persons,
-                        key=lambda p: float(
-                            (p.bbox[2] - p.bbox[0]) * (p.bbox[3] - p.bbox[1])
-                        ),
-                    )
-                else:
-                    best = max(persons, key=lambda p: _box_iou(prev_box, p.bbox))
-                    if _box_iou(prev_box, best.bbox) > 0.05 or len(persons) == 1:
-                        chosen = best
-            if chosen is not None:
-                prev_box = np.asarray(chosen.bbox, np.float32)
-                joints_list.append(np.asarray(chosen.joints_3d_cam, np.float32))
-                sp = getattr(chosen, "shape_params", None)
-                shapes_list.append(
-                    np.asarray(sp, np.float32) if sp is not None else None
-                )
-                valid_list.append(True)
-            else:
-                joints_list.append(
-                    np.full((len(MHR70_JOINTS), 3), np.nan, dtype=np.float32)
-                )
-                shapes_list.append(None)
-                valid_list.append(False)
-            frame_idx += 1
-    finally:
-        cap.release()
-
-    if sum(valid_list) < 2:
-        raise ValueError(
-            f"{video_path}: fewer than 2 frames with a detected person ({sum(valid_list)}/{len(valid_list)})"
-        )
-    out = Path(out_npz)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    extra: dict[str, Any] = {}
-    first_shape = next((s for s in shapes_list if s is not None), None)
-    if first_shape is not None:
-        nan_shape = np.full_like(first_shape, np.nan, dtype=np.float32)
-        extra["shape_params"] = np.stack(
-            [s if s is not None else nan_shape for s in shapes_list], axis=0
-        )
-    np.savez_compressed(
-        out,
-        joints_3d_cam=np.stack(joints_list, axis=0),
-        fps=np.float64(fps),
-        valid=np.asarray(valid_list, dtype=bool),
-        **extra,
-    )
-    return out
 
 
 def _compile_target(
@@ -194,6 +84,8 @@ def _init(
     model_name: str,
     version: str,
     trim: int,
+    max_gap_s: float = 0.25,
+    on_long_gap: str = "reject",
     scales: dict[str, float] | None = None,
     body_mass: float | None = None,
     reconstruct_muscles: str = "none",
@@ -214,10 +106,12 @@ def _init(
         model,
         ri.INSTANTHMR_MAPS[model_name],
         trim=(trim, trim),
+        max_gap_s=max_gap_s,
         metric_targets=scales is not None,
     )
     _STATE.update(
         rt=rt,
+        ri=ri,
         model=model,
         lmap=lmap,
         name=model_name,
@@ -225,6 +119,7 @@ def _init(
         fingerprint=fp,
         ik=rt.LandmarkIK(model, lmap),
         source=src,
+        on_long_gap=on_long_gap,
         scales=scales,
         body_mass=body_mass,
         reconstruct_muscles=reconstruct_muscles,
@@ -269,89 +164,127 @@ def _export_muscles(
     return info
 
 
-def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
-    src, dst, label, curation = job
+def _twist(
+    rt: Any, model: Any, lmap: Any, qpos: np.ndarray, dt: float
+) -> dict[str, Any]:
+    tw = rt.twist_asymmetry(model, lmap, qpos, dt)
+    if tw is None:
+        return {}
+    return {
+        "fit": {
+            "period_s": tw["period_s"],
+            "slope": tw["slope"],
+            "x": tw["x"].astype(np.float32),
+            "y": {k: v.astype(np.float32) for k, v in tw["y"].items()},
+        }
+    }
+
+
+def _fit_and_write(
+    clip_input: Any,
+    src_file: str,
+    dst_path: Path,
+    label: str,
+    curation: dict[str, Any],
+    cur_flags: Any,
+) -> tuple[np.ndarray, float, dict[str, Any]]:
     s = _STATE
     rt, model, lmap = s["rt"], s["model"], s["lmap"]
-    curation = {"quality_flags": [], **curation}
+    qpos, freq, meta = rt.refit_clip(
+        clip_input,
+        model,
+        s["name"],
+        s["version"],
+        lmap,
+        s["source"],
+        ik=s["ik"],
+        model_fingerprint=s["fingerprint"],
+        source_path=src_file,
+    )
+    meta["source"] = label
+    meta["scaled"] = s["scales"] is not None
+    if s["scales"] is not None:
+        meta["subject_scales"] = s["scales"]
+        if s["body_mass"] is not None:
+            meta["subject_body_mass_kg"] = float(s["body_mass"])
+    meta.update(_export_muscles(dst_path, model, qpos, freq))
+    meta.update(curation)
+    meta["quality_flags"] = rt.merge_quality_flags(meta.get("quality_flags"), cur_flags)
+    rt.save_refit(dst_path, model, qpos, freq, meta)
+    return qpos, freq, meta
+
+
+def _work(
+    job: tuple[str, str, str, dict[str, Any], dict[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    src, dst, label, curation, seg_curations = job
+    s = _STATE
+    rt, ri, model, lmap = s["rt"], s["ri"], s["model"], s["lmap"]
+    curation = dict(curation)
+    cur_flags = curation.pop("quality_flags", None)
     dst_path = Path(dst)
     try:
-        if dst_path.exists():
-            meta = rt.read_refit_meta(dst_path)
-            if meta and "model_fingerprint" in meta:
-                same_body = meta["model_fingerprint"] == s["fingerprint"]
-            else:
-                same_body = bool(meta) and meta.get("model_version") == s["version"]
-            if (
-                same_body
-                and meta.get("source_sha256") == rt.file_sha256(src)
-                and meta.get("landmark_map_version") == lmap.version
-                and meta.get("solver") == dataclasses.asdict(s["ik"].config)
-                and (meta.get("instanthmr_map_version"), meta.get("trim"))
-                == (s["source"].imap.version, list(s["source"].trim))
-                and bool(meta.get("scaled", False)) == (s["scales"] is not None)
-            ):
-                with np.load(dst_path, allow_pickle=False) as d:
-                    qpos, freq = d["qpos"], float(d["frequency"])
-                m_info = _export_muscles(dst_path, model, qpos, freq)
-                curation = {"model_fingerprint": s["fingerprint"], **m_info, **curation}
-                if any(meta.get(k) != v for k, v in curation.items()):
-                    meta.update(curation)
-                    rt.save_refit(dst_path, model, qpos, freq, meta)
-                return {"meta": meta, "skipped": True}
-        qpos, freq, meta = rt.refit_clip(
+        if s["on_long_gap"] == "split":
+            segments = ri.split_instanthmr_clips(src, max_gap_s=s["source"].max_gap_s)
+            if len(segments) > 1:
+                metas = []
+                for idx, seg in enumerate(segments):
+                    seg_dst = dst_path.with_name(f"{dst_path.stem}_seg{idx:02d}.npz")
+                    seg_label = (
+                        f"{label[:-4]}_seg{idx:02d}.npz"
+                        if label.endswith(".npz")
+                        else f"{label}_seg{idx:02d}"
+                    )
+                    seg_cur = {**curation, **seg_curations.get(seg_label, {})}
+                    seg_flags = rt.merge_quality_flags(
+                        cur_flags, seg_cur.pop("quality_flags", None)
+                    )
+                    _, _, seg_meta = _fit_and_write(
+                        seg, src, seg_dst, seg_label, seg_cur, seg_flags
+                    )
+                    metas.append(seg_meta)
+                return {"metas": metas, "skipped": False}
+
+        meta = rt.is_cached_refit(
+            dst_path,
             src,
-            model,
-            s["name"],
-            s["version"],
-            lmap,
-            s["source"],
-            ik=s["ik"],
-            model_fingerprint=s["fingerprint"],
+            fingerprint=s["fingerprint"],
+            model_version=s["version"],
+            landmark_map_version=lmap.version,
+            solver=dataclasses.asdict(s["ik"].config),
+            extra_checks={
+                "instanthmr_map_version": s["source"].imap.version,
+                "trim": list(s["source"].trim),
+                "scaled": s["scales"] is not None,
+            },
         )
-        meta["source"] = label
-        meta["scaled"] = s["scales"] is not None
-        if s["scales"] is not None:
-            meta["subject_scales"] = s["scales"]
-            if s["body_mass"] is not None:
-                meta["subject_body_mass_kg"] = float(s["body_mass"])
-        meta.update(_export_muscles(dst_path, model, qpos, freq))
-        meta.update(curation)
-        rt.save_refit(dst_path, model, qpos, freq, meta)
-        return {"meta": meta, "skipped": False}
+        if meta is not None:
+            with np.load(dst_path, allow_pickle=False) as d:
+                qpos, freq = d["qpos"], float(d["frequency"])
+            m_info = _export_muscles(dst_path, model, qpos, freq)
+            updates = {
+                "model_fingerprint": s["fingerprint"],
+                **m_info,
+                **curation,
+                "quality_flags": rt.merge_quality_flags(
+                    meta.get("quality_flags"), cur_flags
+                ),
+            }
+            if any(meta.get(k) != v for k, v in updates.items()):
+                meta.update(updates)
+                rt.save_refit(dst_path, model, qpos, freq, meta)
+            return {"metas": [meta], "skipped": True}
+
+        clip_in = segments[0] if s["on_long_gap"] == "split" else src
+        qpos, freq, meta = _fit_and_write(
+            clip_in, src, dst_path, label, curation, cur_flags
+        )
+        res: dict[str, Any] = {"metas": [meta], "skipped": False}
+        if STRAIGHT_WALK.search(Path(src).name):
+            res["twist"] = _twist(rt, model, lmap, qpos, 1.0 / freq)
+        return res
     except Exception as err:
         return {"error": f"{type(err).__name__}: {err}", "source": label}
-
-
-def _markdown(summary: dict[str, Any]) -> str:
-    s = summary
-    lines = [
-        f"# InstantHMR retarget: {s['model']} {s['model_version']} ({s['landmark_map']} v{s['landmark_map_version']})",
-        "",
-        f"{s['clips']} clips, {s['frames']} frames, {s['fit_ms_per_frame']:.2f} ms/frame per worker, "
-        f"{s['wall_s']:.1f} s wall on {s['workers']} workers. Errors: {len(s['errors'])}. "
-        f"Flagged: {len(s['flagged'])}.",
-        "",
-        "| metric | median | p95 | max |",
-        "|---|---|---|---|",
-    ]
-    for k, v in s["stats"].items():
-        lines.append(f"| {k} | {v['median']:.4g} | {v['p95']:.4g} | {v['max']:.4g} |")
-    lines += [
-        "",
-        "Thresholds: " + ", ".join(f"{k}={v}" for k, v in s["thresholds"].items()),
-        "",
-        "## Flagged clips",
-        "",
-    ]
-    lines += [f"- {f['source']}: {', '.join(f['flags'])}" for f in s["flagged"]] or [
-        "none"
-    ]
-    if s["errors"]:
-        lines += ["", "## Errors", ""] + [
-            f"- {e['source']}: {e['error']}" for e in s["errors"]
-        ]
-    return "\n".join(lines) + "\n"
 
 
 def stamp(root: Path, model_name: str) -> int:
@@ -361,37 +294,16 @@ def stamp(root: Path, model_name: str) -> int:
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
 
     _, fp = _compile_target(model_name)
-    version = str(myo_sim.__version__)
-    counts = {"stamped": 0, "already": 0}
-    refused = []
-    for f in sorted(root.rglob("*.npz")):
-        if f.name.endswith((".tmp.npz", "_muscles.npz")):
-            continue
-        try:
-            key = (
-                "stamped"
-                if rt.stamp_fingerprint(f, model_name, version, fp)
-                else "already"
-            )
-            counts[key] += 1
-        except ValueError as err:
-            refused.append(str(err))
-    print(
-        f"{model_name} myo_sim {version}, fingerprint {fp}: {counts['stamped']} "
-        f"stamped, {counts['already']} already stamped, {len(refused)} refused"
-    )
-    for msg in refused:
-        print("  " + msg)
-    return len(refused)
+    return rt.stamp_tree(root, model_name, str(myo_sim.__version__), fp)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Retarget InstantHMR clips or videos; returns the number of failed clips."""
+    """Retarget InstantHMR ``.npz`` clips; returns the number of failed clips."""
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument(
         "input",
         nargs="?",
-        help="InstantHMR .npz clip, directory, .txt clip list, or video file",
+        help="InstantHMR .npz clip, directory, or .txt clip list",
     )
     p.add_argument(
         "--stamp-fingerprint",
@@ -408,12 +320,24 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--dataset",
         default="",
-        help="sub-folder of the outputs (default: input dir or stem name)",
+        help="sub-folder of the outputs (default: input dir or 'instanthmr')",
     )
     p.add_argument("--workers", type=int, default=1)
     p.add_argument("--report-dir", default="")
     p.add_argument("--limit", type=int, default=0, help="only the first N clips")
     p.add_argument("--trim", type=int, default=0, help="frames dropped at each end")
+    p.add_argument(
+        "--max-gap-s",
+        type=float,
+        default=0.25,
+        help="maximum missing-frame gap duration (s) interpolated across",
+    )
+    p.add_argument(
+        "--on-long-gap",
+        default="reject",
+        choices=("reject", "split"),
+        help="reject clips with missing gaps > --max-gap-s or split into sub-clips",
+    )
     p.add_argument(
         "--quality-flags",
         default="",
@@ -452,16 +376,20 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="frame index exported when --export-glb is enabled",
     )
-    p.add_argument("--hmr-model", default="medium-commercial")
-    p.add_argument("--hmr-fit", type=int, default=2)
-    p.add_argument("--device", default="cuda")
-    p.add_argument("--focal", type=float, default=None)
     args = p.parse_args(argv)
 
     if args.stamp_fingerprint:
         return stamp(Path(args.stamp_fingerprint).expanduser(), args.model)
     if not args.input:
         p.error("input is required unless --stamp-fingerprint is set")
+
+    src = Path(args.input).expanduser()
+    if src.suffix.lower() in VIDEO_SUFFIXES:
+        raise ValueError(
+            f"{src}: monocular video extraction lives in the standalone "
+            f"'tools/instanthmr' package; run 'myosuite-instanthmr-extract {src} "
+            f"-o <clip.npz>' first and pass the extracted .npz here."
+        )
 
     import myo_sim  # noqa: PLC0415
 
@@ -474,50 +402,32 @@ def main(argv: list[str] | None = None) -> int:
         if args.out_root
         else rt.default_cache_root(args.model, version)
     )
-    src = Path(args.input).expanduser()
-    if src.is_file() and src.suffix.lower() in VIDEO_SUFFIXES:
-        dataset = args.dataset or "instanthmr"
-        extracted = out_root / "_raw_instanthmr" / dataset / f"{src.stem}.npz"
-        extract_video_clip(
-            src,
-            extracted,
-            hmr_model=args.hmr_model,
-            fit=args.hmr_fit,
-            device=args.device,
-            focal=args.focal,
-        )
-        files, base = [extracted], extracted.parent
-    elif src.is_file() and src.suffix == ".txt":
-        files = [
-            Path(line.split("#", 1)[0].strip())
-            for line in src.read_text().splitlines()
-            if line.split("#", 1)[0].strip()
-        ]
-        base = Path(os.path.commonpath([str(f.parent) for f in files]))
-        dataset = args.dataset or src.stem
-    elif src.is_file():
-        files, base = [src], src.parent
-        dataset = args.dataset or "instanthmr"
-    elif src.is_dir():
-        files = [
-            f
-            for f in sorted(src.rglob("*.npz"))
-            if not f.name.endswith((".tmp.npz", "_muscles.npz"))
-        ]
-        base = src
-        dataset = args.dataset or src.name
-    else:
-        raise FileNotFoundError(f"input not found: {src}")
-
-    if args.limit:
-        files = files[: args.limit]
+    default_ds = args.dataset or (
+        "instanthmr"
+        if src.is_file() and src.suffix == ".npz"
+        else src.stem
+        if src.is_file()
+        else ""
+    )
+    files, base, dataset = rt.collect_clip_files(
+        src, default_dataset=default_ds, limit=args.limit
+    )
 
     imap = ri.INSTANTHMR_MAPS[args.model]
     scales: dict[str, float] | None = None
     if args.scale and files:
         nominal, _ = _compile_target(args.model)
+        scale_clip: Any = (
+            ri.split_instanthmr_clips(files[0], max_gap_s=args.max_gap_s)[0]
+            if args.on_long_gap == "split"
+            else files[0]
+        )
         scales = ri.estimate_instanthmr_scales(
-            files[0], nominal, imap, trim=(args.trim, args.trim)
+            scale_clip,
+            nominal,
+            imap,
+            trim=(args.trim, args.trim),
+            max_gap_s=args.max_gap_s,
         )
 
     curation = (
@@ -527,13 +437,17 @@ def main(argv: list[str] | None = None) -> int:
     for f in files:
         rel_posix = f.relative_to(base).as_posix()
         label = f"InstantHMR/{dataset}/{rel_posix}"
+        seg_prefix = f"{label[:-4]}_seg" if label.endswith(".npz") else f"{label}_seg"
+        seg_cur = {k: v for k, v in curation.items() if k.startswith(seg_prefix)}
         dst = str(out_root / dataset / f.relative_to(base))
-        jobs.append((str(f), dst, label, curation.get(label, {})))
+        jobs.append((str(f), dst, label, curation.get(label, {}), seg_cur))
 
     init_args = (
         args.model,
         version,
         args.trim,
+        args.max_gap_s,
+        args.on_long_gap,
         scales,
         args.body_mass,
         args.reconstruct_muscles,
@@ -541,8 +455,12 @@ def main(argv: list[str] | None = None) -> int:
         args.export_glb,
         args.glb_frame,
     )
-    workers = max(
-        1, min(args.workers, MAX_WORKERS, os.cpu_count() or 1, max(len(jobs), 1))
+    workers = (
+        1
+        if args.workers <= 1 or len(jobs) <= 1
+        else rt.choose_workers(
+            min(args.workers, len(jobs)), max_workers=MAX_WORKERS, verbose=True
+        )
     )
     t0 = time.time()
     results: list[dict[str, Any]] = []
@@ -559,27 +477,19 @@ def main(argv: list[str] | None = None) -> int:
         ) as pool:
             results = list(pool.imap_unordered(_work, jobs, chunksize=1))
 
-    metas = [r["meta"] for r in results if "meta" in r]
+    metas = [m for r in results for m in r.get("metas", ())]
     errors = [
         {"source": r["source"], "error": r["error"]} for r in results if "error" in r
     ]
-    summary = (
-        rt.summarize(metas)
-        if metas
-        else {
-            "clips": 0,
-            "frames": 0,
-            "fit_ms_per_frame": 0.0,
-            "stats": {},
-            "flagged": [],
-        }
-    )
+    summary = rt.summarize(metas) if metas else rt.empty_summary()
     summary.update(
         model=args.model,
         model_version=version,
         landmark_map=imap.name,
         landmark_map_version=imap.version,
         trim=args.trim,
+        max_gap_s=args.max_gap_s,
+        on_long_gap=args.on_long_gap,
         scaled=scales is not None,
         **({"subject_scales": scales} if scales is not None else {}),
         **(
@@ -593,6 +503,7 @@ def main(argv: list[str] | None = None) -> int:
         workers=workers,
         errors=errors,
         thresholds=dataclasses.asdict(rt.RefitThresholds()),
+        twist=rt.pooled_twist(results),
     )
     report = Path(args.report_dir) if args.report_dir else (out_root / dataset)
     report.mkdir(parents=True, exist_ok=True)
@@ -604,12 +515,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             + "\n"
         )
-    (report / "retarget_summary.json").write_text(json.dumps(summary, indent=1))
-    (report / "retarget_summary.md").write_text(_markdown(summary))
-    with (report / "retarget_clips.jsonl").open("w") as f:
-        for m in sorted(metas, key=lambda m: m["source"]):
-            f.write(json.dumps(m) + "\n")
-    print(_markdown(summary))
+    print(rt.write_refit_report(report, summary, metas, title="InstantHMR retarget"))
     return len(errors)
 
 

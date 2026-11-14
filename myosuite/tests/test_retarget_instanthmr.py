@@ -489,14 +489,44 @@ def test_cli_and_myomimic_motion_lib(fullbody: mujoco.MjModel, tmp_path: Path) -
     assert lib.num_frames >= 2
 
 
-def test_video_extraction_tracks_primary_person_and_dropouts(
+def test_cli_rejects_raw_video_with_tool_hint(tmp_path: Path) -> None:
+    from scripts.mimic import retarget_instanthmr as cli
+
+    video = tmp_path / "demo.mp4"
+    video.write_bytes(b"fake")
+    with pytest.raises(ValueError, match="myosuite-instanthmr-extract"):
+        cli.main([str(video), "--model", "myofullbody"])
+
+
+def test_standalone_extractor_preserves_subject_identity(
     fullbody: mujoco.MjModel, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import ast
     import sys
     import types
     from dataclasses import dataclass
 
     from scripts.mimic import retarget_instanthmr as cli
+
+    tool_root = Path(__file__).resolve().parents[2] / "tools" / "instanthmr"
+    extract_src = (tool_root / "myosuite_instanthmr" / "extract.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(extract_src)
+    imported_roots = {
+        node.module.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    } | {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert "myosuite" not in imported_roots
+
+    monkeypatch.syspath_prepend(str(tool_root))
+    import myosuite_instanthmr as mih
 
     cal = ri.calibrate(fullbody, ri.INSTANTHMR_MYOFULLBODY)
     T = 12
@@ -515,6 +545,34 @@ def test_video_extraction_tracks_primary_person_and_dropouts(
     class _FrameRes:
         persons: list[_Person]
 
+    # 1. Regression (P2): Subject A disappears at frame 6 while distant B remains alone.
+    disappear_frames: list[_FrameRes] = []
+    for k in range(T):
+        bystander_b = _Person(
+            np.array([480.0, 90.0, 560.0, 290.0]),
+            j_cam[k] + np.array([3.5, 0.0, 2.5]),
+        )
+        if k < 6:
+            subject_a = _Person(np.array([100.0, 50.0, 300.0, 450.0]), j_cam[k])
+            disappear_frames.append(_FrameRes([subject_a, bystander_b]))
+        else:
+            disappear_frames.append(_FrameRes([bystander_b]))
+
+    pred_lost = mih.extract_predictions(disappear_frames, fps=30.0)
+    assert pred_lost["valid"][:6].all()
+    assert not pred_lost["valid"][6:].any()
+    assert np.isnan(pred_lost["joints_3d_cam"][6:]).all()
+    assert "track_lost" in pred_lost["quality_flags"].tolist()
+
+    lost_npz = tmp_path / "lost_bystander.npz"
+    np.savez_compressed(lost_npz, **pred_lost)
+    loaded_lost = ri.load_instanthmr(lost_npz)
+    assert len(loaded_lost["joints_3d_cam"]) == 6
+    assert loaded_lost["endpoint_trimmed_frames"] == 6
+    assert "track_lost" in loaded_lost["quality_flags"]
+    assert "trimmed_endpoints" in loaded_lost["quality_flags"]
+
+    # 2. Brief 2-frame dropout with bystander: extractor + retarget CLI pipeline.
     class _FakeCap:
         def __init__(self, _path: str) -> None:
             self._idx = 0
@@ -535,7 +593,7 @@ def test_video_extraction_tracks_primary_person_and_dropouts(
             pass
 
     class _FakePipeline:
-        def __init__(self, *args: object, **kwargs: object) -> None:
+        def __init__(self) -> None:
             self._idx = 0
 
         def __call__(
@@ -544,12 +602,12 @@ def test_video_extraction_tracks_primary_person_and_dropouts(
             assert timestamp is not None
             k = self._idx
             self._idx += 1
-            if k in (4, 5):
-                return _FrameRes([])
-            primary = _Person(np.array([100.0, 50.0, 300.0, 450.0]), j_cam[k])
             bystander = _Person(
                 np.array([10.0, 10.0, 60.0, 90.0]), j_cam[k] + np.array([5.0, 0.0, 0.0])
             )
+            if k in (4, 5):
+                return _FrameRes([bystander])
+            primary = _Person(np.array([100.0, 50.0, 300.0, 450.0]), j_cam[k])
             return _FrameRes([bystander, primary])
 
     fake_cv2 = types.ModuleType("cv2")
@@ -557,19 +615,17 @@ def test_video_extraction_tracks_primary_person_and_dropouts(
     fake_cv2.COLOR_BGR2RGB = 4  # type: ignore[attr-defined]
     fake_cv2.VideoCapture = _FakeCap  # type: ignore[attr-defined]
     fake_cv2.cvtColor = lambda img, _code: img  # type: ignore[attr-defined]
-
-    fake_hmr = types.ModuleType("instanthmr")
-    fake_hmr.PosePipeline = _FakePipeline  # type: ignore[attr-defined]
-
     monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
-    monkeypatch.setitem(sys.modules, "instanthmr", fake_hmr)
 
     video = tmp_path / "demo.mp4"
     video.write_bytes(b"fake")
+    extracted_npz = tmp_path / "extracted" / "demo.npz"
+    mih.extract_video_clip(video, extracted_npz, pipeline=_FakePipeline())
+
     out_root = tmp_path / "video_out"
     rc = cli.main(
         [
-            str(video),
+            str(extracted_npz),
             "--model",
             "myofullbody",
             "--out-root",
@@ -585,7 +641,230 @@ def test_video_extraction_tracks_primary_person_and_dropouts(
     meta = rt.read_refit_meta(refit_npz)
     assert meta is not None
     assert meta["interpolated_frames"] == 2
+    assert "interpolated_gaps" in meta["quality_flags"]
     assert meta["metrics"]["landmark_rmse_mm"] < 5.0
+
+
+def test_gap_limit_endpoint_trimming_and_splitting(
+    fullbody: mujoco.MjModel, tmp_path: Path
+) -> None:
+    from scripts.mimic import retarget_instanthmr as cli
+
+    cal = ri.calibrate(fullbody, ri.INSTANTHMR_MYOFULLBODY)
+    T = 100
+    q_gt = np.tile(cal.qpos, (T, 1))
+    q_gt[:, 0] = np.linspace(0.0, 1.0, T)
+    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
+    q_gt[:, 2] -= low0
+    j_cam = _synthesize_mhr70_cam(fullbody, ri.INSTANTHMR_MYOFULLBODY, q_gt)
+
+    # 1. Regression (P2): 100-frame clip with only 2 valid frames (98-frame gap).
+    valid_two = np.zeros(T, dtype=bool)
+    valid_two[0] = True
+    valid_two[99] = True
+    sparse_npz = tmp_path / "sparse_100.npz"
+    np.savez(sparse_npz, joints_3d_cam=j_cam, fps=30.0, valid=valid_two)
+    with pytest.raises(ValueError, match="exceeds max_gap_s"):
+        ri.load_instanthmr(sparse_npz)
+    with pytest.raises(ValueError, match="no contiguous valid segment"):
+        ri.split_instanthmr_clips(sparse_npz)
+
+    # 2. Missing leading and trailing endpoints are trimmed (never held constant).
+    T_end = 20
+    j_end = j_cam[:T_end].copy()
+    v_end = np.ones(T_end, dtype=bool)
+    v_end[:4] = False
+    v_end[-3:] = False
+    j_end[~v_end] = np.nan
+    end_npz = tmp_path / "endpoints.npz"
+    np.savez(
+        end_npz,
+        joints_3d_cam=j_end,
+        fps=30.0,
+        valid=v_end,
+        quality_flags=np.array(["upstream_note"]),
+    )
+    loaded_end = ri.load_instanthmr(end_npz)
+    assert len(loaded_end["joints_3d_cam"]) == 13
+    assert loaded_end["segment_range"] == [4, 17]
+    assert loaded_end["endpoint_trimmed_frames"] == 7
+    assert np.allclose(loaded_end["joints_3d_cam"][0], j_cam[4], atol=1e-6)
+    assert np.allclose(loaded_end["joints_3d_cam"][-1], j_cam[16], atol=1e-6)
+    assert loaded_end["quality_flags"] == ["upstream_note", "trimmed_endpoints"]
+
+    # 3. Long interior gap: rejected by default, split cleanly under --on-long-gap split.
+    T_gap = 28
+    j_gap = j_cam[:T_gap].copy()
+    v_gap = np.ones(T_gap, dtype=bool)
+    v_gap[8:20] = False  # 12 frames = 0.40 s > max_gap_s=0.25 s
+    j_gap[~v_gap] = np.nan
+    gap_npz = tmp_path / "long_gap.npz"
+    np.savez(gap_npz, joints_3d_cam=j_gap, fps=30.0, valid=v_gap)
+    with pytest.raises(ValueError, match="exceeds max_gap_s"):
+        ri.load_instanthmr(gap_npz)
+
+    segs = ri.split_instanthmr_clips(gap_npz)
+    assert [s["segment_range"] for s in segs] == [[0, 8], [20, 28]]
+    assert all("split_long_gap" in s["quality_flags"] for s in segs)
+
+    curation_file = tmp_path / "curation.json"
+    curation_file.write_text(
+        json.dumps(
+            {
+                "InstantHMR/split_ds/long_gap_seg00.npz": {
+                    "quality_flags": ["manual_review"]
+                }
+            }
+        )
+    )
+    out_root = tmp_path / "split_out"
+    rc = cli.main(
+        [
+            str(gap_npz),
+            "--model",
+            "myofullbody",
+            "--out-root",
+            str(out_root),
+            "--dataset",
+            "split_ds",
+            "--on-long-gap",
+            "split",
+            "--quality-flags",
+            str(curation_file),
+        ]
+    )
+    assert rc == 0
+    seg0_meta = rt.read_refit_meta(out_root / "split_ds" / "long_gap_seg00.npz")
+    seg1_meta = rt.read_refit_meta(out_root / "split_ds" / "long_gap_seg01.npz")
+    assert seg0_meta is not None and seg1_meta is not None
+    assert seg0_meta["quality_flags"] == ["split_long_gap", "manual_review"]
+    assert seg1_meta["quality_flags"] == ["split_long_gap"]
+    summary = json.loads((out_root / "split_ds" / "retarget_summary.json").read_text())
+    assert summary["clips"] == 2
+    assert len(summary["flagged"]) == 2
+
+
+def test_collinear_landmarks_and_suppressed_orientation_targets(
+    fullbody: mujoco.MjModel,
+) -> None:
+    # 1. Regression (P2): collinear and zero vectors must never produce det(R) == 0.
+    bad_pairs = [
+        (np.array([1.0, 0.0, 0.0]), np.array([2.0, 0.0, 0.0])),
+        (np.array([0.0, 1.0, 0.0]), np.array([0.0, -3.0, 0.0])),
+        (np.array([0.0, 0.0, 1.0]), np.array([1e-9, 0.0, 1.0])),
+        (np.array([0.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])),
+        (np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])),
+    ]
+    for u, v in bad_pairs:
+        R_single, ok_single = ri._triad_checked(u, v)
+        assert not bool(ok_single)
+        assert np.isfinite(R_single).all()
+        assert np.allclose(R_single.T @ R_single, np.eye(3), atol=1e-7)
+        assert np.isclose(np.linalg.det(R_single), 1.0, atol=1e-7)
+        q_single = rt._mat_to_quat(R_single)
+        assert np.isfinite(q_single).all()
+        assert np.isclose(np.linalg.norm(q_single), 1.0, atol=1e-7)
+
+    # 2. End-to-end clip with collinear hand & coincident hip landmarks.
+    cal = ri.calibrate(fullbody, ri.INSTANTHMR_MYOFULLBODY)
+    T = 8
+    q_gt = np.tile(cal.qpos, (T, 1))
+    q_gt[:, 0] = np.linspace(0.0, 0.14, T)
+    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
+    q_gt[:, 2] -= low0
+    j_cam = _synthesize_mhr70_cam(fullbody, ri.INSTANTHMR_MYOFULLBODY, q_gt)
+
+    # Frame 3: make left-hand primary & secondary vectors collinear along wrist->middle.
+    w_pt = j_cam[3, _JIDX["left_wrist"]].copy()
+    dir_pt = np.array([0.08, 0.0, 0.0])
+    j_cam[3, _JIDX["left_middle_third_joint"]] = w_pt + dir_pt
+    j_cam[3, _JIDX["left_pinky_third_joint"]] = w_pt - dir_pt
+    j_cam[3, _JIDX["left_index_third_joint"]] = w_pt + 2.0 * dir_pt
+
+    # Frame 0: collapse left_hip onto right_hip (degenerate Pelvis primary vector on start frame).
+    hip_mid = 0.5 * (j_cam[0, _JIDX["left_hip"]] + j_cam[0, _JIDX["right_hip"]])
+    j_cam[0, _JIDX["left_hip"]] = hip_mid
+    j_cam[0, _JIDX["right_hip"]] = hip_mid
+
+    jw = j_cam @ (cal.canon_to_model @ ri.CAM_TO_WORLD).T
+    R_seg, ori_ok = ri.segment_orientations_with_mask(jw, ri.INSTANTHMR_MYOFULLBODY)
+    assert np.isfinite(R_seg).all()
+    assert np.allclose(np.swapaxes(R_seg, -1, -2) @ R_seg, np.eye(3), atol=1e-6)
+    assert np.allclose(np.linalg.det(R_seg), 1.0, atol=1e-6)
+
+    ori_names = [o.name for o in ri.INSTANTHMR_MYOFULLBODY.orientations]
+    l_hand_idx = ori_names.index("L_Hand")
+    pelvis_idx = ori_names.index("Pelvis")
+    assert not ori_ok[3, l_hand_idx]
+    assert not ori_ok[0, pelvis_idx]
+
+    clip = {"joints_3d_cam": j_cam, "fps": 30.0}
+    src, lmap = ri.instanthmr_source(fullbody, ri.INSTANTHMR_MYOFULLBODY)
+    targets = src.targets(clip, fullbody, lmap)
+    assert targets.quat_mask is not None
+    assert targets.quat_mask[3, l_hand_idx] == 0.0
+    assert targets.quat_mask[0, pelvis_idx] == 0.0
+
+    # Verify LandmarkIK completely suppresses the masked orientation residual on frame 3.
+    ik = rt.LandmarkIK(fullbody, lmap, rt.RefitConfig(smooth_weight=0.0))
+    quat_perturbed = targets.quat[3].copy()
+    quat_perturbed[l_hand_idx] = np.array([0.0, 1.0, 0.0, 0.0])
+    r_orig, _ = ik._evaluate(
+        targets.seed,
+        targets.pos[3],
+        targets.quat[3],
+        None,
+        False,
+        targets.posture[3] if targets.posture is not None else None,
+        targets.quat_mask[3],
+    )
+    r_pert, _ = ik._evaluate(
+        targets.seed,
+        targets.pos[3],
+        quat_perturbed,
+        None,
+        False,
+        targets.posture[3] if targets.posture is not None else None,
+        targets.quat_mask[3],
+    )
+    np.testing.assert_allclose(r_orig, r_pert, atol=1e-12)
+
+    res = ri.solve_instanthmr_ik(clip, model=fullbody)
+    assert res.metrics["coupling_residual"] == 0.0
+    assert res.metrics["limit_violations"] == 0
+    assert res.metrics["degenerate_orientation_frames"] >= 2
+    assert "degenerate_orientation" in res.metrics["quality_flags"]
+    assert np.isfinite(res.qpos).all()
+
+
+def test_real_instanthmr_fixture_end_to_end(
+    fullbody: mujoco.MjModel, myolegs: mujoco.MjModel
+) -> None:
+    fixture = Path(__file__).parent / "data" / "instanthmr_mhr70_sample.npz"
+    assert fixture.is_file()
+    loaded = ri.load_instanthmr(fixture)
+    assert loaded["joints_3d_cam"].shape == (12, 70, 3)
+    assert loaded["shape_params"] is not None
+    assert loaded["shape_params"].shape == (12, 45)
+    assert loaded["fps"] == 30.0
+    assert loaded["valid"].all()
+
+    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+
+    spec_fb = model_cfg("myofullbody").build_spec(True)
+    res_fb = ri.solve_instanthmr_ik(fixture, spec=spec_fb, scale=True)
+    assert res_fb.scales is not None
+    assert all(0.6 <= v <= 1.5 for v in res_fb.scales.values())
+    assert res_fb.metrics["coupling_residual"] == 0.0
+    assert res_fb.metrics["limit_violations"] == 0
+    assert res_fb.metrics["landmark_rmse_mm"] < 45.0
+    assert np.isfinite(res_fb.qpos).all()
+    assert np.isfinite(res_fb.qvel).all()
+
+    res_legs = ri.solve_instanthmr_ik(fixture, model=myolegs)
+    assert res_legs.metrics["coupling_residual"] == 0.0
+    assert res_legs.metrics["limit_violations"] == 0
+    assert res_legs.metrics["landmark_rmse_mm"] < 35.0
 
 
 def _closed_mesh_volume(vertices: np.ndarray, faces: np.ndarray) -> float:

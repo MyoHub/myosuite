@@ -12,6 +12,7 @@ scripts/           # training, evaluation and rendering CLIs (train_mjlab, train
 training/          # method projects with their own pyproject.toml, outside the package (chasetag_teacher, dynsyn); see training-guidelines.md
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
 training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, supermimic/)
+tools/             # standalone data/perception CLIs with isolated dependencies (instanthmr/)
 .github/           # CI and release workflows
 ```
 
@@ -72,7 +73,7 @@ guaranteed long-term.)
 | Add/change model composition | `myosuite/core/model_builder.py`, `model_recipes.py` |
 | Add/change a term function | `myosuite/terms/base_*.py` |
 | Add/change biomechanics math | `myosuite/physics/` |
-| Analyse a motion (IK, ID, static optimization), retarget motion data (SMPL+H), muscle effort of rollouts | `myosuite/biomechanics/` |
+| Analyse a motion (IK, ID, static optimization), retarget motion data (SMPL+H, InstantHMR), muscle effort of rollouts | `myosuite/biomechanics/`, `tools/instanthmr/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/tasks/<family>/` (twins of CPU envs), `register_mjlab_*.py` (special tasks) |
 | Muscle noise, fatigue, reafferentation, sarcopenia | `envs/wrappers.py`, `envs/muscle_stages.py`; on mjlab `backends/mjlab/tasks/mdp/actions.py` |

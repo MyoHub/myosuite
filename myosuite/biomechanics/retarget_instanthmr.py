@@ -18,14 +18,24 @@ import numpy as np
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics
 from myosuite.biomechanics.retarget import (
     ClipTargets,
-    Landmark,
     LandmarkIK,
     LandmarkMap,
-    OrientationTarget,
     RefitConfig,
     RefitThresholds,
-    _foot_kinematics,
+    _body_landmarks,
+    _calibration_pose,
+    _foot_contacts,
     _geom_lowest_z,
+    _ground_clip,
+    _hinge_table,
+    _knee_flexion_meta,
+    _mat_to_quat,
+    _orientation_targets,
+    _segment_angle,
+    _smooth,
+    _smooth_quat,
+    _start_pose,
+    merge_quality_flags,
     validate_refit,
 )
 from myosuite.core.trajectory_io import MotionClip
@@ -83,9 +93,39 @@ def _interpolate_gaps(joints: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return out
 
 
-def _normalize_clip_dict(
-    raw: dict[str, Any], label: str | Path = "<memory>"
-) -> dict[str, Any]:
+def _parse_quality_flags(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str | bytes):
+        text = value.decode() if isinstance(value, bytes) else value
+        if text.startswith("["):
+            import json  # noqa: PLC0415
+
+            return [str(x) for x in json.loads(text) if str(x)]
+        return [text] if text else []
+    arr = np.asarray(value)
+    if arr.ndim == 0:
+        return _parse_quality_flags(arr.item())
+    return [str(x) for x in arr.ravel().tolist() if str(x)]
+
+
+def _extract_valid_segments(
+    raw: dict[str, Any],
+    label: str | Path = "<memory>",
+    *,
+    max_gap_s: float = 0.25,
+    on_long_gap: str = "reject",
+    min_frames: int = 2,
+) -> list[dict[str, Any]]:
+    if on_long_gap not in ("reject", "split"):
+        raise ValueError(
+            f"on_long_gap must be 'reject' or 'split', got {on_long_gap!r}"
+        )
+    if not np.isfinite(max_gap_s) or max_gap_s < 0:
+        raise ValueError(f"max_gap_s must be finite and non-negative, got {max_gap_s}")
+    if min_frames < 2:
+        raise ValueError(f"min_frames must be >= 2, got {min_frames}")
+
     files = set(raw)
     if "joints_3d_cam" in files:
         joints = np.asarray(raw["joints_3d_cam"], np.float64)
@@ -99,6 +139,7 @@ def _normalize_clip_dict(
             joints = joints + trans[:, None, :]
     else:
         raise ValueError(f"{label}: expected 'joints_3d_cam' or 'joints_3d_local'")
+
     fps_key = (
         "fps" if "fps" in files else ("frequency" if "frequency" in files else None)
     )
@@ -120,13 +161,20 @@ def _normalize_clip_dict(
         if "shape_params" in files and raw["shape_params"] is not None
         else None
     )
+    base_flags = _parse_quality_flags(raw.get("quality_flags"))
+    base_trimmed = int(raw.get("endpoint_trimmed_frames", 0))
+    base_offset = (
+        int(raw["segment_range"][0]) if raw.get("segment_range") is not None else 0
+    )
 
     if joints.ndim != 3 or joints.shape[1:] != (len(MHR70_JOINTS), 3):
         raise ValueError(
             f"{label}: expected joints shape (T, 70, 3), got {joints.shape}"
         )
-    if len(joints) < 2:
-        raise ValueError(f"{label}: clip needs at least 2 frames, got {len(joints)}")
+    if len(joints) < min_frames:
+        raise ValueError(
+            f"{label}: clip needs at least {min_frames} frames, got {len(joints)}"
+        )
     if not np.isfinite(fps) or fps <= 0:
         raise ValueError(f"{label}: fps must be finite and positive, got {fps}")
 
@@ -139,31 +187,143 @@ def _normalize_clip_dict(
         valid = valid_raw & finite
     else:
         valid = finite
-    if int(valid.sum()) < 2:
+
+    ok_idx = np.flatnonzero(valid)
+    if len(ok_idx) < min_frames:
         raise ValueError(
-            f"{label}: need at least 2 valid frames, got {int(valid.sum())}"
+            f"{label}: need at least {min_frames} valid frames, got {len(ok_idx)}"
         )
-    return {
-        "joints_3d_cam": _interpolate_gaps(joints, valid),
-        "fps": fps,
-        "valid": valid,
-        "interpolated_frames": int((~valid).sum()),
-        "cam_to_world": cam_R,
-        "shape_params": shape_params,
-    }
+
+    first_ok, last_ok = int(ok_idx[0]), int(ok_idx[-1])
+    trimmed_lead = first_ok
+    trimmed_trail = len(joints) - 1 - last_ok
+    max_gap_frames = int(np.floor(max_gap_s * fps + 1e-9))
+    gaps = np.diff(ok_idx) - 1
+    long_idx = np.flatnonzero(gaps > max_gap_frames)
+
+    if len(long_idx) > 0 and on_long_gap == "reject":
+        longest = int(gaps.max())
+        raise ValueError(
+            f"{label}: missing-frame gap of {longest / fps:.3f}s ({longest} frames) "
+            f"exceeds max_gap_s={max_gap_s:.3f}s"
+        )
+
+    starts = [first_ok, *(int(ok_idx[i + 1]) for i in long_idx)]
+    ends = [*(int(ok_idx[i]) + 1 for i in long_idx), last_ok + 1]
+    n_orig = len(joints)
+
+    segments: list[dict[str, Any]] = []
+    for seg_i, (s, e) in enumerate(zip(starts, ends)):
+        j_seg = joints[s:e]
+        v_seg = valid[s:e]
+        if int(v_seg.sum()) < min_frames or len(j_seg) < min_frames:
+            continue
+        seg_trimmed = (
+            base_trimmed + trimmed_lead + trimmed_trail
+            if len(starts) == 1
+            else (trimmed_lead if seg_i == 0 else 0)
+            + (trimmed_trail if seg_i == len(starts) - 1 else 0)
+        )
+        interp_count = int((~v_seg).sum())
+        new_flags: list[str] = []
+        if seg_trimmed > 0:
+            new_flags.append("trimmed_endpoints")
+        if len(long_idx) > 0:
+            new_flags.append("split_long_gap")
+        if interp_count > 0:
+            new_flags.append("interpolated_gaps")
+        sp_seg = (
+            shape_params[s:e]
+            if shape_params is not None
+            and shape_params.ndim >= 2
+            and len(shape_params) == n_orig
+            else shape_params
+        )
+        segments.append(
+            {
+                "joints_3d_cam": _interpolate_gaps(j_seg, v_seg),
+                "fps": fps,
+                "valid": v_seg,
+                "interpolated_frames": interp_count,
+                "endpoint_trimmed_frames": seg_trimmed,
+                "segment_range": [base_offset + s, base_offset + e],
+                "quality_flags": merge_quality_flags(base_flags, new_flags),
+                "cam_to_world": cam_R,
+                "shape_params": sp_seg,
+            }
+        )
+
+    if not segments:
+        raise ValueError(
+            f"{label}: no contiguous valid segment of >= {min_frames} frames "
+            f"within max_gap_s={max_gap_s:.3f}s"
+        )
+    return segments
 
 
-def load_instanthmr(path: str | Path) -> dict[str, Any]:
-    """Read an InstantHMR ``.npz`` clip and linearly interpolate dropped frames."""
+def _normalize_clip_dict(
+    raw: dict[str, Any],
+    label: str | Path = "<memory>",
+    *,
+    max_gap_s: float = 0.25,
+) -> dict[str, Any]:
+    return _extract_valid_segments(
+        raw, label, max_gap_s=max_gap_s, on_long_gap="reject"
+    )[0]
+
+
+def load_instanthmr(
+    path: str | Path,
+    *,
+    max_gap_s: float = 0.25,
+) -> dict[str, Any]:
+    """Read an InstantHMR ``.npz`` clip, trim missing endpoints and interpolate short gaps.
+
+    Args:
+        path: InstantHMR ``.npz`` path.
+        max_gap_s: Maximum missing-frame gap duration (s) interpolated across; longer
+            interior gaps raise :class:`ValueError` (use :func:`split_instanthmr_clips`
+            to split across long occlusions).
+
+    Returns:
+        Normalized clip dictionary with ``joints_3d_cam``, ``fps``, ``valid``,
+        ``interpolated_frames``, ``endpoint_trimmed_frames``, ``segment_range`` and
+        ``quality_flags``.
+    """
     with np.load(Path(path), allow_pickle=False) as data:
         raw = {k: data[k] for k in data.files}
-    return _normalize_clip_dict(raw, path)
+    return _normalize_clip_dict(raw, path, max_gap_s=max_gap_s)
 
 
-def _as_clip(clip: str | Path | dict[str, Any]) -> dict[str, Any]:
+def split_instanthmr_clips(
+    clip: str | Path | dict[str, Any],
+    *,
+    max_gap_s: float = 0.25,
+    min_frames: int = 2,
+) -> list[dict[str, Any]]:
+    """Split an InstantHMR clip at missing-frame gaps longer than *max_gap_s*.
+
+    Leading and trailing missing frames are trimmed, gaps up to *max_gap_s* are
+    linearly interpolated, and gaps exceeding *max_gap_s* split the clip into
+    sub-clips carrying ``segment_range`` and ``quality_flags``.
+    """
     if isinstance(clip, dict):
-        return _normalize_clip_dict(clip)
-    return load_instanthmr(clip)
+        return _extract_valid_segments(
+            clip, max_gap_s=max_gap_s, on_long_gap="split", min_frames=min_frames
+        )
+    with np.load(Path(clip), allow_pickle=False) as data:
+        raw = {k: data[k] for k in data.files}
+    return _extract_valid_segments(
+        raw, clip, max_gap_s=max_gap_s, on_long_gap="split", min_frames=min_frames
+    )
+
+
+def _as_clip(
+    clip: str | Path | dict[str, Any], *, max_gap_s: float = 0.25
+) -> dict[str, Any]:
+    if isinstance(clip, dict):
+        return _normalize_clip_dict(clip, max_gap_s=max_gap_s)
+    return load_instanthmr(clip, max_gap_s=max_gap_s)
 
 
 @dataclass(frozen=True)
@@ -436,45 +596,67 @@ def _unit(v: np.ndarray, eps: float = 1e-9) -> np.ndarray:
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), eps)
 
 
+def _triad_checked(
+    u: np.ndarray,
+    v: np.ndarray,
+    *,
+    eps: float = 1e-8,
+    sin_tol: float = 1e-4,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build orthonormal right-handed ``(..., 3, 3)`` rotation matrices and validity mask.
+
+    Entries whose inputs are non-finite, near-zero, or collinear (``||e0 x v_hat|| <= sin_tol``)
+    are marked ``False`` in the returned mask and replaced by a deterministic proper
+    rotation in ``SO(3)`` (``det = +1``) so downstream quaternion conversion never sees
+    a singular matrix.
+    """
+    u_arr = np.asarray(u, dtype=np.float64)
+    v_arr = np.asarray(v, dtype=np.float64)
+    u_fin = np.isfinite(u_arr).all(axis=-1)
+    v_fin = np.isfinite(v_arr).all(axis=-1)
+    u_safe = np.where(u_fin[..., None], u_arr, 0.0)
+    v_safe = np.where(v_fin[..., None], v_arr, 0.0)
+
+    u_norm = np.linalg.norm(u_safe, axis=-1)
+    v_norm = np.linalg.norm(v_safe, axis=-1)
+    e0 = u_safe / np.maximum(u_norm[..., None], eps)
+    v_hat = v_safe / np.maximum(v_norm[..., None], eps)
+
+    cross = np.cross(e0, v_hat)
+    cross_norm = np.linalg.norm(cross, axis=-1)
+    valid = u_fin & v_fin & (u_norm > eps) & (v_norm > eps) & (cross_norm > sin_tol)
+
+    e2 = cross / np.maximum(cross_norm[..., None], eps)
+    e1 = np.cross(e2, e0)
+    R = np.stack([e0, e1, e2], axis=-1)
+
+    valid_arr = np.asarray(valid, dtype=bool)
+    if not valid_arr.all():
+        R_flat = R.reshape(-1, 3, 3)
+        e0_flat = e0.reshape(-1, 3)
+        u_ok_flat = np.asarray(u_fin & (u_norm > eps), dtype=bool).reshape(-1)
+        for idx in np.flatnonzero(~valid_arr.reshape(-1)):
+            if u_ok_flat[idx]:
+                axis = e0_flat[idx]
+                basis = np.zeros(3, dtype=np.float64)
+                basis[int(np.argmin(np.abs(axis)))] = 1.0
+                e2_fb = np.cross(axis, basis)
+                e2_fb /= np.linalg.norm(e2_fb)
+                e1_fb = np.cross(e2_fb, axis)
+                R_flat[idx] = np.column_stack([axis, e1_fb, e2_fb])
+            else:
+                R_flat[idx] = np.eye(3, dtype=np.float64)
+    return R, valid_arr
+
+
 def _triad(u: np.ndarray, v: np.ndarray) -> np.ndarray:
-    e0 = _unit(u)
-    e2 = _unit(np.cross(e0, v))
-    return np.stack([e0, np.cross(e2, e0), e2], axis=-1)
+    return _triad_checked(u, v)[0]
 
 
 def _femur_secondary(
     u_thigh: np.ndarray, u_shank: np.ndarray, u_foot: np.ndarray
 ) -> np.ndarray:
     return np.cross(u_thigh, u_shank) + 0.25 * _unit(np.cross(u_foot, u_shank))
-
-
-def _segment_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    u, v = b - a, c - b
-    cos = (u * v).sum(-1) / np.linalg.norm(u, axis=-1) / np.linalg.norm(v, axis=-1)
-    return np.arccos(np.clip(cos, -1.0, 1.0))
-
-
-def _hinge_table(
-    m: mujoco.MjModel, d: mujoco.MjData, q: np.ndarray, h: InstantHMRHinge
-) -> np.ndarray:
-    j = m.joint(h.joint).id
-    prox, mid, dist = (m.body(b).id for b in h.model)
-    d.qpos[:] = q
-    mujoco.mj_kinematics(m, d)
-    tip = d.xmat[mid].reshape(3, 3).T @ (d.xpos[dist] - d.xpos[mid])
-    phi = np.linspace(*m.jnt_range[j], 181)
-    theta = np.empty_like(phi)
-    x = q.copy()
-    for k, v in enumerate(phi):
-        x[m.jnt_qposadr[j]] = v
-        d.qpos[:] = x
-        mujoco.mj_kinematics(m, d)
-        theta[k] = _segment_angle(
-            d.xpos[prox], d.xpos[mid], d.xpos[mid] + d.xmat[mid].reshape(3, 3) @ tip
-        )
-    if np.any(np.diff(theta) <= 0):
-        raise ValueError(f"{h.joint}: segment angle not increasing over the range")
-    return np.stack([phi, theta])
 
 
 def _canonical_axes(m: mujoco.MjModel, d: mujoco.MjData) -> np.ndarray:
@@ -487,29 +669,14 @@ def _canonical_axes(m: mujoco.MjModel, d: mujoco.MjData) -> np.ndarray:
 def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
     """Resolve *imap* on *model* in its T-pose calibration configuration."""
     m = model
-    d = mujoco.MjData(m)
-    q = m.qpos0.copy()
-    for name, v in imap.calibration.items():
-        q[m.jnt_qposadr[m.joint(name).id]] = v
-    project_joint_couplings(JointCouplings.from_model(m), q)
-    d.qpos[:] = q
-    mujoco.mj_kinematics(m, d)
-
+    d, q = _calibration_pose(m, imap.calibration)
     R_canon = _canonical_axes(m, d)
     body_names = {m.body(i).name for i in range(m.nbody)}
     names = [p.name for p in imap.points]
     pos = np.stack(
         [np.mean([d.xpos[m.body(b).id] for b in p.model], axis=0) for p in imap.points]
     )
-
-    landmarks = []
-    for k, p in enumerate(imap.points):
-        if p.weight > 0:
-            b = m.body(p.body).id
-            off = d.xmat[b].reshape(3, 3).T @ (pos[k] - d.xpos[b])
-            landmarks.append(
-                Landmark(p.name, p.body, None, tuple(map(float, off)), p.weight)
-            )
+    landmarks = _body_landmarks(m, d, imap.points, pos)
 
     def mvec(
         pair: tuple[tuple[str, ...], tuple[str, ...]], canon: tuple[float, float, float]
@@ -518,7 +685,7 @@ def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
             return np.mean([d.xpos[m.body(b).id] for b in pair[1]], 0) - np.mean([d.xpos[m.body(b).id] for b in pair[0]], 0)  # fmt: skip
         return R_canon @ np.asarray(canon, np.float64)
 
-    rot_offsets, orientations = [], []
+    rot_offsets = []
     for o in imap.orientations:
         u = mvec(o.model_primary, o.canonical_primary)
         if o.kind == "femur":
@@ -534,19 +701,15 @@ def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
             )
         else:
             v = mvec(o.model_secondary, o.canonical_secondary)
-        rot_offsets.append(_triad(u, v).T @ d.xmat[m.body(o.body).id].reshape(3, 3))
-        axis = None
-        if o.axis_to is not None:
-            b = m.body(o.body).id
-            a = d.xmat[b].reshape(3, 3).T @ (d.xpos[m.body(o.axis_to).id] - d.xpos[b])
-            axis = tuple(map(float, a / np.linalg.norm(a)))
-        orientations.append(
-            OrientationTarget(o.name, o.body, o.weight, axis, o.axis_weight)
-        )
+        R_cal, ok_cal = _triad_checked(u, v)
+        if not bool(ok_cal):
+            raise ValueError(f"{o.name}: degenerate calibration triad on model")
+        rot_offsets.append(R_cal.T @ d.xmat[m.body(o.body).id].reshape(3, 3))
 
+    orientations = _orientation_targets(m, d, imap.orientations, source_attr="name")
     lmap = LandmarkMap(
-        name=imap.name, version=imap.version, landmarks=tuple(landmarks),
-        orientations=tuple(orientations), feet=imap.feet, twist_pairs=imap.twist_pairs,
+        name=imap.name, version=imap.version, landmarks=landmarks,
+        orientations=orientations, feet=imap.feet, twist_pairs=imap.twist_pairs,
         twist_reference=imap.twist_reference, coupling_term=imap.coupling_term,
         period_joint=imap.period_joint,
         posture=imap.posture + tuple((h.joint, 0.0, h.weight) for h in imap.hinges),
@@ -561,33 +724,44 @@ def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
     return Calibration(lmap, pos, np.stack(rot_offsets), q, leg_len, R_canon, tuple(_hinge_table(m, d, q, h) for h in imap.hinges))  # fmt: skip
 
 
-def segment_orientations(joints_world: np.ndarray, imap: InstantHMRMap) -> np.ndarray:
-    """Construct ``(T, O, 3, 3)`` proper segment rotation matrices from world MHR70 keypoints."""
+def segment_orientations_with_mask(
+    joints_world: np.ndarray, imap: InstantHMRMap
+) -> tuple[np.ndarray, np.ndarray]:
+    """Construct ``(T, O, 3, 3)`` proper segment rotations and ``(T, O)`` non-degeneracy mask."""
 
     def jvec(pair: tuple[tuple[str, ...], tuple[str, ...]]) -> np.ndarray:
         return joints_world[:, [_JIDX[j] for j in pair[1]]].mean(1) - joints_world[:, [_JIDX[j] for j in pair[0]]].mean(1)  # fmt: skip
 
-    frames = []
+    frames, masks = [], []
     for o in imap.orientations:
         u = jvec(o.primary)
+        extra_ok: np.ndarray | bool = True
         if o.kind == "femur":
             s = o.side
+            shank = (
+                joints_world[:, _JIDX[f"{s}_ankle"]]
+                - joints_world[:, _JIDX[f"{s}_knee"]]
+            )
             fore = 0.5 * (
                 joints_world[:, _JIDX[f"{s}_big_toe_tip"]]
                 + joints_world[:, _JIDX[f"{s}_small_toe_tip"]]
             )
-            v = _femur_secondary(
-                _unit(u),
-                _unit(
-                    joints_world[:, _JIDX[f"{s}_ankle"]]
-                    - joints_world[:, _JIDX[f"{s}_knee"]]
-                ),
-                _unit(fore - joints_world[:, _JIDX[f"{s}_heel"]]),
+            foot = fore - joints_world[:, _JIDX[f"{s}_heel"]]
+            extra_ok = (np.linalg.norm(shank, axis=-1) > 1e-8) & (
+                np.linalg.norm(foot, axis=-1) > 1e-8
             )
+            v = _femur_secondary(_unit(u), _unit(shank), _unit(foot))
         else:
             v = jvec(o.secondary)
-        frames.append(_triad(u, v))
-    return np.stack(frames, axis=1)
+        R_o, ok_o = _triad_checked(u, v)
+        frames.append(R_o)
+        masks.append(ok_o & extra_ok)
+    return np.stack(frames, axis=1), np.stack(masks, axis=1)
+
+
+def segment_orientations(joints_world: np.ndarray, imap: InstantHMRMap) -> np.ndarray:
+    """Construct ``(T, O, 3, 3)`` proper segment rotation matrices from world MHR70 keypoints."""
+    return segment_orientations_with_mask(joints_world, imap)[0]
 
 
 def knee_flexion(joints_world: np.ndarray) -> dict[str, np.ndarray]:
@@ -617,24 +791,6 @@ def knee_flexion(joints_world: np.ndarray) -> dict[str, np.ndarray]:
     return out
 
 
-def _mat_to_quat(R: np.ndarray) -> np.ndarray:
-    out = np.empty((*R.shape[:-2], 4))
-    flat_R, flat_q = R.reshape(-1, 9), out.reshape(-1, 4)
-    for i in range(len(flat_R)):
-        mujoco.mju_mat2Quat(flat_q[i], flat_R[i])
-    return out
-
-
-def _smooth(x: np.ndarray, sigma: float) -> np.ndarray:
-    if sigma <= 0:
-        return x
-    r = max(1, int(round(3 * sigma)))
-    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
-    k /= k.sum()
-    pad = np.pad(x, [(r, r)] + [(0, 0)] * (x.ndim - 1), mode="edge")
-    return np.apply_along_axis(lambda c: np.convolve(c, k, mode="valid"), 0, pad)
-
-
 @dataclass
 class InstantHMRSource:
     """InstantHMR MHR70 ``.npz`` clips as a :class:`~.retarget.ClipSource`."""
@@ -648,6 +804,7 @@ class InstantHMRSource:
     contact_speed: float = 0.5
     ground_sigma: float = 0.05
     target_sigma: float = 0.015
+    max_gap_s: float = 0.25
     metric_targets: bool = False
     name: str = "instanthmr-mhr70"
     _last: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
@@ -676,7 +833,7 @@ class InstantHMRSource:
     ) -> ClipTargets:
         """Construct scaled landmark, orientation, contact and hinge targets for *path*."""
         c, imap = self.calibration, self.imap
-        clip = _as_clip(path)
+        clip = _as_clip(path, max_gap_s=self.max_gap_s)
         jw, valid = self._world_joints(clip)
         fps, T = clip["fps"], len(jw)
         names = [p.name for p in imap.points]
@@ -710,23 +867,24 @@ class InstantHMRSource:
         ratio: dict[int, float] = {}
         for k, p in enumerate(imap.points[1:], 1):
             par = names.index(p.parent)
-            model_len = float(np.linalg.norm(c.model_pos[k] - c.model_pos[par]))
+            model_edge = c.model_pos[k] - c.model_pos[par]
+            model_len = float(np.linalg.norm(model_edge))
             ratio[k] = model_len / subj_len[k]
-            out[k] = out[par] + model_len * _unit(x[k] - x[par])
+            edge = x[k] - x[par]
+            edge_norm = np.linalg.norm(edge, axis=-1, keepdims=True)
+            cal_dir = model_edge / max(model_len, 1e-9)
+            unit_edge = np.where(
+                edge_norm > 1e-8, edge / np.maximum(edge_norm, 1e-9), cal_dir
+            )
+            out[k] = out[par] + model_len * unit_edge
 
         pos = out[[names.index(lm.source) for lm in lmap.landmarks]].transpose(1, 0, 2)
-        quat = _mat_to_quat(
-            np.einsum("toab,obc->toac", segment_orientations(jw, imap), c.rot_offset)
-        )
+        R_seg, ori_valid = segment_orientations_with_mask(jw, imap)
+        quat = _mat_to_quat(np.einsum("toab,obc->toac", R_seg, c.rot_offset))
 
         if self.target_sigma > 0:
             pos = _smooth(pos, self.target_sigma * fps)
-            sign = np.cumprod(
-                np.where((quat[1:] * quat[:-1]).sum(-1) < 0, -1.0, 1.0), axis=0
-            )
-            quat[1:] *= sign[..., None]
-            quat = _smooth(quat, self.target_sigma * fps)
-            quat /= np.linalg.norm(quat, axis=-1, keepdims=True)
+            quat = _smooth_quat(quat, self.target_sigma * fps, mask=ori_valid)
 
         posture = None
         if imap.hinges:
@@ -736,43 +894,50 @@ class InstantHMRSource:
                 theta = _smooth(_segment_angle(a, b, e), self.target_sigma * fps)
                 posture[:, len(imap.posture) + k] = np.interp(theta, tab[1], tab[0])
 
-        near = ((sole[..., 2] - sole_floor) < self.contact_height) & (
-            np.linalg.norm(np.gradient(sole[..., :2], 1.0 / fps, axis=0), axis=-1)
-            < self.contact_speed
+        contact = _foot_contacts(
+            sole,
+            sole_floor,
+            fps,
+            len(imap.contact_keypoints[0]),
+            self.contact_height,
+            self.contact_speed,
         )
-        n_l = len(imap.contact_keypoints[0])
-        contact = np.stack([near[:, :n_l].any(1), near[:, n_l:].any(1)], axis=1)
 
-        seed = self._start_pose(model, pos[0], quat[0], lmap)
+        k_pelvis = [o.body for o in lmap.orientations].index("pelvis")
+        quat0 = quat[0].copy()
+        if not ori_valid[0, k_pelvis]:
+            ok_p = np.flatnonzero(ori_valid[:, k_pelvis])
+            if len(ok_p):
+                quat0[k_pelvis] = quat[int(ok_p[0]), k_pelvis]
+            else:
+                d_cal = mujoco.MjData(model)
+                d_cal.qpos[:] = c.qpos
+                mujoco.mj_kinematics(model, d_cal)
+                quat0[k_pelvis] = d_cal.xquat[model.body("pelvis").id]
+        seed = _start_pose(model, c.qpos, c.model_pos[0], out[0, 0], quat0, lmap)
+
+        degen_frames = int((~ori_valid).any(axis=1).sum())
+        flags = merge_quality_flags(
+            clip.get("quality_flags"),
+            ["degenerate_orientation"] if degen_frames > 0 else None,
+        )
+        quat_mask = None if ori_valid.all() else ori_valid.astype(np.float64)
         self._last = {
-            "floor": floor, "s_root": float(s_root), "contact": contact,
-            "frames_source": len(clip["joints_3d_cam"]), "interpolated_frames": int((~valid).sum()),
-            "edge_ratio": {names[k]: float(r) for k, r in ratio.items()}, "knee_flexion": knee_flexion(jw),
-        }  # fmt: skip
-        return ClipTargets(fps, pos, quat, seed, contact, posture)
-
-    def _start_pose(
-        self, m: mujoco.MjModel, pos: np.ndarray, quat: np.ndarray, lmap: LandmarkMap
-    ) -> np.ndarray:
-        c = self.calibration
-        q = c.qpos.copy()
-        k = [o.body for o in lmap.orientations].index("pelvis")
-        d = mujoco.MjData(m)
-        d.qpos[:] = q
-        mujoco.mj_kinematics(m, d)
-        Rp = np.empty(9)
-        mujoco.mju_quat2Mat(Rp, quat[k])
-        R_delta = Rp.reshape(3, 3) @ d.xmat[m.body("pelvis").id].reshape(3, 3).T
-        root_jnt = next(
-            j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
-        )
-        root_body = int(m.jnt_bodyid[root_jnt])
-        qr = np.empty(4)
-        mujoco.mju_mat2Quat(qr, (R_delta @ d.xmat[root_body].reshape(3, 3)).ravel())
-        adr = int(m.jnt_qposadr[root_jnt])
-        q[adr + 3 : adr + 7] = qr
-        q[adr : adr + 3] = pos[0] - R_delta @ (c.model_pos[0] - d.xpos[root_body])
-        return q
+            "floor": floor,
+            "s_root": float(s_root),
+            "contact": contact,
+            "frames_source": len(clip["joints_3d_cam"]),
+            "interpolated_frames": int((~valid).sum()),
+            "endpoint_trimmed_frames": int(clip.get("endpoint_trimmed_frames", 0)),
+            "segment_range": list(
+                clip.get("segment_range", [0, len(clip["joints_3d_cam"])])
+            ),
+            "degenerate_orientation_frames": degen_frames,
+            "quality_flags": flags,
+            "edge_ratio": {names[k]: float(r) for k, r in ratio.items()},
+            "knee_flexion": knee_flexion(jw),
+        }
+        return ClipTargets(fps, pos, quat, seed, contact, posture, quat_mask=quat_mask)
 
     def finish(
         self, ik: LandmarkIK, targets: ClipTargets, qpos: np.ndarray
@@ -780,44 +945,30 @@ class InstantHMRSource:
         """Ground stance frames to ``z = 0`` while interpolating aerial flight phases."""
         info = self._last
         contact = info["contact"]
-        low, _ = _foot_kinematics(ik.model, ik.lmap, qpos)
-        any_c = contact.any(1)
-        dz = np.full(len(qpos), np.nan)
-        dz[any_c] = -np.where(contact, low, np.inf)[any_c].min(1)
-        if any_c.any():
-            t = np.arange(len(qpos))
-            dz = np.interp(t, t[any_c], dz[any_c])
-        else:
-            dz[:] = -low.min()
-        lift = -low.min(1)
-        dz = np.maximum(
-            _smooth(np.maximum(dz, lift), self.ground_sigma * targets.frequency), lift
+        qpos, targets, dz = _ground_clip(
+            ik.model, ik.lmap, targets, qpos, contact, self.ground_sigma
         )
-
-        root_jnt = next(
-            j
-            for j in range(ik.model.njnt)
-            if ik.model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
-        )
-        qpos = qpos.copy()
-        qpos[:, int(ik.model.jnt_qposadr[root_jnt]) + 2] += dz
-        pos = targets.pos.copy()
-        pos[..., 2] += dz[:, None]
-        targets = ClipTargets(targets.frequency, pos, targets.quat, targets.seed, targets.contact, targets.posture)  # fmt: skip
         meta = {
-            "instanthmr_map": self.imap.name, "instanthmr_map_version": self.imap.version,
-            "trim": list(self.trim), "frames_source": info["frames_source"],
-            "interpolated_frames": info["interpolated_frames"], "subject_floor_m": info["floor"],
-            "root_scale": info["s_root"], "edge_ratio": info["edge_ratio"],
-            "ground_shift_m": {"mean": float(dz.mean()), "min": float(dz.min()), "max": float(dz.max())},
-            "contact_fraction": [float(x) for x in contact.mean(0)],
-            "source_knee_flexion_deg": {
-                side: {"min": float(np.degrees(f.min())),
-                       "frames_below_minus2": float((f < np.radians(-2)).mean()),
-                       "frames_below_minus5": float((f < np.radians(-5)).mean())}
-                for side, f in info["knee_flexion"].items()
+            "instanthmr_map": self.imap.name,
+            "instanthmr_map_version": self.imap.version,
+            "trim": list(self.trim),
+            "segment_range": info["segment_range"],
+            "frames_source": info["frames_source"],
+            "interpolated_frames": info["interpolated_frames"],
+            "endpoint_trimmed_frames": info["endpoint_trimmed_frames"],
+            "degenerate_orientation_frames": info["degenerate_orientation_frames"],
+            "quality_flags": list(info["quality_flags"]),
+            "subject_floor_m": info["floor"],
+            "root_scale": info["s_root"],
+            "edge_ratio": info["edge_ratio"],
+            "ground_shift_m": {
+                "mean": float(dz.mean()),
+                "min": float(dz.min()),
+                "max": float(dz.max()),
             },
-        }  # fmt: skip
+            "contact_fraction": [float(x) for x in contact.mean(0)],
+            "source_knee_flexion_deg": _knee_flexion_meta(info["knee_flexion"]),
+        }
         return qpos, targets, meta
 
 
@@ -866,6 +1017,7 @@ def estimate_instanthmr_scales(
     *,
     cam_to_world: np.ndarray | None = None,
     trim: tuple[int, int] = (0, 0),
+    max_gap_s: float = 0.25,
     bilateral_symmetry: bool = True,
     bounds: tuple[float, float] = (0.5, 2.0),
 ) -> dict[str, float]:
@@ -880,6 +1032,7 @@ def estimate_instanthmr_scales(
         imap: Optional :class:`InstantHMRMap` (inferred from *model* when ``None``).
         cam_to_world: Optional ``(3, 3)`` camera-to-world rotation.
         trim: ``(start, end)`` frames dropped before measuring segment lengths.
+        max_gap_s: Maximum missing-frame gap duration (s) allowed when loading *clip*.
         bilateral_symmetry: Average left and right limb scales to keep the model
             laterally symmetric.
         bounds: ``(min_scale, max_scale)`` clamp on estimated ratios.
@@ -891,8 +1044,10 @@ def estimate_instanthmr_scales(
         raise ValueError(f"invalid scale bounds {bounds}")
     imap = imap or default_instanthmr_map(model)
     cal = calibrate(model, imap)
-    src = InstantHMRSource(imap, cal, cam_to_world=cam_to_world, trim=trim)
-    jw, valid = src._world_joints(_as_clip(clip))
+    src = InstantHMRSource(
+        imap, cal, cam_to_world=cam_to_world, trim=trim, max_gap_s=max_gap_s
+    )
+    jw, valid = src._world_joints(_as_clip(clip, max_gap_s=max_gap_s))
 
     d = mujoco.MjData(model)
     d.qpos[:] = cal.qpos
@@ -1212,6 +1367,8 @@ def scale_spec_from_instanthmr(
         for st in body.sites:
             st.pos = s_b * np.asarray(st.pos, dtype=np.float64)
             st.size = s_b * np.asarray(st.size, dtype=np.float64)
+        for frm in getattr(body, "frames", ()):
+            frm.pos = s_b * np.asarray(frm.pos, dtype=np.float64)
         for g in body.geoms:
             g.pos = s_b * np.asarray(g.pos, dtype=np.float64)
             ft = np.asarray(g.fromto, dtype=np.float64)
@@ -1236,11 +1393,6 @@ def scale_spec_from_instanthmr(
 
     for rb in top_roots:
         walk(rb, scalar_scales.get(rb.name, 1.0), True)
-
-    for frm in out.frames:
-        if frm.parent is not None and frm.parent.name in body_scales:
-            sf = body_scales[frm.parent.name]
-            frm.pos = sf * np.asarray(frm.pos, dtype=np.float64)
 
     for mesh in out.meshes:
         if mesh.name in mesh_scales:
@@ -1359,6 +1511,7 @@ def scale_model_from_instanthmr(
     body_mass: float | None = None,
     cam_to_world: np.ndarray | None = None,
     trim: tuple[int, int] = (0, 0),
+    max_gap_s: float = 0.25,
     bilateral_symmetry: bool = True,
     bounds: tuple[float, float] = (0.5, 2.0),
 ) -> tuple[mujoco.MjModel, mujoco.MjSpec, dict[str, float]]:
@@ -1370,6 +1523,7 @@ def scale_model_from_instanthmr(
         imap,
         cam_to_world=cam_to_world,
         trim=trim,
+        max_gap_s=max_gap_s,
         bilateral_symmetry=bilateral_symmetry,
         bounds=bounds,
     )
@@ -1474,6 +1628,7 @@ def solve_instanthmr_ik(
             body_mass=body_mass,
             cam_to_world=source_kwargs.get("cam_to_world"),
             trim=source_kwargs.get("trim", (0, 0)),
+            max_gap_s=source_kwargs.get("max_gap_s", 0.25),
             bilateral_symmetry=bilateral_symmetry,
         )
     elif model is None:
@@ -1488,7 +1643,9 @@ def solve_instanthmr_ik(
     )
     ik = LandmarkIK(model, lmap, config)
     targets = src.targets(clip, model, lmap)
-    qpos_fit, iters = ik.fit(targets.pos, targets.quat, targets.seed, targets.posture)
+    qpos_fit, iters = ik.fit(
+        targets.pos, targets.quat, targets.seed, targets.posture, targets.quat_mask
+    )
     qpos_fit, targets, extra = src.finish(ik, targets, qpos_fit)
 
     dt = 1.0 / targets.frequency
@@ -1523,7 +1680,7 @@ def solve_instanthmr_ik(
         qpos_model_indices=np.arange(model.nq, dtype=np.int32),
         qvel_model_indices=np.arange(model.nv, dtype=np.int32),
         frequency_hz=float(targets.frequency),
-        source_path=Path(clip) if isinstance(clip, (str, Path)) else None,
+        source_path=Path(clip) if isinstance(clip, str | Path) else None,
     )
     metrics: dict[str, Any] = {
         **val_metrics,
@@ -1625,5 +1782,6 @@ __all__ = [
     "default_instanthmr_map", "estimate_instanthmr_scales", "instanthmr_source",
     "knee_flexion", "landmark_bodies", "load_instanthmr", "map_dict",
     "reconstruct_from_instanthmr", "scale_model_from_instanthmr",
-    "scale_spec_from_instanthmr", "segment_orientations", "solve_instanthmr_ik",
+    "scale_spec_from_instanthmr", "segment_orientations",
+    "segment_orientations_with_mask", "solve_instanthmr_ik", "split_instanthmr_clips",
 ]  # fmt: skip
