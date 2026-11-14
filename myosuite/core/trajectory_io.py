@@ -261,7 +261,7 @@ def _default_state(mj_model: Any, *, use_qvel: bool) -> np.ndarray:
         return np.zeros(int(mj_model.nv), dtype=np.float64)
     if getattr(mj_model, "key_qpos", None) is not None and int(mj_model.nkey) > 0:
         return np.asarray(mj_model.key_qpos[0], dtype=np.float64)
-    return np.zeros(int(mj_model.nq), dtype=np.float64)
+    return np.asarray(mj_model.qpos0, dtype=np.float64)
 
 
 def _expand_state_field(
