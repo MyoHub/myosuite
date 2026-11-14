@@ -121,11 +121,14 @@ class StreamingKinematics:
         qpos = np.array(qpos, dtype=np.float64)
         if qpos.shape != (self.model.nq,) or not np.isfinite(qpos).all():
             raise ValueError(f"qpos must be finite with shape ({self.model.nq},)")
+        time = float(time)
+        if not np.isfinite(time):
+            raise ValueError("time must be finite")
         if self._times and not time > self._times[-1]:
             raise ValueError(f"time must increase, got {time} after {self._times[-1]}")
         if self._couplings is not None:
             project_joint_couplings(self._couplings, qpos)
-        self._times.append(float(time))
+        self._times.append(time)
         self._poses.append(qpos)
         if len(self._poses) < self.window:
             return None

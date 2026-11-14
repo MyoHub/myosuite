@@ -197,6 +197,29 @@ def test_reset_and_invalid_inputs(model: mujoco.MjModel) -> None:
             StreamingKinematics(model, **kwargs)
 
 
+@pytest.mark.parametrize("time", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("warm", [False, True])
+def test_nonfinite_time_does_not_poison_stream(
+    model: mujoco.MjModel, time: float, warm: bool
+) -> None:
+    stream = StreamingKinematics(model, window=5)
+    reference = StreamingKinematics(model, window=5)
+    qpos = _cubic_motion(np.arange(0.0, 0.05, 0.01))[0]
+    if warm:
+        stream.push(0.0, qpos[0])
+        reference.push(0.0, qpos[0])
+    with pytest.raises(ValueError, match="finite"):
+        stream.push(time, qpos[0])
+    for i in range(int(warm), 5):
+        state = stream.push(0.01 * i, qpos[i])
+        expected = reference.push(0.01 * i, qpos[i])
+    assert state is not None and expected is not None
+    assert state.time == expected.time
+    np.testing.assert_array_equal(state.qpos, expected.qpos)
+    np.testing.assert_array_equal(state.qvel, expected.qvel)
+    np.testing.assert_array_equal(state.qacc, expected.qacc)
+
+
 _QUADRATIC_COUPLING = """
 <mujoco><worldbody><body><joint name="a" axis="0 1 0"/>
   <geom type="capsule" fromto="0 0 0 .2 0 0" size=".02" mass="1"/>
