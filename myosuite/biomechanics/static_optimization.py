@@ -252,8 +252,8 @@ class StaticOptimizer:
         """Per dof, ``sum_i |R_ij| F_i`` at ``qpos0`` and rest [N m or N].
 
         ``R`` are the moment arms; ``F`` each muscle's peak isometric force and,
-        for other actuators, the force at the larger-magnitude end of the
-        activation or control range. This scales the default reserves.
+        for other actuators, the largest absolute force at either end of the
+        activation or control range, including bias. This scales the default reserves.
 
         Returns:
             ``(nv,)`` peak generalized force the actuators can apply at each dof
@@ -264,8 +264,8 @@ class StaticOptimizer:
         mujoco.mj_fwdPosition(m, d)
         mujoco.mj_fwdVelocity(m, d)
         lo, hi = self._probe
-        gain = (self._actuator_force(hi) - self._actuator_force(lo)) / (hi - lo)
-        force = np.abs(gain) * np.maximum(np.abs(lo), np.abs(hi))
+        f_hi, f_lo = self._actuator_force(hi), self._actuator_force(lo)
+        force = np.maximum(np.abs(f_hi), np.abs(f_lo))
         muscle = m.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE
         force[muscle] = np.abs(_peak_force(m)[muscle])
         moment = np.zeros((m.nu, m.nv))
