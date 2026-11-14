@@ -31,6 +31,7 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **Mimic resets always leave a reference transition.** CPU and mjlab `myoMimic-v0` sample only bins with a frame before the clip end. A one-second clip at a 10 ms control step previously created a bin containing only its final frame; resetting there made the first step index past the clip or enter the next clip. Terminal frames remain available for final-step scoring and failure statistics. Clips shorter than one control transition now fail with a clear error.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
