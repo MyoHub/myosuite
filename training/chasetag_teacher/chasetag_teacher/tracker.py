@@ -40,7 +40,7 @@ def load_policy(path: str) -> tuple[torch.nn.Module, dict]:
     """The deployed (EMA) policy of a myoSuperMimic checkpoint, on CPU, and its env settings (cached: stateless)."""
     from supermimic.networks import ActionMap, Policy  # noqa: PLC0415
 
-    ck = torch.load(path, map_location="cpu", weights_only=False)
+    ck = torch.load(path, map_location="cpu", weights_only=True)
     cfg, env = ck["cfg"], ck["env"]
     nm = ck["action_map"]["num_muscles"]
     pi = Policy(env["obs_dim"], env["goal_dim"], nm, tuple(cfg["enc_hidden"]), tuple(cfg["dec_hidden"]),

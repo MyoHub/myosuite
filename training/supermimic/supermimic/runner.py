@@ -1066,7 +1066,7 @@ class SuperMimicRunner:
         map_location=None,
     ):
         ck = torch.load(
-            path, map_location=map_location or self.device, weights_only=False
+            path, map_location=map_location or self.device, weights_only=True
         )
         # the policy's action map (identity; checkpoints from before action maps have none): another map would need
         # another policy head, so a mismatch is an error rather than a silent reinterpretation of the outputs

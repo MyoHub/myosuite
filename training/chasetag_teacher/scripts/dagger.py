@@ -152,7 +152,7 @@ def main() -> None:
         canon_at(a.start_round) and a.start_round == a.canon_from
     ):
         init = torch.load(
-            out / f"student_r{a.start_round - 1}_full.pt", weights_only=False
+            out / f"student_r{a.start_round - 1}_full.pt", weights_only=True
         )
     for r in range(a.start_round, a.rounds):
         d = out / "data" / f"r{r}"

@@ -238,7 +238,7 @@ def test_runner_with_the_recipe_learns_and_round_trips(
         s["f"].shape == (c.pi_batch,)
         and (s["f"] + c.horizon <= m.clip_end[m.clip_id[s["f"]]]).all()
     )
-    ck = torch.load(tmp_path / "model_000004.pt", weights_only=False)
+    ck = torch.load(tmp_path / "model_000004.pt", weights_only=True)
     for k in avg:
         torch.testing.assert_close(ck["pi"][k], avg[k], atol=0, rtol=0)
         torch.testing.assert_close(ck["pi_live"][k], live[k], atol=0, rtol=0)
@@ -427,8 +427,8 @@ def test_finetune_from_a_baseline(clips: Path, tmp_path: Path) -> None:
     assert len(res["after"]["per_clip"]) == 1 and math.isfinite(
         res["after"]["norm_return"]
     )
-    ft = torch.load(res["final_checkpoint"], weights_only=False)
-    base_ck = torch.load(ck, weights_only=False)
+    ft = torch.load(res["final_checkpoint"], weights_only=True)
+    base_ck = torch.load(ck, weights_only=True)
     assert (
         ft["iteration"] == 2
         and ft["cfg"]["finetune"]
@@ -446,7 +446,7 @@ def test_a_checkpoint_with_another_action_map_is_rejected(
     _, runner = _make(str(clips / "clip0.npz"))
     runner.log_dir = str(tmp_path)
     runner.save(str(tmp_path / "model.pt"))
-    ck = torch.load(tmp_path / "model.pt", weights_only=False)
+    ck = torch.load(tmp_path / "model.pt", weights_only=True)
     ck["action_map"] = {"kind": "groups", "num_muscles": runner.nm}
     torch.save(ck, tmp_path / "groups.pt")
     with pytest.raises(NotImplementedError, match="groups"):
@@ -492,7 +492,7 @@ def test_train_checkpoint_resume_evaluate(clips: Path, tmp_path: Path) -> None:
         TrainArgs(env=env, agent=resumed, log_root=str(tmp_path), device="cpu")
     )
     last = second / "model_000005.pt"
-    assert last.exists() and torch.load(last, weights_only=False)["iteration"] == 5
+    assert last.exists() and torch.load(last, weights_only=True)["iteration"] == 5
     settings = checkpoint_settings(str(last))
     ev_env, runner = build(str(clips / "clips.txt"), "cpu", settings=settings)
     runner.load(str(last), load_cfg={"actor": True})
@@ -508,7 +508,7 @@ def test_a_checkpoint_with_another_task_contract_is_rejected(
     runner.log_dir = str(tmp_path)
     runner.save(str(tmp_path / "model.pt"))
     runner.load(str(tmp_path / "model.pt"))
-    ck = torch.load(tmp_path / "model.pt", weights_only=False)
+    ck = torch.load(tmp_path / "model.pt", weights_only=True)
     terms = ck["contract"]["obs"]["policy"]
     terms[0], terms[1] = terms[1], terms[0]  # same widths in total, another order
     torch.save(ck, tmp_path / "swapped.pt")
@@ -535,3 +535,19 @@ def test_a_checkpoint_with_another_task_contract_is_rejected(
     torch.save(ck, tmp_path / "old_wide.pt")
     with pytest.raises(ValueError, match="obs_dim"):
         runner.load(str(tmp_path / "old_wide.pt"))
+
+
+class _Payload:
+    """Stands for an arbitrary object a tampered checkpoint could unpickle."""
+
+
+def test_checkpoints_load_without_unpickling_objects(tmp_path: Path) -> None:
+    import pickle
+
+    import torch
+
+    from supermimic.evaluate import checkpoint_settings
+
+    torch.save({"env": {"obs_dim": 3}, "cfg": _Payload()}, tmp_path / "tampered.pt")
+    with pytest.raises(pickle.UnpicklingError):
+        checkpoint_settings(str(tmp_path / "tampered.pt"))
