@@ -195,3 +195,31 @@ def test_samples_keep_the_nominal_weights(
     )
     nominal = StaticOptimizer(elbow).config
     assert len(seen) == 4 and all(c == nominal for c in seen)
+
+
+@pytest.mark.parametrize("fps", [50, 100, 400])
+def test_joint_noise_is_the_error_left_after_the_filter(fps: int) -> None:
+    dt, frames = 1.0 / fps, 40 * fps
+    config = UncertaintyConfig(joint_noise_deg=0.5)
+    noise = uncertainty.joint_noise(
+        np.random.default_rng(0), frames, 3, dt, 6.0, config
+    )
+    from scipy import signal
+
+    sos = signal.butter(2, 6.0, fs=fps, output="sos")
+    filtered = signal.sosfiltfilt(sos, noise, axis=0)
+    np.testing.assert_allclose(np.degrees(filtered.std(0)), 0.5, rtol=0.1)
+
+
+def test_torque_bands_do_not_narrow_with_the_frame_rate(elbow: mujoco.MjModel) -> None:
+    def width(fps: int) -> float:
+        t = np.arange(0.0, 1.2, 1.0 / fps)
+        clip = (1.0 + 0.6 * np.sin(2.5 * t))[:, None]
+        config = UncertaintyConfig(samples=30, joint_noise_deg=0.5)
+        bands = static_optimization_bands(
+            elbow, clip, 1.0 / fps, lowpass_hz=6.0, config=config
+        )
+        inner = slice(len(t) // 6, -len(t) // 6)  # away from the filter's end effects
+        return float((bands.joint_torque[-1] - bands.joint_torque[0])[inner].mean())
+
+    assert width(400) == pytest.approx(width(100), rel=0.2)
