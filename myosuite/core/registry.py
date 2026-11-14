@@ -30,6 +30,9 @@ if TYPE_CHECKING:
 
 # Internal store: env_id -> registration metadata
 _ENV_REGISTRY: dict[str, dict[str, Any]] = {}
+# Task kwargs that build a subject's model (myosuite.core.body_scaling); the only
+# ones the mjlab backend forwards to a twin.
+_SUBJECT_KWARGS = ("scales", "total_mass")
 # MJX twins of register_task(..., backends={"mjx"}): env_id -> (task_config, overrides)
 _MJX_TASKS: dict[str, tuple[TaskConfig, dict[str, Any]]] = {}
 _MJ_INSTABILITY_WRAPPER_ENTRY_POINT = (
@@ -362,6 +365,8 @@ def make_env(
             ``seed`` etc. on mjlab, ``config_overrides`` on "mjx".
             ``ctrl_dt`` and a string ``model`` set the :class:`EnvConfig` fields of that
             name; any other ``model`` value is passed on as an env constructor kwarg.
+            The subject kwargs ``scales`` and ``total_mass`` (:func:`~myosuite.core.body_scaling.scale_model`)
+            build the task's model on the CPU and on mjlab alike.
 
     Returns:
         An environment instance appropriate for the backend.
@@ -369,7 +374,8 @@ def make_env(
     Raises:
         ValueError: If the backend is not recognised, or a config field does not
             apply to it (``num_envs > 1`` on the CPU).
-        NotImplementedError: If ``features`` are given on the experimental "mjx" backend.
+        NotImplementedError: If ``features`` are given on the experimental "mjx" backend,
+            or ``scales`` / ``total_mass`` to a task that does not take them.
 
     Example:
         >>> env = make_env("myoElbowPose1D6MRandom-v0")
@@ -379,6 +385,7 @@ def make_env(
         ... )
         >>> env = make_env(cfg)  # CPU
         >>> envs = make_env(cfg, backend="mjlab", num_envs=4096)
+        >>> subject = make_env("myoLegWalk-v0", scales={"femur_r": 1.08}, total_mass=72)
     """
     config = env_id if isinstance(env_id, EnvConfig) else EnvConfig(env_id=env_id)
     # A config edited after construction may hold classes or pairs: normalize again.
@@ -453,6 +460,13 @@ def _make_cpu(config: EnvConfig, overrides: dict[str, Any]) -> Any:
 
 
 def _make_mjx(config: EnvConfig, overrides: dict[str, Any]) -> Any:
+    if any(
+        {**config.task_kwargs, **overrides}.get(name) is not None
+        for name in _SUBJECT_KWARGS
+    ):
+        raise NotImplementedError(
+            "scales and total_mass build a subject on the cpu and mjlab backends only."
+        )
     feature_options = mjx_feature_overrides(config.features)
     if feature_options is None:
         raise NotImplementedError(
@@ -500,14 +514,27 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # something else imported the backend first.
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
 
-    if config.task_kwargs and not _ENV_REGISTRY.get(config.env_id, {}).get(
+    # The subject (scales, total_mass) is a task kwarg every twin takes: it rebuilds
+    # the twin from the CPU registration, as it does on the CPU. Other task kwargs
+    # pass through only where the registration sets ``mjlab_task_kwargs``.
+    options = {**config.backend_options, **overrides}
+    subject = {
+        name: value
+        for name in _SUBJECT_KWARGS
+        if (value := options.pop(name, config.task_kwargs.get(name))) is not None
+    }
+    other_kwargs = {
+        name: value
+        for name, value in config.task_kwargs.items()
+        if name not in _SUBJECT_KWARGS
+    }
+    if other_kwargs and not _ENV_REGISTRY.get(config.env_id, {}).get(
         "mjlab_task_kwargs", False
     ):
         raise NotImplementedError(
             "EnvConfig.task_kwargs are CPU env constructor kwargs; the mjlab twin reads "
-            "them from the registration."
+            "them from the registration (only scales and total_mass pass through)."
         )
-    options = {**config.backend_options, **overrides}
     if config.num_envs is not None:
         options["num_envs"] = config.num_envs
     env_id = config.env_id
@@ -521,6 +548,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             or config.task_kwargs
             or config.max_episode_steps is not None
             or config.ctrl_dt is not None
+            or subject
         )
     ):
         return mjlab.envs.make(env_id, **options)
@@ -545,7 +573,9 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # The registered cfg is built once at import; features and ctrl_dt rebuild it from
     # the CPU registration (extra wrappers, ``frame_skip``).
     cfg = load_env_cfg(env_id)
-    task_kwargs: dict[str, Any] = dict(config.task_kwargs)
+    task_kwargs: dict[str, Any] = {**other_kwargs, **subject}
+    # The twin-rebuild modules are imported only when needed: a plain call works with
+    # any mjlab build that provides tasks.registry.
     if config.features or task_kwargs or config.ctrl_dt is not None:
         from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: PLC0415
             rebuild_twin_cfg,
