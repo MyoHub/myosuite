@@ -584,6 +584,55 @@ def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
     assert len(calls) == 4
 
 
+def test_build_from_recipe_keys_registered_spec_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing a spec callback rebuilds only that recipe and keeps private copies."""
+    from collections.abc import Callable
+
+    import mujoco
+
+    from myosuite.core import model_builder
+
+    calls: list[float] = []
+    regular_calls: list[int] = []
+    unrelated_calls: list[int] = []
+
+    def factory(radius: float) -> Callable[[], mujoco.MjSpec]:
+        def build() -> mujoco.MjSpec:
+            calls.append(radius)
+            spec = mujoco.MjSpec()
+            spec.worldbody.add_geom(size=[radius, 0.0, 0.0])
+            return spec
+
+        return build
+
+    name = "_test_registered_spec"
+    monkeypatch.setitem(model_builder._RECIPES, name, _counting_recipe(regular_calls))
+    monkeypatch.setitem(model_builder._SPEC_RECIPES, name, factory(0.1))
+    monkeypatch.setitem(
+        model_builder._RECIPES,
+        "_test_unrelated_spec",
+        _counting_recipe(unrelated_calls),
+    )
+    for _ in range(3):
+        model_builder.build_from_recipe("_test_unrelated_spec")
+        model, _ = model_builder.build_from_recipe(name)
+        assert model.geom_size[0, 0] == pytest.approx(0.1)
+
+    model_builder.register_spec_recipe(name, factory(0.2))
+    for _ in range(3):
+        model, spec = model_builder.build_from_recipe(name)
+        assert model.geom_size[0, 0] == pytest.approx(0.2)
+        model.geom_size[:] = 9.0
+        spec.geoms[0].size = [0.9, 0.0, 0.0]
+    model_builder.build_from_recipe("_test_unrelated_spec")
+
+    assert calls == [0.1, 0.1, 0.2, 0.2]
+    assert regular_calls == []
+    assert len(unrelated_calls) == 2
+
+
 def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
     """An edit_fn runs once, on the compiled recipe spec; the plain recipe stays unedited."""
     from myosuite.core import model_builder
