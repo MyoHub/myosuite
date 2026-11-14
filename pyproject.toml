@@ -159,6 +159,11 @@ musclemimic = [
     "joblib>=1.4.0",
 ]
 
+eval = [
+    "mm-evalkit>=0.1.0; python_version >= '3.11'",
+    "pyyaml>=6.0",
+]
+
 dev = [
     "myosuite[rl]",
     "myosuite[musclemimic]",
@@ -236,6 +241,13 @@ dev = [
 
 [project.entry-points."mjlab.tasks"]
 myosuite = "myosuite.envs.myo.backends.mjlab"
+
+[project.entry-points."mm_evalkit.datasets"]
+rajagopal2016 = "myosuite.integrations.mm_evalkit.plugin:rajagopal2016_main"
+lencioni2019 = "myosuite.integrations.mm_evalkit.plugin:lencioni2019_main"
+dimitrov2023 = "myosuite.integrations.mm_evalkit.plugin:dimitrov2023_main"
+camargo2021 = "myosuite.integrations.mm_evalkit.plugin:camargo2021_main"
+custom-emg = "myosuite.integrations.mm_evalkit.plugin:custom_emg_main"
 
 [tool.setuptools.dynamic]
 version = {attr = "myosuite.version.__version__"}
