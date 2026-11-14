@@ -40,6 +40,7 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.physics.quat_math_jax import quat2mat
+from myosuite.terms.base_obs import com_linear_velocity
 
 
 class MjxWalkEnv(MyoMjxEnvBase):
@@ -119,6 +120,7 @@ class MjxWalkEnv(MyoMjxEnvBase):
 
         # Body mass array (constant — precompute as JAX array)
         self._body_mass_jax: jax.Array = jp.array(self._mj_model.body_mass)
+        self._body_rootid: np.ndarray = np.asarray(self._mj_model.body_rootid)
 
         # Store initial standing qpos (keyframe 2 = "init" pose used by WalkEnvV0)
         nkey = self._mj_model.nkey
@@ -205,12 +207,11 @@ class MjxWalkEnv(MyoMjxEnvBase):
         # --- joint velocities scaled by ctrl_dt ---
         qvel = data.qvel * ctrl_dt
 
-        # --- COM velocity (x, y): mass-weighted mean of body cvel[3:5] ---
-        # MuJoCo cvel convention: negated translational velocity in world frame.
+        # --- COM velocity (x, y), negated: the model faces -y ---
         mass = self._body_mass_jax  # (nbody,)
-        com_vel = jp.sum(mass[:, None] * (-data.cvel[:, 3:5]), axis=0) / jp.sum(
-            mass
-        )  # shape (2,)
+        com_vel = -com_linear_velocity(
+            jp, mass, data.cvel, data.xipos, data.subtree_com[self._body_rootid]
+        )[:2]
 
         # --- torso quaternion ---
         torso_angle = data.xquat[self._torso_id]  # (4,)
