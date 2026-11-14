@@ -396,3 +396,40 @@ def test_the_divergence_check_can_be_switched_off() -> None:
     assert info["tagged"] is True and info.get("mj_unstable") is False
     assert rewards["agent_0"] == 100.0 and all(terminated.values())
     env.close()
+
+
+def test_divergence_on_final_step_voids_evade_timeout_score() -> None:
+    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
+        ChaseTagVsTaskConfig,
+    )
+
+    cfg = ChaseTagVsTaskConfig(
+        task_choice="EVADE", maxTime=0.03, ctrl_dt=0.01, agent_separation_m=2.0
+    )
+    env = ModularMultiAgentTaskEnv(cfg)
+    try:
+        hold = {a: np.zeros(env.action_space[a].shape, np.float32) for a in env._agents}
+
+        env.reset(seed=0)
+        for _ in range(3):
+            _, _, terminated, truncated, clean_info = env.step(hold)
+        assert clean_info["mj_unstable"] is False
+        assert clean_info["score"] == pytest.approx(1.0)
+        assert truncated == {"agent_0": True, "agent_1": True}
+
+        env.reset(seed=0)
+        for _ in range(2):
+            _, _, terminated, _, _ = env.step(hold)
+            assert not any(terminated.values())
+        env.data.qvel[0] = np.nan
+        _, rewards, terminated, truncated, info = env.step(hold)
+        assert env._step_count == env.max_episode_steps == 3
+        assert info["mj_unstable"] is True
+        assert info["tagged"] is False
+        assert info["chaser_fell"] is False
+        assert info["score"] == 0.0
+        assert max(rewards.values()) <= 0.0
+        assert terminated == {"agent_0": True, "agent_1": True}
+        assert truncated == {"agent_0": False, "agent_1": False}
+    finally:
+        env.close()

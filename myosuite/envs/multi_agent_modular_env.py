@@ -202,8 +202,9 @@ class ModularMultiAgentTaskEnv(gym.Env):
             5-tuple ``(obs, rewards, terminated, truncated, info)`` — all dicts
             keyed by agent id except *info* which is a flat dict. Once the
             simulation diverged (MuJoCo reset the data to ``qpos0``), the step
-            deals no damage, sees no falls, pays no positive reward and ends the
-            episode for every agent; ``info["mj_unstable"]`` flags it.
+            deals no damage, sees no falls, pays no positive reward or score,
+            and ends the episode for every agent; ``info["mj_unstable"]`` flags
+            it as a void bout.
         """
         # Apply all actions simultaneously before any physics.
         for agent_id in self._agents:
@@ -275,6 +276,11 @@ class ModularMultiAgentTaskEnv(gym.Env):
             ko,
             self._step_count,
         )
+        if unstable:
+            if "score" in info:
+                info["score"] = min(float(info["score"]), 0.0)
+            if "solved" in info:
+                info["solved"] = False
         info["mj_unstable"] = unstable
 
         if self.render_mode == "human":
