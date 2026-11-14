@@ -31,6 +31,7 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **CPU clip-following rewards and termination use the post-step pose.** `MuscleMimicClipEnvV0` refreshes derived MuJoCo state after its control-step integration, so tracked sites and muscle geometry agree with the returned qpos/qvel. Site-based rewards and early termination can differ from earlier evaluations; action/observation layouts and integration trajectories are preserved.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
