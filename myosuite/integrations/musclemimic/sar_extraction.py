@@ -11,7 +11,8 @@ Implements the Synergy Action Representation pipeline described in
 
   1. PCA whitening to decorrelate activations.
   2. FastICA to extract statistically independent components.
-  3. MinMaxScaler to normalise synergy activations to [0, 1].
+  3. MinMaxScaler to normalise synergy activations to [-1, 1], the range of a
+     policy action (:data:`SYNERGY_RANGE`).
 
 Typical usage::
 
@@ -48,6 +49,9 @@ from myosuite.core.trajectory_io import read_npz_names
 
 logger = logging.getLogger(__name__)
 
+SYNERGY_RANGE: tuple[float, float] = (-1.0, 1.0)
+"""Range of a synergy coordinate, which is a policy action (as in the SAR paper)."""
+
 _SAR_SKLEARN_INSTALL = (
     "scikit-learn is required for SAR (PCA / ICA). Install it in the same "
     "environment as your Jupyter kernel, e.g. `pip install scikit-learn` or "
@@ -78,6 +82,13 @@ def _import_sklearn_sar():
         raise ImportError(_SAR_SKLEARN_INSTALL) from err
 
 
+def _synergy_scaler(data_min: np.ndarray, data_max: np.ndarray) -> Any:
+    """``MinMaxScaler`` mapping ``[data_min, data_max]`` onto :data:`SYNERGY_RANGE`."""
+    _, _, MinMaxScaler = _import_sklearn_sar()
+    bounds = np.stack([data_min, data_max])
+    return MinMaxScaler(feature_range=SYNERGY_RANGE).fit(bounds)
+
+
 # ---------------------------------------------------------------------------
 # SynergyModel dataclass
 # ---------------------------------------------------------------------------
@@ -94,7 +105,8 @@ class SynergyModel:
     Args:
         pca: Fitted ``sklearn.decomposition.PCA`` (whitening).
         ica: Fitted ``sklearn.decomposition.FastICA``.
-        scaler: Fitted ``sklearn.preprocessing.MinMaxScaler``.
+        scaler: Fitted ``sklearn.preprocessing.MinMaxScaler`` onto
+            :data:`SYNERGY_RANGE`.
         n_synergies: Number of synergy components extracted.
         n_muscles: Muscle dimensionality of the input activations.
         vaf: Variance accounted for by this synergy count (0–1 scale).
@@ -199,7 +211,8 @@ def extract_synergies(
     Pipeline:
       1. PCA with ``n_synergies`` components and whitening.
       2. FastICA (``max_iter=1000``) on the whitened components.
-      3. MinMaxScaler fitted on the ICA-transformed activations.
+      3. MinMaxScaler fitted on the ICA-transformed activations, onto
+         :data:`SYNERGY_RANGE`.
 
     Args:
         acts: Activation array, shape ``(T, n_muscles)``, dtype ``float32``.
@@ -224,7 +237,7 @@ def extract_synergies(
     if n_synergies > n_max:
         raise ValueError(f"n_synergies={n_synergies} exceeds min(T, n_muscles)={n_max}")
 
-    PCA, FastICA, MinMaxScaler = _import_sklearn_sar()
+    PCA, FastICA, _ = _import_sklearn_sar()
 
     X = acts.astype(np.float64)
 
@@ -238,20 +251,11 @@ def extract_synergies(
     )
     X_ica = ica.fit_transform(X_pca)
 
-    scaler = MinMaxScaler()
-    scaler.fit(X_ica)
+    data_min, data_max = X_ica.min(axis=0), X_ica.max(axis=0)
     if scaler_margin > 0.0:
-        span = scaler.data_max_ - scaler.data_min_
-        pad = np.maximum(1e-8, span * float(scaler_margin))
-        data_min = scaler.data_min_ - pad
-        data_max = scaler.data_max_ + pad
-        span_padded = np.maximum(1e-8, data_max - data_min)
-        fr_min, fr_max = scaler.feature_range
-        scaler.data_min_ = data_min
-        scaler.data_max_ = data_max
-        scaler.data_range_ = span_padded
-        scaler.scale_ = (fr_max - fr_min) / span_padded
-        scaler.min_ = fr_min - data_min * scaler.scale_
+        pad = np.maximum(1e-8, (data_max - data_min) * float(scaler_margin))
+        data_min, data_max = data_min - pad, data_max + pad
+    scaler = _synergy_scaler(data_min, data_max)
 
     vaf = float(np.sum(pca.explained_variance_ratio_))
     logger.info(
@@ -286,7 +290,7 @@ def encode_activations(model: SynergyModel, acts: np.ndarray) -> np.ndarray:
 
     Returns:
         Synergy activations, shape ``(T, n_synergies)`` or ``(n_synergies,)``
-        with values in ``[0, 1]`` (clipped), dtype ``float32``.
+        with values in :data:`SYNERGY_RANGE` (clipped), dtype ``float32``.
 
     Raises:
         ValueError: If ``acts`` last dimension does not match ``n_muscles``.
@@ -298,11 +302,7 @@ def encode_activations(model: SynergyModel, acts: np.ndarray) -> np.ndarray:
     X = X.astype(np.float64)
     X_pca = model.pca.transform(X)
     X_ica = model.ica.transform(X_pca)
-    X_norm = np.clip(
-        model.scaler.transform(X_ica),
-        0.0,
-        1.0,
-    ).astype(np.float32)
+    X_norm = np.clip(model.scaler.transform(X_ica), *SYNERGY_RANGE).astype(np.float32)
     return X_norm[0] if single else X_norm
 
 
@@ -313,7 +313,8 @@ def decode_synergies(model: SynergyModel, syn: np.ndarray) -> np.ndarray:
 
     Args:
         model: Fitted :class:`SynergyModel`.
-        syn: Synergy activations (array-like), shape ``(T, n_synergies)`` or ``(n_synergies,)``.
+        syn: Synergy activations in :data:`SYNERGY_RANGE` (array-like), shape
+            ``(T, n_synergies)`` or ``(n_synergies,)``.
 
     Returns:
         Muscle activations, shape ``(T, n_muscles)`` or ``(n_muscles,)``, in
@@ -406,6 +407,15 @@ def load_synergy_model(save_dir: Path | str) -> SynergyModel:
     pca = joblib.load(save_dir / "pca.pkl")
     ica = joblib.load(save_dir / "ica.pkl")
     scaler = joblib.load(save_dir / "scaler.pkl")
+    if tuple(scaler.feature_range) != SYNERGY_RANGE:
+        logger.warning(
+            "Synergy model in %s was scaled to %s; rescaled to %s. Policies trained "
+            "on the old scaling decode to other activations: retrain them.",
+            save_dir,
+            tuple(scaler.feature_range),
+            SYNERGY_RANGE,
+        )
+        scaler = _synergy_scaler(scaler.data_min_, scaler.data_max_)
 
     meta = np.load(save_dir / "metadata.npz", allow_pickle=False)
     try:
@@ -450,6 +460,7 @@ def _validate_acts(acts: np.ndarray) -> None:
 # ---------------------------------------------------------------------------
 
 __all__ = [
+    "SYNERGY_RANGE",
     "SynergyModel",
     "compute_vaf_curve",
     "decode_synergies",

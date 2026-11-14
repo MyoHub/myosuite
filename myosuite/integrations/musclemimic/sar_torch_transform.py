@@ -41,6 +41,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from myosuite.integrations.musclemimic.sar_extraction import SYNERGY_RANGE
+
 try:
     import torch
     import torch.nn as nn
@@ -59,16 +61,26 @@ class SARTorchTransform(nn.Module if _TORCH_OK else object):
     Args:
         ica: Fitted ``sklearn.decomposition.FastICA``.
         pca: Fitted ``sklearn.decomposition.PCA``.
-        normalizer: Fitted ``sklearn.preprocessing.MinMaxScaler``.
+        normalizer: Fitted ``sklearn.preprocessing.MinMaxScaler`` onto
+            ``SYNERGY_RANGE`` (``[-1, 1]``, the range of a policy action).
         device: Target torch device string (e.g. ``"cuda:0"``, ``"cpu"``).
 
     Raises:
         ImportError: If torch is not installed.
+        ValueError: If *normalizer* was fitted onto another range.
     """
 
     def __init__(self, ica, pca, normalizer, device: str = "cpu") -> None:
         if not _TORCH_OK:
             raise ImportError("torch is required for SARTorchTransform")
+        feature_range = tuple(getattr(normalizer, "feature_range", SYNERGY_RANGE))
+        if feature_range != SYNERGY_RANGE:
+            raise ValueError(
+                f"SARTorchTransform takes actions in {SYNERGY_RANGE}, but the "
+                f"normalizer maps synergies onto {feature_range}. Fit "
+                f"MinMaxScaler(feature_range={SYNERGY_RANGE}), as extract_synergies "
+                "does, or load the model with load_synergy_model."
+            )
         super().__init__()
 
         # ── MinMaxScaler inverse ─────────────────────────────────────────────
@@ -144,7 +156,8 @@ class SARTorchTransform(nn.Module if _TORCH_OK else object):
         """Map synergy actions to muscle activations (GPU-resident).
 
         Args:
-            syn_act: Shape ``(..., n_syn)``, values typically in ``[-1, 1]``.
+            syn_act: Shape ``(..., n_syn)``, values in ``[-1, 1]`` (not clipped:
+                values outside extrapolate beyond the fitted synergy range).
 
         Returns:
             Muscle activations, shape ``(..., n_muscles)``, values in

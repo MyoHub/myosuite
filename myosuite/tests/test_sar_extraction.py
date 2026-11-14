@@ -215,13 +215,21 @@ class TestEncodeActivations(unittest.TestCase):
         encoded = encode_activations(self.model, self.acts[:5])
         self.assertEqual(encoded.dtype, np.float32)
 
-    def test_output_in_0_1_on_training_data(self) -> None:
+    def test_training_data_spans_the_action_range(self) -> None:
+        """Each synergy of the fitted data covers [-1, 1] up to the 10 % margin."""
         from myosuite.integrations.musclemimic.sar_extraction import encode_activations
 
         encoded = encode_activations(self.model, self.acts)
-        # Training data should fall mostly in [0, 1] after clip
-        self.assertTrue((encoded >= 0.0).all())
-        self.assertTrue((encoded <= 1.0).all())
+        edge = 1.0 - 2.0 * 0.1 / 1.2
+        np.testing.assert_allclose(encoded.min(axis=0), -edge, atol=1e-5)
+        np.testing.assert_allclose(encoded.max(axis=0), edge, atol=1e-5)
+
+    def test_data_outside_the_fitted_range_is_clipped(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import encode_activations
+
+        encoded = encode_activations(self.model, 50.0 * (self.acts - 0.5))
+        self.assertEqual(float(encoded.min()), -1.0)
+        self.assertEqual(float(encoded.max()), 1.0)
 
     def test_raises_on_wrong_muscle_dim(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import encode_activations
@@ -238,7 +246,8 @@ class TestDecodeSynergies(unittest.TestCase):
 
         self.acts = _make_acts(n_samples=300, n_muscles=20)
         self.model = extract_synergies(self.acts, n_synergies=5)
-        self.syn = np.random.default_rng(0).random((10, 5)).astype(np.float32)
+        rng = np.random.default_rng(0)
+        self.syn = rng.uniform(-1.0, 1.0, (10, 5)).astype(np.float32)
 
     def test_shapes_dtype_and_range(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
@@ -365,6 +374,33 @@ class TestSaveLoadRoundtrip(unittest.TestCase):
             )
             loaded = load_synergy_model(tmp)
         self.assertEqual(loaded.source_clips, ["clip.npz"])
+
+    def test_loads_a_model_scaled_to_the_unit_range(self) -> None:
+        """Folders whose scaler maps onto [0, 1] load on the action range [-1, 1]."""
+        import dataclasses
+
+        from sklearn.preprocessing import MinMaxScaler
+
+        from myosuite.integrations.musclemimic.sar_extraction import (
+            decode_synergies,
+            load_synergy_model,
+            save_synergy_model,
+        )
+
+        scaler = self.model.scaler
+        unit = MinMaxScaler().fit(np.stack([scaler.data_min_, scaler.data_max_]))
+        with tempfile.TemporaryDirectory() as tmp:
+            save_synergy_model(dataclasses.replace(self.model, scaler=unit), tmp)
+            with self.assertLogs(
+                "myosuite.integrations.musclemimic.sar_extraction", "WARNING"
+            ):
+                loaded = load_synergy_model(tmp)
+
+        self.assertEqual(tuple(loaded.scaler.feature_range), (-1.0, 1.0))
+        syn = np.random.default_rng(1).uniform(-1.0, 1.0, (10, 5))
+        np.testing.assert_allclose(
+            decode_synergies(loaded, syn), decode_synergies(self.model, syn), atol=1e-6
+        )
 
     def test_load_raises_on_missing_file(self) -> None:
         from myosuite.integrations.musclemimic.sar_extraction import load_synergy_model
