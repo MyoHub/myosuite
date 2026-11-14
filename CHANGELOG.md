@@ -30,6 +30,14 @@ Changes since **v3.1.0** (2026-11-11).
   weight in any registered walk config, so rewards, observations and dynamics are unchanged; what changes is every
   success rate of these ids (`evaluate_success`, `scripts/eval_mjlab_policy.py`, `scripts/train_sb3.py`,
   `--stop-on-success`, the success curves of tutorial 2.3). See `docs/baseline_checkpoints.md`.
+* **`solved` of the directional walks means sustained walking too.** `myoLegDirectionalForward-v0`,
+  `myoLegDirectionalBackward-v0` and `myoLegDirectionalRandom-v0` counted every step on which the body was upright
+  and within 0.5 m/s of the commanded velocity, so random actions that fall after about 1 s had 15 to 69 solved steps
+  and `evaluate_success` reported 100 % for the forward and backward ids. They now use the same one-second rule as
+  the walks (200 control steps of 0.005 s), through the new `RewardSpec.solved_window_s` of the `TaskConfig` route
+  (default 0: the per-step flag of the reward terms, unchanged for every other task). The per-step flag is `on_target`
+  in `info`; the mjlab twins log `Episode_Metrics/on_target` next to the new `Episode_Metrics/success`. Rewards,
+  observations and dynamics are unchanged. See `docs/baseline_checkpoints.md`.
 
 ## [3.1.0] - 2026-11-11
 

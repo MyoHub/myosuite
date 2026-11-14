@@ -250,8 +250,8 @@ LOCOMOTION_VEL_TOL = 0.5
 def locomotion_solved(xp: Any, vel_error: Any, fallen: Any) -> Any:
     """On-target flag of the locomotion tasks: upright and tracking the commanded velocity.
 
-    It is ``solved`` of the directional tasks and ``on_target`` of the walk tasks, whose
-    ``solved`` is :func:`locomotion_sustained`.
+    It is ``on_target`` of the walk and directional tasks, whose ``solved`` is
+    :func:`locomotion_sustained`.
 
     Args:
         xp: Array module (``numpy`` or ``torch``).
@@ -282,17 +282,20 @@ def locomotion_streak(steps: Any, on_target: Any) -> Any:
     return (steps + 1) * on_target
 
 
-def locomotion_sustained(steps: Any, dt: float) -> Any:
-    """``solved`` flag of the walk tasks: on target for ``LOCOMOTION_SOLVED_WINDOW_S``.
+def locomotion_sustained(
+    steps: Any, dt: float, window_s: float = LOCOMOTION_SOLVED_WINDOW_S
+) -> Any:
+    """``solved`` flag of the walk tasks: on target for *window_s*.
 
     Args:
         steps: :func:`locomotion_streak` including this step.
         dt: Control step (s).
+        window_s: Window (s); 0 gives the per-step flag.
 
     Returns:
-        Whether *steps* covers the window (at least 1 s of control steps).
+        Whether *steps* covers the window (at least one step).
     """
-    return steps >= math.ceil(LOCOMOTION_SOLVED_WINDOW_S / dt - 1e-9)
+    return steps >= max(1, math.ceil(window_s / dt - 1e-9))
 
 
 def act_reg(

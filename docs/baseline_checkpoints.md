@@ -131,6 +131,12 @@ one solved step, are not comparable with earlier versions. Observations, actions
 so no checkpoint needs retraining. The per-step flag is still reported as `on_target` (CPU `info`) and
 `Episode_Metrics/on_target` (mjlab, share of an episode's steps).
 
+The directional walks (`myoLegDirectionalForward-v0`, `myoLegDirectionalBackward-v0`, `myoLegDirectionalRandom-v0`)
+use the same rule (one second is 200 of their 0.005 s control steps, of 500 per episode). Random actions that fall
+after about 1 s had 15 to 69 solved steps and scored 100 % with `evaluate_success`; they now score 0 %. Their rows
+(96.9 %, 100 % and 53.8 %) were measured on the last step with the per-step flag and not re-evaluated: they can only
+stay or drop.
+
 **Terrain and CPU evaluation.** A deterministic CPU evaluation is a single trajectory. The mjlab twins of the
 rough, hilly and stairs walk tasks bake one terrain into the height field (Warp shares one `hfield_data` between
 worlds), while the CPU rough-terrain walk draws a new terrain at every reset, so CPU and mjlab success rates on that id

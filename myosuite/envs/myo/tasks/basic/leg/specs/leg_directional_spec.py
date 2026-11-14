@@ -38,6 +38,7 @@ from myosuite.core.config import (
 )
 from myosuite.core.registry import register_task
 from myosuite.envs.myo.assets._resolve import resolve_leg_xml
+from myosuite.terms.base_reward import LOCOMOTION_SOLVED_WINDOW_S
 
 
 def _leg_model_path() -> str:
@@ -77,6 +78,7 @@ class LegDirectionalForwardTask(TaskConfig):
             terms=["heading", "act_reg"],
             weights={"heading": 1.0, "act_reg": 0.1},
             extra={"heading_dir": (0.0, -1.0), "target_speed": 1.0},
+            solved_window_s=LOCOMOTION_SOLVED_WINDOW_S,
         )
     )
     actuators: list[ActuatorGroupSpec] = field(
@@ -110,6 +112,7 @@ class LegDirectionalBackwardTask(LegDirectionalForwardTask):
             terms=["heading", "act_reg"],
             weights={"heading": 1.0, "act_reg": 0.1},
             extra={"heading_dir": (0.0, 1.0), "target_speed": 1.2},
+            solved_window_s=LOCOMOTION_SOLVED_WINDOW_S,
         )
     )
 
@@ -149,6 +152,7 @@ class LegDirectionalRandomTask(LegDirectionalForwardTask):
                 "target_speed": 1.2,
                 "randomize_heading": True,
             },
+            solved_window_s=LOCOMOTION_SOLVED_WINDOW_S,
         )
     )
 

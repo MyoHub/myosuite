@@ -45,6 +45,7 @@ from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.model_recipes import _MUSCLEMIMIC_NAMES, _musclemimic_build
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.muscle_stages import CtrlStageHost
+from myosuite.terms.base_reward import locomotion_streak, locomotion_sustained
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +275,7 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         # unpickle, which drops the stages that wrappers installed (they install them again).
         EzPickle.__init__(self, task_config, render_mode=render_mode, **kwargs)
         self._task_config = task_config
+        self._on_target_steps = 0
 
         # Resolve obs/reward callables once at construction time
         self._obs_fns: list[tuple[str, Any]] = [
@@ -395,6 +397,11 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
                 if k not in ("dense", "done"):
                     combined[f"{term}/{k}"] = v
 
+        window = self._task_config.reward.solved_window_s
+        if window > 0:
+            combined["on_target"] = solved
+            streak = locomotion_streak(self._on_target_steps, solved)
+            solved = bool(locomotion_sustained(streak, self._ctrl_dt, window))
         combined["dense"] = dense_total
         combined["done"] = done
         combined["solved"] = solved
@@ -475,6 +482,7 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._run_reset_stages()
+        self._on_target_steps = 0
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
@@ -505,4 +513,8 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
 
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
+        if "on_target" in rwd_dict:
+            self._on_target_steps = locomotion_streak(
+                self._on_target_steps, rwd_dict["on_target"]
+            )
         return self._finalize_step(obs_dict, rwd_dict)
