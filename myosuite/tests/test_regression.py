@@ -44,7 +44,8 @@ def test_env_smoke(env_id: str) -> None:
     try:
         env = make_env(env_id)
     except Exception as exc:
-        pytest.skip(f"Cannot instantiate {env_id}: {exc}")
+        skip_if_hf_gated(env_id, exc)
+        raise
 
     try:
         obs, info = env.reset(seed=0)
