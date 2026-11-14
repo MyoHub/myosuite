@@ -24,6 +24,25 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **A diverged step is no longer scored from MuJoCo's reset state.** When `mj_step` meets a bad `qpos` / `qvel` /
+  `qacc` it resets the data to `qpos0`, and the reward dict of that step was computed from the reset state. In the
+  ChaseTag envs the agent and the opponent are then both at the origin, so the step paid the tag (reward +1002.8,
+  `solved = 1`, score 0.9995) and `get_metrics` reported a win after 0.01 s; `myoTorsoPoseFixed-v0` reported `solved`
+  with reward +8.0. From the first diverged step until the next reset, `MyoGymnasiumEnv._finalize_step` now caps the
+  reward and the `sparse` score at 0 (a failure penalty of the env stays, e.g. -10 in `myoFullBodyWaypoint-v0`),
+  clears `solved` and sets `lose` where the env has one (ChaseTag and RunTrack `get_metrics` then report the full
+  `maxTime`). Every step's `info` has a boolean `mj_unstable`. This also covers rollouts of the unwrapped env
+  (`examine_policy`). `MjInstabilityTerminationWrapper` still ends the episode, and applies the same cap and flag to
+  envs whose `step` does not end in `_finalize_step`. `env.unwrapped.mj_instability_termination = False` switches
+  both off. Regular steps are unchanged.
+
+* **The two-agent env ends a diverged episode.** `ModularMultiAgentTaskEnv` (`myoChallengeChaseTagFBVs-v0`) had no
+  divergence check, and `MjInstabilityTerminationWrapper` found none to call, so after MuJoCo reset a diverged
+  simulation to `qpos0` the match went on from that state and could be scored as a tag. Its `step` now uses the same
+  check as `MyoGymnasiumEnv` (`mj_diverged`): the diverged step deals no damage, sees no falls, pays no positive
+  reward or `info["score"]` (even on the final time-limit step of an `EVADE` bout) to either agent and terminates
+  both; `info["mj_unstable"]` is on every step so evaluators can record diverged bouts as void/draw, and
+  `env.unwrapped.mj_instability_termination = False` switches it off.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 

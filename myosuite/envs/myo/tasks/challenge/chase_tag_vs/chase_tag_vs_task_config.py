@@ -9,6 +9,8 @@
 - Time-up with no tag → runner wins.
 - Pursuer falls → chase fails, episode ends (runner wins).
 - Runner falls → play continues; the pursuer can still tag.
+- Physics divergence (``info["mj_unstable"]`` is True) → void match (draw,
+  ``score = 0.0``, neither side wins; episode terminates immediately).
 - Sparse score: ``1 - t/maxTime`` (chase win) or ``t/maxTime`` (evade win).
 - Roles (CHASE/EVADE) randomised each episode when ``task_choice="random"``.
 """

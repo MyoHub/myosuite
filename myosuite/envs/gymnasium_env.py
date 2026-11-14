@@ -53,6 +53,50 @@ def _validate_reward_dict(rwd_dict: dict) -> None:
         )
 
 
+def _void_unstable_step(rwd_dict: dict) -> None:
+    """Void the outcome of a step whose state MuJoCo auto-reset, in place.
+
+    The reward and the score are capped at 0, so a failure penalty of the env
+    stays; ``solved`` is cleared and ``lose`` (where the env has one) is set.
+
+    Args:
+        rwd_dict: Dict returned by ``get_reward_dict``.
+    """
+    for key in ("dense", "sparse"):
+        if key in rwd_dict:
+            rwd_dict[key] = np.minimum(rwd_dict[key], 0.0)
+    if "solved" in rwd_dict:
+        rwd_dict["solved"] = np.zeros_like(rwd_dict["solved"])[()]
+    if "lose" in rwd_dict:
+        rwd_dict["lose"] = np.ones_like(rwd_dict["lose"])[()]
+
+
+def mj_diverged(data: Any) -> bool:
+    """Whether the simulation diverged since the last ``mj_resetData``.
+
+    ``mj_step`` counts a bad qpos/qvel/qacc in ``data.warning`` and then
+    auto-resets the data to ``qpos0``; ``mj_resetData`` zeroes the counters.
+
+    Args:
+        data: ``mujoco.MjData`` of the episode.
+
+    Returns:
+        True after a divergence, or when ``qpos`` / ``qvel`` are not finite.
+    """
+    import mujoco
+
+    bad = (
+        mujoco.mjtWarning.mjWARN_BADQPOS,
+        mujoco.mjtWarning.mjWARN_BADQVEL,
+        mujoco.mjtWarning.mjWARN_BADQACC,
+    )
+    return bool(
+        any(data.warning[int(w)].number > 0 for w in bad)
+        or not np.isfinite(data.qpos).all()
+        or not np.isfinite(data.qvel).all()
+    )
+
+
 def check_obs_keys(
     obs_keys: Iterable[str], available: Collection[str], owner: str
 ) -> None:
@@ -252,7 +296,8 @@ class MyoGymnasiumEnv(gym.Env):
         self.mujoco_render_frames: bool = False
         # Backward-compatible visual key container expected by examine_env.py.
         self.visual_keys: list[str] = []
-        # Read by MjInstabilityTerminationWrapper (appended by register_env).
+        # Read by _finalize_step and by MjInstabilityTerminationWrapper (appended
+        # by register_env).
         self.mj_instability_termination: bool = True
 
     # ------------------------------------------------------------------
@@ -551,7 +596,13 @@ class MyoGymnasiumEnv(gym.Env):
         override: validates the reward dict, renders when
         ``mujoco_render_frames`` is set, flattens the obs to float32 (no
         clipping) and returns the standard info (the reward components plus
-        ``obs_dict`` and ``rwd_dict``).
+        ``obs_dict``, ``rwd_dict`` and ``mj_unstable``).
+
+        Once the simulation diverged, MuJoCo has reset the data to ``qpos0``,
+        so the dicts describe that state and not the task: the reward and the
+        score are capped at 0, ``solved`` is cleared (in ``rwd_dict`` too) and
+        ``info["mj_unstable"]`` is ``True`` until the next reset. Ending the
+        episode is left to ``MjInstabilityTerminationWrapper``.
 
         Args:
             obs_dict: Observation dict of the current state.
@@ -562,12 +613,18 @@ class MyoGymnasiumEnv(gym.Env):
             always ``False`` (``TimeLimit`` handles it).
         """
         _validate_reward_dict(rwd_dict)
+        unstable = bool(
+            self.mj_instability_termination and self._check_mj_instability_termination()
+        )
+        if unstable:
+            _void_unstable_step(rwd_dict)
         if self.mujoco_render_frames:
             self.mj_render()
         obs = self._ensure_obs_gymnasium_compliant(self._obs_dict_to_vec(obs_dict))
         info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
         info["obs_dict"] = obs_dict
         info["rwd_dict"] = rwd_dict
+        info["mj_unstable"] = unstable
         # .item(): scalar or 1-element array (float() rejects the latter).
         reward = float(np.asarray(rwd_dict["dense"]).item())
         terminated = bool(np.asarray(rwd_dict["done"]).item())
@@ -579,26 +636,13 @@ class MyoGymnasiumEnv(gym.Env):
         ``mj_step`` counts a bad qpos/qvel/qacc in ``data.warning`` and then
         auto-resets the data to ``qpos0``, so the state it leaves behind is
         finite. ``mj_resetData`` zeroes the counters, so a non-zero count means
-        the episode diverged. Called by ``MjInstabilityTerminationWrapper``.
+        the episode diverged. Called by :meth:`_finalize_step` and, for envs
+        whose step does not end there, by ``MjInstabilityTerminationWrapper``.
 
         Returns:
             True if the episode should terminate.
         """
-        import mujoco
-
-        diverged = any(
-            self.data.warning[int(w)].number > 0
-            for w in (
-                mujoco.mjtWarning.mjWARN_BADQPOS,
-                mujoco.mjtWarning.mjWARN_BADQVEL,
-                mujoco.mjtWarning.mjWARN_BADQACC,
-            )
-        )
-        return bool(
-            diverged
-            or not np.isfinite(self.data.qpos).all()
-            or not np.isfinite(self.data.qvel).all()
-        )
+        return mj_diverged(self.data)
 
     def render(self, **kwargs):
         """Render the environment using a lazy MujocoRenderer.
