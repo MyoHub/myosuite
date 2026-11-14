@@ -29,9 +29,14 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 import functools
+import hashlib
+import inspect
 import json
 import glob
 import os
+import tempfile
+import warnings
+import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,6 +181,8 @@ def _process_clip(
     if T_src < 2:
         raise ValueError(f"{path}: a clip needs at least two frames")
     n = int(np.floor((T_src - 1) / fps / dt + 1e-6)) + 1
+    if n < 2:
+        raise ValueError(f"{path}: the resampled clip needs at least two frames")
     t = np.arange(n) * dt * fps
     i0 = np.minimum(np.floor(t).astype(np.int64), T_src - 2)
     a = np.clip(t - i0, 0.0, 1.0)[:, None]
@@ -237,6 +244,7 @@ def _process_clip(
 
 
 REF_FIELDS = tuple(f.name for f in dataclasses.fields(mt.TrackRef))
+_CACHE_SCHEMA = 1
 
 
 @dataclass
@@ -306,7 +314,7 @@ class MotionLib:
 
 def build_motion_lib(
     files: Sequence[str], m: mujoco.MjModel, tracked: Sequence[str], dt: float,
-    bin_s: float = 1.0, workers: int = 8,
+    bin_s: float = 1.0, workers: int = 1, cache_dir: str | os.PathLike = "",
 ) -> MotionLib:  # fmt: skip
     """Load, resample and process clips on the body model *m*.
 
@@ -317,14 +325,32 @@ def build_motion_lib(
         dt: Control step.
         bin_s: Reset bin length in seconds.
         workers: Threads processing clips (MuJoCo releases the GIL).
+        cache_dir: Optional persistent data cache; empty disables disk caching.
 
     Returns:
         The library.
     """
-    from myosuite.biomechanics.retarget import read_refit_meta  # noqa: PLC0415
-
     if not files:
         raise ValueError("no motion clips")
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be a positive integer")
+    if not np.isfinite(dt) or dt <= 0 or not np.isfinite(bin_s) or bin_s <= 0:
+        raise ValueError("dt and bin_s must be finite and positive")
+    if len(tracked) == 0:
+        raise ValueError("at least one tracked body is required")
+    files = tuple(str(Path(f).resolve()) for f in files)
+    if not cache_dir:
+        return _build_motion_lib(files, m, tracked, dt, bin_s, workers)
+    key = _motion_key(files, m, tracked, dt, bin_s)
+    return _load_or_build(key, files, m, tracked, dt, bin_s, workers, cache_dir)
+
+
+def _build_motion_lib(
+    files: Sequence[str], m: mujoco.MjModel, tracked: Sequence[str], dt: float,
+    bin_s: float, workers: int,
+) -> MotionLib:  # fmt: skip
+    from myosuite.biomechanics.retarget import read_refit_meta  # noqa: PLC0415
+
     info = ModelInfo(m)
     R_off = root_offset(m)
     ids = np.array([m.body(n).id for n in tracked])
@@ -335,13 +361,22 @@ def build_motion_lib(
     work = functools.partial(
         _process_clip, m=m, info=info, R_off=R_off, tracked=ids, dt=dt
     )
-    with concurrent.futures.ThreadPoolExecutor(max(1, workers)) as pool:
-        clips = list(pool.map(work, files))
-    base = os.path.commonpath([os.path.dirname(os.path.abspath(f)) for f in files])
-    names = [
-        os.path.splitext(os.path.relpath(os.path.abspath(f), base))[0] for f in files
-    ]
+    if workers == 1:
+        clips = list(map(work, files))
+    else:
+        with concurrent.futures.ThreadPoolExecutor(min(workers, len(files))) as pool:
+            clips = list(pool.map(work, files))
+    names = _clip_names(files)
     lens = np.array([len(c["root_pos"]) for c in clips])
+    frames = {k: np.concatenate([c[k] for c in clips]) for k in clips[0]}
+    flags = [list((read_refit_meta(f) or {}).get("quality_flags", [])) for f in files]
+    return _assemble_lib(names, dt, bin_s, lens, frames, flags)
+
+
+def _assemble_lib(
+    names: list[str], dt: float, bin_s: float, lens: np.ndarray,
+    frames: dict[str, np.ndarray], flags: list[list[str]],
+) -> MotionLib:  # fmt: skip
     start = np.concatenate(([0], np.cumsum(lens)[:-1]))
     bin_frames = max(1, round(bin_s / dt))
     bin_clip = np.concatenate(
@@ -350,17 +385,183 @@ def build_motion_lib(
     bin_start = np.concatenate(
         [s + bin_frames * np.arange(-(-n // bin_frames)) for s, n in zip(start, lens)]
     )
-    frames = {k: np.concatenate([c[k] for c in clips]) for k in clips[0]}
     clip_id = np.repeat(np.arange(len(lens)), lens)
     frame_bin = np.empty(int(lens.sum()), np.int64)
     for b, (c, s) in enumerate(zip(bin_clip, bin_start)):
         frame_bin[s : min(s + bin_frames, start[c] + lens[c])] = b
-    flags = [list((read_refit_meta(f) or {}).get("quality_flags", [])) for f in files]
     return MotionLib(
         names=names, dt=dt, clip_start=start, clip_len=lens, clip_end=start + lens - 1,
         clip_id=clip_id, bin_frames=bin_frames, bin_clip=bin_clip, bin_start=bin_start,
         frame_bin=frame_bin, frames=frames, quality_flags=flags,
     )  # fmt: skip
+
+
+def _motion_key(
+    files: Sequence[str], m: mujoco.MjModel, tracked: Sequence[str], dt: float,
+    bin_s: float,
+) -> str:  # fmt: skip
+    from myosuite.biomechanics.retarget import file_sha256  # noqa: PLC0415
+
+    binary = np.empty(mujoco.mj_sizeModel(m), dtype=np.uint8)
+    mujoco.mj_saveModel(m, buffer=binary)
+    implementations = {__file__} | {
+        inspect.getfile(obj)
+        for obj in (
+            ModelInfo,
+            resolve_model_names,
+            project_joint_couplings,
+            mt.relative_sites,
+        )
+    }
+    identity = {
+        "schema": _CACHE_SCHEMA,
+        "mujoco": mujoco.__version__,
+        "numpy": np.__version__,
+        "model": hashlib.sha256(binary).hexdigest(),
+        "sources": [(str(Path(f).resolve()), file_sha256(f)) for f in files],
+        "implementation": sorted(file_sha256(f) for f in implementations),
+        "tracked": list(tracked),
+        "dt": dt,
+        "bin_s": bin_s,
+    }
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
+def _clip_names(files: Sequence[str]) -> list[str]:
+    base = Path(os.path.commonpath([str(Path(f).parent) for f in files]))
+    return [str(Path(f).relative_to(base).with_suffix("")) for f in files]
+
+
+def _frame_shapes(m: mujoco.MjModel, n_tracked: int) -> dict[str, tuple[int, ...]]:
+    joints = len(ModelInfo(m).joint_ids)
+    return {
+        "root_pos": (3,),
+        "root_rot": (3, 3),
+        "root_qvel": (6,),
+        "root_vel_local": (6,),
+        "joint_pos": (joints,),
+        "joint_vel": (joints,),
+        "site_rpos": (n_tracked - 1, 3),
+        "site_rangles": (n_tracked - 1, 3),
+        "site_rvel": (n_tracked - 1, 6),
+        "body_pos": (n_tracked, 3),
+        "body_lin_vel": (n_tracked, 3),
+        "reset_qpos": (m.nq,),
+        "reset_qvel": (m.nv,),
+    }
+
+
+def _array_digest(array: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(array).view(np.uint8)).hexdigest()
+
+
+def _read_cache(
+    path: Path, key: str, m: mujoco.MjModel, tracked: Sequence[str],
+    files: Sequence[str], dt: float, bin_s: float,
+) -> MotionLib | None:  # fmt: skip
+    try:
+        n_clips = len(files)
+        with np.load(path, allow_pickle=False) as data:
+            shapes = _frame_shapes(m, len(tracked))
+            if set(data.files) != {"metadata", "clip_len", *shapes}:
+                raise ValueError("unexpected array fields")
+            text = data["metadata"]
+            if text.shape != () or text.dtype.kind != "U":
+                raise ValueError("metadata must be a Unicode scalar")
+            meta = json.loads(str(text))
+            if meta["schema"] != _CACHE_SCHEMA or meta["key"] != key:
+                raise ValueError("cache identity differs")
+            names, flags = meta["names"], meta["quality_flags"]
+            if (
+                names != _clip_names(files)
+                or not isinstance(flags, list)
+                or len(flags) != n_clips
+                or not all(
+                    isinstance(f, list) and all(isinstance(s, str) for s in f)
+                    for f in flags
+                )
+            ):
+                raise ValueError("invalid clip metadata")
+            lens = data["clip_len"]
+            if lens.dtype != np.int64 or lens.shape != (n_clips,) or (lens < 2).any():
+                raise ValueError("invalid clip lengths")
+            total = sum(int(n) for n in lens)
+            frames = {name: data[name] for name in shapes}
+            for name, array in frames.items():
+                if (
+                    array.dtype != np.float32
+                    or array.shape != (total, *shapes[name])
+                    or not np.isfinite(array).all()
+                ):
+                    raise ValueError(f"invalid {name} shape, dtype or values")
+            for name, array in {"clip_len": lens, **frames}.items():
+                if _array_digest(array) != meta["sha256"][name]:
+                    raise ValueError(f"invalid {name} checksum")
+        return _assemble_lib(names, dt, bin_s, lens, frames, flags)
+    except FileNotFoundError:
+        return None
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        EOFError,
+        zipfile.BadZipFile,
+    ) as exc:
+        warnings.warn(
+            f"Ignoring invalid motion cache {path}: {exc}", RuntimeWarning, stacklevel=2
+        )
+        return None
+
+
+def _write_cache(path: Path, key: str, lib: MotionLib) -> None:
+    temporary: Path | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        arrays = {"clip_len": lib.clip_len, **lib.frames}
+        meta = {
+            "schema": _CACHE_SCHEMA,
+            "key": key,
+            "names": lib.names,
+            "quality_flags": lib.quality_flags,
+            "sha256": {name: _array_digest(a) for name, a in arrays.items()},
+        }
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, suffix=".npz", delete=False
+        ) as f:
+            temporary = Path(f.name)
+            np.savez(f, metadata=np.array(json.dumps(meta)), **arrays)
+            f.flush()
+            os.fsync(f.fileno())
+        temporary.replace(path)
+    except OSError as exc:
+        warnings.warn(
+            f"Cannot write motion cache {path}: {exc}", RuntimeWarning, stacklevel=2
+        )
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _load_or_build(
+    key: str, files: Sequence[str], m: mujoco.MjModel, tracked: Sequence[str],
+    dt: float, bin_s: float, workers: int, cache_dir: str | os.PathLike,
+) -> MotionLib:  # fmt: skip
+    path = (
+        Path(cache_dir).expanduser() / f"motion-v{_CACHE_SCHEMA}-{key}.npz"
+        if cache_dir
+        else None
+    )
+    if path is not None:
+        cached = _read_cache(path, key, m, tracked, files, dt, bin_s)
+        if cached is not None:
+            return cached
+    lib = _build_motion_lib(files, m, tracked, dt, bin_s, workers)
+    if _motion_key(files, m, tracked, dt, bin_s) != key:
+        raise RuntimeError("motion inputs changed during preprocessing; retry loading")
+    if path is not None:
+        _write_cache(path, key, lib)
+    return lib
 
 
 def write_synthetic_clip(
@@ -369,10 +570,11 @@ def write_synthetic_clip(
 ) -> None:  # fmt: skip
     """A clip for tests: the default pose moving along x at *speed* (and up at *climb*),
     each independent joint oscillating by *amp* of its half range at 1 Hz, sampled at
-    100 Hz, with the metadata of a clip fitted on *model_name* (its current version)."""
+    100 Hz, with the metadata of a clip fitted on *model_name* (its current version and
+    kinematic fingerprint)."""
     from myosuite.biomechanics.retarget import REFIT_META_KEY  # noqa: PLC0415
 
-    from .models import model_version  # noqa: PLC0415
+    from .models import kinematic_fingerprint, model_version  # noqa: PLC0415
 
     fps = 100.0
     t = np.arange(int(seconds * fps) + 1) / fps
@@ -386,16 +588,17 @@ def write_synthetic_clip(
         qpos[:, adr] = np.clip(m.qpos0[adr] + wave, lo, hi)
     names = np.array([m.joint(j).name for j in range(m.njnt)])
     meta = {"source": "synthetic", "model": model_name,
-            "model_version": model_version(model_name)}  # fmt: skip
+            "model_version": model_version(model_name),
+            "model_fingerprint": kinematic_fingerprint(model_name)}  # fmt: skip
     np.savez(
         Path(path), qpos=qpos, joint_names=names, jnt_type=m.jnt_type, frequency=fps,
         **{REFIT_META_KEY: np.array(json.dumps(meta))},
     )  # fmt: skip
 
 
-@functools.lru_cache(maxsize=2)
 def load_motion_lib(
     clips: str, root: str, model: str, self_collisions: bool, dt: float, bin_s: float,
+    *, workers: int = 1, cache_dir: str | os.PathLike = "",
 ) -> MotionLib:  # fmt: skip
     """The (cached) library of a :class:`~.config.MotionCfg` on a task model.
 
@@ -406,24 +609,48 @@ def load_motion_lib(
         self_collisions: The scene variant (does not change the kinematics).
         dt: Control step.
         bin_s: Reset bin length.
+        workers: Threads preprocessing clips.
+        cache_dir: Optional directory for persistent, data-only NumPy archives.
 
     Returns:
         The library (NumPy; do not modify).
 
     Raises:
-        ValueError: For a clip fitted on another model or model version, or a clip
-            without that metadata.
+        ValueError: For a clip fitted on another model, on a body with other
+            kinematics (another fingerprint; without one: another myo_sim version), or
+            a clip without that metadata.
     """
     from myosuite.biomechanics.retarget import check_refit_meta  # noqa: PLC0415
 
     from . import resolve_clips  # noqa: PLC0415
-    from .models import compiled_scene, model_cfg, model_version  # noqa: PLC0415
+    from .models import (  # noqa: PLC0415
+        compiled_scene,
+        kinematic_fingerprint,
+        model_cfg,
+        model_version,
+    )
 
     files = motion_files(*resolve_clips(clips, root, model))
-    version = model_version(model)
+    version, fingerprint = model_version(model), kinematic_fingerprint(model)
     for f in files:
-        check_refit_meta(f, model, version)
-    return build_motion_lib(
-        files, compiled_scene(model, self_collisions),
-        model_cfg(model).tracked_bodies, dt, bin_s,
-    )  # fmt: skip
+        check_refit_meta(f, model, version, fingerprint)
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be a positive integer")
+    if not files:
+        raise ValueError("no motion clips")
+    if not np.isfinite(dt) or dt <= 0 or not np.isfinite(bin_s) or bin_s <= 0:
+        raise ValueError("dt and bin_s must be finite and positive")
+    files = tuple(str(Path(f).resolve()) for f in files)
+    scene = compiled_scene(model, self_collisions)
+    tracked = model_cfg(model).tracked_bodies
+    key = _motion_key(files, scene, tracked, dt, bin_s)
+    directory = str(Path(cache_dir).expanduser().resolve()) if cache_dir else ""
+    return _cached_motion_lib(key, files, scene, tracked, dt, bin_s, workers, directory)
+
+
+@functools.lru_cache(maxsize=2)
+def _cached_motion_lib(
+    key: str, files: tuple[str, ...], m: mujoco.MjModel, tracked: tuple[str, ...],
+    dt: float, bin_s: float, workers: int, cache_dir: str,
+) -> MotionLib:  # fmt: skip
+    return _load_or_build(key, files, m, tracked, dt, bin_s, workers, cache_dir)

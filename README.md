@@ -5,7 +5,7 @@
 
 [![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.facebook.com/support-ukraine)
 [![PyPI](https://img.shields.io/pypi/v/myosuite)](https://pypi.org/project/MyoSuite/)
-[![Documentation Status](https://readthedocs.org/projects/myosuite/badge/?version=latest)](https://myosuite.readthedocs.io/en/latest/)
+[![Documentation Status](https://img.shields.io/readthedocs/myosuite/latest)](https://myosuite.readthedocs.io/en/latest/)
 ![PyPI - License](https://img.shields.io/pypi/l/myosuite)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/myohub/myosuite/blob/main/docs/CONTRIBUTING.md)
 [![Downloads](https://static.pepy.tech/badge/myosuite)](https://pepy.tech/project/myosuite)
@@ -57,20 +57,9 @@ pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
                                  # build for your driver; with pip see docs/source/install.rst
 ```
 
-Or: `uv sync -p 3.10 --extra rl`.
+Or: `uv sync -p 3.11 --extra rl`.
 
 From PyPI: `pip install -U myosuite`.
-
-Python 3.15 can run native CPU environments without ONNX Runtime. ONNX features
-require `pip install 'myosuite[onnx]'`; ONNX Runtime has no Python 3.15 wheels as
-of October 19, 2026, so use Python 3.14 for those features until wheels are
-available. Python 3.15 also needs compatible builds of other native dependencies:
-for example, h5py currently provides 3.15 wheels through its maintainer-supported
-[nightly index](https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/h5py/),
-and PyTorch CPU wheels are available from its
-[official CPU index](https://download.pytorch.org/whl/cpu/).
-
-**Models.** The musculoskeletal models ship in the `myo-sim` package, pinned to 0.2.4 and installed from PyPI together with MyoSuite, so no git submodules and no separate model install are needed. The few MPL, YCB and furniture assets the tasks use are bundled in `myosuite/envs/myo/assets/`. Environments compose their models with `ModelBuilder` (see the [model builder guide](docs/source/model_builder.rst)). A different `myo-sim` version can change joints and ranges (the thumb joints did in 0.2.0), so the baseline policies are only valid for the pinned version.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 

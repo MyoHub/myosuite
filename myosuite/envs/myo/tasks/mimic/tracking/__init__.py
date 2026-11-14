@@ -89,30 +89,38 @@ def download_retargeted_clips(
 
 
 def kit_root(model: str = "myofullbody") -> Path:
-    """Root of the KIT clips: ``$MYOSUITE_KIT_ROOT``, else the local retarget cache
-    ``~/.cache/myosuite/mimic/<model>-<version>`` (``scripts/mimic/retarget_amass.py``
-    fills it from an AMASS download), else the dataset ``$MYOSUITE_MIMIC_DATASET``.
+    """Root of the KIT clips: ``$MYOSUITE_KIT_ROOT``, else the local retarget cache,
+    else the dataset ``$MYOSUITE_MIMIC_DATASET``.
+
+    The cache is ``~/.cache/myosuite/mimic/<model>-<version>`` of the installed
+    myo_sim version (``scripts/mimic/retarget_amass.py`` fills it from an AMASS
+    download). Without it, a sibling ``<model>-<other version>`` folder is used whose
+    first listed clip carries the installed body's kinematic fingerprint
+    (:func:`~.models.kinematic_fingerprint`): a myo_sim release that leaves the body's
+    kinematics alone keeps its clips (:func:`~myosuite.biomechanics.retarget.find_cache_root`).
 
     Raises:
-        MissingMotionData: If none of them holds the clips.
+        MissingMotionData: If none of them holds the clips (naming the folders tried).
     """
     if os.environ.get(KIT_ROOT_ENV):
         return Path(os.environ[KIT_ROOT_ENV])
-    from myosuite.biomechanics.retarget import default_cache_root  # noqa: PLC0415
+    from myosuite.biomechanics.retarget import find_cache_root  # noqa: PLC0415
 
-    from .models import model_version  # noqa: PLC0415
+    from .models import kinematic_fingerprint, model_version  # noqa: PLC0415
 
     version = model_version(model)
-    cache = default_cache_root(model, version)
     rel = next(line for line in kit_split("train").read_text().splitlines()
                if line.strip() and not line.startswith("#"))  # fmt: skip
-    if (cache / rel).is_file():
+    cache, tried = find_cache_root(model, version, kinematic_fingerprint(model), rel)
+    if cache is not None:
         return cache
     if os.environ.get(DATASET_ENV):
         return download_retargeted_clips(os.environ[DATASET_ENV], model, version)
     raise MissingMotionData(
-        f"no KIT clips for {model} {version}: run scripts/mimic/retarget_amass.py on "
-        f"the AMASS KIT motions (fills {cache}), or set {KIT_ROOT_ENV}"
+        f"no KIT clips for {model} (myo_sim {version}, kinematic fingerprint "
+        f"{kinematic_fingerprint(model)}) in {', '.join(map(str, tried))}: run "
+        f"scripts/mimic/retarget_amass.py on the AMASS KIT motions (fills {tried[0]}), "
+        f"or set {KIT_ROOT_ENV}"
     )
 
 

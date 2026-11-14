@@ -35,14 +35,15 @@ dependencies = [
     "pandas",
     "osqp",
     "mujoco<4",
-    # 13.0.0 clears the current image advisories, but gradio 6.31.0 still
-    # requires pillow<13. A Colab install that also has gradio, or a tutorial
-    # that pins Pillow 12.2.0, cannot resolve against a 13 floor.
-    "Pillow>=10.1.0,<13",
+    # Patched Pillow wheels require Python >=3.11; 3.10 retains known advisories.
+    "Pillow>=13.0.0; python_version >= '3.11'",
+    "Pillow>=12.3.0,<13; python_version < '3.11'",
+    # Also enforce this floor with pip (tool.uv constraints only affect uv).
+    "filelock>=4.2.5; python_version >= '3.11'",
     "colorednoise>=2.2.0",
     "packaging",
     "ml-collections>=0.1.1",
-    "myo-sim==0.2.4",
+    "myo-sim==0.2.5",
     # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the
     # first shipping cp314, so no single version spans 3.10-3.14; split by marker.
     "onnxruntime<1.21; python_version < '3.14'",
