@@ -301,14 +301,23 @@ def _scale_bodies(
     _scale_tendons(spec, tendon_ratio)
     muscle_ratio = _ratio(data.actuator_length, ref_actuator_length)
     for i, actuator in enumerate(spec.actuators):
-        if int(ref.actuator_gaintype[i]) != int(mujoco.mjtGain.mjGAIN_MUSCLE):
+        is_muscle_gain = int(ref.actuator_gaintype[i]) == int(
+            mujoco.mjtGain.mjGAIN_MUSCLE
+        )
+        is_muscle_bias = int(ref.actuator_biastype[i]) == int(
+            mujoco.mjtBias.mjBIAS_MUSCLE
+        )
+        if not (is_muscle_gain or is_muscle_bias):
             continue
         actuator.lengthrange = ref.actuator_lengthrange[i] * muscle_ratio[i]
         # MuJoCo derives an automatic peak force from the (now scaled) mass.
-        if ref.actuator_gainprm[i, 2] < 0:
+        if is_muscle_gain and ref.actuator_gainprm[i, 2] < 0:
             actuator.gainprm[2] = peak_force[i]
-            if int(ref.actuator_biastype[i]) == int(mujoco.mjtBias.mjBIAS_MUSCLE):
-                actuator.biasprm[2] = peak_force[i]
+        if is_muscle_bias and ref.actuator_biasprm[i, 2] < 0:
+            actuator.biasprm[2] = float(
+                ref.actuator_biasprm[i, 3]
+                / max(float(ref.actuator_acc0[i]), mujoco.mjMINVAL)
+            )
     _align_roots(spec, ref, scaled, body_scales)
 
 
