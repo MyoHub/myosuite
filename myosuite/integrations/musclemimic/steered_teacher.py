@@ -142,6 +142,7 @@ class SteeredTeacher:
         self.heading = heading
         self.runner.obs_adapter = self.adapters[heading]
         self.runner.reset()
+        self.shadow_data.ctrl[:] = 0.0
 
     def set_heading(self, heading: str) -> bool:
         """Switch the goal clip. Does not teleport the body or reset history."""
@@ -156,6 +157,11 @@ class SteeredTeacher:
         return pingpong_frame(self.t, n) if self.pingpong else self.t % n
 
     def action(self, fbvs_data: mujoco.MjData, amap: AgentShadowMap) -> np.ndarray:
+        """Excitations for one FBVs agent: the raw action clipped to ``[0, 1]``.
+
+        The raw action (``[-1, 1]``) stays in the shadow's ``ctrl``: the next
+        observation's excitation block is the previous action, as in training.
+        """
         copy_agent_to_shadow(fbvs_data, self.shadow_data, amap)
         mujoco.mj_forward(self.shadow_model, self.shadow_data)
         act = self.runner.action_for(
@@ -164,6 +170,7 @@ class SteeredTeacher:
             self.goal_frame(),
             history_idx=self.t,
         )
+        self.shadow_data.ctrl[:] = act
         self.t += 1
         return np.clip(act, 0.0, 1.0).astype(np.float32)
 
