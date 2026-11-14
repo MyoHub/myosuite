@@ -93,6 +93,8 @@ def _scores(
         _wrap_increment(sample, nominal, reference["opensim"], case)
         / TOLERANCES["pelvis_wrap_dimensions_m"]
     )
+    for metric, value in scores.items():
+        assert np.isfinite(value), f"{metric}: nonfinite score {value!r}"
     return scores
 
 
@@ -104,6 +106,12 @@ def _regression_score(sample: Mapping[str, Any], stored: Mapping[str, Any]) -> f
         atol = limits["atol_by_record"].get(record, limits["atol"])
         expected = np.asarray(expected, dtype=float)
         actual = np.asarray(sample[record], dtype=float)
+        assert (
+            actual.shape == expected.shape
+        ), f"{record}: shape {actual.shape} != {expected.shape}"
+        assert np.all(np.isfinite(expected)) and np.all(
+            np.isfinite(actual)
+        ), f"{record}: nonfinite value"
         allowed = atol + limits["rtol"] * np.abs(expected)
         worst = max(worst, float(np.max(np.abs(actual - expected) / allowed)))
     return worst
@@ -185,6 +193,26 @@ def test_myosuite_half_reproduces_its_stored_baseline(
             rtol=1e-12,
             atol=1e-15,
         )
+
+
+def test_regression_score_rejects_nonfinite_and_shape_mismatch(
+    reference: dict,
+) -> None:
+    stored = reference["myosuite"]["cases"]["anisotropic_volume"]
+    for record in ("head_site_m", "torso_geom_offsets_m", "torso_mass_kg"):
+        mutated = np.array(stored[record], dtype=float, copy=True)
+        mutated.flat[0] = np.nan
+        with pytest.raises(AssertionError, match=record):
+            _regression_score({**stored, record: mutated}, stored)
+
+    inf_mass = np.array(stored["torso_mass_kg"], dtype=float, copy=True)
+    inf_mass.flat[0] = np.inf
+    with pytest.raises(AssertionError, match="torso_mass_kg"):
+        _regression_score({**stored, "torso_mass_kg": inf_mass}, stored)
+
+    truncated_head = np.asarray(stored["head_site_m"], dtype=float)[:-1]
+    with pytest.raises(AssertionError, match="head_site_m"):
+        _regression_score({**stored, "head_site_m": truncated_head}, stored)
 
 
 def test_mass_scaling_matches_opensim(reference: dict, measured: dict) -> None:
