@@ -380,9 +380,89 @@ class TestSARTorchTransformMatchesSklearn(unittest.TestCase):
         pca = PCA(n_components=N_SYN).fit(acts)
         ica = FastICA(n_components=N_SYN, max_iter=1000, random_state=0)
         x_ica = ica.fit_transform(pca.transform(acts))
-        scaler = MinMaxScaler().fit(x_ica)
-        syn = np.clip(scaler.transform(x_ica[:100]), 0.0, 1.0)
+        scaler = MinMaxScaler((-1, 1)).fit(x_ica)
+        syn = np.clip(scaler.transform(x_ica[:100]), -1.0, 1.0)
         self._assert_matches_sklearn(pca, ica, scaler, syn)
+
+
+@unittest.skipUnless(
+    _torch_available() and _sklearn_available(), "torch/sklearn not available"
+)
+class TestSynergyActionRange(unittest.TestCase):
+    """Extraction and the action term share one synergy range: a policy action in
+    ``[-1, 1]`` spans the fitted synergies, as in the SAR paper's pipeline."""
+
+    N_ACTIONS = 2000
+
+    def setUp(self) -> None:
+        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            SARMuscleActivationActionCfg,
+        )
+        from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
+        from myosuite.integrations.musclemimic.sar_torch_transform import (
+            SARTorchTransform,
+        )
+
+        self.acts = _synergistic_acts()
+        self.model = extract_synergies(self.acts, n_synergies=N_SYN)
+        model = self.model
+        self.action = SARMuscleActivationActionCfg(
+            entity_name="test_entity",
+            actuator_names=tuple(f"muscle_{i}" for i in range(N_MUSCLES)),
+            sar_transform=SARTorchTransform(model.ica, model.pca, model.scaler),
+        ).build(_make_fake_env(n_envs=self.N_ACTIONS, n_muscles=N_MUSCLES))
+
+    def _muscles(self, actions: np.ndarray) -> np.ndarray:
+        """Muscle activations the action term writes for policy *actions*."""
+        import torch
+
+        self.action.process_actions(torch.as_tensor(actions, dtype=torch.float32))
+        return self.action._processed_actions.numpy().copy()
+
+    def test_zero_action_is_the_centre_of_the_fitted_range(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
+
+        m = self.model
+        centre = (m.scaler.data_min_ + m.scaler.data_max_)[None] / 2.0
+        expected = np.clip(
+            m.pca.inverse_transform(m.ica.inverse_transform(centre)), 0.0, 1.0
+        )
+        zero = np.zeros((self.N_ACTIONS, N_SYN))
+        np.testing.assert_allclose(self._muscles(zero)[:1], expected, atol=1e-5)
+        np.testing.assert_allclose(decode_synergies(m, zero)[:1], expected, atol=1e-5)
+
+    def test_actions_in_range_rarely_saturate_the_muscles(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import decode_synergies
+
+        rng = np.random.default_rng(1)
+        actions = rng.uniform(-1.0, 1.0, (self.N_ACTIONS, N_SYN))
+        for muscles in (self._muscles(actions), decode_synergies(self.model, actions)):
+            saturated = np.mean((muscles <= 0.0) | (muscles >= 1.0))
+            self.assertLess(saturated, 0.1)
+
+    def test_reconstruction_error_is_the_reported_vaf(self) -> None:
+        from myosuite.integrations.musclemimic.sar_extraction import (
+            decode_synergies,
+            encode_activations,
+        )
+
+        acts = self.acts.astype(np.float64)
+        decoded = decode_synergies(self.model, encode_activations(self.model, acts))
+        residual = np.sum((acts - decoded) ** 2)
+        total = np.sum((acts - acts.mean(axis=0)) ** 2)
+        self.assertAlmostEqual(1.0 - residual / total, self.model.vaf, delta=2e-3)
+
+    def test_transform_rejects_a_scaler_on_another_range(self) -> None:
+        from sklearn.preprocessing import MinMaxScaler
+
+        from myosuite.integrations.musclemimic.sar_torch_transform import (
+            SARTorchTransform,
+        )
+
+        m = self.model
+        unit = MinMaxScaler().fit(np.stack([m.scaler.data_min_, m.scaler.data_max_]))
+        with self.assertRaisesRegex(ValueError, "load_synergy_model"):
+            SARTorchTransform(m.ica, m.pca, unit)
 
 
 # ---------------------------------------------------------------------------
