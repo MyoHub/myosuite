@@ -184,3 +184,33 @@ def test_half_turn_copies_of_held_out_bouts_stay_out_of_training(
     assert not ha[len(o) :].any()
     np.testing.assert_allclose(xa[len(o) :], half_turn(o[~held]))
     np.testing.assert_allclose(ya[len(o) :], y[~held])
+
+
+def test_train_rejects_empty_training_or_validation_partition(tmp_path: Path) -> None:
+    rng = np.random.default_rng(0)
+    np.savez(
+        tmp_path / "b00000.npz",
+        obs=rng.normal(size=(128, OBS_DIM)).astype(np.float16),
+        act=rng.uniform(0, 1, size=(128, ACT_DIM)).astype(np.float16),
+    )
+    o, y, held = load_data([tmp_path])
+    assert int(held.sum()) == 0
+    with pytest.raises(ValueError, match="non-empty training and validation"):
+        train(o, y, epochs=1, batch=64, held_out=held, log=lambda s: None)
+    with pytest.raises(ValueError, match="non-empty training and validation"):
+        train(
+            o,
+            y,
+            epochs=1,
+            batch=64,
+            held_out=np.ones(len(o), dtype=bool),
+            log=lambda s: None,
+        )
+
+    small_mask = np.zeros(16, dtype=bool)
+    small_mask[10:] = True
+    res = train(
+        o[:16], y[:16], epochs=1, batch=64, held_out=small_mask, log=lambda s: None
+    )
+    assert np.isfinite(res["val_mse"])
+    assert all(torch.isfinite(v).all() for v in res["state"].values())
