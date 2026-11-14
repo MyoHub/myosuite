@@ -217,7 +217,7 @@ def _write_npz(path: Path, nq: int, nv: int) -> None:
         path,
         qpos=np.zeros((4, nq), dtype=np.float64),
         qvel=np.zeros((4, nv), dtype=np.float64),
-        site_xpos=np.zeros((4, 3), dtype=np.float64),
+        site_xpos=np.zeros((4, 1, 3), dtype=np.float64),
         frequency=np.array(120.0, dtype=np.float64),
     )
 
@@ -285,7 +285,7 @@ class TestLoadMotionClip:
         clip = load_motion_clip(p, expected_nq=5, expected_nv=4)
         assert clip.qpos.shape == (4, 5)
         assert clip.qvel is not None and clip.qvel.shape == (4, 4)
-        assert clip.site_xpos is not None
+        assert clip.site_xpos is not None and clip.site_xpos.shape == (4, 1, 3)
         assert clip.frequency_hz == pytest.approx(120.0)
 
     def test_missing_qpos_raises(self, tmp_path: Path) -> None:
