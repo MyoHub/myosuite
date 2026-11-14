@@ -589,6 +589,7 @@ def test_torso_exo_observation_matches_cpu(env_id: str) -> None:
 COUPLED_TWIN_IDS = (
     "myoArmReachFixed-v0",
     "myoArmReachRandom-v0",
+    "myoChallengeChaseTagFBP2-v0",
     "myoFullBodyWaypoint-v0",
     "myoLegDirectionalBackward-v0",
     "myoLegDirectionalForward-v0",
@@ -602,10 +603,9 @@ COUPLED_TWIN_IDS = (
     "myoTorsoExoPoseFixed-v0",
     "myoTorsoPoseFixed-v0",
 )
-# MyoChallenge twins: their CPU envs do not project at reset yet (a competition
-# contract, pinned by the PyPI baselines), so neither do the twins.
+# Table tennis: the CPU env does not project at reset yet (its keyframe holds the
+# paddle off the shoulder couplings), so neither do the twins.
 _PENDING_COUPLED_TWINS = (
-    "myoChallengeChaseTagFBP2-v0",
     "myoChallengeTableTennisP0-v0",
     "myoChallengeTableTennisP1-v0",
     "myoChallengeTableTennisP2-v0",
@@ -652,7 +652,8 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
         cpu.reset(seed=0)
         cpu_qpos = cpu.data.qpos.copy()
         cpu.reset(seed=1)
-        joints = mj.scene["robot"].data.joint_pos.cpu().numpy()
+        robot = next(iter(mj.scene.entities.values()))
+        joints = robot.data.joint_pos.cpu().numpy()
         root = 7 if cpu.model.jnt_type[0] == mujoco.mjtJoint.mjJNT_FREE else 0
         # A deterministic reset is replayed (an exo twin's chains have their own layout).
         if np.array_equal(cpu_qpos, cpu.data.qpos) and joints.shape[1] == (
