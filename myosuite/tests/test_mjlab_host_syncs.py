@@ -123,9 +123,9 @@ def test_walk_terms_read_a_fresh_evaluation(
 
     monkeypatch.setattr(type(done), "components", checked)
     _step_syncs(walk_env, 3)
-    # Per step: the done term, one read per reward term, the success metric.
+    # Per step: the done term, one read per reward term, the two metrics.
     n_rewards = len(walk_env.reward_manager.active_terms)
-    assert len(reads) == 3 * (n_rewards + 2)
+    assert len(reads) == 3 * (n_rewards + 3)
 
 
 # ---------------------------------------------------------------------------

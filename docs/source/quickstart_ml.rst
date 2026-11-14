@@ -165,8 +165,11 @@ means
 * **pose** tasks: the joint errors (target minus current angle) have a norm below the
   task's ``pose_thd`` (rad; e.g. 0.7 for the hand numeral poses);
 * **reach** tasks: every tip site is within the task's reach threshold of its target;
-* **locomotion** (``myoLegWalk``, ``myoLegDirectional*``, terrain walks): upright and
-  the planar COM velocity within 0.5 m/s of the commanded velocity (speed times heading);
+* **locomotion** (``myoLegWalk``, terrain walks, ``myoLegDirectional*``): upright and the
+  planar COM velocity (directional walks: root velocity) within 0.5 m/s of the commanded
+  velocity (speed times heading) on every control step of the last second, so an episode
+  that falls is never a success (``Episode_Metrics/on_target`` logs the share of steps
+  that meet the condition);
 * ``myoLegStandRandom``: the pelvis has reached its (relative) target position.
 
 The training log uses the *sampled* policy (with exploration noise). For muscle tasks

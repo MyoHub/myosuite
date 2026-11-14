@@ -248,7 +248,10 @@ LOCOMOTION_VEL_TOL = 0.5
 
 
 def locomotion_solved(xp: Any, vel_error: Any, fallen: Any) -> Any:
-    """``solved`` flag of the walking tasks: upright and tracking the commanded velocity.
+    """On-target flag of the locomotion tasks: upright and tracking the commanded velocity.
+
+    It is ``on_target`` of the walk and directional tasks, whose ``solved`` is
+    :func:`locomotion_sustained`.
 
     Args:
         xp: Array module (``numpy`` or ``torch``).
@@ -259,6 +262,40 @@ def locomotion_solved(xp: Any, vel_error: Any, fallen: Any) -> Any:
         ``vel_error < LOCOMOTION_VEL_TOL`` and not *fallen*.
     """
     return xp.logical_and(vel_error < LOCOMOTION_VEL_TOL, xp.logical_not(fallen))
+
+
+# The walk tasks are solved once :func:`locomotion_solved` has held on every control
+# step of this many seconds.
+LOCOMOTION_SOLVED_WINDOW_S = 1.0
+
+
+def locomotion_streak(steps: Any, on_target: Any) -> Any:
+    """Count the consecutive control steps on which :func:`locomotion_solved` held.
+
+    Args:
+        steps: The count up to the previous step (int or integer array), 0 after a reset.
+        on_target: :func:`locomotion_solved` of this step (bool or bool array).
+
+    Returns:
+        ``steps + 1`` where *on_target*, else 0.
+    """
+    return (steps + 1) * on_target
+
+
+def locomotion_sustained(
+    steps: Any, dt: float, window_s: float = LOCOMOTION_SOLVED_WINDOW_S
+) -> Any:
+    """``solved`` flag of the walk tasks: on target for *window_s*.
+
+    Args:
+        steps: :func:`locomotion_streak` including this step.
+        dt: Control step (s).
+        window_s: Window (s); 0 gives the per-step flag.
+
+    Returns:
+        Whether *steps* covers the window (at least one step).
+    """
+    return steps >= max(1, math.ceil(window_s / dt - 1e-9))
 
 
 def act_reg(

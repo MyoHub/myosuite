@@ -272,11 +272,15 @@ class RewardSpec:
         weights: Per-term scalar multipliers applied to each term's ``"dense"``
             output before summing.  Defaults to ``1.0`` for unlisted terms.
         extra: Additional keyword arguments forwarded to every term function.
+        solved_window_s: ``solved`` holds only after the terms' ``solved`` flag has held
+            on every control step of this many seconds (the per-step flag is then
+            ``on_target``); 0 keeps the per-step flag.
     """
 
     terms: list[str | Callable] = field(default_factory=lambda: ["pose"])
     weights: dict[str, float] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
+    solved_window_s: float = 0.0
 
     def weight_for(self, term: str) -> float:
         """Return the scalar weight for *term*, defaulting to 1.0.

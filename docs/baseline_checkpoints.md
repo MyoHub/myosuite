@@ -119,6 +119,24 @@ Re-evaluate a checkpoint after any change to an env's observations with
 noticeably (with 64 episodes, differences of a few points are noise). Success rates were measured with
 64 parallel episodes of the deterministic policy.
 
+**Success of the walk tasks (after 3.1.0).** `solved` of `myoLegWalk-v0`, the rough, hilly and stairs walks and their
+`myoSarc`/`myoFati` variants, and `Episode_Metrics/success` of their twins, now mean sustained walking: upright and
+within 0.5 m/s of the target velocity on every control step of the last second. Up to 3.1.0 one such step was enough,
+and the reset keyframe already moves at about the target speed: a zero-action episode that falls after about 0.2 s had
+7 to 10 solved steps, and `evaluate_success` (more than 5 solved steps) gave 100 %. The rates in the table are measured on
+the last step of an episode. An episode that ends in a fall failed before and fails now; an episode that reaches the
+time limit now also needs its whole last second on target. The walk rows were measured with the earlier flag and not
+re-evaluated: they can only stay or drop. Rates from `evaluate_success`, or from any rule that counts an episode with
+one solved step, are not comparable with earlier versions. Observations, actions, rewards and dynamics are unchanged,
+so no checkpoint needs retraining. The per-step flag is still reported as `on_target` (CPU `info`) and
+`Episode_Metrics/on_target` (mjlab, share of an episode's steps).
+
+The directional walks (`myoLegDirectionalForward-v0`, `myoLegDirectionalBackward-v0`, `myoLegDirectionalRandom-v0`)
+use the same rule (one second is 200 of their 0.005 s control steps, of 500 per episode). Random actions that fall
+after about 1 s had 15 to 69 solved steps and scored 100 % with `evaluate_success`; they now score 0 %. Their rows
+(96.9 %, 100 % and 53.8 %) were measured on the last step with the per-step flag and not re-evaluated: they can only
+stay or drop.
+
 **Terrain and CPU evaluation.** A deterministic CPU evaluation is a single trajectory. The mjlab twins of the
 rough, hilly and stairs walk tasks bake one terrain into the height field (Warp shares one `hfield_data` between
 worlds), while the CPU rough-terrain walk draws a new terrain at every reset, so CPU and mjlab success rates on that id

@@ -15,6 +15,30 @@ Changes since **v3.1.0** (2026-11-11).
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
+### Fixed
+
+* **`solved` of the walk tasks means sustained walking.** `myoLegWalk-v0`, the rough, hilly and stairs walks and their
+  `myoSarc`/`myoFati` variants set `solved` on every step on which the body was upright and within 0.5 m/s of the target
+  velocity. The reset keyframe already moves at about the target speed, so a zero-action episode that falls after
+  about 0.2 s had 7 to 10 solved steps and `evaluate_success` (more than 5 solved steps) reported 100 % on all four
+  ids, as did random actions. `solved` is now true only once that condition has held on every control step of the last
+  second of the episode (`LOCOMOTION_SOLVED_WINDOW_S`, 100 control steps; shared terms `locomotion_streak` and
+  `locomotion_sustained` in `terms.base_reward`), so the earliest solved step is step 100 and a fall or a step off
+  target starts the count again. The per-step flag stays available as `on_target` in
+  `info` and the reward dict. The mjlab twins follow: `Episode_Metrics/success` is the new flag on the last step of an
+  episode and the new `Episode_Metrics/on_target` is the share of an episode's steps on target. `solved` has no reward
+  weight in any registered walk config, so rewards, observations and dynamics are unchanged; what changes is every
+  success rate of these ids (`evaluate_success`, `scripts/eval_mjlab_policy.py`, `scripts/train_sb3.py`,
+  `--stop-on-success`, the success curves of tutorial 2.3). See `docs/baseline_checkpoints.md`.
+* **`solved` of the directional walks means sustained walking too.** `myoLegDirectionalForward-v0`,
+  `myoLegDirectionalBackward-v0` and `myoLegDirectionalRandom-v0` counted every step on which the body was upright
+  and within 0.5 m/s of the commanded velocity, so random actions that fall after about 1 s had 15 to 69 solved steps
+  and `evaluate_success` reported 100 % for the forward and backward ids. They now use the same one-second rule as
+  the walks (200 control steps of 0.005 s), through the new `RewardSpec.solved_window_s` of the `TaskConfig` route
+  (default 0: the per-step flag of the reward terms, unchanged for every other task). The per-step flag is `on_target`
+  in `info`; the mjlab twins log `Episode_Metrics/on_target` next to the new `Episode_Metrics/success`. Rewards,
+  observations and dynamics are unchanged. See `docs/baseline_checkpoints.md`.
+
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
