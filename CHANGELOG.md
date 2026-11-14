@@ -29,6 +29,8 @@ Changes since **v3.1.0** (2026-11-11).
 
 ## [3.1.0] - 2026-11-11
 
+* Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
+
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
 
 ### Highlights
