@@ -752,6 +752,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._maybe_flatten_agent_patch(qpos)
 

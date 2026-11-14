@@ -384,6 +384,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = reset_qpos_local
         self.data.qvel[:] = self._init_qvel
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self.cur_rally = 0
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)

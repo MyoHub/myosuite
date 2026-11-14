@@ -183,6 +183,24 @@ there). The rough-terrain policy, from the same keyframe, is unaffected, and the
 seed (on the CPU with random hill heights it goes from 9.4% to 20.7%, footnote ³). Retrain or fine-tune the `myoLegWalk-v0` checkpoint before using it
 with this version. The directional walks, whose start moved by 3.5e-5, were not re-evaluated.
 
+**Coupled joints at reset (MyoChallenge tasks, after 3.1.0).** The CPU envs `myoChallengeChaseTagP1/P2/P2eval-v0`,
+`myoChallengeChaseTagFBP2-v0` (and its mjlab twin), `myoChallengeOslRunFixed/Random-v0`,
+`myoChallengeRelocateP1/P2/P2eval-v0`, `myoChallengeBimanual-v0`, `myoChallengeSoccerP1/P2-v0` and their `myoFati` /
+`myoSarc` variants now also start with the coupled joints on their joint couplings; 3.1.0 had left them as they were.
+The start state moves most for ChaseTag P1/P2/P2eval (walk keyframes 2 and 3 of `myoLegWalk-v0`: patella rotation
+0.74 rad, feet up to 1.6 cm), Relocate (shoulder rhythm up to 0.16 rad, palm 4.3 cm in P1 and 3.0 cm in P2) and OslRun
+(0.16 rad, biological foot up to 1.4 cm); Bimanual, Soccer P2 and ChaseTag FBP2 move by 2.5 mm, 2.3 cm (trunk, from
+the reset noise) and 0.4 mm. The observation, action, control step and reward definitions are unchanged, so the
+env contract hash does not warn. No checkpoint of these ids is published in `myohub/myosuite-3-baselines` (the table
+above has none for `myoChallengeChaseTagFBP2-v0`), so none was re-evaluated. Policies trained on these ids with
+MyoSuite 3.1.0 or earlier, or with the PyPI 2.x MyoChallenge envs, were trained from the old starts: re-evaluate them
+before comparing, in particular ChaseTag P1/P2 policies, which share the keyframe from whose projected start the
+`myoLegWalk-v0` checkpoint falls. `myoChallengeTableTennisP{0,1,2}-v0` (and their mjlab twins) start from a
+re-solved right-arm pose on the couplings: the seven arm joints move by up to 0.42 rad and the shoulder rhythm by up to
+0.59 rad, while the hand keeps its grasp on the paddle (grasp site within 5e-6 m and 2e-4 rad, same contacts); no
+table-tennis checkpoint is published, but policies trained on the old keyframe start from a different arm pose.
+`myoChallengeChaseTagFBVs-v0` is unchanged, and the tutorial files below were measured on its two-agent reset.
+
 **Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
 (whose actions are clipped before the linear map to `ctrlrange`) now keep the policy's action std in [0.05, 1.0]. The
 std parameter is projected onto that range before every forward pass and stays trainable at the bounds. MuscleMimic

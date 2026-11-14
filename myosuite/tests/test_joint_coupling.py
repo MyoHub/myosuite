@@ -39,19 +39,20 @@ _ALL_ENV_IDS = sorted(
 # Projected states are on the couplings to rounding (< 1e-15); the smallest offset a
 # reset left (myoLegDirectional*, SoccerP1) was 3.5e-5.
 _RESET_ATOL = 1e-9
-# MyoChallenge envs still reset off their couplings: their resets are a competition
-# contract (PyPI baselines, published policies) and change only with maintainer sign-off.
-_OFF_COUPLING_CHALLENGES = re.compile(
-    r"myo(Fati|Sarc)?Challenge(Bimanual|ChaseTag(FBP2|FBVs|P1|P2|P2eval)"
-    r"|OslRun(Fixed|Random)|Relocate(P1|P2|P2eval)|Soccer(P1|P2)|TableTennis(P0|P1|P2))-v0"
-)
+# Envs that still reset off their couplings, with the reason.
+_OFF_COUPLING_CHALLENGES = {
+    r"myoChallengeChaseTagFBVs-v0": (
+        "the two-agent env resets to its standing pose, patella 5.2 cm off its coupling"
+    ),
+}
 
 
 def _reset_case(env_id: str) -> object:
-    if not _OFF_COUPLING_CHALLENGES.fullmatch(env_id):
-        return env_id
-    reason = "MyoChallenge reset off its joint couplings (pending maintainer sign-off)"
-    return pytest.param(env_id, marks=pytest.mark.xfail(reason=reason, strict=True))
+    for pattern, reason in _OFF_COUPLING_CHALLENGES.items():
+        if re.fullmatch(pattern, env_id):
+            mark = pytest.mark.xfail(reason=reason, strict=True)
+            return pytest.param(env_id, marks=mark)
+    return env_id
 
 
 # A slider with a nonzero ref drives a hinge (all five coefficients), which drives
@@ -188,6 +189,44 @@ def test_every_env_resets_on_its_joint_couplings(env_id: str) -> None:
         raise
     finally:
         env.close()
+
+
+@pytest.mark.parametrize(
+    "env_id", ["myoChallengeChaseTagP1-v0", "myoChallengeRelocateP1-v0"]
+)
+def test_challenge_reset_has_no_coupling_transient(env_id: str) -> None:
+    """Without the projection the same reset accelerates over three times as hard.
+
+    MuJoCo pulls coupled joints that start off their polynomials back at once:
+    max ``|qacc|`` at t=0 was 1355 rad/s^2 from the ChaseTag keyframe and 410 from
+    the Relocate one, against 391 and 115 on the couplings.
+    """
+    env = make_env(env_id)
+    u = env.unwrapped
+    try:
+        env.reset(seed=0)
+        projected = np.abs(u.data.qacc).max()
+        u._project_joint_couplings = lambda: None
+        env.reset(seed=0)
+        raw = np.abs(u.data.qacc).max()
+    finally:
+        env.close()
+    assert raw > 3 * projected, (raw, projected)
+
+
+def test_tabletennis_keyframe_is_on_its_joint_couplings() -> None:
+    """The keyframe the table-tennis reset projects is already on the couplings.
+
+    Its shoulder rhythm was 0.59 rad off them; projected as it was, the grasp site
+    moved 7.9 cm and left the paddle handle.
+    """
+    env = make_env("myoChallengeTableTennisP0-v0")
+    model = env.unwrapped.model
+    try:
+        pos, _ = joint_equality_residuals(model, model.key_qpos[0])
+    finally:
+        env.close()
+    assert np.abs(pos).max() < _RESET_ATOL
 
 
 def _dense_moment(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:

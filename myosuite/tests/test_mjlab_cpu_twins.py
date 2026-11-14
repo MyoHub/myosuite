@@ -589,6 +589,10 @@ def test_torso_exo_observation_matches_cpu(env_id: str) -> None:
 COUPLED_TWIN_IDS = (
     "myoArmReachFixed-v0",
     "myoArmReachRandom-v0",
+    "myoChallengeChaseTagFBP2-v0",
+    "myoChallengeTableTennisP0-v0",
+    "myoChallengeTableTennisP1-v0",
+    "myoChallengeTableTennisP2-v0",
     "myoFullBodyWaypoint-v0",
     "myoLegDirectionalBackward-v0",
     "myoLegDirectionalForward-v0",
@@ -601,14 +605,6 @@ COUPLED_TWIN_IDS = (
     "myoMimic-v0",
     "myoTorsoExoPoseFixed-v0",
     "myoTorsoPoseFixed-v0",
-)
-# MyoChallenge twins: their CPU envs do not project at reset yet (a competition
-# contract, pinned by the PyPI baselines), so neither do the twins.
-_PENDING_COUPLED_TWINS = (
-    "myoChallengeChaseTagFBP2-v0",
-    "myoChallengeTableTennisP0-v0",
-    "myoChallengeTableTennisP1-v0",
-    "myoChallengeTableTennisP2-v0",
 )
 # float32 states: rounding leaves ~1e-7 (positions) and ~1e-6 (velocities up to 5 rad/s).
 _TWIN_COUPLING_ATOL = 1e-5
@@ -652,7 +648,8 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
         cpu.reset(seed=0)
         cpu_qpos = cpu.data.qpos.copy()
         cpu.reset(seed=1)
-        joints = mj.scene["robot"].data.joint_pos.cpu().numpy()
+        robot = next(iter(mj.scene.entities.values()))
+        joints = robot.data.joint_pos.cpu().numpy()
         root = 7 if cpu.model.jnt_type[0] == mujoco.mjtJoint.mjJNT_FREE else 0
         # A deterministic reset is replayed (an exo twin's chains have their own layout).
         if np.array_equal(cpu_qpos, cpu.data.qpos) and joints.shape[1] == (
@@ -664,6 +661,35 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
     finally:
         mj.close()
         cpu.close()
+
+
+def test_tabletennis_twin_projects_its_joint_noise() -> None:
+    """The table-tennis twin puts its noisy reset on the couplings, as the CPU env.
+
+    The registered phases draw no joint noise, so ``qpos_noise_range`` is set here.
+    """
+    import dataclasses  # noqa: PLC0415
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+
+    cfg = load_env_cfg("myoChallengeTableTennisP0-v0")
+    cfg.scene.num_envs = 4
+    params = cfg.events["tt_reset"].params
+    params["tt_cfg"] = dataclasses.replace(
+        params["tt_cfg"], qpos_noise_range={"low": -0.02, "high": 0.02}
+    )
+    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    try:
+        mj.reset()
+        qpos = mj.sim.data.qpos[:].cpu().numpy().astype(np.float64)
+        for i in range(cfg.scene.num_envs):
+            pos, _ = joint_equality_residuals(mj.sim.mj_model, qpos[i])
+            assert np.abs(pos).max() < _TWIN_COUPLING_ATOL, f"env {i}: {pos}"
+        athlete = mj.scene.entities["table_tennis_robot"].data
+        noise = athlete.joint_pos - athlete.default_joint_pos
+        assert noise.abs().max() > 1e-3  # the noise was drawn
+    finally:
+        mj.close()
 
 
 def test_every_coupled_twin_is_listed() -> None:
@@ -680,7 +706,7 @@ def test_every_coupled_twin_is_listed() -> None:
         if _joint_equality_count(env.unwrapped.model):
             unlisted.append(env_id)
         env.close()
-    assert sorted(unlisted) == sorted(_PENDING_COUPLED_TWINS), unlisted
+    assert not unlisted, unlisted
 
 
 def test_every_twin_logs_a_success_metric() -> None:
