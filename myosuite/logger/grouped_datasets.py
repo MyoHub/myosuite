@@ -321,11 +321,12 @@ class Trace:
             )
 
     # Close the logger and post process the data
-    def close(
-        self, u_res=np.uint8, i_res=np.int8, f_res=np.float16, verify_length=False
-    ):
+    def close(self, u_res=None, i_res=None, f_res=None, verify_length=False):
         """
         Close the logs by stacking, flattening, and numpyfies. This an irreversible change
+
+        The ``*_res`` dtypes down-cast unsigned, signed and float data; ``None``
+        (the default) keeps the recorded dtypes, so ``save`` is lossless.
         """
 
         # stack all records
