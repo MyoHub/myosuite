@@ -31,6 +31,9 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* Tutorial 3.3 (inverse dynamics) assigns the reference trajectory to the hand's joints by name. The CSV
+  lists `cmc_abduction` before `cmc_flexion` and the model the other way round, so the positional read swapped
+  the two thumb CMC joints.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
