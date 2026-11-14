@@ -53,11 +53,11 @@ def _make(clip_path: str, num_envs: int = 1) -> tuple[Any, Any]:
 
 @pytest.fixture(scope="module")
 def walk(tmp_path_factory: Any, body: Any) -> Path:
-    """A synthetic 8 s walk along +x at 1 m/s, every independent joint oscillating at 1 Hz."""
+    """A synthetic 30 s walk along +x at 1 m/s, every independent joint oscillating at 1 Hz."""
     from myosuite.envs.myo.tasks.mimic.tracking.motion import write_synthetic_clip
 
     d = tmp_path_factory.mktemp("steer")
-    write_synthetic_clip(d / "walk.npz", body, 8.0, 1.0, 0.05, 0)
+    write_synthetic_clip(d / "walk.npz", body, 30.0, 1.0, 0.05, 0)
     return d / "walk.npz"
 
 
@@ -334,3 +334,38 @@ def test_tracker_plays_a_chasetag_match(tracked: Any) -> None:
         and raw.data.ctrl[np.asarray(raw._meta.act_indices["agent_0"])].max() == 0
     )
     env.close()
+
+
+def test_phase_match_reserves_the_full_episode() -> None:
+    """A late exact match cannot consume the reference before a scored match ends."""
+    from types import SimpleNamespace
+
+    from supermimic.steering import TrackerAgent
+
+    agent = object.__new__(TrackerAgent)
+    agent.hold = 2
+    q = torch.ones(1501, 1)
+    q[1400] = 0  # closest phase is too late for the full match
+    q[30] = 0.1
+    agent.tracker = SimpleNamespace(
+        motion=SimpleNamespace(
+            clip_end=torch.tensor([1500]), frames={"joint_vel": torch.zeros_like(q)}
+        ),
+        heads=SimpleNamespace(stride=10, lookahead=5, q=q),
+        info=SimpleNamespace(indep_cols=[0]),
+    )
+    agent.state = lambda _: (
+        None,
+        None,
+        None,
+        None,
+        torch.zeros(1, 1),
+        torch.zeros(1, 1),
+    )
+    assert agent.match_frame(None) == 1400
+    frame = agent.match_frame(None, minimum_steps=2000)
+    assert frame == 30
+    agent.f = torch.tensor([frame])
+    assert agent.frames_left() * agent.hold >= 2000
+    with pytest.raises(ValueError, match="too short"):
+        agent.match_frame(None, minimum_steps=10000)

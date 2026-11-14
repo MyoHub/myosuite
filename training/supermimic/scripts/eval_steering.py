@@ -76,7 +76,10 @@ def main(argv: list[str] | None = None) -> None:
         help="walking clip (default: KIT 167 walking_medium06 from kit_root or amathislab/musclemimic-retargeted)",
     )
     p.add_argument(
-        "--loop-seconds", type=float, default=15.0, help="length of the looped walk"
+        "--loop-seconds",
+        type=float,
+        default=30.0,
+        help="length of the looped walk (must cover the full match plus lookahead)",
     )
     p.add_argument("--no-directional", action="store_true")
     p.add_argument(
