@@ -13,6 +13,19 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Fixed
+
+* **`myoMimic-v0` mjlab twin: the last step of an episode counts in the reset statistics.** With `reset.auto_reset`
+  (the default) mjlab resets an ended env inside `step()`, before the motion command's update of that step, so the
+  episode was folded into its start bin without its last reward and one frame early. A one-step time-out got return
+  0 where the CPU env records 100 x the step reward (bin estimate 0 instead of 3.74 on a test clip), a three-step one
+  68 % of it, and a failure was booked in the bin of the frame before it. Bins with short episodes, such as starts
+  near a clip end, looked like failures and were over-sampled by the return-based resets (`reset.mode="return"`, the
+  `supermimic` preset). The reset now folds that step first: bin returns and failure bins match the CPU
+  `ResetSampler`, and the logged `task_reward` metric includes the last step. Runs that reset the env themselves
+  (`reset.auto_reset=False`, as `training/supermimic` does) are unchanged. This changes the twin's reset distribution
+  during training, not its observations, actions or rewards.
+
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11

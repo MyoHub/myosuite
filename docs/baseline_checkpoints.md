@@ -80,6 +80,8 @@ name walks in the opposite direction of the new one.
 
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
+`myoMimic-v0` (mjlab twin): with `reset.auto_reset` (the default) the return-based reset statistics now include the last step of every episode, so starts near a clip end are no longer over-sampled and the reset distribution during training differs from 3.1.0. Observations, actions, rewards and the CPU env are unchanged. No `myoMimic-v0` checkpoint is published here, and the myoSuperMimic tutorial files were trained with resets driven by the runner (`reset.auto_reset=False`), which this does not change.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.

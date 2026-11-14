@@ -86,6 +86,8 @@ class MotionCommand(CommandTerm):
         self.f = torch.zeros(self.num_envs, dtype=torch.long, device=dev)
         self.start_bin = torch.zeros(self.num_envs, dtype=torch.long, device=dev)
         self._just_reset = torch.zeros(self.num_envs, dtype=torch.bool, device=dev)
+        self._folded_step = env.common_step_counter
+        """``common_step_counter`` of the last step :meth:`_update_command` folded."""
         self.ep_disc_ret = torch.zeros(self.num_envs, device=dev)
         self.ep_ret = torch.zeros(self.num_envs, device=dev)
         # the proposed reward's largest step reward (also with a method's reward_fn)
@@ -202,6 +204,11 @@ class MotionCommand(CommandTerm):
         bootstrap with their mean reward) and, with ``fail_reset``, into the failure
         rate of the bin they ended in."""
         env, rc, m = self._env, self.task.reset, self.motion
+        if env.common_step_counter == self._folded_step + 1:
+            # Auto-reset inside step(): it runs before that step's command update.
+            ended = torch.zeros_like(self._just_reset)
+            ended[ids] = True
+            self._fold_step(ended)
         g = rc.gamma
         T = env.episode_length_buf[ids].float()
         term = getattr(
@@ -381,11 +388,9 @@ class MotionCommand(CommandTerm):
         self.start_bin.copy_(torch.where(done, bins, self.start_bin))
 
     # ------------------------------------------------------------------ step
-    def _update_command(self, env_ids: torch.Tensor | None) -> None:
-        if env_ids is not None:  # reset path: the reset frame stays
-            self._just_reset[env_ids] = False
-            return
-        stepped = ~self._just_reset
+    def _fold_step(self, stepped: torch.Tensor) -> None:
+        """Add the last step's reward to the episodes of the envs in *stepped* and move
+        them to the next frame."""
         env = self._env
         if self.task.reward_fn is None:
             self.task_reward = env.reward_buf.clone()
@@ -395,6 +400,13 @@ class MotionCommand(CommandTerm):
         self.ep_disc_ret += (self.task.reset.gamma ** (T - 1).clamp(min=0)) * r
         self.ep_ret += r
         self.f += stepped.long()
+
+    def _update_command(self, env_ids: torch.Tensor | None) -> None:
+        if env_ids is not None:  # reset path: the reset frame stays
+            self._just_reset[env_ids] = False
+            return
+        self._fold_step(~self._just_reset)
+        self._folded_step = self._env.common_step_counter
         self._just_reset[:] = False
         self._cache.clear()
 
