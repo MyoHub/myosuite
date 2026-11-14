@@ -833,3 +833,26 @@ def test_materialize_recipe_xml_default_file_is_named_by_content(
     assert list(first.parent.iterdir()) == [first]
     assert first.parent == (tmp_path / "myosuite_recipes").resolve()
     mujoco.MjModel.from_xml_path(str(first))
+
+
+def _tint_first_geom(spec: object, alpha: float = 1.0) -> None:
+    spec.geoms[0].rgba = [1.0, 0.0, 0.0, alpha]
+
+
+def test_a_partial_edit_fn_hits_the_recipe_cache() -> None:
+    """``gymnasium.make`` deep-copies kwargs; a copied partial must still hit."""
+    import copy
+    import functools
+
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core import model_builder
+
+    model_builder.clear_spec_caches()
+    edit = functools.partial(_tint_first_geom, alpha=0.5)
+    for _ in range(4):
+        model, _ = model_builder.build_from_recipe(
+            "elbow_standard", edit_fn=copy.deepcopy(edit)
+        )
+    info = model_builder._recipe_spec.cache_info()
+    assert (info.hits, info.misses) == (2, 2)
+    assert model.geom_rgba[0][3] == pytest.approx(0.5)

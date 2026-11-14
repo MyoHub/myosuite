@@ -1032,6 +1032,38 @@ def clear_spec_caches() -> None:
         clear()
 
 
+@dataclass(frozen=True)
+class _PartialEdit:
+    """A ``functools.partial`` edit with equality by content, for the cache key.
+
+    ``gymnasium.make`` deep-copies its kwargs, which copies a partial into a new
+    object that compares unequal, so a partial ``edit_fn`` never hit the cache.
+    """
+
+    func: Callable[..., None]
+    args: tuple[Any, ...]
+    keywords: tuple[tuple[str, Any], ...]
+
+    def __call__(self, spec: mujoco.MjSpec) -> None:
+        self.func(*self.args, spec, **dict(self.keywords))
+
+
+def _cache_edit_fn(
+    edit_fn: Callable[[mujoco.MjSpec], None] | None,
+) -> Callable[[mujoco.MjSpec], None] | None:
+    """*edit_fn*, with a partial replaced by an equal-by-content :class:`_PartialEdit`."""
+    if isinstance(edit_fn, functools.partial):
+        edit = _PartialEdit(
+            edit_fn.func, edit_fn.args, tuple(sorted(edit_fn.keywords.items()))
+        )
+        try:
+            hash(edit)
+        except TypeError:
+            return edit_fn
+        return edit
+    return edit_fn
+
+
 def _cwd() -> Path | None:
     """Working directory, or ``None`` if it no longer exists."""
     try:
@@ -1071,7 +1103,9 @@ def build_from_recipe(
 
     From its second build in a process (same recipe, edit, working directory
     and kwargs), the spec is kept and every call compiles a private copy of it
-    (see :func:`cached_spec`).
+    (see :func:`cached_spec`). Files a recipe reads are not part of the key:
+    after editing a model file in the running process, call
+    :func:`clear_spec_caches` (or set ``MYOSUITE_SPEC_CACHE=0``).
 
     Args:
         name: Recipe name registered via @model_recipe.
@@ -1086,6 +1120,10 @@ def build_from_recipe(
         >>> model, spec = build_from_recipe("elbow_standard")
     """
     spec = _recipe_spec(
-        name, get_recipe(name), _cwd(), edit_fn, tuple(sorted(kwargs.items()))
+        name,
+        get_recipe(name),
+        _cwd(),
+        _cache_edit_fn(edit_fn),
+        tuple(sorted(kwargs.items())),
     )
     return spec.compile(), spec
