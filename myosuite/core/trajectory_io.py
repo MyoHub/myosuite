@@ -411,7 +411,8 @@ def load_motion_clip(
     shared ``joint_names`` metadata.  A clip with such names (at any width)
     must be resolved against a concrete MuJoCo model via
     :func:`expand_motion_clip_to_model` before its columns are used as model
-    qpos/qvel.
+    qpos/qvel. Arrays share a positive frame count; optional ``site_xpos`` has
+    shape ``(T, S, 3)``.
     """
     npz = np.load(path, allow_pickle=False)
     if "qpos" not in npz.files:
@@ -419,6 +420,8 @@ def load_motion_clip(
     qpos = np.asarray(npz["qpos"], dtype=np.float64)
     if qpos.ndim != 2:
         raise ValueError(f"qpos must be rank-2, got shape {qpos.shape}")
+    if qpos.shape[0] == 0:
+        raise ValueError("qpos must contain at least one frame")
     qpos_joint_names = _decode_name_list(npz, _QPOS_NAME_KEYS)
     if qpos.shape[1] != expected_nq and qpos_joint_names is None:
         raise ValueError(
@@ -439,6 +442,15 @@ def load_motion_clip(
     site_xpos: np.ndarray | None = None
     if "site_xpos" in npz.files:
         site_xpos = np.asarray(npz["site_xpos"], dtype=np.float64)
+        if site_xpos.ndim != 3 or site_xpos.shape[2] != 3:
+            raise ValueError(
+                f"site_xpos must have shape (T, S, 3), got {site_xpos.shape}"
+            )
+    for name, values in (("qvel", qvel), ("site_xpos", site_xpos)):
+        if values is not None and values.shape[0] != qpos.shape[0]:
+            raise ValueError(
+                f"{name} frame count mismatch: expected {qpos.shape[0]}, got {values.shape[0]}"
+            )
     site_names: list[str] | None = None
     if "site_names" in npz.files:
         try:
