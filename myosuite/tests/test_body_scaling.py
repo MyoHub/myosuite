@@ -530,6 +530,32 @@ def test_mass_scales_with_volume_and_strength_is_kept() -> None:
     np.testing.assert_allclose(_peak_force(same), _peak_force(ref))
 
 
+def test_active_and_passive_peak_forces_resolve_independently() -> None:
+    from myosuite.envs.myo.assets._resolve import resolve_elbow_xml  # noqa: PLC0415
+
+    spec = mujoco.MjSpec.from_file(str(resolve_elbow_xml()))
+    act0, act1 = spec.actuators[0], spec.actuators[1]
+    act0.gainprm[2] = -1.0
+    act0.gainprm[3] = 200.0
+    act0.biasprm[2] = 20.0
+    act1.gainprm[2] = 150.0
+    act1.biasprm[2] = -1.0
+    act1.biasprm[3] = 120.0
+
+    ref = spec.copy().compile()
+    body_name = next(
+        b.name for b in spec.bodies[1:] if b.name and ref.body(b.name).mass > 0
+    )
+    scaled = scale_model(spec, {body_name: 1.1})
+
+    expected_active_0 = 200.0 / max(float(ref.actuator_acc0[0]), mujoco.mjMINVAL)
+    expected_passive_1 = 120.0 / max(float(ref.actuator_acc0[1]), mujoco.mjMINVAL)
+    np.testing.assert_allclose(scaled.actuator_gainprm[0, 2], expected_active_0)
+    np.testing.assert_allclose(scaled.actuator_biasprm[0, 2], 20.0)
+    np.testing.assert_allclose(scaled.actuator_gainprm[1, 2], 150.0)
+    np.testing.assert_allclose(scaled.actuator_biasprm[1, 2], expected_passive_1)
+
+
 # qpos0 floats 5 cm, "stand" touches the floor, "tilted" sinks a tilted sole 8.5 cm.
 GROUND_XML = """<mujoco><worldbody>
 <geom name="floor" type="plane" size="2 2 .01"/>
