@@ -1,0 +1,421 @@
+{
+  "description": "Synthetic factors and static pose grid; no measured human subject data.",
+  "coordinates": [
+    "hip_flexion_r",
+    "knee_angle_r",
+    "ankle_angle_r"
+  ],
+  "pose_grid_degrees": [
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      -10,
+      0,
+      0
+    ],
+    [
+      20,
+      0,
+      0
+    ],
+    [
+      50,
+      0,
+      0
+    ],
+    [
+      0,
+      30,
+      0
+    ],
+    [
+      0,
+      60,
+      0
+    ],
+    [
+      0,
+      90,
+      0
+    ],
+    [
+      0,
+      0,
+      -20
+    ],
+    [
+      0,
+      0,
+      20
+    ],
+    [
+      20,
+      30,
+      -10
+    ],
+    [
+      40,
+      60,
+      10
+    ],
+    [
+      60,
+      90,
+      20
+    ]
+  ],
+  "coordinate_frame": "Positions in pelvis anatomical frame: OpenSim x forward, y up, z right. Joint centres are femur/tibia/talus body origins. Positive rotational coordinates have the same names/signs in both models.",
+  "sole_fiducials": {
+    "body": "calcn_r",
+    "local_points_m": [
+      [
+        -0.04,
+        -0.03,
+        0
+      ],
+      [
+        0.16,
+        -0.03,
+        0.04
+      ],
+      [
+        0.16,
+        -0.03,
+        -0.04
+      ]
+    ],
+    "note": "Common synthetic sole landmarks, not source-model contact surfaces; scaled in calcn local axes. OpenSim model has no collision sole geoms. MyoSuite collision support is also recorded separately."
+  },
+  "activation": 1.0,
+  "cases": {
+    "nominal": {
+      "factors": {},
+      "mass": "volume"
+    },
+    "uniform_volume": {
+      "factors": {
+        "pelvis": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "torso": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "femur_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "tibia_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "patella_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "talus_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "calcn_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "toes_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "femur_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "tibia_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "patella_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "talus_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "calcn_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "toes_l": [
+          1.1,
+          1.1,
+          1.1
+        ]
+      },
+      "mass": "volume"
+    },
+    "uniform_keep": {
+      "factors": {
+        "pelvis": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "torso": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "femur_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "tibia_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "patella_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "talus_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "calcn_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "toes_r": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "femur_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "tibia_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "patella_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "talus_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "calcn_l": [
+          1.1,
+          1.1,
+          1.1
+        ],
+        "toes_l": [
+          1.1,
+          1.1,
+          1.1
+        ]
+      },
+      "mass": "keep"
+    },
+    "anisotropic_volume": {
+      "factors": {
+        "pelvis": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "torso": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "femur_r": [
+          1.02,
+          1.09,
+          0.96
+        ],
+        "tibia_r": [
+          0.98,
+          1.07,
+          1.03
+        ],
+        "patella_r": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "talus_r": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "calcn_r": [
+          1.08,
+          0.98,
+          1.04
+        ],
+        "toes_r": [
+          1.08,
+          0.98,
+          1.04
+        ],
+        "femur_l": [
+          1.02,
+          1.09,
+          0.96
+        ],
+        "tibia_l": [
+          0.98,
+          1.07,
+          1.03
+        ],
+        "patella_l": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "talus_l": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "calcn_l": [
+          1.08,
+          0.98,
+          1.04
+        ],
+        "toes_l": [
+          1.08,
+          0.98,
+          1.04
+        ]
+      },
+      "mass": "volume"
+    },
+    "anisotropic_keep": {
+      "factors": {
+        "pelvis": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "torso": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "femur_r": [
+          1.02,
+          1.09,
+          0.96
+        ],
+        "tibia_r": [
+          0.98,
+          1.07,
+          1.03
+        ],
+        "patella_r": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "talus_r": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "calcn_r": [
+          1.08,
+          0.98,
+          1.04
+        ],
+        "toes_r": [
+          1.08,
+          0.98,
+          1.04
+        ],
+        "femur_l": [
+          1.02,
+          1.09,
+          0.96
+        ],
+        "tibia_l": [
+          0.98,
+          1.07,
+          1.03
+        ],
+        "patella_l": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "talus_l": [
+          1.03,
+          0.98,
+          1.04
+        ],
+        "calcn_l": [
+          1.08,
+          0.98,
+          1.04
+        ],
+        "toes_l": [
+          1.08,
+          0.98,
+          1.04
+        ]
+      },
+      "mass": "keep"
+    }
+  },
+  "muscles": [
+    "iliacus_r",
+    "recfem_r",
+    "vasmed_r",
+    "soleus_r",
+    "gasmed_r",
+    "tibant_r"
+  ],
+  "joint_center_bodies": [
+    "femur_r",
+    "tibia_r",
+    "talus_r"
+  ],
+  "body_metrics_order": [
+    "pelvis",
+    "femur_r",
+    "tibia_r",
+    "talus_r",
+    "calcn_r"
+  ],
+  "force_and_torque_definition": "Isometric state at activation 1 and zero coordinate speeds. Forces are normalized tendon forces; torque sums the six listed muscles only. OpenSim uses compliant Millard muscle equilibrium with pennation; MuJoCo uses its inextensible-tendon muscle model and analytic fibre coordinate, without pennation.",
+  "mass_mode": "volume: ModelScaler preserve_mass_distribution=false, subject mass=-1, MyoSuite mass=volume. keep: preserve_mass_distribution=true, subject mass=-1, MyoSuite mass=keep. No global mass normalization; compare body scaling ratios because nominal model masses differ."
+}
