@@ -94,7 +94,9 @@ What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below t
   `main` and go into `v3.1.0`; the `v3.0` checkpoints match only the earlier gears (*Motor finger gears* below).
 - **`myoChallengeChaseTagFBVs-v0` and `myoChallengeChaseTagFBP2-v0`** run on `myo_sim`'s `myofullbody` with 10 s
   episodes. Policies trained on the `musclemimic_models` body before 3.1 do not transfer reliably; the 1v1 baseline is
-  `onnx/chasetag_fbvs_baseline.onnx` (*`myoChallengeChaseTagFBVs-v0`* below).
+  `onnx/chasetag_fbvs_baseline.onnx` (*`myoChallengeChaseTagFBVs-v0`* below). After 3.1.0 its training reward
+  changed (potential-based proximity, no per-step survival reward for the chaser); observations, actions and the
+  score did not, so the baseline still plays, but it was trained on the old reward.
 - **Leg resets on the knee couplings (#630).** `myoLegWalk-v0`, the terrain walks, `myoLegStandRandom-v0` and the
   directional walks start with the coupled knee joints on their polynomials. The published `myoLegWalk-v0` checkpoint
   was trained from the old start and falls from the new one; the rough-terrain checkpoint is unaffected (*Coupled knee
