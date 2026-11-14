@@ -1,0 +1,32 @@
+{
+  "name": "custom_lab_emg_example",
+  "signal_kind": "raw",
+  "sampling_rate_hz": 2000.0,
+  "kinematics_rate_hz": 100.0,
+  "filter": {
+    "bandpass_hz": [20.0, 450.0],
+    "notch_hz": 50.0,
+    "lowpass_hz": 6.0,
+    "normalize": "mvc"
+  },
+  "channel_map": {
+    "name": "forearm_surface_8ch",
+    "version": 1,
+    "bindings": [
+      {"channel": "FCR", "actuators": ["FCR_r"]},
+      {"channel": "FCU", "actuators": ["FCU_r"]},
+      {"channel": "ECR", "actuators": ["ECRL_r", "ECRB_r"], "weights": [0.5, 0.5]},
+      {"channel": "EDC", "actuators": ["EDC2_r", "EDC3_r", "EDC4_r", "EDC5_r"]},
+      {"channel": "finger_flexors", "fmg": "Wrist-Flexor", "side": "r"}
+    ]
+  },
+  "trials": [
+    {
+      "trial_id": "subj01_grasp_01",
+      "emg_path": "subj01/grasp_01_emg.csv",
+      "kinematics_path": "subj01/grasp_01_angles.mot",
+      "mvc_peaks": [0.45, 0.40, 0.38, 0.42, 0.50],
+      "window_s": [0.5, 4.5]
+    }
+  ]
+}
