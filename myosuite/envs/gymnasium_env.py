@@ -425,16 +425,20 @@ class MyoGymnasiumEnv(gym.Env):
 
         ``qpos0``, keyframes, clip frames and reset noise can leave the dependent
         joints (knee mechanism, patella, shoulder rhythm) off the couplings their
-        equality constraints enforce; :meth:`reset` calls this before ``mj_forward``.
+        equality constraints enforce; :meth:`reset` calls this before ``mj_forward``,
+        and so must a ``reset`` override. The couplings are read once per model: clear
+        ``_joint_couplings`` after editing ``qpos0``, ``eq_data`` or ``eq_active0``.
         """
         from myosuite.physics.joint_coupling import (
             JointCouplings,
             project_joint_couplings,
         )
 
-        project_joint_couplings(
-            JointCouplings.from_model(self.model), self.data.qpos, self.data.qvel
-        )
+        cached = getattr(self, "_joint_couplings", None)
+        if cached is None or cached[0] is not self.model:
+            cached = (self.model, JointCouplings.from_model(self.model))
+            self._joint_couplings = cached
+        project_joint_couplings(cached[1], self.data.qpos, self.data.qvel)
 
     # ------------------------------------------------------------------
     # Helpers

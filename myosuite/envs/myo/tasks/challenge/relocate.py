@@ -334,6 +334,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         else:
             self.data.qpos[:] = self._init_qpos
         self.data.qvel[:] = self._init_qvel
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         # P2eval object/geom randomization can leave residual contacts. Cap
         # rejection sampling so reset cannot spin forever (SB3 hang).
@@ -350,6 +351,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             else:
                 self.data.qpos[:] = self._init_qpos
             self.data.qvel[:] = self._init_qvel
+            self._project_joint_couplings()
             mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))

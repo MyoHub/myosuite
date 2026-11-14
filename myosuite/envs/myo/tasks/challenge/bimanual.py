@@ -529,6 +529,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.data.qpos[object_qpos_adr : object_qpos_adr + 3] = (
             self.start_pos + np.array([0, 0, 0.1])
         )
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self.init_obj_z = self.data.site_xpos[self.obj_sid][-1]
         self.init_palm_z = self.data.site_xpos[self.palm_sid][-1]
