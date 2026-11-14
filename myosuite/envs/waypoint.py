@@ -12,6 +12,7 @@ The goal logic lives in :mod:`myosuite.terms.waypoint`, shared with the twin.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,10 +20,12 @@ from typing import Any
 import gymnasium as gym
 import mujoco
 import numpy as np
+from gymnasium.utils import EzPickle
 from numpy.typing import ArrayLike
 
 from myosuite.core.model_builder import build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
+from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.terms.base_obs import joint_vel_obs, muscle_act_obs
 from myosuite.terms.waypoint import (
     WaypointRewardCfg,
@@ -164,7 +167,7 @@ def build_model(
     return spec.compile()
 
 
-class WaypointEnv(MyoGymnasiumEnv):
+class WaypointEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
     """Reach ordered world-frame XY waypoints with a site of the actor.
 
     Args:
@@ -208,12 +211,16 @@ class WaypointEnv(MyoGymnasiumEnv):
             or frame_skip < 1
         ):
             raise ValueError("frame_skip must be a positive integer")
+        orig_model = copy.deepcopy(model) if model is not None else None
+        orig_recipe = model_recipe
         if model is None:
             if model_recipe is None and model_path is None:
                 model_recipe = DEFAULT_MODEL_RECIPE
             model = build_model(model_recipe, model_path, edit_fn)
         elif model_recipe is not None or model_path is not None or edit_fn is not None:
             raise ValueError("Pass a compiled model or a model source, not both")
+        else:
+            model = copy.deepcopy(orig_model)
         self.task = task or WaypointTaskCfg()
         site_id = mujoco.mj_name2id(
             model, mujoco.mjtObj.mjOBJ_SITE, self.task.site_name
@@ -221,8 +228,22 @@ class WaypointEnv(MyoGymnasiumEnv):
         if site_id < 0:
             raise ValueError(f"No site {self.task.site_name!r} in the model")
         super().__init__(frame_skip=int(frame_skip), render_mode=render_mode)
+        EzPickle.__init__(
+            self,
+            orig_model,
+            task=task,
+            model_recipe=orig_recipe,
+            model_path=model_path,
+            edit_fn=edit_fn,
+            initial_qpos=initial_qpos,
+            initial_qvel=initial_qvel,
+            frame_skip=frame_skip,
+            render_mode=render_mode,
+            seed=seed,
+        )
         self.seed(seed)
         self.model, self.data = model, mujoco.MjData(model)
+        self._muscle_act_ind = self.model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE
         self._ctrl_dt = model.opt.timestep * self.frame_skip
         self.metadata = {
             **self.metadata,
@@ -288,6 +309,7 @@ class WaypointEnv(MyoGymnasiumEnv):
                 np, self._start, self._start_yaw, u[0], u[1], task.route
             )
         self._waypoints.flags.writeable = False
+        self._run_reset_stages()
         next_index = np.asarray(0)
         return {
             "next_index": next_index,
@@ -349,9 +371,8 @@ class WaypointEnv(MyoGymnasiumEnv):
         action = np.asarray(action, dtype=float)
         if action.shape != self.action_space.shape or not np.isfinite(action).all():
             raise ValueError("action must be finite and match action_space.shape")
-        self.data.ctrl[:] = np.clip(
-            action, self.action_space.low, self.action_space.high
-        )
+        ctrl = np.clip(action, self.action_space.low, self.action_space.high)
+        self.data.ctrl[:] = self._run_ctrl_stages(ctrl)
         self._step_physics()
         state = self._task_state
         failed = np.asarray(self._failed())

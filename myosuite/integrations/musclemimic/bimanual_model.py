@@ -444,12 +444,11 @@ def compile_mimic_bimanual_mjmodel(
         Tuple of compiled model, the post-edit spec, and resolved XML path.
     """
     spec, xml_path = build_mimic_bimanual_spec(config)
-
+    spec.option.timestep = float(config.sim_dt)
+    spec.option.iterations = int(config.model_iterations)
+    spec.option.ls_iterations = int(config.model_ls_iterations)
+    spec.option.disableflags = int(config.model_disableflags)
     mj_model = spec.compile()
-    mj_model.opt.timestep = float(config.sim_dt)
-    mj_model.opt.iterations = int(config.model_iterations)
-    mj_model.opt.ls_iterations = int(config.model_ls_iterations)
-    mj_model.opt.disableflags = int(config.model_disableflags)
     return mj_model, spec, xml_path
 
 

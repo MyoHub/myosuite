@@ -499,6 +499,19 @@ class SarcopeniaWrapper(
         apply_sarcopenia_to_model(host.model, force_scale=force_scale)
         host._sarcopenia_applied = True
 
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {"force_scale": self.force_scale}
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        env = state["env"]
+        if getattr(env.unwrapped, "_sarcopenia_applied", False):
+            kwargs = state["kwargs"]
+            RecordConstructorArgs.__init__(self, **kwargs)
+            gym.Wrapper.__init__(self, env)
+            self.force_scale = kwargs.get("force_scale", 0.5)
+            return
+        super().__setstate__(state)
+
 
 _CONDITION_WRAPPERS = {
     "sarcopenia": "SarcopeniaWrapper",

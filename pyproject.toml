@@ -145,6 +145,7 @@ docs = [
     "sphinx>=7.0",
     "sphinx-rtd-theme>=2.0",
     "sphinx-autodoc-typehints>=2.0",
+    "sphinx-autoapi>=2.0",
 ]
 
 musclemimic = [
@@ -183,12 +184,12 @@ packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite
     # `myosuite.agents` is intentionally excluded from `packages` (see above),
     # but we also need to avoid shipping large training assets that live under
     # `myosuite/agents/` via broad package-data globs.
+    "biomechanics/**",
     "core/**",
     "envs/**",
     "integrations/**",
     "logger/**",
     "physics/**",
-    "robot/**",
     "scenes/**",
     "terms/**",
     "utils/**",
@@ -197,7 +198,12 @@ packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite
 
 [tool.setuptools.exclude-package-data]
 # Keep docs-only MJX benchmark plots and local bytecode caches out of the wheel.
-"myosuite" = ["envs/myo/backends/mjx/*.png", "**/__pycache__/*", "**/*.pyc"]
+"myosuite" = [
+    "envs/myo/backends/mjx/*.png",
+    "**/__pycache__/*",
+    "**/*.pyc",
+    "**/.myosuite_resolved_*.xml",
+]
 
 [project.scripts]
 myosuite-export-onnx = "myosuite.utils.export_onnx:main"

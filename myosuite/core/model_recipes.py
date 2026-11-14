@@ -620,7 +620,7 @@ def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     ts_ball.name = "target_ball"
     ts_ball.type = mujoco.mjtGeom.mjGEOM_SPHERE
     ts_ball.size = [0.045, 0.045, 0.045]
-    ts_ball.rgba = [2.0, 0.0, 0.2, 0.1]
+    ts_ball.rgba = [1.0, 0.0, 0.2, 0.1]
 
     return spec
 
@@ -1815,8 +1815,15 @@ for _mm_name in _MUSCLEMIMIC_NAMES:
 
     _make_mm_recipe(_name)
 
-# The full-body spec compiles to the same model as _musclemimic_build (its timestep is
-# set on the spec), so build_from_recipe and the mjlab twins can use it directly.
-register_spec_recipe(
-    "musclemimic_fullbody", lambda: _musclemimic_build("musclemimic_fullbody")[1]
-)
+
+# Each MuscleMimic spec sets its options on the spec before compilation, so
+# build_from_recipe and the mjlab twins can build every registered variant directly.
+def _make_mm_spec_builder(name: str) -> Callable[[], mujoco.MjSpec]:
+    def _build_spec() -> mujoco.MjSpec:
+        return _musclemimic_build(name)[1]
+
+    return _build_spec
+
+
+for _mm_spec_name in _MUSCLEMIMIC_NAMES:
+    register_spec_recipe(_mm_spec_name, _make_mm_spec_builder(_mm_spec_name))
