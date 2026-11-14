@@ -29,11 +29,12 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from myosuite import make_env
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+from myosuite import make_env  # noqa: E402
 
 # MuJoCo Python bindings expose these members dynamically at runtime.
 # pylint: disable=no-member,broad-exception-caught

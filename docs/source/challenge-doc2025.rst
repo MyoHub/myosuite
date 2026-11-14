@@ -102,7 +102,7 @@ Observation Space
 
 **Description of observations**
 
-    - The paddle reaching error measures the distance between the MPL and the object
+    - The paddle reaching error measures the distance between the paddle and the ping-pong ball
     - The touching information indicates the pingpong ball's contact with various objects in the environment:
         - Paddle: Whether the ball is in contact with the paddle.
         - Own: Whether the ball is in contact with the agent.
@@ -158,7 +158,7 @@ Starting Criteria: Phase 2 :code:`myoChallengeTableTennisP2-v0` (Please note the
   but is not connected.
 - Table Tennis Paddle: mass is randomized between 100g - 150g.
 - Table tennnis friction: a +- change between 0 - 0.1, 0 - 0.001, 0 - 0.00002 from nominal value: [1.0, 0.005, 0.0001] in respective geom direction in (myoChallengeTableTennisP1-v0)
-- The starting position of the ball is randomly reset between [-0.5, 0.50, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
+- The starting position of the ball is randomly reset between [-0.80, 0.50, 1.50] and [-1.25, -0.50, 1.40] in x, y, z direction respectively at the start of the episode.
 - Maximum time: 3 seconds
 
 
@@ -257,7 +257,7 @@ Observation Space
 | Body COM vel in world frame            | model_root_vel | 6         |
 +----------------------------------------+----------------+-----------+
 
-Note: The body COM is represents with a freejoint, hence the 7 dimensions, in the form of [x, y, z, qx, qy, qz, qw] Similarly the body COM velocity is represented with 6 dimensions, in the form of [vx, vy, vz, alpha, beta, gamma]
+Note: The body COM is represented with a freejoint, hence the 7 dimensions, in the form of [x, y, z, qw, qx, qy, qz]. Similarly the body COM velocity is represented with 6 dimensions, in the form of [vx, vy, vz, alpha, beta, gamma].
 
 
 

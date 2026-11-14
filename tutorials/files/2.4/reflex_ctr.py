@@ -71,7 +71,8 @@ class LocoCtrl:
         "phi_hip",
         "phi_knee",
         "phi_ankle",
-        "dphi_knee" "F_RF",
+        "dphi_knee",
+        "F_RF",
         "F_VAS",
         "F_GAS",
         "F_SOL",
@@ -271,7 +272,7 @@ class LocoCtrl:
         cp["BFSH_7_DG_alpha"] = params[cp_map["BFSH_7_DG_alpha"]] * 0.2
         cp["BFSH_7_PG"] = params[cp_map["BFSH_7_PG"]] * 2.0
         cp["BFSH_8_DG"] = params[cp_map["BFSH_8_DG"]] * 1.0
-        cp["BFSH_8_PG"] = params[cp_map["BFSH_8_DG"]] * 1.0
+        cp["BFSH_8_PG"] = params[cp_map["BFSH_8_PG"]] * 1.0
         cp["BFSH_9_G_HAM"] = params[cp_map["BFSH_9_G_HAM"]] * 2.0
         cp["BFSH_9_HAM0"] = params[cp_map["BFSH_9_HAM0"]] * 0.3
         cp["BFSH_10_PG"] = params[cp_map["BFSH_10_PG"]] * 2.0
