@@ -49,9 +49,12 @@ jobs:
 
     defaults:
       run:
-        shell: bash -l {0}
+        shell: bash -el -o pipefail {0}
 
     runs-on: ${{ matrix.os }}
+    # Tests and sourced tutorial scripts must keep the fresh pip resolution.
+    env:
+      UV_NO_SYNC: "true"
     strategy:
       fail-fast: false
       # PRs into dev run Ubuntu 3.10 only; macOS, Windows and Python 3.14 run
@@ -109,8 +112,8 @@ jobs:
       - name: Prepare Linux (headless OpenGL for MuJoCo / notebooks)
         if: ${{ runner.os == 'Linux' }}
         run: |
-          sudo apt-get update -y -qq
-          sudo apt-get install -y xvfb libgl1 libegl1
+          sudo apt-get -o Acquire::Retries=3 update -y -qq
+          sudo apt-get -o Acquire::Retries=3 install -y xvfb libgl1 libegl1
           echo "DISPLAY=:99" >> $GITHUB_ENV
           echo "MUJOCO_GL=egl" >> $GITHUB_ENV
           sudo /usr/bin/Xvfb :99 -screen 0 1280x1024x24 &
@@ -134,6 +137,11 @@ jobs:
         run: |
           uv pip install -e ".[mjlab,rl]"
           uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch ipython "musclemimic_models==1.0.6" usd-core
+
+      - name: Check and report resolved dependencies
+        run: |
+          uv pip check
+          uv pip list
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
         if: ${{ runner.os != 'Linux' }}
