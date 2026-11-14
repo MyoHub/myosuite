@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import copy
+import warnings
+from dataclasses import replace
 
 import mujoco
 import numpy as np
@@ -317,3 +319,48 @@ def test_max_activation_bounds_one_frame() -> None:
         so.solve(qpos, zero, zero, load).activation, free.activation, atol=1e-6
     )
     env.close()
+
+
+def test_unsolved_frames_warn_once_per_clip(arm_motion) -> None:
+    """Frames OSQP stops on (here at ``max_iter``) are flagged, not returned silently.
+
+    Before, a 1-iteration solve returned every frame as an ordinary result and
+    warned nothing, with activations up to 0.7 off the solved clip.
+    """
+    model, rec = arm_motion
+    clip = (model, rec["qpos"][:5], rec["qvel"][:5], rec["qacc"][:5])
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        static_optimization(*clip)
+        solved = [w for w in record if "did not solve" in str(w.message)]
+        assert not solved
+        out = static_optimization(*clip, config=StaticOptimizationConfig(max_iter=1))
+    failed = out.status != "solved"
+    flagged = [w for w in record if "did not solve" in str(w.message)]
+    assert failed.any()
+    assert len(flagged) == 1, [str(w.message) for w in flagged]
+    assert issubclass(flagged[0].category, UserWarning)
+    assert f"did not solve {failed.sum()} of 5 frames" in str(flagged[0].message)
+
+
+def test_unsolved_frames_raise_or_become_nan(arm_motion) -> None:
+    """``on_failure="raise"`` names the frame; ``"nan"`` blanks only its solution."""
+    model, rec = arm_motion
+    clip = (model, rec["qpos"][:5], rec["qvel"][:5], rec["qacc"][:5])
+    config = StaticOptimizationConfig(max_iter=1, on_failure="raise")
+    with pytest.raises(RuntimeError, match=r"frame \d+ of 5: OSQP did not solve"):
+        static_optimization(*clip, config=config)
+    with pytest.raises(RuntimeError, match="OSQP did not solve"):
+        StaticOptimizer(model, config).solve(
+            rec["qpos"][0], rec["qvel"][0], rec["qacc"][0]
+        )
+    out = static_optimization(*clip, config=replace(config, on_failure="nan"))
+    failed = out.status != "solved"
+    assert failed.any()
+    assert (
+        np.isnan(out.activation[failed]).all() and np.isnan(out.reserve[failed]).all()
+    )
+    assert np.isfinite(out.activation[~failed]).all()
+    assert np.isfinite(out.joint_torque).all()
+    with pytest.raises(ValueError, match="on_failure"):
+        StaticOptimizer(model, replace(config, on_failure="ignore"))
