@@ -163,6 +163,13 @@ does not warn and the checkpoints still load. Only the first steps of an episode
 comparing it with new runs. The single-clip policy above was trained with the unprojected clip starts and was not
 re-evaluated after this change.
 
+**Lookahead at the clip end (MuscleMimic clip mode, after 3.1.0).** The lookahead observation of the clip-mode mjlab
+tasks (`myoMimicFullbody-v0`, `myoMimicBimanual-v0`, the `myoMuscleMimic*` aliases, the SAR tasks) and of the CPU
+`MuscleMimicClipEnvV0` (tutorial 5.2) now holds the last frame for slots past the clip end; it used to wrap to the
+clip start. The observation size and the reward are unchanged, so the checkpoints still load, but within 100 frames
+of a clip end (20 frames apart, 5 slots) a policy now sees other lookahead values. The single-clip policy above and
+policies trained with tutorials 5.2 and 5.3 saw the wrapped values during training; they were not re-evaluated.
+
 **Coupled knee joints at reset (leg tasks).** `myoLegWalk-v0`, the rough, hilly and stairs walks,
 `myoLegStandRandom-v0` and the directional walks now start, on both backends, with the tibia and patella joints of
 each knee on their joint couplings. Walk keyframe 2 set the bent knee's patella rotation 0.74 rad off its coupling
