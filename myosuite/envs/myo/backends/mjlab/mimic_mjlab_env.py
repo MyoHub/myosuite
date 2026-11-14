@@ -72,6 +72,7 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2mat
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
+from myosuite.utils.reach_workspace import reachable_postures
 
 if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
@@ -608,8 +609,9 @@ def _sync_mimic_mjlab_targets(
     """Update ``cache["target_torch"]`` for the current step.
 
     Dispatches to trajectory-clip mode when ``cache["clip_source"]`` is set,
-    otherwise falls back to the original random-box sampling that resamples
-    once per episode (on time regression).
+    otherwise draws each env's targets from the random-posture table
+    (:func:`~myosuite.utils.reach_workspace.reachable_postures`), once per
+    episode (on time regression).
 
     Args:
         env: mjlab environment instance.
@@ -643,12 +645,15 @@ def _sync_mimic_mjlab_targets(
             target is None or last is None or (check_resets and bool(reset.any()))
         )
         if resample:
-            n_sites = int(cache["site_ids"].shape[0])
+            # The tracked sites of one random posture per env (as the CPU env),
+            # placed at the env's origin.
             device = data.qpos.device
-            lo = _device_constant(cache, "lo", cache["lo"], device, torch.float32)
-            hi = _device_constant(cache, "hi", cache["hi"], device, torch.float32)
-            u = torch.rand((n_env, n_sites, 3), device=device, dtype=torch.float32)
-            fresh = lo + (hi - lo) * u
+            table = _device_constant(
+                cache, "target_table", cache["target_table"], device, torch.float32
+            )
+            pick = torch.randint(table.shape[0], (n_env,), device=device)
+            origins = env.scene.env_origins.to(device=device, dtype=torch.float32)
+            fresh = table[pick] + origins[:, None, :]
             cache["target_torch"] = (
                 fresh
                 if target is None
@@ -675,8 +680,8 @@ def _resolve_mimic_mjlab_ids(
     """Lazily build and return the per-env mimic cache.
 
     On the first call for a given ``(env, entity_name, variant)`` triple the
-    cache is populated with model site ids, box bounds, tracking config, and
-    (optionally) a :class:`~myosuite.envs.myo.backends.mjlab.clip_trajectory_source.ClipTrajectorySource`.
+    cache is populated with model site ids, the random-target table (without a
+    clip), tracking config, and (optionally) a :class:`~myosuite.envs.myo.backends.mjlab.clip_trajectory_source.ClipTrajectorySource`.
     Subsequent calls synchronise the targets when their inputs (the step
     counter, the clip start offsets) changed since the last sync, so the
     terms of one step phase share one sync instead of each repeating it; the
@@ -721,8 +726,6 @@ def _resolve_mimic_mjlab_ids(
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
         )
-        lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
-        hi = np.asarray(cfg.target_site_range.high, dtype=np.float64)
     else:
         from myosuite.integrations.musclemimic.fullbody_model import (
             FULLBODY_BODY2SITES_FOR_MIMIC,
@@ -738,8 +741,6 @@ def _resolve_mimic_mjlab_ids(
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
         )
-        lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
-        hi = np.asarray(cfg.target_site_range.high, dtype=np.float64)
 
     site_ids = np.asarray(
         [mj_model.site(name).id for name in site_names],
@@ -782,8 +783,11 @@ def _resolve_mimic_mjlab_ids(
 
     _mimic_mjlab_cache[key] = dict(
         site_ids=site_ids,
-        lo=lo.astype(np.float64),
-        hi=hi.astype(np.float64),
+        target_table=(
+            None
+            if clip_source is not None
+            else reachable_postures(mj_model, site_ids)[1]
+        ),
         tracking=tracking,
         clip=resolved_clip,
         clip_source=clip_source,

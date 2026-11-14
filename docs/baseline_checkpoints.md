@@ -153,6 +153,16 @@ the end of the clip (84-88% per run), the rest end on a pose deviation. It is an
 CPU `myoMimicFullbody-v0` uses random targets), so it sits in its own folder and is loaded with `--checkpoint` and
 `MIMIC_CLIP` (tutorial 5.3).
 
+**Random-target MuscleMimic tasks (after 3.1.0).** Without a clip, `myoMimicFullbody-v0`, `myoMimicBimanual-v0` and
+their aliases `myoMuscleMimicFullbody-v0` / `myoMuscleMimicBimanual-v0` (CPU and mjlab) now draw each episode's
+targets as the tracked sites of one random posture: joint angles uniform within their limits, coupled joints on their
+couplings and within their ranges, the full body resting on the floor its standing pose stands on. Before, every site
+got an independent target in one box, which broke the segment lengths (and moved the immovable torso site of the
+fixed-base bimanual model), so no policy could reach `solved` (mean site error under 0.04 m). The observation, action
+and reward definitions are unchanged, but the target distribution is not: policies trained on the box targets were
+trained on another task. No random-target checkpoint is published; the single-clip checkpoint above tracks its clip
+and is unaffected.
+
 **Coupled knee joints at reset (MuscleMimic models).** The CPU envs `myoMimicFullbody-v0`, `myoFullBodyWaypoint-v0`
 and `myoFullBodyDirectional-v0` and their mjlab tasks now start with the tibia and patella joints of each knee on their
 joint couplings. From `qpos0` and the keyframe the patella started up to 5.2 cm off them and was pulled back over the
