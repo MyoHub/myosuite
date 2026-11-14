@@ -202,6 +202,42 @@ def test_memory_cache_not_stale_after_source_edit(inputs: Inputs) -> None:
     assert after.frames["root_pos"][-1, 0] > before.frames["root_pos"][-1, 0]
 
 
+def test_memory_cache_hit_reads_no_clip(
+    inputs: Inputs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repeated load with unchanged clips neither hashes nor checks a clip file;
+    a clip with new contents (same size, newer modification time) is read again."""
+    from myosuite.biomechanics import retarget
+
+    files, model, _ = inputs
+    args = (files[0], "", "myofullbody", True, 0.02, 1.0)
+    first = motion.load_motion_lib(*args)
+    reads: list[str] = []
+    sha256, check_meta = retarget.file_sha256, retarget.check_refit_meta
+
+    def counted_sha256(path: Any) -> str:
+        reads.append(Path(path).name)
+        return sha256(path)
+
+    def counted_check(path: Any, *rest: Any) -> Any:
+        reads.append(Path(path).name)
+        return check_meta(path, *rest)
+
+    monkeypatch.setattr(retarget, "file_sha256", counted_sha256)
+    monkeypatch.setattr(retarget, "check_refit_meta", counted_check)
+    assert motion.load_motion_lib(*args) is first
+    assert reads == []
+
+    size = os.path.getsize(files[0])
+    motion.write_synthetic_clip(files[0], model, 0.2, 3.0, 0.1, 0)
+    assert os.path.getsize(files[0]) == size
+    stat = os.stat(files[0])
+    os.utime(files[0], ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+    after = motion.load_motion_lib(*args)
+    assert after is not first and Path(files[0]).name in reads
+    assert after.frames["root_pos"][-1, 0] > first.frames["root_pos"][-1, 0]
+
+
 def test_execution_options_do_not_change_task_contract() -> None:
     original = resolve_task()
     changed = dataclasses.replace(

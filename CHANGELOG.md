@@ -24,6 +24,12 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`myoMimic-v0` envs reuse the in-memory motion library without re-reading the clips.** Every env checked the
+  metadata of and hashed every clip file (and five source modules) before it could find the library already in
+  memory: 167 ms for 48 clips of 369 kB here, several seconds for a 972-clip list, paid again by each env of a vector
+  env. The content key is now memoised on each file's size, modification time and inode, so a repeated load reads no
+  clip (14 ms for the same 48 clips); an edited clip gets a new stamp and is checked and hashed again. The library
+  and the disk cache are unchanged.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
