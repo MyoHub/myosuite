@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import torch
 
-from chasetag_teacher.augment import half_turn
+from chasetag_teacher.augment import augment_half_turn, half_turn
 from chasetag_teacher.distill import (
     ACT_DIM,
     OBS_DIM,
@@ -133,6 +133,54 @@ def test_load_data(tmp_path: Path) -> None:
     for i, n in enumerate((3, 5)):
         np.savez(tmp_path / f"b{i:05d}.npz", obs=np.full((n, OBS_DIM), i, np.float16),
                  act=np.full((n, ACT_DIM), i, np.float16))  # fmt: skip
-    o, y = load_data([tmp_path])
+    o, y, held = load_data([tmp_path])
     assert o.shape == (8, OBS_DIM) and y.shape == (8, ACT_DIM) and o.dtype == np.float16
+    assert held.shape == (8,) and held.dtype == bool
     assert float(o[-1, 0]) == 1.0
+
+
+def _bouts(rng: np.random.Generator, n: int, steps: int = 400, dim: int = 32) -> list:
+    """Bouts whose labels depend on bout context: a slowly drifting state and a constant target."""
+    out = []
+    for _ in range(n):
+        drift = np.cumsum(rng.normal(scale=0.01, size=(steps, dim)), 0)
+        y = np.clip(0.5 + 0.25 * rng.normal(size=ACT_DIM), 0, 1)
+        out.append((rng.normal(size=dim) + drift, np.tile(y, (steps, 1))))
+    return out
+
+
+def test_val_mse_is_the_error_on_held_out_bouts(tmp_path: Path) -> None:
+    """Consecutive steps of a bout are near-duplicates: the validation set holds out whole bouts."""
+    rng = np.random.default_rng(0)
+    for i, (o, a) in enumerate(_bouts(rng, 40)):
+        np.savez(tmp_path / f"b{i:05d}.npz", obs=o.astype(np.float16), act=a.astype(np.float16))  # fmt: skip
+    o, y, held = load_data([tmp_path], obs_dim=32, holdout=0.2)
+    assert 0 < held.sum() < len(held)
+    again = load_data([tmp_path], obs_dim=32, holdout=0.2)[2]
+    np.testing.assert_array_equal(held, again)  # fixed per bout
+    torch.manual_seed(0)
+    res = train(o, y, epochs=15, batch=1024, obs_dim=32, held_out=held, log=lambda s: None)  # fmt: skip
+
+    test = _bouts(rng, 40)
+    xt = torch.as_tensor(np.concatenate([b[0] for b in test]), dtype=torch.float32)
+    yt = np.concatenate([b[1] for b in test])
+    net = ActorCritic(32, ACT_DIM)
+    net.load_state_dict(res["state"])
+    with torch.no_grad():
+        pred = net.actor_mean(net.trunk(xt)).clamp(0, 1).numpy()
+    unseen = float(((pred - yt) ** 2).mean())
+    assert unseen / 2 < res["val_mse"] < unseen * 2
+
+
+def test_half_turn_copies_of_held_out_bouts_stay_out_of_training(
+    fbvs_obs: torch.Tensor,
+) -> None:
+    o = fbvs_obs.numpy()
+    y = np.random.default_rng(0).uniform(0, 1, (len(o), ACT_DIM))
+    held = np.arange(len(o)) < 10
+    xa, ya, ha = augment_half_turn(o, y, held)
+    assert len(xa) == len(o) + int((~held).sum())
+    np.testing.assert_array_equal(ha[: len(o)], held)
+    assert not ha[len(o) :].any()
+    np.testing.assert_allclose(xa[len(o) :], half_turn(o[~held]))
+    np.testing.assert_allclose(ya[len(o) :], y[~held])
