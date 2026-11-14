@@ -194,3 +194,21 @@ def test_subject01_walk_lands_on_its_own_markers(myoleg: mujoco.MjModel) -> None
     assert np.mean(lateral) < 4 and np.max(lateral) < 8
     assert np.mean(heading) < 3 and np.max(heading) < 5
     assert np.std(offset, axis=0).max() < 0.025
+
+
+def test_a_wrong_knee_convention_is_reported(
+    myoleg: mujoco.MjModel, tmp_path: Path
+) -> None:
+    """A Rajagopal-style file (knee flexion positive) read with gait2392's signs."""
+    labels = ["time", "knee_angle_r", "knee_angle_l"]
+    rows = np.array([[0.0, 60.0, 10.0], [0.01, 50.0, 5.0]])
+    motion = read_opensim_motion(_write(tmp_path / "k.mot", "", labels, rows))
+    with pytest.warns(UserWarning, match=r"knee_angle_r \(100% of frames\)"):
+        opensim_motion_to_qpos(myoleg, motion, root_body=None)
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        clip = opensim_motion_to_qpos(myoleg, motion, root_body=None, signs={})
+    knee = clip.qpos[:, myoleg.jnt_qposadr[myoleg.joint("knee_angle_r").id]]
+    np.testing.assert_allclose(knee, np.radians([60.0, 50.0]))
