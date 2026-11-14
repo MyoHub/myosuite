@@ -175,3 +175,6 @@ cd training/supermimic && pytest    # the CUDA-graph tests skip without a GPU
 ```
 
 The tests run on synthetic clips (`tests/conftest.py`), so they need no AMASS data. MyoSuite's CI does not run them.
+
+Steering evaluation prepares a 30 s gait loop by default. ChaseTag phase matching reserves the entire
+match horizon plus the policy's reference lookahead; an explicitly shorter loop fails before scoring.
