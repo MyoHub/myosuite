@@ -54,19 +54,22 @@ def _engine_warnings(data: mujoco.MjData) -> dict[str, int]:
 # because each needs a real fix from someone with model-authoring context,
 # not a tolerance tweak. Documented here instead of silently regenerating
 # a baseline or deleting coverage; see the reason string for what's wrong.
-_KNOWN_UNSTABLE_RECIPES: dict[str, str] = {
+_KNOWN_UNSTABLE_RECIPES: dict[str, tuple[type[Exception], str]] = {
     "hand_pen": (
+        AssertionError,
         "Genuine physics instability (mjWARN_BADQACC at DOF 26, ~t=0.37s) "
         "under a zero-control rollout with the myo-sim@dev hand+pen model -- "
-        "not a code bug in this test or in ModelBuilder."
+        "not a code bug in this test or in ModelBuilder.",
     ),
     "hand_sar": (
+        AssertionError,
         "Same free-floating manipulation-object instability as hand_pen "
         "(mjWARN_BADQACC at DOF 26, ~t=0.37s) under zero-control rollout "
         "with the myo-sim hand+SAR model -- not a code bug in this test "
-        "or in ModelBuilder."
+        "or in ModelBuilder.",
     ),
     "walk_standard": (
+        ValueError,
         "attach_fragment('leg').attach_fragment('osl') composes two "
         "overlapping complete leg models rather than an amputation + "
         "prosthesis replacement: MjSpec.attach raises on the first "
@@ -76,27 +79,31 @@ _KNOWN_UNSTABLE_RECIPES: dict[str, str] = {
         "defined twice. Needs the OSL fragment's intended attachment point "
         "(replacing the leg's lower segment, not standing alongside it) "
         "fixed by someone with the model's anatomical intent, not a "
-        "generic asset-dedup workaround in ModelBuilder."
-    ),
-    "musclemimic_myotorso_bimanual": (
-        "myotorso_bimanual_model.py's hardcoded torso/assets paths don't "
-        "match musclemimic_models' actual PyPI layout on any published "
-        "version (checked 1.0.4-1.0.6) -- ValueError opening .../torso/"
-        "assets/meshes/lumbar*.stl, which doesn't exist there. Same bug as "
-        "myosuite/tests/test_myotorso_bimanual_mimic.py."
-    ),
-    "musclemimic_myotorso_bimanual_fingers": (
-        "Same musclemimic_models layout mismatch as "
-        "'musclemimic_myotorso_bimanual' above."
+        "generic asset-dedup workaround in ModelBuilder.",
     ),
 }
 
 
-@pytest.mark.parametrize("recipe_name", list_recipes())
+def _recipe_params() -> list[object]:
+    """Recipes, the known-unstable ones as strict xfails so a fix shows as XPASS."""
+    return [
+        pytest.param(
+            name,
+            marks=pytest.mark.xfail(
+                strict=True,
+                raises=_KNOWN_UNSTABLE_RECIPES[name][0],
+                reason=_KNOWN_UNSTABLE_RECIPES[name][1],
+            ),
+        )
+        if name in _KNOWN_UNSTABLE_RECIPES
+        else name
+        for name in list_recipes()
+    ]
+
+
+@pytest.mark.parametrize("recipe_name", _recipe_params())
 def test_zero_control_rollout_stays_bounded(recipe_name: str) -> None:
     """Pristine reset state + zero control must not blow up within 400 steps."""
-    if recipe_name in _KNOWN_UNSTABLE_RECIPES:
-        pytest.xfail(_KNOWN_UNSTABLE_RECIPES[recipe_name])
     try:
         model = _build(recipe_name)
     except (FileNotFoundError, ImportError) as e:
