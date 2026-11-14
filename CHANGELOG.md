@@ -31,6 +31,12 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`myoChallengeChaseTagFBVs-v0` training reward.** The chaser earned `0.5 exp(-d) + 0.01` on every step and a
+  one-shot +1 for the tag, which also ends the episode: staying 0.6 m from the runner paid 0.28 per step, a
+  discounted return of 28 (gamma 0.99) against 1.33 for tagging now, so the dense reward's optimum was never to tag.
+  The proximity terms now pay the change of `exp(-d)` since the previous step (potential-based shaping, bounded
+  by the weight over an episode), and the per-step survival reward goes to the runner only. Observations, actions,
+  terminations and `info["score"]` are unchanged; policies trained on the old reward should be retrained.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808

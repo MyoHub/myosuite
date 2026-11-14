@@ -67,6 +67,11 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     r_chaser_proximity: float = 0.5
     r_runner_proximity: float = -0.5
 
+    # Pelvis distance after the previous and the current step (proximity shaping).
+    _distance: tuple[float | None, float | None, float] = field(
+        default=(None, None, -1.0), init=False, repr=False, compare=False
+    )
+
     # --- Observation flags ---
     observe_own_joints: bool = True
     observe_own_muscles: bool = True
@@ -144,6 +149,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
         np_random: np.random.Generator,
     ) -> None:
         """Sample task role for this episode."""
+        self._distance = (None, None, -1.0)
         if self.task_choice == "random":
             self.current_task = str(np_random.choice(["CHASE", "EVADE"]))
         else:
@@ -209,8 +215,14 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
         fell: dict[str, bool],
         ko: dict[str, bool],
     ) -> float:
-        from myosuite.terms.multiplayer.chase_tag_vs_reward import compute_agent_reward
+        from myosuite.terms.multiplayer.chase_tag_vs_reward import (
+            _pelvis_distance,
+            compute_agent_reward,
+        )
 
+        _, current, time = self._distance
+        if float(data.time) != time:  # first agent this step: shift the distances
+            self._distance = (current, _pelvis_distance(data, meta), float(data.time))
         tagged = ko[self._actual_runner_id()]  # runner KO ↔ tag event
         chaser = self._actual_chaser_id()
         chaser_fell = bool(fell.get(chaser))
@@ -225,6 +237,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
             opponent_fell=chaser_fell if agent_id != chaser else False,
             actions=actions,
             config=self,
+            prev_distance=self._distance[0],
         )
 
     def get_info(
