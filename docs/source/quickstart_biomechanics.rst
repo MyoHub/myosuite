@@ -31,7 +31,7 @@ Installation
 
    pip install -U myosuite
    # or with uv:
-   uv sync -p 3.10
+   uv sync -p 3.11
 
 See :doc:`install` for a from-source install and Python version support.
 
