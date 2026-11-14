@@ -31,6 +31,10 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `ModularTaskEnv` raises `NotImplementedError` for a `TaskConfig.scene` it does not apply (a scene list or a named
+  scene other than `"flat_floor"`). Every entry of a scene list compiled to the same model, and the scene picked at
+  reset started its first episode from un-reset data; an unknown name was accepted and ignored. No registered id
+  sets either; callables that edit the spec work as before.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
