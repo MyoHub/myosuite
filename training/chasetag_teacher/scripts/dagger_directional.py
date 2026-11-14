@@ -147,7 +147,7 @@ def main() -> None:
                 for i in range(a.episodes)]  # fmt: skip
         with ProcessPoolExecutor(a.workers) as pool:
             rows = list(pool.map(job, jobs, chunksize=1))
-        X, Y = load_data(
+        X, Y, held = load_data(
             [out / "data" / f"r{k}" for k in range(r + 1)], obs_dim=DIR_OBS_DIM
         )
         print(
@@ -155,7 +155,7 @@ def main() -> None:
             flush=True,
         )
         res = train(X, Y, epochs=a.epochs, batch=a.batch, lr=a.lr, device=a.device, init=init,
-                    log=lambda s: print(s, flush=True), obs_dim=DIR_OBS_DIM)  # fmt: skip
+                    log=lambda s: print(s, flush=True), obs_dim=DIR_OBS_DIM, held_out=held)  # fmt: skip
         del X, Y
         torch.save(res["state"], out / f"walker_r{r}.pt")
         torch.save(res, out / f"walker_r{r}_full.pt")

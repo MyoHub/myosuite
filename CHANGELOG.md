@@ -24,6 +24,15 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`training/chasetag_teacher`: DAgger `val_mse` is measured on held-out bouts.** `distill.train` held out 2 % of
+  the steps at random. Consecutive steps of a bout are near-duplicates and the half-turn copy of a validation step was
+  in the training set, so the `val_mse` that `scripts/dagger.py`, `dagger_directional.py` and `retrain.py` log equalled
+  the training error: on synthetic bouts it reported 0.00011 against 0.087 on unseen bouts. `load_data` now also
+  returns a mask of the validation bouts (about 5 % of the bout files, chosen by a seeded hash of the file name, so a
+  bout keeps its side in every round and run), `train(..., held_out=mask)` validates on them only and normalises the
+  inputs on the training samples, and `augment_half_turn` adds the half-turn copies after the split, of training
+  samples only. The same synthetic bouts now report 0.092 against 0.087. The fit uses 5 % fewer bouts; `train`
+  without `held_out` keeps the step split.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 

@@ -82,7 +82,7 @@ def stats(rows: list[dict]) -> dict:
 def main() -> None:
     import torch  # noqa: PLC0415
 
-    from chasetag_teacher.augment import half_turn  # noqa: PLC0415
+    from chasetag_teacher.augment import augment_half_turn  # noqa: PLC0415
     from chasetag_teacher.distill import (
         canonicalise_inplace,
         export_canon_onnx,
@@ -163,9 +163,9 @@ def main() -> None:
                  a.takeover_z) for i in range(a.bouts)]  # fmt: skip
         with ProcessPoolExecutor(a.workers) as pool:
             rows = list(pool.map(job, jobs, chunksize=1))
-        X, Y = load_data([out / "data" / f"r{k}" for k in range(r + 1)])
+        X, Y, held = load_data([out / "data" / f"r{k}" for k in range(r + 1)])
         if a.augment:
-            X, Y = np.concatenate((X, half_turn(X))), np.concatenate((Y, Y))
+            X, Y, held = augment_half_turn(X, Y, held)
         if canon_at(r):
             canonicalise_inplace(X)
             if r == a.canon_from:
@@ -175,7 +175,7 @@ def main() -> None:
             flush=True,
         )
         res = train(X, Y, epochs=a.epochs, batch=a.batch, lr=a.lr, device=a.device, init=init,
-                    log=lambda s: print(s, flush=True))  # fmt: skip
+                    log=lambda s: print(s, flush=True), held_out=held)  # fmt: skip
         del X, Y
         res["canon"] = canon_at(r)
         torch.save(res["state"], out / f"student_r{r}.pt")
