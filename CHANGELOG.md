@@ -24,6 +24,20 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **Random-target MuscleMimic tasks can be solved: the targets are the sites of one posture.**
+  `myoMimicFullbody-v0`, `myoMimicBimanual-v0` and their aliases `myoMuscleMimic{Fullbody,Bimanual}-v0` drew every
+  tracked site's target independently in one box, so a target set broke the skeleton's segment lengths (pelvis to hip
+  0.72 m off on average) and, on the fixed-base bimanual model, moved the immovable torso site; the best attainable
+  mean site error (0.18 m full body, 0.42 m bimanual) was above the 0.04 m `solved` threshold, so the success rate was
+  0 for any policy. Each episode now tracks the sites of one random posture from a fixed table
+  (`myosuite.utils.reach_workspace.reachable_postures`, 10,000 postures): joint angles uniform within their limits,
+  coupled joints on their couplings (postures that push a coupled joint past its range are drawn again), and the
+  full body's root lowered or raised so that its lowest tracked site is as high as when standing. The posture puts
+  every site on its target, so `solved` is reachable; the threshold is unchanged. The CPU envs draw the posture with
+  `np_random`, the mjlab twins (random mode) from the same table on the device. The `mimic_target_low` /
+  `mimic_target_high` constructor kwargs are removed (`TypeError`), and so is
+  `myosuite.terms.mimic_obs.sample_mimic_target_sites`. This changes the target distribution of these ids; see
+  `docs/baseline_checkpoints.md`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 

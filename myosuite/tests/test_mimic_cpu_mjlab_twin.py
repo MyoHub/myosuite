@@ -151,6 +151,43 @@ def test_both_halves_reset_to_one_state_on_the_joint_couplings(env_id: str) -> N
         cpu.close()
 
 
+@pytest.mark.parametrize("env_id", sorted(_ENTITY))
+def test_twin_draws_the_cpu_posture_targets(env_id: str) -> None:
+    """Each env of the twin tracks the sites of one posture of the CPU table, at its
+    own origin, in the frame its tracked sites are read in (it drew box targets)."""
+    require_mjlab()
+    require_mujoco_warp()
+    require_musclemimic_models()
+    from mjlab.envs import ManagerBasedRlEnv
+
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    cfg = copy.deepcopy(_registered_play_cfgs()[env_id])
+    cfg.scene.num_envs = 3
+    cpu = make_env(env_id).unwrapped
+    cpu.reset(seed=0)
+    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    try:
+        mj.reset()
+        variant = "bimanual" if "Bimanual" in env_id else "fullbody"
+        cache = mimic._resolve_mimic_mjlab_ids(mj, _ENTITY[env_id], variant)
+        origins = mj.scene.env_origins[:, None, :]
+        table = torch.as_tensor(cpu._target_sites, dtype=torch.float32)
+        local = cache["target_torch"] - origins
+        gap = (local[:, None] - table[None]).abs().amax(dim=(2, 3)).amin(dim=1)
+        assert (gap < 1e-5).all(), gap
+        site_xpos = mj.scene[_ENTITY[env_id]].data.data.site_xpos
+        sites = site_xpos[:, cache["site_ids"]] - origins
+        np.testing.assert_allclose(
+            sites.numpy(),
+            np.tile(cpu.data.site_xpos[cpu._site_ids], (3, 1, 1)),
+            atol=1e-4,
+        )
+    finally:
+        mj.close()
+        cpu.close()
+
+
 def test_random_target_steps_sync_only_to_detect_resets() -> None:
     """A step reads no host data, except one reset check on a step that reset an env.
 

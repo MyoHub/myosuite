@@ -399,12 +399,10 @@ def _make_cache_with_source(
 
 
 def _make_cache_random(n_sites: int = _N_SITES) -> dict[str, Any]:
-    """Build a cache dict that uses random box sampling (no clip)."""
-    np.random.default_rng(2)
+    """Build a cache dict that draws targets from a posture table (no clip)."""
     return dict(
         site_ids=_make_site_ids(n_sites),
-        lo=np.array([-0.5, -0.5, 0.0]),
-        hi=np.array([0.5, 0.5, 2.0]),
+        target_table=np.random.default_rng(2).uniform(-1.0, 1.0, (64, n_sites, 3)),
         tracking=types.SimpleNamespace(reward_scale=20.0, success_threshold=0.04),
         clip_source=None,
         last_step=None,
@@ -841,20 +839,21 @@ class TestMimicMjlabCacheDispatch:
         assert not torch.allclose(tgt0, tgt1)
 
     def test_sync_random_fallback_still_works(self) -> None:
-        """Random path must be unaffected when no clip_source is in the cache."""
+        """Without a clip each env's targets are one table posture at its origin."""
         cache = _make_cache_random()
         env = _make_mock_env(t=0.0)
+        origins = torch.arange(_N * 3, dtype=torch.float32).reshape(_N, 3)
+        env.scene.env_origins = origins
 
         _sync_mimic_mjlab_targets(env, "robot", cache)
 
         tgt = cache["target_torch"]
         assert tgt is not None
         assert tgt.shape == (_N, _N_SITES, 3)
-        # Values must be within the box
-        lo = torch.as_tensor(cache["lo"], dtype=torch.float32)
-        hi = torch.as_tensor(cache["hi"], dtype=torch.float32)
-        assert (tgt >= lo).all()
-        assert (tgt <= hi).all()
+        table = torch.as_tensor(cache["target_table"], dtype=torch.float32)
+        local = tgt - origins[:, None, :]
+        gap = (local[:, None] - table[None]).abs().amax(dim=(2, 3)).amin(dim=1)
+        assert (gap < 1e-5).all()
 
     def test_sync_random_resamples_on_episode_reset(self) -> None:
         """Random path must resample targets when time regresses."""
