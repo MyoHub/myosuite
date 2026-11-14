@@ -184,6 +184,15 @@ class CpuEnvAccessor:
         """
         return self._data.actuator_force.copy()
 
+    def actuator_moment_sparse(self) -> tuple[np.ndarray, np.ndarray]:
+        """MuJoCo's sparse actuator moments and their row starts.
+
+        Returns:
+            ``(data.actuator_moment, data.moment_rowadr)``, shapes ``(nJmom,)`` and ``(nu,)``
+            (see :class:`myosuite.terms.cocontraction.MomentArmIndex`).
+        """
+        return self._data.actuator_moment, self._data.moment_rowadr
+
 
 # Design note: MyoGymnasiumEnv intentionally does NOT inherit from
 # gymnasium.envs.mujoco.MujocoEnv.  Three contracts are incompatible:

@@ -29,6 +29,11 @@ from myosuite.integrations.musclemimic.model_versions import resolve_models_vers
 from myosuite.physics.quat import quat_yaw
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.terms.base_obs import joint_pos_obs, joint_vel_obs, muscle_act_obs
+from myosuite.terms.cocontraction import (
+    MomentArmIndex,
+    WastedTorqueCfg,
+    wasted_torque_reward,
+)
 from myosuite.terms.mimic_obs import (
     resolve_mimic_site_ids,
     sample_mimic_target_sites,
@@ -68,9 +73,33 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
         self._target_site_pos: np.ndarray | None = None
         self._target_lo = np.asarray(low, dtype=np.float64)
         self._target_hi = np.asarray(high, dtype=np.float64)
+        self._wasted_torque: WastedTorqueCfg | None = None
+        self._moment_index: MomentArmIndex | None = None
 
     def _resolve_mimic_sites(self, names: tuple[str, ...]) -> np.ndarray:
         return resolve_mimic_site_ids(self.model, names)
+
+    def _init_wasted_torque(self, cost: WastedTorqueCfg | None) -> None:
+        """Enable the co-contraction cost on the compiled ``self.model``."""
+        self._wasted_torque = cost
+        if cost is not None:
+            self._moment_index = MomentArmIndex.from_model(
+                self.model, cost.joints, body_mass=cost.body_mass
+            )
+
+    def _add_wasted_torque(self, rwd: dict[str, Any]) -> dict[str, Any]:
+        """Log ``wasted_torque`` (N·m/kg) and subtract its weighted cost from ``dense``."""
+        if self._moment_index is None or self._wasted_torque is None:
+            return rwd
+        cost = wasted_torque_reward(
+            CpuEnvAccessor(self.model, self.data, self._ctrl_dt),
+            {},
+            moment_index=self._moment_index,
+            weight=self._wasted_torque.weight,
+        )
+        rwd["wasted_torque"] = float(cost["wasted_torque"])
+        rwd["dense"] = float(rwd["dense"]) + float(cost["dense"])
+        return rwd
 
 
 class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
@@ -90,6 +119,8 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         site_names: Tracked site names, in target order.
         seed: Optional RNG seed.
         frame_skip: Simulation sub-steps per control step.
+        wasted_torque: Optional co-contraction cost (:mod:`myosuite.terms.cocontraction`);
+            off by default.
         **kwargs: ``mimic_target_low`` / ``mimic_target_high`` box overrides.
     """
 
@@ -100,6 +131,7 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         site_names: tuple[str, ...],
         seed: int | None,
         frame_skip: int,
+        wasted_torque: WastedTorqueCfg | None = None,
         **kwargs: Any,
     ) -> None:
         mt_low = kwargs.pop(
@@ -115,11 +147,13 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
             seed=seed,
             mimic_target_low=mt_low,
             mimic_target_high=mt_high,
+            wasted_torque=wasted_torque,
             **kwargs,
         )
         self.model, self._mj_spec, self._xml_path = compile_fn(cfg)
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
+        self._init_wasted_torque(wasted_torque)
         self._site_ids = self._resolve_mimic_sites(site_names)
         self._target_site_pos = np.zeros((len(self._site_ids), 3), dtype=np.float32)
         self._tracking_cfg = MimicTrackingConfig(
@@ -160,13 +194,15 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         dense = mimic_site_tracking_reward(
             np, site_pos, target, scale=self._tracking_cfg.reward_scale
         )
-        return {
-            "track_err": track_err,
-            "dense": float(dense),
-            "sparse": -track_err,
-            "solved": bool(track_err < self._tracking_cfg.success_threshold),
-            "done": False,
-        }
+        return self._add_wasted_torque(
+            {
+                "track_err": track_err,
+                "dense": float(dense),
+                "sparse": -track_err,
+                "solved": bool(track_err < self._tracking_cfg.success_threshold),
+                "done": False,
+            }
+        )
 
     def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
         assert self._site_ids is not None
@@ -236,6 +272,9 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
     episode reset, then held fixed for the episode. The agent observes it as a
     2-D unit vector appended to the standard kinematic obs.
 
+    ``wasted_torque`` (a :class:`~myosuite.terms.cocontraction.WastedTorqueCfg`) adds the
+    opt-in co-contraction cost; it is off by default.
+
     Registered as ``myoFullBodyDirectional-v0``.
     """
 
@@ -259,6 +298,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         gait_clip_filename: str = DEFAULT_GAIT_FILE,
         angle_override: float | None = None,
         model_version: str | None = None,
+        wasted_torque: WastedTorqueCfg | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -287,6 +327,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             gait_clip_filename=gait_clip_filename,
             angle_override=angle_override,
             model_version=resolved_model_version,
+            wasted_torque=wasted_torque,
             **kwargs,
         )
         cfg = default_mimic_fullbody_config()
@@ -295,6 +336,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         self.model, self._mj_spec, self._xml_path = compile_mimic_fullbody_mjmodel(cfg)
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
+        self._init_wasted_torque(wasted_torque)
 
         self._target_speed = target_speed
         self._w_jpos = w_jpos
@@ -514,16 +556,18 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
             + self._w_survival * survival_r
             - 5.0 * overspeed_penalty
         )
-        return {
-            "gait_jpos": jpos_r,
-            "gait_jvel": jvel_r,
-            "heading": heading_r_gated,
-            "survival": survival_r,
-            "dense": dense,
-            "sparse": heading_r_gated,
-            "solved": heading_r_gated > 0.8,
-            "done": fell,
-        }
+        return self._add_wasted_torque(
+            {
+                "gait_jpos": jpos_r,
+                "gait_jvel": jvel_r,
+                "heading": heading_r_gated,
+                "survival": survival_r,
+                "dense": dense,
+                "sparse": heading_r_gated,
+                "solved": heading_r_gated > 0.8,
+                "done": fell,
+            }
+        )
 
     def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
         self._prev_act = None

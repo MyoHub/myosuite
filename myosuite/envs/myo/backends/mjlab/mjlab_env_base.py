@@ -76,6 +76,14 @@ class MjlabEnvAccessor(EnvAccessor):
         """Muscle activation state, shape ``(N, na)``."""
         return self._data.act
 
+    def muscle_force(self) -> torch.Tensor:
+        """Actuator forces of the scene in N, shape ``(N, nu)``."""
+        return self._data.actuator_force
+
+    def actuator_moment_sparse(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sparse actuator moments and row starts in the scene model's layout."""
+        return self._data.actuator_moment, self._data.moment_rowadr
+
     def site_xpos(self, site_ids: Any) -> torch.Tensor:
         """Cartesian positions of requested sites, shape ``(N, len, 3)``."""
         return self._data.site_xpos[:, site_ids, :]
@@ -169,6 +177,22 @@ class MjlabEntityAccessor(EnvAccessor):
         """Muscle activation state, shape ``(N, na)``."""
         # accepted: no entity.data API for muscle activation — entity.data.data.act
         return self._entity.data.data.act
+
+    def muscle_force(self) -> torch.Tensor:
+        """Actuator forces of the scene in N, shape ``(N, nu)``."""
+        # accepted: no entity.data API for actuator forces — entity.data.data.actuator_force
+        return self._entity.data.data.actuator_force
+
+    def actuator_moment_sparse(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sparse actuator moments of the scene and their per-world row starts.
+
+        Returns:
+            ``(actuator_moment, moment_rowadr)``, shapes ``(N, nJmom)`` and ``(N, nu)``
+            (see :class:`myosuite.terms.cocontraction.MomentArmIndex`).
+        """
+        # accepted: no entity.data API for moment arms — entity.data.data.actuator_moment
+        data = self._entity.data.data
+        return data.actuator_moment, data.moment_rowadr
 
     def site_xpos(self, site_ids: Any) -> torch.Tensor:
         """Entity-local site positions in the CPU world frame, ``(N, k, 3)``.
