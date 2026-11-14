@@ -1322,17 +1322,15 @@ def scale_spec_from_instanthmr(
     z0 = _sole_lowest_z(m0, q0)
 
     for i, ac in enumerate(out.actuators):
-        if ac.gaintype == mujoco.mjtGain.mjGAIN_MUSCLE and ac.gainprm[2] <= 0:
-            f_peak = float(m0.actuator_gainprm[i, 3]) / max(
-                float(m0.actuator_acc0[i]), 1e-10
-            )
+        acc0 = max(float(m0.actuator_acc0[i]), 1e-10)
+        if ac.gaintype == mujoco.mjtGain.mjGAIN_MUSCLE and ac.gainprm[2] < 0:
             gp = np.array(ac.gainprm, dtype=np.float64)
-            gp[2] = f_peak
+            gp[2] = float(m0.actuator_gainprm[i, 3]) / acc0
             ac.gainprm = gp
-            if ac.biastype == mujoco.mjtBias.mjBIAS_MUSCLE:
-                bp = np.array(ac.biasprm, dtype=np.float64)
-                bp[2] = f_peak
-                ac.biasprm = bp
+        if ac.biastype == mujoco.mjtBias.mjBIAS_MUSCLE and ac.biasprm[2] < 0:
+            bp = np.array(ac.biasprm, dtype=np.float64)
+            bp[2] = float(m0.actuator_biasprm[i, 3]) / acc0
+            ac.biasprm = bp
 
     top_roots = [
         b

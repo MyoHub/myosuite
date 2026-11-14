@@ -1399,3 +1399,48 @@ def test_cli_scale_and_muscle_export(myolegs: mujoco.MjModel, tmp_path: Path) ->
     assert meta["subject_body_mass_kg"] == 78.0
     assert meta["muscle_mesh_mode"] == "volumetric"
     assert meta["muscle_glb"] == "subj_walk_muscles.glb"
+
+
+def test_scale_spec_resolves_active_and_passive_muscle_forces_independently() -> None:
+    from myosuite.envs.myo.assets._resolve import resolve_elbow_xml
+
+    spec = mujoco.MjSpec.from_file(str(resolve_elbow_xml()))
+    ac0 = spec.actuators[0]
+    gp0 = np.array(ac0.gainprm, dtype=np.float64)
+    gp0[2], gp0[3] = -1.0, 200.0
+    ac0.gainprm = gp0
+    bp0 = np.array(ac0.biasprm, dtype=np.float64)
+    bp0[2] = 20.0
+    ac0.biasprm = bp0
+
+    ac1 = spec.actuators[1]
+    gp1 = np.array(ac1.gainprm, dtype=np.float64)
+    gp1[2] = 150.0
+    ac1.gainprm = gp1
+    bp1 = np.array(ac1.biasprm, dtype=np.float64)
+    bp1[2], bp1[3] = -1.0, 120.0
+    ac1.biasprm = bp1
+
+    ac2 = spec.actuators[2]
+    gp2 = np.array(ac2.gainprm, dtype=np.float64)
+    gp2[2] = 0.0
+    ac2.gainprm = gp2
+    bp2 = np.array(ac2.biasprm, dtype=np.float64)
+    bp2[2] = 0.0
+    ac2.biasprm = bp2
+
+    m0 = spec.copy().compile()
+    m_scaled = ri.scale_spec_from_instanthmr(spec, {"r_humerus": 1.1}).compile()
+
+    assert m_scaled.actuator_gainprm[0, 2] == pytest.approx(
+        200.0 / float(m0.actuator_acc0[0]), rel=1e-9
+    )
+    assert m_scaled.actuator_biasprm[0, 2] == pytest.approx(20.0, abs=1e-12)
+
+    assert m_scaled.actuator_gainprm[1, 2] == pytest.approx(150.0, abs=1e-12)
+    assert m_scaled.actuator_biasprm[1, 2] == pytest.approx(
+        120.0 / float(m0.actuator_acc0[1]), rel=1e-9
+    )
+
+    assert m_scaled.actuator_gainprm[2, 2] == pytest.approx(0.0, abs=1e-12)
+    assert m_scaled.actuator_biasprm[2, 2] == pytest.approx(0.0, abs=1e-12)
