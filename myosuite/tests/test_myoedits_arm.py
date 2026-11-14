@@ -12,7 +12,7 @@ import pytest
 
 from myosuite.core.model_builder import build_from_recipe
 from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
-from myosuite.utils.spec_processing import delete_joint
+from myosuite.utils.spec_processing import delete_joint, delete_tendon
 
 pytestmark = pytest.mark.tier2
 
@@ -121,6 +121,33 @@ def test_delete_joint_removes_its_dependents() -> None:
     assert model.njnt == 1 and model.neq == 0 and model.nsensor == 0
     assert [model.tendon(i).name for i in range(model.ntendon)] == ["path_t"]
     assert [model.actuator(i).name for i in range(model.nu)] == ["m_path"]
+
+
+@pytest.mark.parametrize("transmission", ["joint", "jointinparent", "tendon"])
+def test_deleting_joint_or_tendon_removes_actuator_sensors(
+    transmission: str,
+) -> None:
+    target = "t" if transmission == "tendon" else "j"
+    spec = mujoco.MjSpec.from_string(
+        '<mujoco><worldbody><body><joint name="j"/>'
+        '<geom size=".1" mass="1"/></body>'
+        '<body><joint name="kept"/><geom size=".1" mass="1"/></body>'
+        '</worldbody><tendon><fixed name="t"><joint joint="j" coef="1"/>'
+        "</fixed></tendon><actuator>"
+        f'<motor name="removed" {transmission}="{target}"/>'
+        '<motor name="retained" joint="kept"/></actuator><sensor>'
+        '<actuatorpos name="removed_sensor" actuator="removed"/>'
+        '<actuatorpos name="retained_sensor" actuator="retained"/>'
+        "</sensor></mujoco>"
+    )
+    spec.compile()
+    if transmission == "tendon":
+        delete_tendon(spec, spec.tendon("t"))
+    else:
+        delete_joint(spec, spec.joint("j"))
+    model = spec.compile()
+    assert [model.actuator(i).name for i in range(model.nu)] == ["retained"]
+    assert [model.sensor(i).name for i in range(model.nsensor)] == ["retained_sensor"]
 
 
 def test_edit_builds_with_lumbrical_nodes() -> None:

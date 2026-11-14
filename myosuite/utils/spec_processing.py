@@ -33,6 +33,16 @@ def compile_with_options(spec: mujoco.MjSpec, model: mujoco.MjModel) -> mujoco.M
     return spec.compile()
 
 
+def _delete_actuator(spec: mujoco.MjSpec, actuator: mujoco.MjsActuator) -> None:
+    for sensor in list(spec.sensors):
+        if (
+            sensor.objtype == mujoco.mjtObj.mjOBJ_ACTUATOR
+            and sensor.objname == actuator.name
+        ):
+            spec.delete(sensor)
+    spec.delete(actuator)
+
+
 def delete_tendon(spec: mujoco.MjSpec, tendon: mujoco.MjsTendon) -> None:
     """Delete *tendon* together with the actuators, equalities and sensors on it.
 
@@ -43,7 +53,7 @@ def delete_tendon(spec: mujoco.MjSpec, tendon: mujoco.MjsTendon) -> None:
     name = tendon.name
     for a in list(spec.actuators):
         if a.trntype == mujoco.mjtTrn.mjTRN_TENDON and a.target == name:
-            spec.delete(a)
+            _delete_actuator(spec, a)
     for e in list(spec.equalities):
         if e.type == mujoco.mjtEq.mjEQ_TENDON and name in (e.name1, e.name2):
             spec.delete(e)
@@ -76,8 +86,15 @@ def delete_joint(spec: mujoco.MjSpec, joint: mujoco.MjsJoint) -> None:
         if e.type == mujoco.mjtEq.mjEQ_JOINT and name in (e.name1, e.name2):
             spec.delete(e)
     for a in list(spec.actuators):
-        if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == name:
-            spec.delete(a)
+        if (
+            a.trntype
+            in (
+                mujoco.mjtTrn.mjTRN_JOINT,
+                mujoco.mjtTrn.mjTRN_JOINTINPARENT,
+            )
+            and a.target == name
+        ):
+            _delete_actuator(spec, a)
     for s in list(spec.sensors):
         if s.objtype == mujoco.mjtObj.mjOBJ_JOINT and s.objname == name:
             spec.delete(s)
