@@ -71,6 +71,9 @@ def test_bimanual_time_out_is_a_truncation() -> None:
     env = make_env("myoChallengeBimanual-v0")
     try:
         env.reset(seed=0)
+        # Without gravity the box cannot drop off the table (a real end), so the
+        # episode runs to the time limit whatever box size the reset drew.
+        env.unwrapped.model.opt.gravity[:] = 0.0
         infos, terminated, truncated = _run_to_the_end(env)
         assert truncated and not terminated
         assert len(infos) == env.spec.max_episode_steps
