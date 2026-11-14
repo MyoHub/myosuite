@@ -379,10 +379,12 @@ def write_clip_pose(
     fa, sa, _ = amap.qpos_pairs[0]
     fva, sva, _ = amap.qvel_pairs[0]
     xy = fbvs_data.qpos[fa : fa + 2].copy() if keep_xy else None
+    prev_quat = fbvs_data.qpos[fa + 3 : fa + 7].copy()
+    prev_vxy = fbvs_data.qvel[fva : fva + 2].copy()
     if face_yaw is not None:
         yaw = float(face_yaw)
     elif keep_yaw:
-        yaw = float(quat_math.quat2yaw(fbvs_data.qpos[fa + 3 : fa + 7]))
+        yaw = float(quat_math.quat2yaw(prev_quat))
     else:
         yaw = None
     clip_yaw = float(quat_math.quat2yaw(clip_qpos[sa + 3 : sa + 7]))
@@ -414,8 +416,9 @@ def write_clip_pose(
     if yaw is not None:
         dpsi = yaw - clip_yaw
         qz = quat_math.axis_angle2quat(np.array([0.0, 0.0, 1.0]), dpsi)
-        fbvs_data.qpos[fa + 3 : fa + 7] = quat_math.mul_quat(
-            qz, clip_qpos[sa + 3 : sa + 7]
+        target_quat = quat_math.mul_quat(qz, clip_qpos[sa + 3 : sa + 7])
+        fbvs_data.qpos[fa + 3 : fa + 7] = (
+            target_quat if alpha >= 1.0 else _nlerp_quat(prev_quat, target_quat, alpha)
         )
     want_travel = float(travel_yaw) if travel_yaw is not None else yaw
     if want_travel is not None:
@@ -423,8 +426,11 @@ def write_clip_pose(
             np.array([0.0, 0.0, 1.0]), want_travel - clip_travel
         )
         lin = quat_math.rot_vec_quat(clip_lin, qz_v)
-        fbvs_data.qvel[fva] = lin[0]
-        fbvs_data.qvel[fva + 1] = lin[1]
+        if alpha >= 1.0:
+            fbvs_data.qvel[fva] = lin[0]
+            fbvs_data.qvel[fva + 1] = lin[1]
+        else:
+            fbvs_data.qvel[fva : fva + 2] = (1.0 - alpha) * prev_vxy + alpha * lin[:2]
     if (
         act is not None
         and fbvs_data.act is not None

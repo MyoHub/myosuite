@@ -454,7 +454,9 @@ class BCActorNet(nn.Module):
         Returns:
             Action array, shape ``(action_dim,)``, dtype float32, in ``[-1, 1]``.
         """
-        t = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
+        t = torch.as_tensor(
+            obs, dtype=torch.float32, device=self.obs_mean.device
+        ).unsqueeze(0)
         return self.forward(t).squeeze(0).clamp(-1.0, 1.0).cpu().numpy()
 
 
@@ -528,12 +530,13 @@ class CheckpointNormalization(nn.Module):
             "_var", torch.ones(shape, dtype=torch.float32).unsqueeze(0)
         )
         self.register_buffer(
-            "_std", torch.ones(shape, dtype=torch.float32).unsqueeze(0)
+            "_std",
+            torch.sqrt(torch.ones(shape, dtype=torch.float32).unsqueeze(0) + self.eps),
         )
         self.register_buffer("count", torch.tensor(0.0, dtype=torch.float32))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self._mean) / (self._std + self.eps)
+        return (x - self._mean) / self._std.clamp_min(self.eps)
 
     @torch.jit.unused
     def update(self, x: torch.Tensor) -> None:
@@ -645,9 +648,10 @@ def _load_dense_checkpoint_into_model(
         def _t(a: np.ndarray) -> torch.Tensor:
             return torch.as_tensor(_writable_float32_array(a), device=dev)
 
+        eps = float(getattr(model.obs_normalizer, "eps", 1e-8))
         model.obs_normalizer._mean.copy_(_t(obs_mean).unsqueeze(0))
         model.obs_normalizer._var.copy_(_t(obs_var).unsqueeze(0))
-        model.obs_normalizer._std.copy_(torch.sqrt(_t(obs_var).unsqueeze(0) + 1e-8))
+        model.obs_normalizer._std.copy_(torch.sqrt(_t(obs_var).unsqueeze(0) + eps))
         model.obs_normalizer.count.copy_(_t(obs_count))
         for dense_idx, linear, norm in zip(
             hidden_indices, linear_layers[:-1], norm_layers, strict=True

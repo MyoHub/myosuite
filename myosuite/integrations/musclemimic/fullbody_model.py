@@ -218,15 +218,29 @@ def _prepare_scene_xml_keep_only_floor(scene_xml: Path) -> Path:
             if use_myosuite_floor_texture:
                 child.set("material", "matfloor")
 
-    with tempfile.NamedTemporaryFile(
-        "w",
-        dir=scene_xml.parent,
-        suffix=".xml",
-        delete=False,
-        encoding="utf-8",
-    ) as tmp:
-        tmp.write(ET.tostring(root, encoding="unicode"))
-        return Path(tmp.name)
+    scene_payload = ET.tostring(root, encoding="unicode")
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=scene_xml.parent,
+            suffix=".xml",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            tmp.write(scene_payload)
+            return Path(tmp.name)
+    except OSError:
+        from myosuite.utils.asset_path_resolver import _anchor_to_model_dir
+
+        _anchor_to_model_dir(root, scene_xml.parent)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            suffix=".xml",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            tmp.write(ET.tostring(root, encoding="unicode"))
+            return Path(tmp.name)
 
 
 def _load_spec_with_floor_only_upstream_scene(xml_path: str) -> mujoco.MjSpec:
@@ -257,15 +271,28 @@ def _load_spec_with_floor_only_upstream_scene(xml_path: str) -> mujoco.MjSpec:
         if not include_rewritten:
             return mujoco.MjSpec.from_file(src.as_posix())
 
-        with tempfile.NamedTemporaryFile(
-            "w",
-            dir=src.parent,
-            suffix=".xml",
-            delete=False,
-            encoding="utf-8",
-        ) as tmp:
-            temp_model_path = Path(tmp.name)
-            tmp.write(ET.tostring(model_root, encoding="unicode"))
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=src.parent,
+                suffix=".xml",
+                delete=False,
+                encoding="utf-8",
+            ) as tmp:
+                temp_model_path = Path(tmp.name)
+                tmp.write(ET.tostring(model_root, encoding="unicode"))
+        except OSError:
+            from myosuite.utils.asset_path_resolver import _anchor_to_model_dir
+
+            _anchor_to_model_dir(model_root, src.parent)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                suffix=".xml",
+                delete=False,
+                encoding="utf-8",
+            ) as tmp:
+                temp_model_path = Path(tmp.name)
+                tmp.write(ET.tostring(model_root, encoding="unicode"))
         return mujoco.MjSpec.from_file(temp_model_path.as_posix())
     finally:
         if temp_model_path is not None and temp_model_path.exists():

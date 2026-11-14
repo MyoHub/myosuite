@@ -3,6 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+from pathlib import Path
 from myosuite.logger.grouped_datasets import Trace, TraceType
 import numpy as np
 import json
@@ -45,7 +46,7 @@ class RoboSetTrace(Trace):
                     elif "d:" in key:
                         dataset["data/d_" + cam] = path[key]
         # user
-        if "user" in path_keys:
+        if "env_infos/obs_dict/user" in path_keys:
             dataset["data/user"] = path["env_infos/obs_dict/user"]
 
         # Derived =====
@@ -63,7 +64,8 @@ class RoboSetTrace(Trace):
 
         # Config =====
         if config_path:
-            config = json.load(open(config_path, "rb"))
+            with Path(config_path).open("rb") as f:
+                config = json.load(f)
             dataset["config"] = config
 
         if "user_cmt" in path.keys():
@@ -98,12 +100,14 @@ class RoboSetTrace(Trace):
         )
 
     # Load
-    def load(self, trace_type, **kwargs):
+    @staticmethod
+    def load(trace_path, trace_type=TraceType.ROBOSET, **kwargs):
         """
         Ensure that input type is RoboSet format before loading
         """
-        trace_type = TraceType.get_type(trace_type)
+        if not isinstance(trace_type, TraceType):
+            trace_type = TraceType.get_type(trace_type)
         assert (
             trace_type == TraceType.ROBOSET
         ), "RoboSetTrace requires TraceType.ROBOSET as trace_type"
-        super().load(trace_type=trace_type, **kwargs)
+        return Trace.load(trace_path=trace_path, trace_type="ROBOSET", **kwargs)

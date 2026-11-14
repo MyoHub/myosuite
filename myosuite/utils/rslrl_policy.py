@@ -50,9 +50,12 @@ class RslRlPolicy(torch.nn.Module):
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
-        self.obs_dim = next(
-            m.in_features for m in mlp.modules() if isinstance(m, torch.nn.Linear)
+        first_linear = next(
+            (m for m in mlp.modules() if isinstance(m, torch.nn.Linear)), None
         )
+        if first_linear is None:
+            raise ValueError("Actor MLP must contain at least one Linear layer.")
+        self.obs_dim = first_linear.in_features
         self.register_buffer("std", None if std is None else std.flatten().clone())
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
@@ -77,8 +80,15 @@ class RslRlPolicy(torch.nn.Module):
     @torch.no_grad()
     def act(self, obs: np.ndarray, stochastic: bool = False) -> np.ndarray:
         """Numpy convenience wrapper (single or batched observations)."""
-        x = torch.as_tensor(np.asarray(obs), dtype=torch.float32)
-        return (self.sample(x) if stochastic else self(x)).numpy()
+        param = next(self.parameters(), None)
+        buf = next(self.buffers(), None)
+        device = (
+            param.device
+            if param is not None
+            else (buf.device if buf is not None else torch.device("cpu"))
+        )
+        x = torch.as_tensor(np.asarray(obs), dtype=torch.float32, device=device)
+        return (self.sample(x) if stochastic else self(x)).cpu().numpy()
 
 
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
@@ -127,9 +137,17 @@ def load_rslrl_policy(
     actor_cfg = _agent_params(checkpoint).get("actor", {})
 
     linear = sorted(
-        (k for k in actor_state if k.startswith("mlp.") and k.endswith(".weight")),
+        (
+            k
+            for k in actor_state
+            if k.startswith("mlp.")
+            and k.endswith(".weight")
+            and k.split(".")[1].isdigit()
+        ),
         key=lambda k: int(k.split(".")[1]),
     )
+    if not linear:
+        raise ValueError(f"No mlp.<index>.weight layers found in {checkpoint}.")
     shapes = [tuple(actor_state[k].shape) for k in linear]
     obs_dim, out_dim = shapes[0][1], shapes[-1][0]
     hidden = [s[0] for s in shapes[:-1]]

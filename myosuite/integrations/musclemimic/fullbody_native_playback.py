@@ -381,11 +381,12 @@ def _run_offscreen_record_loop(
 
     output_path = output_path.expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    target_fps = (
-        int(fps)
-        if fps is not None
-        else max(1, int(round(1.0 / float(model.opt.timestep))))
-    )
+    if fps is not None:
+        target_fps = max(1, int(fps))
+    elif clip.frequency_hz is not None and clip.frequency_hz > 0:
+        target_fps = max(1, int(round(float(clip.frequency_hz))))
+    else:
+        target_fps = max(1, int(round(1.0 / (5.0 * float(model.opt.timestep)))))
     write_video(
         str(output_path),
         np.asarray(frames, dtype=np.uint8),
@@ -427,10 +428,10 @@ def _run_offscreen_policy_record_loop(
 
     output_path = output_path.expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    frame_skip = max(1, int(getattr(policy_runner, "frame_skip", 5)))
+    ctrl_dt = frame_skip * float(model.opt.timestep)
     target_fps = (
-        int(fps)
-        if fps is not None
-        else max(1, int(round(1.0 / float(model.opt.timestep))))
+        max(1, int(fps)) if fps is not None else max(1, int(round(1.0 / ctrl_dt)))
     )
     write_video(
         str(output_path),

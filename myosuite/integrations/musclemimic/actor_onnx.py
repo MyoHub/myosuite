@@ -33,6 +33,7 @@ Typical usage::
 
 from __future__ import annotations
 
+import copy
 import logging
 import importlib.util
 from dataclasses import dataclass, field
@@ -40,9 +41,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import torch
 
 if TYPE_CHECKING:
+    import torch
     from myosuite.integrations.musclemimic.actor_torch import (
         MimicActorModule,
         DenseActorModule,
@@ -91,7 +92,9 @@ def export_to_onnx(
             "ONNX export requires the `onnx` package. Install it with: pip install onnx"
         )
 
-    module = module.eval().cpu()
+    import torch
+
+    module = copy.deepcopy(module).eval().cpu()
     dummy_obs = torch.zeros(1, module.obs_dim, dtype=torch.float32)
 
     torch.onnx.export(
@@ -129,7 +132,6 @@ def actor_to_onnx_bytes(module: _TorchActor, *, opset: int = _OPSET) -> bytes:
     """
     import tempfile
 
-    module = module.eval().cpu()
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as f:
         tmp_path = Path(f.name)
     try:
@@ -197,6 +199,8 @@ class OnnxActorSession:
         Returns:
             Shape ``(N, act_dim)``.
         """
+        import torch
+
         result = self.act(obs.detach().cpu().numpy())
         return torch.as_tensor(result, dtype=torch.float32)
 

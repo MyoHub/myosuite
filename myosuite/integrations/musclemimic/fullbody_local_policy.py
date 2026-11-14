@@ -1353,15 +1353,15 @@ class StandaloneBCPolicy:
         """
         import pickle
 
-        pack = np.load(str(Path(path)), allow_pickle=False)
-        params = pickle.loads(pack["actor_params_blob"].tobytes())
-        artifacts = LocalPolicyArtifacts(
-            params=params,
-            obs_mean=np.asarray(pack["obs_mean"], dtype=np.float32),
-            obs_var=np.asarray(pack["obs_var"], dtype=np.float32),
-            obs_count=np.asarray(pack["obs_count"], dtype=np.float32),
-            obs_dim=int(np.asarray(pack["obs_dim"]).item()),
-            action_dim=int(np.asarray(pack["action_dim"]).item()),
-        )
-        goal_params = json.loads(str(pack["goal_params_json"]))
+        with np.load(str(Path(path)), allow_pickle=False) as pack:
+            params = pickle.loads(pack["actor_params_blob"].tobytes())
+            artifacts = LocalPolicyArtifacts(
+                params=params,
+                obs_mean=np.asarray(pack["obs_mean"], dtype=np.float32),
+                obs_var=np.asarray(pack["obs_var"], dtype=np.float32),
+                obs_count=np.asarray(pack["obs_count"], dtype=np.float32),
+                obs_dim=int(np.asarray(pack["obs_dim"]).item()),
+                action_dim=int(np.asarray(pack["action_dim"]).item()),
+            )
+            goal_params = json.loads(str(pack["goal_params_json"]))
         return cls(artifacts), goal_params
