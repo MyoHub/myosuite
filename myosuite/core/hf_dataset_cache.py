@@ -23,7 +23,7 @@ def download_hf_dataset_file(
     local_path: Path,
     revision: str | None = None,
 ) -> Path | None:
-    """Download one dataset file from Hugging Face (at :func:`pinned_revision` by default)."""
+    """Download one dataset file from Hugging Face."""
     from huggingface_hub import hf_hub_download
 
     local_path.parent.mkdir(parents=True, exist_ok=True)
