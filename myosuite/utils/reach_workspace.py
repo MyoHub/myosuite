@@ -7,9 +7,12 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import hashlib
 
 import mujoco
 import numpy as np
+
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 _N_SAMPLES = 100_000
 _JOINT_TYPES = (int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE))
@@ -26,10 +29,11 @@ def reachable_target_points(
 ) -> np.ndarray:
     """World positions of the sites over the joint ranges, restricted to the target box.
 
-    Joint configurations are drawn uniformly within the joint limits (other joints stay at
-    ``qpos0``); a configuration is kept when every site lies inside its box. Sampling
-    targets from the result guarantees that a policy can reach them. The result is
-    deterministic and cached, so the CPU env and the mjlab twin see the same table.
+    Joint configurations are drawn uniformly within the joint limits (other independent
+    joints stay at ``qpos0``), then projected onto active joint equalities. A configuration
+    is kept when it respects the joint limits and every site lies inside its box. This
+    establishes kinematic reachability, not dynamic or collision-free reachability.
+    The result is deterministic and cached, so both backends see the same table.
 
     Args:
         model: Compiled model.
@@ -43,19 +47,20 @@ def reachable_target_points(
         Array ``(M, k, 3)``: for each kept configuration, the position of every site.
 
     Raises:
-        ValueError: If no configuration puts the sites inside their boxes.
+        ValueError: If no valid configuration puts the sites inside their boxes, or an
+            active non-joint equality would require a different projection.
     """
     ids = tuple(int(i) for i in site_ids)
     low, high = (
         np.asarray(low, float).reshape(len(ids), 3),
         np.asarray(high, float).reshape(len(ids), 3),
     )
+    if np.any((model.eq_active0 != 0) & (model.eq_type != mujoco.mjtEq.mjEQ_JOINT)):
+        raise ValueError("workspace sampling supports only active joint equalities")
+    binary = np.empty(mujoco.mj_sizeModel(model), dtype=np.uint8)
+    mujoco.mj_saveModel(model, buffer=binary)
     key = (
-        model.jnt_range.tobytes(),
-        model.qpos0.tobytes(),
-        model.body_pos.tobytes(),
-        model.body_quat.tobytes(),
-        model.site_pos[list(ids)].tobytes(),
+        hashlib.sha256(binary).digest(),
         ids,
         low.tobytes(),
         high.tobytes(),
@@ -69,9 +74,18 @@ def reachable_target_points(
             if model.jnt_limited[j] and int(model.jnt_type[j]) in _JOINT_TYPES:
                 lo, hi = model.jnt_range[j]
                 qpos[:, model.jnt_qposadr[j]] = rng.uniform(lo, hi, n_samples)
+        project_joint_couplings(JointCouplings.from_model(model), qpos)
+        valid = np.isfinite(qpos).all(axis=1)
+        for j in range(model.njnt):
+            if model.jnt_limited[j] and int(model.jnt_type[j]) in _JOINT_TYPES:
+                lo, hi = model.jnt_range[j]
+                valid &= (qpos[:, model.jnt_qposadr[j]] >= lo) & (
+                    qpos[:, model.jnt_qposadr[j]] <= hi
+                )
+        qpos = qpos[valid]
         data = mujoco.MjData(model)
-        positions = np.empty((n_samples, len(ids), 3))
-        for i in range(n_samples):
+        positions = np.empty((len(qpos), len(ids), 3))
+        for i in range(len(qpos)):
             data.qpos[:] = qpos[i]
             mujoco.mj_kinematics(model, data)
             positions[i] = data.site_xpos[list(ids)]
