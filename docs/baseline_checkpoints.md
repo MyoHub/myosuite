@@ -60,8 +60,8 @@ run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.loa
 | myoLegDirectionalBackward-v0 | `model_681.pt`   | 100.0%²                       |
 | myoLegDirectionalForward-v0  | `model_583.pt`   | 96.9%²                        |
 | myoLegDirectionalRandom-v0   | `model_2000.pt`  | 53.8%                         |
-| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 0%³ (20.7% with random hill heights) |
-| myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹                        |
+| myoLegHillyTerrainWalk-v0    | `model_4999.pt`  | 0%³ ⁵ (20.7% with random hill heights) |
+| myoLegRoughTerrainWalk-v0    | `model_4176.pt`  | 91.0%¹ ⁵                      |
 | myoLegStairTerrainWalk-v0    | -                  | -                             |
 | myoLegStandRandom-v0         | `model_3500.pt`  | 34.1%                         |
 | myoLegWalk-v0                | `model_3000.pt`  | 100.0%⁴ (**incompatible with 3.1.0**: 0% from its reset) |
@@ -76,7 +76,9 @@ name walks in the opposite direction of the new one.
 
 ³ The registered env is deterministic: `variant="fixed"` (hill height 0.63) and a fixed start, so the mean-action policy plays a single trajectory, which falls at step 673 (CPU, 3.1 start). With `task_kwargs={"variant": "random"}` (hill height drawn from U(0.53, 0.73) at every reset), 256 CPU episodes give 20.7% (95% Wilson interval 16.2-26.1%) from the 3.1 start and 9.4% (128 episodes) from the old start; sampled actions on the registered env give 43.0% (128 episodes). The earlier 26.6% (one draw of 64 episodes) and 15.3% (mean of seeds 1-3) were measured on the mjlab twin, whose variation between seeds is not explained yet; the released 3.0.0 code gives 18.4, 19.9 and 14.1% on the same seeds, so 3.1 did not regress.
 
-⁴ **Incompatible with MyoSuite 3.1.0.** Measured before 3.1 from the old start. From 3.1 the leg tasks reset with the coupled knee joints on their polynomials (#630), and this checkpoint falls from that start (0% success, *Coupled knee joints at reset (leg tasks)* below). A checkpoint trained from the new start follows in 3.2.
+⁴ **Incompatible with MyoSuite 3.1.0.** Measured before 3.1 from the old start. From 3.1 the leg tasks reset with the coupled knee joints on their polynomials (#630), and this checkpoint falls from that start (0% success, *Coupled knee joints at reset (leg tasks)* below). A checkpoint trained from the new start follows in 3.2. It was also trained with the earlier `com_vel` (footnote ⁵).
+
+⁵ Trained and measured before the `com_vel` fix (*Centre-of-mass velocity of the walk tasks* below) and not re-evaluated since.
 
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
@@ -184,6 +186,19 @@ keyframe at σ = 0.005, 0.01 and 0.02 rad, and 0, 4 and 3 of 24 from the new sta
 there). The rough-terrain policy, from the same keyframe, is unaffected, and the hilly policy goes the other way on this
 seed (on the CPU with random hill heights it goes from 9.4% to 20.7%, footnote ³). Retrain or fine-tune the `myoLegWalk-v0` checkpoint before using it
 with this version. The directional walks, whose start moved by 3.5e-5, were not re-evaluated.
+
+**Centre-of-mass velocity of the walk tasks (after 3.1.0).** `myoLegWalk-v0`, the rough, hilly and stairs walks and
+their `myoSarc`/`myoFati` variants now observe and reward the velocity of the whole-body centre of mass, on both
+backends. Up to 3.1.0 `com_vel` was the mass-weighted mean of the linear part of MuJoCo's `cvel`, which leaves out the
+rotation of the segments: 0.20 to 0.27 m/s off on average and up to 1.06 m/s along the walking direction on
+random-action rollouts, and 1.30 instead of 1.76 m/s at the reset keyframe. Two of the 403 observation values, the
+velocity reward and the `solved` flag change; shapes, keys, actions, control step and dynamics do not, so the env
+contract hash in `manifest.json` does not warn and the checkpoints still load. Affected published checkpoints:
+`myoLegWalk-v0` `model_3000.pt` (already incompatible with 3.1.0), `myoLegRoughTerrainWalk-v0` `model_4176.pt` and
+`myoLegHillyTerrainWalk-v0` `model_4999.pt`; the stairs walk has no checkpoint and the `myoSarc`/`myoFati` variants use
+the checkpoint of their base env. They were trained on the earlier value, as an input and as the quantity the
+1.2 m/s target applies to, and were not re-evaluated after the fix: re-evaluate them, and retrain before comparing
+walking speeds or success rates with new runs.
 
 **Bounded action std in the PPO defaults (#566).** The mjlab PPO configs of the muscle tasks and of `motorFinger*`
 (whose actions are clipped before the linear map to `ctrlrange`) now keep the policy's action std in [0.05, 1.0]. The

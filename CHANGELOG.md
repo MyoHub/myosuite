@@ -24,6 +24,17 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **The walk tasks observe and reward the velocity of the centre of mass.** `myoLegWalk-v0`, the rough, hilly and stairs
+  walks and their `myoSarc`/`myoFati` variants computed `com_vel` as the mass-weighted mean of the linear part of
+  `data.cvel` (inherited from 2.x). MuJoCo takes that part at the subtree centre of mass of the kinematic root, not at
+  each body's own centre of mass, so the rotation of the segments was left out. On random-action rollouts (seed 0) the
+  value was 0.20 to 0.27 m/s off the true velocity (`mj_subtreeVel`) on average and up to 1.06 m/s along the walking
+  direction, and at the reset keyframe it read 1.30 m/s where the body moves at 1.76 m/s. The CPU env, the mjlab twin
+  and `MjxLegWalk-v0` now use one shared term, `terms.base_obs.com_linear_velocity`. This changes the `com_vel`
+  observation (2 of 403 values), `vel_reward` (by up to 0.68 of its range of 2; weight 5 in the dense reward) and
+  `solved` of these ids. Dynamics, terminations and the other observations are unchanged. The parity baselines of
+  `myoLegWalk-v0` and `myoLegRoughTerrainWalk-v0` are regenerated. Checkpoints trained before the fix still load but
+  read a different `com_vel`; see `docs/baseline_checkpoints.md`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 

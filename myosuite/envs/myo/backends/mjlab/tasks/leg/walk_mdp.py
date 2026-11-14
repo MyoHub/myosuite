@@ -25,6 +25,7 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
+from myosuite.terms.base_obs import com_linear_velocity
 from myosuite.terms.base_reward import locomotion_solved, walk_env_reward
 
 if TYPE_CHECKING:
@@ -76,6 +77,7 @@ class WalkModel:
             model.body_mass, dtype=torch.float32, device=env.device
         )
         self.total_mass = self.mass.sum()
+        self.rootid = torch.as_tensor(model.body_rootid, device=env.device).long()
         ids = {
             name: int(model.body(f"{entity}/{name}").id)
             for name in ("torso", "pelvis", "talus_l", "talus_r")
@@ -91,9 +93,12 @@ def _com(env: ManagerBasedRlEnv, model: WalkModel) -> torch.Tensor:
 
 
 def com_velocity(env: ManagerBasedRlEnv, model: WalkModel) -> torch.Tensor:
-    """CPU ``_get_com_velocity``: mass-weighted ``-cvel[3:5]``."""
-    cvel = -env.sim.data.cvel  # no entity.data API for cvel / actuator_* (CLAUDE.md)
-    return ((model.mass[None, :, None] * cvel).sum(1) / model.total_mass)[:, 3:5]
+    """CPU ``_get_com_velocity``: planar centre-of-mass velocity, negated (the model faces -y)."""
+    data = env.sim.data  # no entity.data API for cvel / subtree_com (CLAUDE.md)
+    velocity = com_linear_velocity(
+        torch, model.mass, data.cvel, data.xipos, data.subtree_com[:, model.rootid]
+    )
+    return -velocity[:, :2]
 
 
 class _WalkTerm(ManagerTermBase):
