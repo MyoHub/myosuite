@@ -565,6 +565,11 @@ class MyoGymnasiumEnv(gym.Env):
         if self.mujoco_render_frames:
             self.mj_render()
         obs = self._ensure_obs_gymnasium_compliant(self._obs_dict_to_vec(obs_dict))
+        # A view of MjData (a site_xpos row, a sensordata slice) would change in the
+        # returned info at the next mj_step: store a copy instead.
+        for key, value in obs_dict.items():
+            if isinstance(value, np.ndarray) and value.base is not None:
+                obs_dict[key] = value.copy()
         info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
         info["obs_dict"] = obs_dict
         info["rwd_dict"] = rwd_dict

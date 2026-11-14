@@ -31,6 +31,12 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`info["obs_dict"]` keeps the values of its own step.** Die Reorient, Bimanual and TableTennis (21 ids with the
+  `myoSarc` / `myoFati` variants) put views of `MjData` into their observation dict (object, fingertip, ball and
+  paddle positions, `sensordata` slices). The arrays in a step's `info` changed at the next step, so a logged
+  rollout (`examine_policy`, code that keeps `info`) showed the final state at every step for these keys.
+  `MyoGymnasiumEnv._finalize_step` now stores copies of such views, for every env. Observations and rewards are
+  unchanged.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
