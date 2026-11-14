@@ -54,6 +54,9 @@ _OBS_TERM_SUFFIX = "_obs"
 # Maps RewardSpec term → function name in base_reward (e.g. "pose" → pose_reward)
 _REWARD_TERM_SUFFIX = "_reward"
 
+# The only named scene the CPU env builds: the task model's own ground.
+_DEFAULT_SCENE = "flat_floor"
+
 
 def _load_obs_fn(key: str) -> Any:
     """Resolve an observation term key to its callable.
@@ -283,23 +286,20 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             _resolve_reward_term(term) for term in task_config.reward.terms
         ]
 
-        # Build the MuJoCo model based on scene type
+        # Named scenes and scene lists are not built on the CPU env yet.
         scene = task_config.scene
         if callable(scene):
             base_model, base_spec = _build_model_from_task_model(task_config.model)
             base_spec = scene(base_spec)
             self.model = base_spec.compile()
-            self._scene_models: dict[str, tuple] | None = None
-        elif isinstance(scene, list):
-            self._scene_models = {}
-            for s in scene:
-                m, _ = _build_model_from_task_model(task_config.model)
-                self._scene_models[s] = (m, mujoco.MjData(m))
-            first = scene[0]
-            self.model, _ = self._scene_models[first]
-        else:
+        elif scene == _DEFAULT_SCENE:
             self.model, _ = _build_model_from_task_model(task_config.model)
-            self._scene_models = None
+        else:
+            raise NotImplementedError(
+                f"TaskConfig.scene={scene!r}: the CPU env takes the task model's own "
+                f"ground ({_DEFAULT_SCENE!r}) or a callable that edits the spec; named "
+                "scenes and scene lists are not applied."
+            )
 
         # One control step is n_substeps steps of sim_dt, as on MJX and mjlab.
         self._ctrl_dt = self._apply_backend_timing()
@@ -339,11 +339,7 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             ValueError: If ``frame_skip * sim_dt`` differs from ``ctrl_dt``.
         """
         backend = self._task_config.backend
-        models = [self.model]
-        if self._scene_models:
-            models += [m for m, _ in self._scene_models.values()]
-        for model in models:
-            model.opt.timestep = backend.sim_dt
+        self.model.opt.timestep = backend.sim_dt
         check_control_step(self.frame_skip, backend.sim_dt, backend.ctrl_dt)
         return float(backend.ctrl_dt)
 
@@ -403,9 +399,6 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
     def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
         """Sample a new goal for the episode.
 
-        Swaps the active MuJoCo model when scene is a list (randomizes over
-        available scenes).
-
         Args:
             np_random: NumPy random generator provided by Gymnasium.
 
@@ -418,11 +411,6 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             self.data.qpos.copy(),
             np_random,
         )
-        if self._scene_models:
-            scene = np_random.choice(list(self._scene_models.keys()))
-            self.model, self.data = self._scene_models[scene]
-            self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
-            task_state["scene"] = scene
         self._maybe_sample_heading(task_state, np_random)
         return task_state
 

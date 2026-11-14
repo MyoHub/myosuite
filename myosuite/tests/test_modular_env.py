@@ -536,17 +536,15 @@ def test_callable_reward_term() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_scene_list_env_resets() -> None:
-    """list[str] scene — reset must not crash and obs shape is stable."""
+@pytest.mark.parametrize(
+    "scene", [["flat_floor", "rough_terrain"], ["flat_floor"], "definitely_not_a_scene"]
+)
+def test_unapplied_scenes_are_refused(scene: str | list[str]) -> None:
+    """Scene lists and named scenes were accepted and silently ignored."""
     task = _ElbowTask()
-    task.scene = [
-        "flat_floor",
-        "flat_floor",
-    ]  # two variants (same model, different scene labels)
-    env = ModularTaskEnv(task)
-    obs1, _ = env.reset(seed=0)
-    obs2, _ = env.reset(seed=1)
-    assert obs1.shape == obs2.shape
+    task.scene = scene
+    with pytest.raises(NotImplementedError, match="TaskConfig.scene"):
+        ModularTaskEnv(task)
 
 
 # ---------------------------------------------------------------------------
@@ -585,8 +583,8 @@ def test_backend_config_rejects_a_control_step_it_does_not_simulate() -> None:
         BackendConfig(n_substeps=0, ctrl_dt=0.0, sim_dt=0.001)
 
 
-@pytest.mark.parametrize("scene", ["flat_floor", ["flat_floor"]])
-def test_cpu_control_step_is_the_simulated_step(scene: str | list[str]) -> None:
+@pytest.mark.parametrize("scene", ["flat_floor"])
+def test_cpu_control_step_is_the_simulated_step(scene: str) -> None:
     """A step advances ``ctrl_dt`` and ``joint_vel`` is ``qvel * ctrl_dt``.
 
     The default backend declares 10 steps of 1 ms. The CPU used to keep the
