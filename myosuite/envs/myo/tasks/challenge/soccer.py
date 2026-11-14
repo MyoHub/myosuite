@@ -464,10 +464,10 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             else 0
         )
         goal_scored = self._goal_scored_condition()
-        time_limit_exceeded = float(np.atleast_1d(obs_dict["time"])[0]) >= self.max_time
         fallen = self._get_fallen_condition()
         pain = self._get_jnt_limit_violation()
-        done = bool(goal_scored or time_limit_exceeded or fallen)
+        # The time limit truncates in step(); it does not end the task.
+        done = bool(goal_scored or fallen)
 
         rwd_dict = collections.OrderedDict(
             (
@@ -499,7 +499,10 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
-        return self._finalize_step(obs_dict, rwd_dict)
+        obs, reward, terminated, _, info = self._finalize_step(obs_dict, rwd_dict)
+        # Count control steps: the summed data.time is 9.99999999999989 after 1000.
+        truncated = round(self.data.time / self.dt) >= round(self.max_time / self.dt)
+        return obs, reward, terminated, truncated, info
 
     def reset(
         self,

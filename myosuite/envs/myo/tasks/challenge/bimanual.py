@@ -395,8 +395,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return rwd_dict
 
     def _get_done(self, z):
-        if self.obs_dict["time"] > MAX_TIME:
-            return 1
+        # The MAX_TIME limit is a truncation (TimeLimit, max_episode_steps), not an end.
         if z < 0.3:
             self.obs_dict["time"] = MAX_TIME
             return 1

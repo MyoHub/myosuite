@@ -52,7 +52,7 @@ def _reg(env_id, entry_point, max_episode_steps, kwargs):
 _reg(
     env_id="myoChallengeSoccerP1-v0",
     entry_point="myosuite.envs.myo.tasks.challenge.soccer:SoccerEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,  # max_time_sec 10 s at 0.01 s per step
     kwargs={
         "model_path": str(_ASSETS_ROOT / "leg_soccer" / "myolegs_soccer.xml"),
         "normalize_act": True,
@@ -65,7 +65,7 @@ _reg(
 _reg(
     env_id="myoChallengeSoccerP2-v0",
     entry_point="myosuite.envs.myo.tasks.challenge.soccer:SoccerEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,  # max_time_sec 10 s at 0.01 s per step
     kwargs={
         "model_path": str(_ASSETS_ROOT / "leg_soccer" / "myolegs_soccer.xml"),
         "normalize_act": True,
