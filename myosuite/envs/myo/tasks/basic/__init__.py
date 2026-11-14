@@ -779,34 +779,4 @@ _reg(
     },
 )
 
-# Arm Reaching ==============================
-_reg(
-    env_id="myoArmReachFixed-v0",
-    entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
-    max_episode_steps=150,
-    kwargs={
-        "model_recipe": "arm_reach",
-        "target_reach_range": {
-            "forearm_tip": ((-0.2, -0.2, 1.2), (-0.2, -0.2, 1.2)),
-        },
-        "normalize_act": True,
-        "far_th": 1.0,
-    },
-)
-
-_reg(
-    env_id="myoArmReachRandom-v0",
-    entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
-    max_episode_steps=150,
-    kwargs={
-        "model_recipe": "arm_reach",
-        "target_reach_range": {
-            "forearm_tip": (
-                (-0.2 - 0.15, -0.2 - 0.15, 1.2 - 0.15),
-                (-0.2 + 0.15, -0.2 + 0.15, 1.2 + 0.15),
-            ),
-        },
-        "normalize_act": True,
-        "far_th": 1.0,
-    },
-)
+# Arm reaching (myoArmReach*) is registered in myosuite.envs.myo.myoedits.

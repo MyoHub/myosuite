@@ -24,6 +24,14 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
+  registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
+  target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip
+  task. Only the myoedits registration remains. Normal imports already got it, so observations, actions and the
+  published checkpoints are unchanged. A process that reloaded the basic suite (as one registry test did) no longer
+  switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
+  empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
+  with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
