@@ -96,7 +96,7 @@ backends support them:
      - Condition
      - Example
    * - ``myoSarc<…>``
-     - Sarcopenia (50 % peak force)
+     - Sarcopenia (50 % peak force, active and passive)
      - ``myoSarcElbowPose1D6MRandom-v0``
    * - ``myoFati<…>``
      - Cumulative neuromuscular fatigue

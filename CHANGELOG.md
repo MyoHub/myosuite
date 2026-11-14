@@ -24,6 +24,15 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **Sarcopenia scales the passive muscle force too.** `apply_sarcopenia_to_model` and `apply_sarcopenia_to_spec`
+  halved the active peak force `gainprm[2]` but left the passive peak force `biasprm[2]` at full strength (inherited
+  from 2.x), so every `myoSarc*` id kept the passive stiffness of a healthy muscle: at a stretched pose the passive
+  force ratio Sarc / base was 1.000 on every id, against 0.5 for the active part. MuJoCo's passive muscle force is
+  `biasprm[2]` times the passive force-length curve, and a smaller cross-section lowers both. Both helpers now scale
+  `biasprm[2]` of every muscle bias by the same factor, resolving automatic peak forces (`force="-1"`, the finger
+  model) first; position servos and other non-muscle biases are unchanged. This changes the dynamics of every
+  `myoSarc*` id on the CPU and of their mjlab twins (and of the `elbow_sarcopenia` recipe and MJX tasks with
+  sarcopenia). No parity baseline covers these ids. See `docs/baseline_checkpoints.md`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
