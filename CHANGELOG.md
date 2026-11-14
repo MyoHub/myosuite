@@ -31,6 +31,11 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `myoChallengeTableTennis*` keep the legacy 1280x1080 offscreen buffer on the CPU backend. `MjSpec.attach` dropped
+  the body spec's `visual` settings, so rendering above 640x480 raised `Image width 1280 > framebuffer width 640`.
+  Physics is unchanged; the recipe's docstring now says which bodies the legacy compiler bounds reach (six scaffold
+  bodies, not the hand bones or the ball, whose 7.2e-7 kg m^2 hollow-sphere inertia differs from the legacy model's
+  1e-4 floor).
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808

@@ -1287,18 +1287,19 @@ def _add_tabletennis_contacts(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 
 
 def _match_tabletennis_compiler(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-    """Apply legacy ``myoarm_tabletennis.xml``'s compiler and visual globals.
+    """Apply legacy ``myoarm_tabletennis.xml``'s compiler bounds.
 
-    Without ``boundinertia`` the ping-pong ball keeps its authored 7.2e-7
-    rotational inertia instead of the 1e-4 floor the legacy model runs with,
-    which changes how much spin a paddle hit imparts. The offscreen buffer
-    matches legacy's ``<global offwidth="1280" offheight="1080"/>``.
+    MuJoCo compiles each element with the compiler of the spec that created it,
+    so the bounds reach only the bodies this spec creates (the scaffold bodies
+    ``Full Body``, ``neck``, ``head_attach``, ``cervical_spine``, ``chest_r``,
+    ``Arm_attachment``). Bones from myo_sim's fragments keep their own inertias
+    (hand bones down to 2e-8 kg m^2), and the ping-pong ball keeps its hollow-sphere
+    inertia of 7.2e-7 kg m^2 on both backends, where the legacy model floored it at
+    1e-4 (139x harder to spin).
     """
     spec.compiler.boundmass = 0.001
     spec.compiler.boundinertia = 0.0001
     spec.compiler.balanceinertia = True
-    spec.visual.global_.offwidth = 1280
-    spec.visual.global_.offheight = 1080
     return spec
 
 
@@ -1341,7 +1342,12 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     Mesh/texture ``file=`` paths are absolute: MuJoCo does not prepend
     ``spec.compiler.meshdir`` to them, so the spec compiles from any working
     directory and drive (relative paths depended on the working directory).
+
+    Also sets legacy's ``<global offwidth="1280" offheight="1080"/>`` on the spec
+    that gets compiled: ``MjSpec.attach`` does not carry ``visual`` over.
     """
+    spec.visual.global_.offwidth = 1280
+    spec.visual.global_.offheight = 1080
     wb = spec.worldbody
 
     def _abs(path: Path) -> str:
