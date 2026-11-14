@@ -60,7 +60,7 @@ def finetune(cfg: FinetuneCfg) -> dict:
     from supermimic.runner import SuperMimicRunner  # noqa: PLC0415
 
     configure_torch_backends()  # the training's flags (TF32), also the compile caches' keys
-    ck = torch.load(cfg.checkpoint, map_location="cpu", weights_only=False)
+    ck = torch.load(cfg.checkpoint, map_location="cpu", weights_only=True)
     settings = ck.get("env") or {}
     out = Path(cfg.out)
     out.mkdir(parents=True, exist_ok=True)
