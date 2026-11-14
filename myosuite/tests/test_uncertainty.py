@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 
 import mujoco
 import numpy as np
@@ -18,10 +19,12 @@ from myosuite.biomechanics.inverse_dynamics import clip_kinematics
 from myosuite.biomechanics import uncertainty
 from myosuite.biomechanics.static_optimization import (
     StaticOptimizer,
+    StaticOptimizationConfig,
     static_optimization,
 )
 from myosuite.biomechanics.uncertainty import (
     UncertaintyConfig,
+    UncertaintySolveError,
     perturbed_model,
     static_optimization_bands,
 )
@@ -195,3 +198,106 @@ def test_samples_keep_the_nominal_weights(
     )
     nominal = StaticOptimizer(elbow).config
     assert len(seen) == 4 and all(c == nominal for c in seen)
+
+
+def test_nominal_iteration_failure_stops_before_sampling(
+    elbow: mujoco.MjModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_sampling(*args, **kwargs):
+        pytest.fail("a failed nominal solve must stop before sampling")
+
+    monkeypatch.setattr(uncertainty, "perturbed_model", no_sampling)
+    with pytest.raises(
+        UncertaintySolveError, match="nominal.*maximum iterations"
+    ) as error:
+        static_optimization_bands(
+            elbow, _CLIP[:8], _DT, optimization=StaticOptimizationConfig(max_iter=1)
+        )
+    assert error.value.sample_index is None
+    assert len(error.value.frame_indices) > 0
+    assert (error.value.result.iterations == 1).all()
+    assert (error.value.result.primal_residual > 0).any()
+
+
+def test_sample_iteration_failure_is_reported(
+    elbow: mujoco.MjModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    solve = StaticOptimizer.solve
+
+    def limited(self, *args, **kwargs):
+        if not np.array_equal(self.model.actuator_gainprm, elbow.actuator_gainprm):
+            self.config = replace(self.config, max_iter=1)
+        return solve(self, *args, **kwargs)
+
+    monkeypatch.setattr(StaticOptimizer, "solve", limited)
+    with pytest.raises(
+        UncertaintySolveError, match="sample 0.*maximum iterations"
+    ) as error:
+        static_optimization_bands(
+            elbow, _CLIP[:8], _DT, config=UncertaintyConfig(samples=3, strength_cv=0.2)
+        )
+    assert error.value.sample_index == 0
+    assert (error.value.result.iterations == 1).all()
+
+
+@pytest.mark.parametrize("nominal", [False, True])
+def test_inaccurate_status_needs_explicit_opt_in_and_keeps_diagnostics(
+    elbow: mujoco.MjModel, monkeypatch: pytest.MonkeyPatch, nominal: bool
+) -> None:
+    config = UncertaintyConfig(samples=2, strength_cv=0.2, seed=4)
+    clean = static_optimization_bands(elbow, _CLIP[:8], _DT, config=config)
+    solve = StaticOptimizer.solve
+
+    def inaccurate(self, *args, **kwargs):
+        result = solve(self, *args, **kwargs)
+        is_nominal = np.array_equal(self.model.actuator_gainprm, elbow.actuator_gainprm)
+        if is_nominal == nominal:
+            result = replace(result, status=np.asarray("solved inaccurate"))
+        return result
+
+    monkeypatch.setattr(StaticOptimizer, "solve", inaccurate)
+    with pytest.raises(UncertaintySolveError, match="solved inaccurate"):
+        static_optimization_bands(elbow, _CLIP[:8], _DT, config=config)
+    bands = static_optimization_bands(
+        elbow, _CLIP[:8], _DT, config=replace(config, allow_inaccurate=True)
+    )
+    np.testing.assert_array_equal(bands.activation, clean.activation)
+    np.testing.assert_array_equal(bands.sample_iterations, clean.sample_iterations)
+    np.testing.assert_array_equal(
+        bands.sample_primal_residual, clean.sample_primal_residual
+    )
+    np.testing.assert_array_equal(
+        bands.sample_dual_residual, clean.sample_dual_residual
+    )
+    assert bands.sample_status.shape == (2, 8)
+    if nominal:
+        assert bands.nominal.status[0] == "solved inaccurate"
+    else:
+        assert (bands.sample_status[:, 0] == "solved inaccurate").all()
+
+
+def test_nonfinite_sample_is_rejected_even_with_inaccurate_opt_in(
+    elbow: mujoco.MjModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    solve = StaticOptimizer.solve
+    frames = []
+
+    def nonfinite(self, *args, **kwargs):
+        result = solve(self, *args, **kwargs)
+        if not np.array_equal(self.model.actuator_gainprm, elbow.actuator_gainprm):
+            frames.append(result)
+        if len(frames) == 2:
+            activation = result.activation.copy()
+            activation[0] = np.nan
+            result = replace(result, activation=activation)
+        return result
+
+    monkeypatch.setattr(StaticOptimizer, "solve", nonfinite)
+    with pytest.raises(UncertaintySolveError, match="nonfinite") as error:
+        static_optimization_bands(
+            elbow,
+            _CLIP[:8],
+            _DT,
+            config=UncertaintyConfig(samples=2, strength_cv=0.2, allow_inaccurate=True),
+        )
+    np.testing.assert_array_equal(error.value.frame_indices, [1])
