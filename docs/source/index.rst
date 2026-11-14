@@ -86,6 +86,7 @@ Choose your path
    model_builder
    backend_parity
    fatigue_validation
+   landmark_observability
 
 .. toctree::
    :maxdepth: 1
