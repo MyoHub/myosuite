@@ -31,6 +31,15 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`training/chasetag_teacher`: the steering library follows its clips and is no longer unpickled.** `load_library`
+  cached a pickled `ClipLibrary` keyed by the clip folder's path, the myo_sim version, `limit` and `ctrl_dt`, and
+  loaded it with `torch.load(..., weights_only=False)` before looking at the clips. Clips re-retargeted into the same
+  folder, another training split or filter, or a changed library class kept the old library (and every DAgger label
+  and evaluation made with it), and loading the cache file ran whatever it contained. The motion data now goes
+  through the task's motion cache (`build_motion_lib(..., cache_dir=...)`: NumPy arrays read with
+  `allow_pickle=False`, keyed by the bytes of every clip, the compiled body, the tracked bodies, the control step and
+  the preprocessing code), and the library's features are recomputed on each load. Old `lib_*.pt` files are no longer
+  read.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808

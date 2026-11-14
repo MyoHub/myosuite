@@ -4,18 +4,16 @@
 # LICENSE file in the root directory of this source tree.
 """The steering clip library: the KIT locomotion clips of the tracker's training split, cached on disk.
 
-Loading and evaluating the kinematics of ~800 clips takes minutes, so the library is built once per clip folder,
-model version and clip limit and stored in ``$CHASETAG_TEACHER_CACHE`` (default
-``~/.cache/myosuite/chasetag_teacher``).
+Loading and evaluating the kinematics of ~800 clips takes minutes, so their motion library is stored in
+``$CHASETAG_TEACHER_CACHE`` (default ``~/.cache/myosuite/chasetag_teacher``) by the task's motion cache: NumPy
+arrays without pickles, keyed by the bytes of every clip, the compiled body, the tracked bodies, the control step
+and the preprocessing code. The library's features are recomputed from it on every load.
 """
 
 from __future__ import annotations
 
-import hashlib
 import os
 from pathlib import Path
-
-import torch
 
 from myosuite.biomechanics.retarget import check_refit_meta
 from myosuite.envs.myo.tasks.mimic.tracking import (
@@ -51,7 +49,7 @@ def cache_dir() -> Path:
 def load_library(
     root: str | None = None, limit: int | None = None, ctrl_dt: float = 0.02
 ) -> ClipLibrary:
-    """The KIT locomotion clips of MuscleMimic's training split as a :class:`ClipLibrary` (built once, then cached).
+    """The KIT locomotion clips of MuscleMimic's training split as a :class:`ClipLibrary` (motion data cached).
 
     Args:
         root: The folder of retargeted clips (default ``$MYOSUITE_KIT_ROOT``), as ``scripts/mimic/retarget_amass.py``
@@ -71,12 +69,6 @@ def load_library(
             f"no retargeted KIT clips: set ${KIT_ROOT_ENV} or pass root= (got {root!r})"
         )
     version = model_version(MODEL)
-    key = hashlib.sha1(
-        f"{Path(root).resolve()}|{version}|{limit}|{ctrl_dt}".encode()
-    ).hexdigest()[:12]
-    path = cache_dir() / f"lib_{MODEL}_{version}_{key}.pt"
-    if path.exists():
-        return torch.load(path, weights_only=False)
     files = locomotion_files(str(kit_split("train")), root, limit)
     missing = [f for f in files if not Path(f).is_file()]
     if missing:
@@ -86,10 +78,7 @@ def load_library(
     for f in files:
         check_refit_meta(f, MODEL, version)
     m = compiled_scene(MODEL)
-    lib = ClipLibrary(
-        build_motion_lib(files, m, model_cfg(MODEL).tracked_bodies, ctrl_dt),
-        root_offset(m),
+    motion = build_motion_lib(
+        files, m, model_cfg(MODEL).tracked_bodies, ctrl_dt, cache_dir=cache_dir()
     )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(lib, path)
-    return lib
+    return ClipLibrary(motion, root_offset(m))
