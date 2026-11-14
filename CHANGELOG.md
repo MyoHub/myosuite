@@ -36,6 +36,13 @@ Changes since **v3.1.0** (2026-11-11).
   envs whose `step` does not end in `_finalize_step`. `env.unwrapped.mj_instability_termination = False` switches
   both off. Regular steps are unchanged.
 
+* **The two-agent env ends a diverged episode.** `ModularMultiAgentTaskEnv` (`myoChallengeChaseTagFBVs-v0`) had no
+  divergence check, and `MjInstabilityTerminationWrapper` found none to call, so after MuJoCo reset a diverged
+  simulation to `qpos0` the match went on from that state and could be scored as a tag. Its `step` now uses the same
+  check as `MyoGymnasiumEnv` (`mj_diverged`): the diverged step deals no damage, sees no falls, pays no positive
+  reward to either agent and terminates both; `info["mj_unstable"]` is on every step, and
+  `env.unwrapped.mj_instability_termination = False` switches it off.
+
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 
 ## [3.1.0] - 2026-11-11

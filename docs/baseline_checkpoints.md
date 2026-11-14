@@ -83,6 +83,7 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants pay the EVADE win again: the last step of an EVADE episode that reaches the time limit has `solved = 1` (+1000) and score 1.0. In 3.1.0 that win could not fire, so EVADE returns and `get_metrics` scores measured on 3.1.0 are too low for policies that survive; reevaluate them. Observations, actions and dynamics are unchanged, and no checkpoint of these ids is published here.
 
 On every CPU env, a step on which MuJoCo reset a diverged simulation no longer pays a positive reward or counts as `solved`, and `info["mj_unstable"]` marks it. Observations, actions, dynamics and the rewards of regular steps are unchanged, so checkpoints load and score as before; only evaluations that contained a diverged episode change (the ChaseTag envs counted such an episode as a win).
+The two-agent `myoChallengeChaseTagFBVs-v0` now ends such an episode for both players (it continued from the reset state and could count it as a tag); its baseline `onnx/chasetag_fbvs_baseline.onnx` is unaffected outside diverged episodes.
 
 ## Compatibility notes for 3.1.0
 
