@@ -31,6 +31,10 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `ActuatorGroupSpec.normalize_actions` defaulted to `True` and its docstring promised a sigmoid on the action, but
+  neither the CPU `ModularTaskEnv` nor the mjlab twin applies one: `myoElbowPoseTask*` and `myoLegDirectional*`
+  write actions in [0, 1] to `ctrl` as they are. The field now defaults to `False`, the two specs no longer set it,
+  and `ModularTaskEnv` raises for `True` instead of ignoring it. No env changes behaviour.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808

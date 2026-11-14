@@ -57,7 +57,7 @@ class ElbowPoseFixedTask(TaskConfig):
         default_factory=lambda: RewardSpec(terms=["pose", "act_reg"], weights={"pose": 1.0, "act_reg": 1.0})
     )
     actuators: list[ActuatorGroupSpec] = field(
-        default_factory=lambda: [ActuatorGroupSpec(name="elbow_muscles", normalize_actions=True)]
+        default_factory=lambda: [ActuatorGroupSpec(name="elbow_muscles")]
     )
     variants: ClassVar[list[VariantSpec]] = [   # also registers myoSarc... and myoFati... ids
         VariantSpec(suffix="Sarc", features=condition_wrapper_specs("sarcopenia")),

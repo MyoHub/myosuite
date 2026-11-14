@@ -76,9 +76,7 @@ class ElbowPoseFixedTask(TaskConfig):
         )
     )
     actuators: list[ActuatorGroupSpec] = field(
-        default_factory=lambda: [
-            ActuatorGroupSpec(name="elbow_muscles", normalize_actions=True)
-        ]
+        default_factory=lambda: [ActuatorGroupSpec(name="elbow_muscles")]
     )
 
     variants: ClassVar[list[VariantSpec]] = [
@@ -120,9 +118,7 @@ class ElbowPoseRandomTask(TaskConfig):
         )
     )
     actuators: list[ActuatorGroupSpec] = field(
-        default_factory=lambda: [
-            ActuatorGroupSpec(name="elbow_muscles", normalize_actions=True)
-        ]
+        default_factory=lambda: [ActuatorGroupSpec(name="elbow_muscles")]
     )
 
     variants: ClassVar[list[VariantSpec]] = [
