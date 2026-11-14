@@ -82,6 +82,8 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants pay the EVADE win again: the last step of an EVADE episode that reaches the time limit has `solved = 1` (+1000) and score 1.0. In 3.1.0 that win could not fire, so EVADE returns and `get_metrics` scores measured on 3.1.0 are too low for policies that survive; reevaluate them. Observations, actions and dynamics are unchanged, and no checkpoint of these ids is published here.
 
+`myoChallengeBimanual-v0` and its `myoSarc` / `myoFati` variants draw the box size on the first `reset()` of an env instance too; before, the first episode of every instance used the nominal box. An evaluation that builds a fresh env per episode now sees the size randomisation (10 %, 5 %, 10 % per axis), and a seeded first episode differs from 3.1.0. `get_metrics` counts a path with at least one solved step as a success (before: more than 5, which no episode could reach, so the score was always 0). Observations, actions and rewards are unchanged, and no checkpoint of these ids is published here.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.

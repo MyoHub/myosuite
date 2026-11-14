@@ -136,7 +136,6 @@ def _contacts(model: mujoco.MjModel, source: mujoco.MjData) -> list[tuple[int, .
 @pytest.mark.parametrize("env_id", list(_EDITED_BODIES))
 def test_episode_geometry_matches_recompiled_model(env_id: str, seed: int) -> None:
     env = make_env(env_id).unwrapped
-    env.reset()  # Bimanual skips the object rescale on its first reset.
     env.reset(seed=seed)
     body_ids = tuple(int(b) for b in _EDITED_BODIES[env_id](env))
     ref = _recompiled(env, body_ids)
@@ -150,7 +149,7 @@ def test_episode_geometry_matches_recompiled_model(env_id: str, seed: int) -> No
 
 @pytest.mark.parametrize("seed", [0, 3])
 def test_bimanual_first_reset_mass_draw_matches_recompiled_model(seed: int) -> None:
-    """The first reset draws a new box mass but skips the rescale: inertia follows."""
+    """The first reset draws a new box mass and size: inertia and bounds follow."""
     env = make_env("myoChallengeBimanual-v0").unwrapped
     env.reset(seed=seed)
     body_ids = (int(env.obj_bid),)
@@ -209,10 +208,10 @@ def test_bimanual_visual_mesh_follows_collision_box() -> None:
     )
 
     m, d = env.model, env.data
-    for seed in (0, 1, 2):  # nominal size, then two rescaled boxes
+    for seed in (0, 1, 2):  # three rescaled boxes, the first on a fresh instance
         env.reset(seed=seed)
         scales = m.geom_size[box] / fresh.geom_size[box]
-        assert (seed == 0) == np.allclose(scales, 1.0)
+        assert not np.allclose(scales, 1.0)
         verts = m.mesh_vert[adr : adr + num]
         np.testing.assert_allclose(
             np.ptp(verts, axis=0), np.ptp(nominal, axis=0) * scales
@@ -249,7 +248,5 @@ def test_bimanual_rescale_uploads_visual_mesh(monkeypatch: pytest.MonkeyPatch) -
     env._mujoco_renderer = types.SimpleNamespace(
         _viewers={"rgb_array": viewer}, close=lambda: None
     )
-    env.reset(seed=0)  # the first reset keeps the nominal size
-    assert uploads == []
-    env.reset(seed=1)
+    env.reset(seed=0)
     assert uploads == [("context", env.obj_mid)]
