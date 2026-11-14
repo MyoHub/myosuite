@@ -100,6 +100,37 @@ class _LayerNormSiLUBlock(nn.Module):
         return self.act(self.ln(self.fc(x)))
 
 
+class ObsNormalizer(nn.Module):
+    """Running mean and variance of the observations, kept in the policy's state dict.
+
+    Statistics are shared by all envs, updated with each rollout after its PPO
+    update and saved with the checkpoint, so evaluation sees the inputs the policy
+    was trained on.
+    """
+
+    def __init__(self, obs_dim: int, eps: float = 1e-8) -> None:
+        super().__init__()
+        self.eps = eps
+        self.register_buffer("mean", torch.zeros(obs_dim))
+        self.register_buffer("var", torch.ones(obs_dim))
+        self.register_buffer("count", torch.tensor(1e-4))
+
+    @torch.no_grad()
+    def update(self, obs: torch.Tensor) -> None:
+        """Merge a batch ``(B, obs_dim)`` into the statistics (parallel variance)."""
+        n = obs.shape[0]
+        delta = obs.mean(0) - self.mean
+        total = self.count + n
+        self.var.mul_(self.count).add_(obs.var(0, unbiased=False) * n).add_(
+            delta.square() * self.count * n / total
+        ).div_(total)
+        self.mean.add_(delta * n / total)
+        self.count.copy_(total)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        return (obs - self.mean) / torch.sqrt(self.var + self.eps)
+
+
 class ActorCritic(nn.Module):
     """Shared-trunk MLP actor-critic for continuous muscle control.
 
@@ -118,6 +149,7 @@ class ActorCritic(nn.Module):
         n_layers: int = 4,
     ) -> None:
         super().__init__()
+        self.obs_norm = ObsNormalizer(obs_dim)
         layers: list[nn.Module] = [nn.Linear(obs_dim, hidden_dim), nn.SiLU()]
         nn.init.orthogonal_(layers[0].weight, 2.0**0.5)
         nn.init.zeros_(layers[0].bias)
@@ -136,7 +168,7 @@ class ActorCritic(nn.Module):
         nn.init.zeros_(self.critic.bias)
 
     def forward(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        features = self.trunk(obs)
+        features = self.trunk(self.obs_norm(obs))
         return self.actor_mean(features), self.critic(features).squeeze(-1)
 
     def get_action_and_value(
@@ -181,7 +213,9 @@ class VecMimicEnv:
         self.n_envs = n_envs
         self.max_episode_steps = max_episode_steps
         self._envs = [
-            MuscleMimicClipEnvV0(clip_path=clip_path, seed=i, **kwargs)
+            MuscleMimicClipEnvV0(
+                clip_path=clip_path, seed=i, use_obs_normalizer=False, **kwargs
+            )
             for i in range(n_envs)
         ]
         self._steps = np.zeros(n_envs, dtype=np.int32)
@@ -453,6 +487,8 @@ def train(
                 pg_losses.append(pg_loss.item())
                 vf_losses.append(vf_loss.item())
                 ent_losses.append(ent_loss.item())
+        # After the update, so the rollout and its update used the same statistics.
+        policy.obs_norm.update(obs_t)
 
         # ---- Logging ----
         if iteration % log_interval == 0 or iteration == total_iterations:

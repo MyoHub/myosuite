@@ -31,6 +31,12 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `MuscleMimicClipEnvV0` returns raw observations by default (`use_obs_normalizer=False`). Its in-env running
+  normaliser made the first observation of every new env all zeros, gave each env of a vector env its own drifting
+  statistics, was never saved and clipped to +-10, so `reset(seed)` did not determine the observation and tutorial
+  5.2 rendered a policy on inputs it was not trained on. Tutorial 5.2's policy now holds the normaliser as buffers:
+  shared by all envs, updated after each PPO update and saved in the checkpoint. Checkpoints trained with the old
+  tutorial do not load into the new `ActorCritic`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
