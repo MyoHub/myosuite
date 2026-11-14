@@ -124,7 +124,9 @@ class MjInstabilityTerminationWrapper(
         return obs, reward, terminated, truncated, info
 
 
-class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
+class DictObservationWrapper(
+    _ForwardPublicAttributes, RecordConstructorArgs, gym.ObservationWrapper
+):
     """Expose structured observations as a ``gymnasium.spaces.Dict`` space.
 
     MyoGymnasiumEnv flattens all observation terms into a single ``Box``
@@ -147,11 +149,30 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
 
     Args:
         env: A :class:`~myosuite.envs.gymnasium_env.MyoGymnasiumEnv` instance.
+        obs_keys: Optional subset of keys to expose; ``None`` exposes all keys
+            in ``obs_dict``, or pass ``filter_obs_keys=True`` to restrict to
+            ``env.unwrapped.obs_keys``.
+        filter_obs_keys: When ``True`` and *obs_keys* is ``None``, restrict the
+            exposed dictionary to ``env.unwrapped.obs_keys``.
     """
 
-    def __init__(self, env: gym.Env) -> None:
-        RecordConstructorArgs.__init__(self)
+    def __init__(
+        self,
+        env: gym.Env,
+        obs_keys: Iterable[str] | None = None,
+        *,
+        filter_obs_keys: bool = False,
+    ) -> None:
+        RecordConstructorArgs.__init__(
+            self, obs_keys=obs_keys, filter_obs_keys=filter_obs_keys
+        )
         gym.ObservationWrapper.__init__(self, env)
+        if obs_keys is not None:
+            self._selected_obs_keys: tuple[str, ...] | None = tuple(obs_keys)
+        elif filter_obs_keys and getattr(env.unwrapped, "obs_keys", None):
+            self._selected_obs_keys = tuple(env.unwrapped.obs_keys)
+        else:
+            self._selected_obs_keys = None
         self.observation_space = gym.spaces.Dict(
             {
                 k: gym.spaces.Box(
@@ -161,11 +182,14 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
             }
         )
 
-    @staticmethod
-    def _to_dict_obs(obs_dict: dict[str, Any]) -> dict[str, np.ndarray]:
+    def _to_dict_obs(self, obs_dict: dict[str, Any]) -> dict[str, np.ndarray]:
+        keys = (
+            self._selected_obs_keys
+            if self._selected_obs_keys is not None
+            else obs_dict.keys()
+        )
         return {
-            k: np.atleast_1d(np.asarray(v, dtype=np.float32))
-            for k, v in obs_dict.items()
+            k: np.atleast_1d(np.asarray(obs_dict[k], dtype=np.float32)) for k in keys
         }
 
     def _current_obs(self) -> dict[str, np.ndarray]:
@@ -195,7 +219,7 @@ class DictObservationWrapper(RecordConstructorArgs, gym.ObservationWrapper):
         return self._info_obs(info), reward, terminated, truncated, info
 
 
-class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
+class PerturbationWrapper(_ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper):
     """Apply scheduled external forces/torques to named bodies at runtime.
 
     Enables perturbation-response experiments — reactive balance, motor

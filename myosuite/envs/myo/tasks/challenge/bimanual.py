@@ -274,6 +274,15 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 obs_vec[4] += 1
         return obs_vec
 
+    def _record_touch_and_force(self) -> None:
+        touching_objects = set(
+            get_touching_objects(self.model, self.data, self.id_info)
+        )
+        self.touch_history.append(touching_objects)
+        current_force = float(self.data.sensordata[0])
+        if current_force > self.max_force:
+            self.max_force = current_force
+
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
         mj_model = self.model
         mj_data = self.data
@@ -293,11 +302,9 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         obs_dict["goal_pos"] = self.goal_pos
         obs_dict["elbow_fle"] = mj_data.joint("elbow_flexion").qpos.copy()
         touching_objects = set(get_touching_objects(mj_model, mj_data, self.id_info))
-        self.touch_history.append(touching_objects)
-        current_force = mj_data.sensordata[0]
-        if current_force > self.max_force:
-            self.max_force = current_force
-        obs_dict["max_force"] = np.array([self.max_force])
+        obs_dict["max_force"] = np.array(
+            [max(self.max_force, float(mj_data.sensordata[0]))]
+        )
         obs_dict["touching_body"] = self._obj_label_to_obs(touching_objects)
         obs_dict["palm_pos"] = mj_data.site_xpos[self.palm_sid]
         obs_dict["fin0"] = mj_data.site_xpos[self.fin0]
@@ -363,13 +370,6 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         )
         elbow_err = 5 * np.exp(-10 * (obs_dict["elbow_fle"][0] - 1.0) ** 2) - 5
         goal_dis = np.array([[np.abs(np.linalg.norm(obj_pos - goal_pos, axis=-1))]])
-        touching_vec = (
-            obs_dict["touching_body"][0][0]
-            if obs_dict["touching_body"].ndim == 3
-            else obs_dict["touching_body"]
-        )
-        if touching_vec[3] == 1:
-            self.goal_touch += 1
         rwd_dict = collections.OrderedDict(
             (
                 ("reach_dist", reach_dist + np.log(reach_dist + 1e-6)),
@@ -386,7 +386,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                     goal_dis < self.proximity_th
                     and self.goal_touch >= self.TARGET_GOAL_TOUCH,
                 ),
-                ("done", self._get_done(obj_pos[-1])),
+                ("done", self._get_done(obj_pos[-1], obs_dict)),
             )
         )
         rwd_dict["dense"] = np.sum(
@@ -394,11 +394,18 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         )
         return rwd_dict
 
-    def _get_done(self, z):
-        if self.obs_dict["time"] > MAX_TIME:
+    def _get_done(self, z: float, obs_dict: dict[str, np.ndarray] | None = None) -> int:
+        target_obs = (
+            obs_dict if obs_dict is not None else getattr(self, "obs_dict", None)
+        )
+        if (
+            target_obs is not None
+            and float(np.asarray(target_obs["time"]).squeeze()) > MAX_TIME
+        ):
             return 1
         if z < 0.3:
-            self.obs_dict["time"] = MAX_TIME
+            if target_obs is not None:
+                target_obs["time"] = np.array([MAX_TIME])
             return 1
         if hasattr(self, "rwd_dict") and self.rwd_dict and self.rwd_dict["solved"]:
             return 1
@@ -532,6 +539,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         mujoco.mj_forward(self.model, self.data)
         self.init_obj_z = self.data.site_xpos[self.obj_sid][-1]
         self.init_palm_z = self.data.site_xpos[self.palm_sid][-1]
+        self._record_touch_and_force()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(self.obs_dict)
@@ -543,8 +551,16 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         n_frames = int(self._ctrl_dt / self.model.opt.timestep)
         self.data.ctrl[:] = ctrl
         self._step_physics(n_frames)
+        self._record_touch_and_force()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
+        touching_vec = (
+            self.obs_dict["touching_body"][0][0]
+            if self.obs_dict["touching_body"].ndim == 3
+            else self.obs_dict["touching_body"]
+        )
+        if touching_vec[3] == 1:
+            self.goal_touch += 1
         self.rwd_dict = self.get_reward_dict(self.obs_dict)
         obs, reward, terminated, truncated, info = self._finalize_step(
             self.obs_dict, self.rwd_dict

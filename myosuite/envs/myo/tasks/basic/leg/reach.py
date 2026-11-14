@@ -154,12 +154,13 @@ class LegReachEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             size=self._init_qpos.shape,
         )
         qpos_new = self._init_qpos.copy()
-        jnt_adr = self.model.jnt_qposadr
-        qpos_new[jnt_adr] += qpos_rand[jnt_adr]
-        qpos_new[jnt_adr] = np.clip(
-            qpos_new[jnt_adr],
-            self.model.jnt_range[:, 0],
-            self.model.jnt_range[:, 1],
+        limited = self.model.jnt_limited.astype(bool)
+        lim_adr = self.model.jnt_qposadr[limited]
+        qpos_new[lim_adr] += qpos_rand[lim_adr]
+        qpos_new[lim_adr] = np.clip(
+            qpos_new[lim_adr],
+            self.model.jnt_range[limited, 0],
+            self.model.jnt_range[limited, 1],
         )
         return qpos_new
 

@@ -80,6 +80,8 @@ name walks in the opposite direction of the new one.
 
 CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` now reuse the requested initial fatigue in every episode. Earlier versions mutated that array during stepping, which changed later episodes. Reevaluate checkpoints measured with this configuration.
 
+CPU `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) now perturbs and clips only `jnt_limited` joints instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset. Observation/action shapes and checkpoint loading are unchanged; CPU reset evaluations of `myoLegStandRandom-v0` keep the keyframe pelvis X position.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.

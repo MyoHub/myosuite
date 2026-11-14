@@ -279,9 +279,8 @@ class RepellerChallengeOpponent(ChallengeOpponent):
         escape_xpos = opponent_pos[:2] - repel_COM
         equil_idx = np.where(np.abs(escape_xpos) <= 0.1)[0]
         for idx in equil_idx:
-            escape_xpos[idx] = (
-                -1 * np.sign(escape_xpos[idx]) * self.rng.uniform(low=0.3, high=0.9)
-            )
+            sign = 1.0 if escape_xpos[idx] >= 0.0 else -1.0
+            escape_xpos[idx] = -sign * self.rng.uniform(low=0.3, high=0.9)
         escape_direction = np.arctan2(escape_xpos[1], escape_xpos[0]) + 1.57
         return np.hstack(
             (escape_linear, self._calc_angular_vel(opponent_pos[2], escape_direction))
@@ -316,6 +315,7 @@ class RepellerChallengeOpponent(ChallengeOpponent):
             if rand_num < cum:
                 self.opponent_policy = policy
                 return
+        self.opponent_policy = "repeller"
 
     def update_opponent_state(self) -> None:
         if self.opponent_policy in ("stationary", "static_stationary"):
@@ -486,6 +486,11 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.win_distance = win_distance
         self.maxTime = max_time
         self.repeller_opponent = repeller_opponent
+        self._input_seed = seed
+
+        import gymnasium as _gym
+
+        _gym.Env.reset(self, seed=seed)
 
         # ── Terrain ─────────────────────────────────────────────────────────
         mujoco.mj_forward(self.model, self.data)
@@ -568,11 +573,6 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         # ── Initial state keyframe ───────────────────────────────────────────
         self._init_qpos = self.model.key_qpos[0].copy()
         self._init_qvel = np.zeros(self.model.nv)
-        self._input_seed = seed
-
-        import gymnasium as _gym
-
-        _gym.Env.reset(self, seed=seed)
 
         # ── Observation space (sized from initial forward pass) ───────────────
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
@@ -906,17 +906,16 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             qpos, qvel = self._get_randomized_initial_state()
             return self._randomize_position_orientation(qpos, qvel)
         elif self.reset_type == "init":
-            return self.model.key_qpos[2].copy(), self.model.key_qvel[2].copy()
+            idx = min(2, self.model.nkey - 1)
+            return self.model.key_qpos[idx].copy(), self.model.key_qvel[idx].copy()
         else:
             return self.model.key_qpos[0].copy(), self.model.key_qvel[0].copy()
 
     def _get_randomized_initial_state(self) -> tuple[np.ndarray, np.ndarray]:
-        if self.np_random.uniform() < 0.5:
-            qpos = self.model.key_qpos[2].copy()
-            qvel = self.model.key_qvel[2].copy()
-        else:
-            qpos = self.model.key_qpos[3].copy()
-            qvel = self.model.key_qvel[3].copy()
+        idx = 2 if self.np_random.uniform() < 0.5 else 3
+        idx = min(idx, self.model.nkey - 1)
+        qpos = self.model.key_qpos[idx].copy()
+        qvel = self.model.key_qvel[idx].copy()
         rot_state = qpos[3:7].copy()
         height = qpos[2]
         qpos[:] += self.np_random.normal(0, 0.02, size=qpos.shape)
