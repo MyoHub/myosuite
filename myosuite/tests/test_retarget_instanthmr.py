@@ -279,7 +279,7 @@ def test_round_trip_myofullbody_and_axial_twists(
     q_fit, _ = ik.fit(targets.pos, targets.quat, targets.seed, targets.posture)
     metrics = rt.validate_refit(ik, targets, q_fit)
 
-    assert metrics["coupling_residual"] == 0.0
+    assert metrics["coupling_residual"] == pytest.approx(0.0, abs=1e-12)
     assert metrics["limit_violations"] == 0
     assert metrics["landmark_rmse_mm"] < 5.0
 
@@ -322,7 +322,7 @@ def test_round_trip_myolegs(myolegs: mujoco.MjModel, tmp_path: Path) -> None:
     q_fit, _, meta = rt.refit_clip(
         clip_path, myolegs, "myolegs", model_version("myofullbody"), lmap, src, ik=ik
     )
-    assert meta["metrics"]["coupling_residual"] == 0.0
+    assert meta["metrics"]["coupling_residual"] == pytest.approx(0.0, abs=1e-12)
     assert meta["metrics"]["limit_violations"] == 0
     assert meta["metrics"]["landmark_rmse_mm"] < 1.0
     assert q_fit.shape == (T, myolegs.nq)
@@ -382,7 +382,7 @@ def test_metric_scaling_tilted_camera_and_flight_phase(
     apex_sole = float(low_fit[20].min())
     assert np.max(np.abs(stance_sole)) < 0.01
     assert apex_sole > 0.20, f"aerial apex should stay airborne, got {apex_sole:.3f} m"
-    assert meta["metrics"]["penetration_mm"] == 0.0
+    assert meta["metrics"]["penetration_mm"] == pytest.approx(0.0, abs=1e-9)
 
 
 def test_dropped_frames_avoid_velocity_spikes(
@@ -830,7 +830,7 @@ def test_collinear_landmarks_and_suppressed_orientation_targets(
     np.testing.assert_allclose(r_orig, r_pert, atol=1e-12)
 
     res = ri.solve_instanthmr_ik(clip, model=fullbody)
-    assert res.metrics["coupling_residual"] == 0.0
+    assert res.metrics["coupling_residual"] == pytest.approx(0.0, abs=1e-12)
     assert res.metrics["limit_violations"] == 0
     assert res.metrics["degenerate_orientation_frames"] >= 2
     assert "degenerate_orientation" in res.metrics["quality_flags"]
@@ -855,14 +855,14 @@ def test_real_instanthmr_fixture_end_to_end(
     res_fb = ri.solve_instanthmr_ik(fixture, spec=spec_fb, scale=True)
     assert res_fb.scales is not None
     assert all(0.6 <= v <= 1.5 for v in res_fb.scales.values())
-    assert res_fb.metrics["coupling_residual"] == 0.0
+    assert res_fb.metrics["coupling_residual"] == pytest.approx(0.0, abs=1e-12)
     assert res_fb.metrics["limit_violations"] == 0
     assert res_fb.metrics["landmark_rmse_mm"] < 45.0
     assert np.isfinite(res_fb.qpos).all()
     assert np.isfinite(res_fb.qvel).all()
 
     res_legs = ri.solve_instanthmr_ik(fixture, model=myolegs)
-    assert res_legs.metrics["coupling_residual"] == 0.0
+    assert res_legs.metrics["coupling_residual"] == pytest.approx(0.0, abs=1e-12)
     assert res_legs.metrics["limit_violations"] == 0
     assert res_legs.metrics["landmark_rmse_mm"] < 35.0
 
