@@ -144,5 +144,12 @@ def test_train_small_dataset_and_zero_epochs(fbvs_obs: torch.Tensor) -> None:
     y = rng.uniform(0, 1, (len(o), ACT_DIM)).astype(np.float16)
     res_small = train(o, y, epochs=1, batch=4096, log=lambda s: None)
     assert np.isfinite(res_small["val_mse"])
+    assert all(torch.isfinite(t).all() for t in res_small["state"].values())
     res_zero = train(o, y, epochs=0, batch=4096, log=lambda s: None)
     assert np.isfinite(res_zero["val_mse"])
+    assert all(torch.isfinite(t).all() for t in res_zero["state"].values())
+    res_one = train(o[:1], y[:1], epochs=1, batch=4096, log=lambda s: None)
+    assert np.isfinite(res_one["val_mse"])
+    assert all(torch.isfinite(t).all() for t in res_one["state"].values())
+    with pytest.raises(ValueError, match="non-empty"):
+        train(o[:0], y[:0], epochs=1, batch=4096, log=lambda s: None)

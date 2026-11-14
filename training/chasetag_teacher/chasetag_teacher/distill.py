@@ -181,10 +181,21 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
             normalisation then uses rotated samples too.
         obs_dim: Observation size (546 for FBVs players, 528 for the directional walker).
     """
+    obs_arr = np.asarray(obs)
+    act_arr = np.asarray(act)
+    if obs_arr.ndim != 2 or obs_arr.shape[1] != obs_dim:
+        raise ValueError(f"obs must have shape (N, {obs_dim}), got {obs_arr.shape}")
+    if act_arr.ndim != 2 or act_arr.shape != (len(obs_arr), ACT_DIM):
+        raise ValueError(
+            f"act must have shape ({len(obs_arr)}, {ACT_DIM}), got {act_arr.shape}"
+        )
+    n = len(obs_arr)
+    if n == 0:
+        raise ValueError("obs must be non-empty")
     # a large dataset stays in host memory; batches move to the device
-    host = obs.nbytes + act.nbytes > 4 * 2**30
-    X = torch.as_tensor(obs) if host else torch.as_tensor(obs).to(device)
-    Y = torch.as_tensor(act) if host else torch.as_tensor(act).to(device)
+    host = obs_arr.nbytes + act_arr.nbytes > 4 * 2**30
+    X = torch.as_tensor(obs_arr) if host else torch.as_tensor(obs_arr).to(device)
+    Y = torch.as_tensor(act_arr) if host else torch.as_tensor(act_arr).to(device)
     if init is not None:
         mean, std = init["mean"].to(device), init["std"].to(device)
     else:
@@ -192,13 +203,10 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
         if yaw_aug:
             sub = yaw_rotate(sub, torch.rand(len(sub), device=device) * 2 * np.pi)
         mean = sub.mean(0)
-        std = sub.std(0).clamp(min=1e-2)
+        std = sub.std(0, correction=0).clamp(min=1e-2)
     net = ActorCritic(obs_dim, ACT_DIM).to(device)
     if init is not None:
         net.load_state_dict(init["raw_state"])
-    n = len(X)
-    if n == 0:
-        raise ValueError("obs must be non-empty")
     perm = torch.randperm(n, device=X.device)
     n_val = min(max(1, n // 50), n - 1) if n > 1 else 1
     val = perm[:n_val]
