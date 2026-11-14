@@ -318,27 +318,28 @@ def _compute_site_tracking_error(
     clip: MotionClip,
     frame_idx: int,
 ) -> float | None:
-    """Mean Euclidean site error for available mimic sites at frame_idx."""
-    if clip.site_xpos is None or clip.site_xpos.ndim != 3:
+    """Mean Euclidean error of the mimic sites at *frame_idx*, matched by name.
+
+    Clip columns come from ``clip.site_names``; a clip without names is read in
+    the 17-site order of the retargeted MuscleMimic clips. Sites missing from
+    the model or the clip are left out; ``None`` when none is left.
+    """
+    from myosuite.envs.myo.tasks.mimic.clip_env import _CLIP_SITE_ORDER  # noqa: PLC0415
+
+    xpos = clip.site_xpos
+    if xpos is None or xpos.ndim != 3 or frame_idx >= xpos.shape[0]:
         return None
-    if frame_idx >= clip.site_xpos.shape[0]:
-        return None
-    n_available = clip.site_xpos.shape[1]
-    if n_available <= 0:
-        return None
-    errs: list[float] = []
-    for i, _name in enumerate(FULLBODY_BODY2SITES_FOR_MIMIC.values()):
-        if i >= n_available:
-            break
-        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, _name)
-        if site_id < 0:
-            continue
-        current = np.asarray(data.site_xpos[site_id], dtype=np.float64)
-        target = np.asarray(clip.site_xpos[frame_idx, i], dtype=np.float64)
-        errs.append(float(np.linalg.norm(current - target)))
-    if not errs:
-        return None
-    return float(np.mean(errs))
+    names = clip.site_names
+    if names is None and xpos.shape[1] == len(_CLIP_SITE_ORDER):
+        names = list(_CLIP_SITE_ORDER)
+    column = {name: i for i, name in enumerate(names or ())}
+    errs = [
+        float(np.linalg.norm(data.site_xpos[site_id] - xpos[frame_idx, column[name]]))
+        for name in FULLBODY_BODY2SITES_FOR_MIMIC.values()
+        if name in column
+        and (site_id := mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)) >= 0
+    ]
+    return float(np.mean(errs)) if errs else None
 
 
 def _step_with_clip(

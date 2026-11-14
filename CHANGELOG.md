@@ -31,6 +31,10 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* The site-tracking error of the MuscleMimic full-body playback (`myosuite-musclemimic-fullbody-eval`,
+  `PlaybackResult.mean_tracking_error`) and the SAR activation collector's episode filter match clip columns to
+  the model's mimic sites by name. They paired them by position, so a body posed exactly on the reference
+  reported 0.25 to 0.45 m. Activation sets collected with the old filter were selected by that number.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
