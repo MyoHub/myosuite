@@ -50,20 +50,29 @@ _HEADING_FALL_HEIGHT: float = 0.7  # pelvis z (m) below which the agent has fall
 _HEADING_FALL_PENALTY: float = 1.0  # dense reward subtracted on fall
 
 
-def _xp_asarray(xp: Any, value: Any, *, dtype: Any | None = None) -> Any:
+def _xp_asarray(
+    xp: Any,
+    value: Any,
+    *,
+    dtype: Any | None = None,
+    device: Any | None = None,
+) -> Any:
     """Convert *value* to the backend array type used by *xp*."""
 
     if getattr(xp, "__name__", "") == "torch":
-        tensor = xp.as_tensor(value)
+        tensor = (
+            xp.as_tensor(value, device=device)
+            if device is not None
+            else xp.as_tensor(value)
+        )
         return tensor.to(dtype=dtype) if dtype is not None else tensor
     return xp.asarray(value, dtype=dtype) if dtype is not None else xp.asarray(value)
 
 
 def _maybe_item(value: Any) -> Any:
-    """Convert scalar backend arrays/tensors to Python scalars for CPU callers."""
+    """Convert scalar NumPy arrays to Python scalars without syncing GPU tensors."""
 
-    ndim = getattr(value, "ndim", None)
-    if ndim == 0 and hasattr(value, "item"):
+    if isinstance(value, np.ndarray | np.generic) and np.ndim(value) == 0:
         return value.item()
     return value
 
@@ -183,7 +192,11 @@ def multi_site_reach_reward(
     act_mag = xp.linalg.norm(act, axis=-1) / na if na else 0.0 * dist
     near = n_sites * 0.0125
     far = xp.where(
-        _xp_asarray(xp, task_state["penalty_active"]), far_th * n_sites, float("inf")
+        _xp_asarray(
+            xp, task_state["penalty_active"], device=getattr(dist, "device", None)
+        ),
+        far_th * n_sites,
+        float("inf"),
     )
     return {
         "reach": -1.0 * dist,
@@ -229,7 +242,11 @@ def leg_reach_reward(
     act_mag = xp.linalg.norm(act, axis=-1) / na if na else 0.0 * dist
     near = n_sites * 0.05
     far = xp.where(
-        _xp_asarray(xp, task_state["penalty_active"]), far_th * n_sites, float("inf")
+        _xp_asarray(
+            xp, task_state["penalty_active"], device=getattr(dist, "device", None)
+        ),
+        far_th * n_sites,
+        float("inf"),
     )
     return {
         "reach": 10.0 - 1.0 * dist - 10.0 * vel_dist,
@@ -332,10 +349,12 @@ def upright_posture_reward(
     """
     del kwargs
     xp = accessor.array_module()
+    ref_device = getattr(accessor.joint_pos(), "device", None)
     posture = _xp_asarray(
         xp,
         task_state.get("upright_posture", 0.0),
         dtype=getattr(xp, "float32", None),
+        device=ref_device,
     )
     reward = posture - float(upright_posture_threshold)
     done = posture < float(upright_posture_threshold)
@@ -382,7 +401,12 @@ def heading_reward(
     # Leading axes are batch axes (none on CPU, (N,) on mjlab).
     planar_vel = accessor.joint_vel()[..., :2]
     height = accessor.joint_pos()[..., 2]
-    direction = _xp_asarray(xp, heading_dir, dtype=getattr(xp, "float32", None))
+    direction = _xp_asarray(
+        xp,
+        heading_dir,
+        dtype=getattr(xp, "float32", None),
+        device=getattr(planar_vel, "device", None),
+    )
     target_vel = target_speed * direction
     sq_error = xp.sum((target_vel - planar_vel) ** 2, axis=-1)
     tracking = xp.exp(-sq_error)
@@ -415,18 +439,20 @@ def joint_penalty(
         Dict with key ``joint_penalty`` (non-positive scalar).
     """
     xp = accessor.array_module()
-    ctrl_range = accessor.ctrl_range()
     qpos = accessor.joint_pos()
-    lo, hi = ctrl_range[:, 0], ctrl_range[:, 1]
-    margin = 0.05 * (hi - lo)
+    lo, hi, limited = accessor.joint_limits()
+    span = xp.where(limited, hi - lo, 0.0)
+    margin = 0.05 * span
     # xp.clip(x, 0.0, None) is used in preference to xp.maximum(0.0, x) because
     # torch.maximum requires both arguments to be Tensors, while clip/clamp accept
     # a scalar min bound universally across numpy, jax, and torch.
-    violation = xp.sum(
+    per_coord = xp.where(
+        limited,
         xp.clip(lo + margin - qpos, 0.0, None)
         + xp.clip(qpos - (hi - margin), 0.0, None),
-        axis=-1,
+        0.0,
     )
+    violation = xp.sum(per_coord, axis=-1)
     penalty = -weight * violation
     return {"joint_penalty": penalty, "dense": penalty, "solved": False, "done": False}
 

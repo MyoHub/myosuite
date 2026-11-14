@@ -64,6 +64,14 @@ class EnvAccessor(Protocol):
         """Actuator control range. Shape: (nu, 2) where [:,0] is min, [:,1] is max."""
         ...
 
+    def joint_limits(self) -> tuple[Any, Any, Any]:
+        """Per-qpos scalar joint limits ``(lo, hi, limited)``, each of shape ``(nq,)``.
+
+        Only limited 1-DoF (hinge/slide) coordinates set ``limited=True``; free,
+        ball and unlimited coordinates set ``lo=0, hi=0, limited=False``.
+        """
+        ...
+
     def dt(self) -> float:
         """Control timestep (ctrl_dt) in seconds."""
         ...
