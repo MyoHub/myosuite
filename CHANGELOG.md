@@ -8,17 +8,20 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
-* Native InstantHMR (`MHR70` 70-keypoint, metric camera-space) motion retargeting
-  source (`myosuite.biomechanics.retarget_instanthmr`) for
-  `myosuite.biomechanics.retarget.LandmarkIK` on `myofullbody` and `myolegs`, with
-  `scripts/mimic/retarget_instanthmr.py` for batch `.npz` retargeting and optional
-  single-camera video extraction into `myoMimic-v0` clips.
+* Native InstantHMR (`MHR70` 70-keypoint, metric camera-space) biomechanical pipeline
+  (`myosuite.biomechanics.retarget_instanthmr`, `myosuite.viz.muscle_meshes`) for
+  `myofullbody` and `myolegs`: subject anthropometric scaling
+  (`estimate_instanthmr_scales`, `scale_model_from_instanthmr`), metric/nominal
+  `LandmarkIK` (`InstantHMRSource`, `solve_instanthmr_ik`), 3D deformed muscle mesh and
+  activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
+  glTF 2.0 `.glb` export), and `scripts/mimic/retarget_instanthmr.py` ([#749]).
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#749]: https://github.com/MyoHub/myosuite/pull/749
 
 ## [3.1.0] - 2026-11-11
 

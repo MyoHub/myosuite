@@ -44,3 +44,9 @@ Uncertainty bands
 
 .. automodule:: myosuite.biomechanics.uncertainty
    :members:
+
+Muscle mesh reconstruction
+--------------------------
+
+.. automodule:: myosuite.viz.muscle_meshes
+   :members:

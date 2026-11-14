@@ -2,10 +2,10 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Retarget InstantHMR MHR70 clips (or videos) onto a MyoSuite body model.
+"""Retarget, scale and reconstruct 3D muscles from InstantHMR MHR70 clips or videos.
 
     python scripts/mimic/retarget_instanthmr.py /path/to/instanthmr_clips \
-        --model myofullbody --workers 4
+        --model myofullbody --scale --reconstruct-muscles volumetric --export-glb
 
 Accepts a single ``.npz`` clip, a directory of ``.npz`` clips, a ``.txt`` clip list, or
 a video file (``.mp4``, ``.mov``, ``.avi``, ``.mkv``, ``.webm``; requires optional
@@ -82,6 +82,7 @@ def extract_video_clip(
             hmr_model, fit=fit, device=device, focal=focal, pose_filter=pose_filter
         )
         joints_list: list[np.ndarray] = []
+        shapes_list: list[np.ndarray | None] = []
         valid_list: list[bool] = []
         prev_box: np.ndarray | None = None
         frame_idx = 0
@@ -108,11 +109,16 @@ def extract_video_clip(
             if chosen is not None:
                 prev_box = np.asarray(chosen.bbox, np.float32)
                 joints_list.append(np.asarray(chosen.joints_3d_cam, np.float32))
+                sp = getattr(chosen, "shape_params", None)
+                shapes_list.append(
+                    np.asarray(sp, np.float32) if sp is not None else None
+                )
                 valid_list.append(True)
             else:
                 joints_list.append(
                     np.full((len(MHR70_JOINTS), 3), np.nan, dtype=np.float32)
                 )
+                shapes_list.append(None)
                 valid_list.append(False)
             frame_idx += 1
     finally:
@@ -124,40 +130,77 @@ def extract_video_clip(
         )
     out = Path(out_npz)
     out.parent.mkdir(parents=True, exist_ok=True)
+    extra: dict[str, Any] = {}
+    first_shape = next((s for s in shapes_list if s is not None), None)
+    if first_shape is not None:
+        nan_shape = np.full_like(first_shape, np.nan, dtype=np.float32)
+        extra["shape_params"] = np.stack(
+            [s if s is not None else nan_shape for s in shapes_list], axis=0
+        )
     np.savez_compressed(
         out,
         joints_3d_cam=np.stack(joints_list, axis=0),
         fps=np.float64(fps),
         valid=np.asarray(valid_list, dtype=bool),
+        **extra,
     )
     return out
 
 
-def _compile_target(model_name: str) -> tuple[Any, str]:
+def _compile_target(
+    model_name: str,
+    *,
+    scales: dict[str, float] | None = None,
+    body_mass: float | None = None,
+) -> tuple[Any, str]:
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
     from myosuite.biomechanics import retarget_instanthmr as ri  # noqa: PLC0415
 
+    imap = ri.INSTANTHMR_MAPS[model_name]
     if model_name == "myolegs":
         from myosuite import make_env  # noqa: PLC0415
 
         env = make_env("myoLegWalk-v0")
         try:
-            model = env.unwrapped.model.__copy__()
+            if scales is not None:
+                spec = ri.scale_spec_from_instanthmr(
+                    env.unwrapped._mj_spec, scales, body_mass=body_mass
+                )
+                model = spec.compile()
+            else:
+                model = env.unwrapped.model.__copy__()
         finally:
             env.close()
-        imap = ri.INSTANTHMR_MAPS[model_name]
         fp = rt.kinematic_fingerprint(model, ri.landmark_bodies(imap), imap.feet)
         return model, fp
 
     from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
         compiled_body,
         kinematic_fingerprint,
+        model_cfg,
     )
 
+    if scales is not None:
+        spec = ri.scale_spec_from_instanthmr(
+            model_cfg(model_name).build_spec(True), scales, body_mass=body_mass
+        )
+        model = spec.compile()
+        fp = rt.kinematic_fingerprint(model, ri.landmark_bodies(imap), imap.feet)
+        return model, fp
     return compiled_body(model_name), kinematic_fingerprint(model_name)
 
 
-def _init(model_name: str, version: str, trim: int) -> None:
+def _init(
+    model_name: str,
+    version: str,
+    trim: int,
+    scales: dict[str, float] | None = None,
+    body_mass: float | None = None,
+    reconstruct_muscles: str = "none",
+    activation: str = "shortening",
+    export_glb: bool = False,
+    glb_frame: int = 0,
+) -> None:
     for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         os.environ[var] = "1"
     import warnings  # noqa: PLC0415
@@ -166,9 +209,12 @@ def _init(model_name: str, version: str, trim: int) -> None:
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
     from myosuite.biomechanics import retarget_instanthmr as ri  # noqa: PLC0415
 
-    model, fp = _compile_target(model_name)
+    model, fp = _compile_target(model_name, scales=scales, body_mass=body_mass)
     src, lmap = ri.instanthmr_source(
-        model, ri.INSTANTHMR_MAPS[model_name], trim=(trim, trim)
+        model,
+        ri.INSTANTHMR_MAPS[model_name],
+        trim=(trim, trim),
+        metric_targets=scales is not None,
     )
     _STATE.update(
         rt=rt,
@@ -179,7 +225,48 @@ def _init(model_name: str, version: str, trim: int) -> None:
         fingerprint=fp,
         ik=rt.LandmarkIK(model, lmap),
         source=src,
+        scales=scales,
+        body_mass=body_mass,
+        reconstruct_muscles=reconstruct_muscles,
+        activation=activation,
+        export_glb=export_glb,
+        glb_frame=glb_frame,
     )
+
+
+def _export_muscles(
+    dst_path: Path, model: Any, qpos: np.ndarray, freq: float
+) -> dict[str, Any]:
+    from myosuite.viz.muscle_meshes import reconstruct_muscle_meshes  # noqa: PLC0415
+
+    s = _STATE
+    mode = s["reconstruct_muscles"]
+    if mode == "none" and not s["export_glb"]:
+        return {}
+    mesh_mode = "volumetric" if mode == "none" else mode
+    recon = reconstruct_muscle_meshes(
+        model,
+        qpos,
+        freq,
+        activation_mode=s["activation"],
+        mesh_mode=mesh_mode,
+    )
+    npz_out = dst_path.with_name(f"{dst_path.stem}_muscles.npz")
+    recon.save_npz(npz_out)
+    info: dict[str, Any] = {
+        "muscle_mesh_mode": recon.mode,
+        "muscle_activation_mode": s["activation"],
+        "muscle_count": recon.num_muscles,
+        "muscle_npz": npz_out.name,
+    }
+    if s["export_glb"]:
+        frame = min(max(int(s["glb_frame"]), 0), recon.num_frames - 1)
+        glb_out = dst_path.with_name(f"{dst_path.stem}_muscles.glb")
+        recon.write_glb(
+            glb_out, frame=frame, model=model, qpos=qpos, include_bones=True
+        )
+        info["muscle_glb"] = glb_out.name
+    return info
 
 
 def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
@@ -187,9 +274,10 @@ def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
     s = _STATE
     rt, model, lmap = s["rt"], s["model"], s["lmap"]
     curation = {"quality_flags": [], **curation}
+    dst_path = Path(dst)
     try:
-        if Path(dst).exists():
-            meta = rt.read_refit_meta(dst)
+        if dst_path.exists():
+            meta = rt.read_refit_meta(dst_path)
             if meta and "model_fingerprint" in meta:
                 same_body = meta["model_fingerprint"] == s["fingerprint"]
             else:
@@ -201,13 +289,15 @@ def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
                 and meta.get("solver") == dataclasses.asdict(s["ik"].config)
                 and (meta.get("instanthmr_map_version"), meta.get("trim"))
                 == (s["source"].imap.version, list(s["source"].trim))
+                and bool(meta.get("scaled", False)) == (s["scales"] is not None)
             ):
-                curation = {"model_fingerprint": s["fingerprint"], **curation}
+                with np.load(dst_path, allow_pickle=False) as d:
+                    qpos, freq = d["qpos"], float(d["frequency"])
+                m_info = _export_muscles(dst_path, model, qpos, freq)
+                curation = {"model_fingerprint": s["fingerprint"], **m_info, **curation}
                 if any(meta.get(k) != v for k, v in curation.items()):
                     meta.update(curation)
-                    with np.load(dst, allow_pickle=False) as d:
-                        qpos, freq = d["qpos"], float(d["frequency"])
-                    rt.save_refit(dst, model, qpos, freq, meta)
+                    rt.save_refit(dst_path, model, qpos, freq, meta)
                 return {"meta": meta, "skipped": True}
         qpos, freq, meta = rt.refit_clip(
             src,
@@ -220,8 +310,14 @@ def _work(job: tuple[str, str, str, dict[str, Any]]) -> dict[str, Any]:
             model_fingerprint=s["fingerprint"],
         )
         meta["source"] = label
+        meta["scaled"] = s["scales"] is not None
+        if s["scales"] is not None:
+            meta["subject_scales"] = s["scales"]
+            if s["body_mass"] is not None:
+                meta["subject_body_mass_kg"] = float(s["body_mass"])
+        meta.update(_export_muscles(dst_path, model, qpos, freq))
         meta.update(curation)
-        rt.save_refit(dst, model, qpos, freq, meta)
+        rt.save_refit(dst_path, model, qpos, freq, meta)
         return {"meta": meta, "skipped": False}
     except Exception as err:
         return {"error": f"{type(err).__name__}: {err}", "source": label}
@@ -269,7 +365,7 @@ def stamp(root: Path, model_name: str) -> int:
     counts = {"stamped": 0, "already": 0}
     refused = []
     for f in sorted(root.rglob("*.npz")):
-        if f.name.endswith(".tmp.npz"):
+        if f.name.endswith((".tmp.npz", "_muscles.npz")):
             continue
         try:
             key = (
@@ -323,6 +419,39 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="JSON {clip label: metadata fields} merged into the clips",
     )
+    p.add_argument(
+        "--scale",
+        action="store_true",
+        help="scale the musculoskeletal model to the subject's metric MHR70 skeleton",
+    )
+    p.add_argument(
+        "--body-mass",
+        type=float,
+        default=None,
+        help="subject total body mass in kg (used with --scale)",
+    )
+    p.add_argument(
+        "--reconstruct-muscles",
+        default="none",
+        help="reconstruct 3D muscle meshes: none, volumetric, atlas, atlas-hd, or .glb path",
+    )
+    p.add_argument(
+        "--activation",
+        default="shortening",
+        choices=("shortening", "static_optimization", "none"),
+        help="muscle activation estimator for reconstructed muscle meshes",
+    )
+    p.add_argument(
+        "--export-glb",
+        action="store_true",
+        help="write a posed <clip>_muscles.glb scene alongside retargeted clips",
+    )
+    p.add_argument(
+        "--glb-frame",
+        type=int,
+        default=0,
+        help="frame index exported when --export-glb is enabled",
+    )
     p.add_argument("--hmr-model", default="medium-commercial")
     p.add_argument("--hmr-fit", type=int, default=2)
     p.add_argument("--device", default="cuda")
@@ -370,13 +499,27 @@ def main(argv: list[str] | None = None) -> int:
         files, base = [src], src.parent
         dataset = args.dataset or "instanthmr"
     elif src.is_dir():
-        files, base = sorted(src.rglob("*.npz")), src
+        files = [
+            f
+            for f in sorted(src.rglob("*.npz"))
+            if not f.name.endswith((".tmp.npz", "_muscles.npz"))
+        ]
+        base = src
         dataset = args.dataset or src.name
     else:
         raise FileNotFoundError(f"input not found: {src}")
 
     if args.limit:
         files = files[: args.limit]
+
+    imap = ri.INSTANTHMR_MAPS[args.model]
+    scales: dict[str, float] | None = None
+    if args.scale and files:
+        nominal, _ = _compile_target(args.model)
+        scales = ri.estimate_instanthmr_scales(
+            files[0], nominal, imap, trim=(args.trim, args.trim)
+        )
+
     curation = (
         json.loads(Path(args.quality_flags).read_text()) if args.quality_flags else {}
     )
@@ -387,20 +530,31 @@ def main(argv: list[str] | None = None) -> int:
         dst = str(out_root / dataset / f.relative_to(base))
         jobs.append((str(f), dst, label, curation.get(label, {})))
 
+    init_args = (
+        args.model,
+        version,
+        args.trim,
+        scales,
+        args.body_mass,
+        args.reconstruct_muscles,
+        args.activation,
+        args.export_glb,
+        args.glb_frame,
+    )
     workers = max(
         1, min(args.workers, MAX_WORKERS, os.cpu_count() or 1, max(len(jobs), 1))
     )
     t0 = time.time()
     results: list[dict[str, Any]] = []
     if workers == 1:
-        _init(args.model, version, args.trim)
+        _init(*init_args)
         results = [_work(j) for j in jobs]
     else:
         ctx = mp.get_context("spawn")
         with ctx.Pool(
             workers,
             initializer=_init,
-            initargs=(args.model, version, args.trim),
+            initargs=init_args,
             maxtasksperchild=50,
         ) as pool:
             results = list(pool.imap_unordered(_work, jobs, chunksize=1))
@@ -420,13 +574,20 @@ def main(argv: list[str] | None = None) -> int:
             "flagged": [],
         }
     )
-    imap = ri.INSTANTHMR_MAPS[args.model]
     summary.update(
         model=args.model,
         model_version=version,
         landmark_map=imap.name,
         landmark_map_version=imap.version,
         trim=args.trim,
+        scaled=scales is not None,
+        **({"subject_scales": scales} if scales is not None else {}),
+        **(
+            {"subject_body_mass_kg": args.body_mass}
+            if args.body_mass is not None
+            else {}
+        ),
+        reconstruct_muscles=args.reconstruct_muscles,
         out_root=str(out_root / dataset),
         wall_s=time.time() - t0,
         workers=workers,
@@ -435,6 +596,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     report = Path(args.report_dir) if args.report_dir else (out_root / dataset)
     report.mkdir(parents=True, exist_ok=True)
+    if scales is not None:
+        (report / "subject_scales.json").write_text(
+            json.dumps(
+                {"model": args.model, "scales": scales, "body_mass_kg": args.body_mass},
+                indent=2,
+            )
+            + "\n"
+        )
     (report / "retarget_summary.json").write_text(json.dumps(summary, indent=1))
     (report / "retarget_summary.md").write_text(_markdown(summary))
     with (report / "retarget_clips.jsonl").open("w") as f:

@@ -685,7 +685,10 @@ def _muscle_rigs(
         return []
     bundled = config.muscle_mesh in MUSCLE_MESHES
     env_id = config.muscle_mesh_env or (MUSCLE_MESH_ENV if bundled else None)
-    if env_id is None or env_id == config.env:
+    import numpy as np
+
+    scaled = hasattr(model, "mesh_scale") and not np.allclose(model.mesh_scale, 1.0)
+    if env_id is None or (env_id == config.env and not scaled):
         return [_rest_poses(model, bone_geoms)]
     reference = _muscle_mesh_reference(env_id)
     rest = _rest_poses(

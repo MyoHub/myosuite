@@ -586,3 +586,537 @@ def test_video_extraction_tracks_primary_person_and_dropouts(
     assert meta is not None
     assert meta["interpolated_frames"] == 2
     assert meta["metrics"]["landmark_rmse_mm"] < 5.0
+
+
+def _closed_mesh_volume(vertices: np.ndarray, faces: np.ndarray) -> float:
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
+    return float(abs(np.einsum("ij,ij->i", v0, np.cross(v1, v2)).sum()) / 6.0)
+
+
+def _write_test_muscle_glb(path: Path, ref_model: mujoco.MjModel) -> Path:
+    import struct
+
+    from myosuite.viz.skin_glb import _TO_GLTF
+
+    d = mujoco.MjData(ref_model)
+    d.qpos[:] = ref_model.qpos0
+    mujoco.mj_forward(ref_model, d)
+
+    def bone_geom(body_name: str) -> int:
+        bid = ref_model.body(body_name).id
+        return next(
+            g
+            for g in range(ref_model.ngeom)
+            if ref_model.geom_bodyid[g] == bid
+            and ref_model.geom_type[g] == mujoco.mjtGeom.mjGEOM_MESH
+        )
+
+    bone_bodies = ("femur_r", "tibia_r", "humerus_r", "ulna_r")
+    g_ids = [bone_geom(b) for b in bone_bodies]
+    joint_pos_mj = np.stack([d.geom_xpos[g] for g in g_ids], axis=0)
+    joint_pos_gltf = joint_pos_mj @ _TO_GLTF.T
+
+    blob = bytearray()
+    views: list[dict[str, object]] = []
+    accessors: list[dict[str, object]] = []
+
+    def add(arr: np.ndarray, kind: str, comp: int) -> int:
+        arr = np.ascontiguousarray(arr)
+        while len(blob) % 4:
+            blob.append(0)
+        views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": arr.nbytes})
+        blob.extend(arr.tobytes())
+        acc: dict[str, object] = {
+            "bufferView": len(views) - 1,
+            "componentType": comp,
+            "count": int(len(arr)),
+            "type": kind,
+        }
+        if kind == "VEC3" and comp == 5126:
+            acc["min"] = arr.min(0).tolist()
+            acc["max"] = arr.max(0).tolist()
+        accessors.append(acc)
+        return len(accessors) - 1
+
+    def prism_between(
+        p0: np.ndarray, p1: np.ndarray, j0: int, j1: int
+    ) -> dict[str, object]:
+        verts_mj = np.array(
+            [
+                p0 + [0.01, 0.0, 0.0],
+                p0 + [-0.005, 0.009, 0.0],
+                p0 + [-0.005, -0.009, 0.0],
+                p1 + [0.01, 0.0, 0.0],
+                p1 + [-0.005, 0.009, 0.0],
+                p1 + [-0.005, -0.009, 0.0],
+            ],
+            dtype=np.float64,
+        )
+        faces = np.array(
+            [
+                [0, 2, 1],
+                [3, 4, 5],
+                [0, 1, 4],
+                [0, 4, 3],
+                [1, 2, 5],
+                [1, 5, 4],
+                [2, 0, 3],
+                [2, 3, 5],
+            ],
+            dtype=np.uint32,
+        )
+        jnts = np.array(
+            [[j0, j1, 0, 0]] * 6,
+            dtype=np.uint16,
+        )
+        wts = np.array(
+            [
+                [0.85, 0.15, 0.0, 0.0],
+                [0.85, 0.15, 0.0, 0.0],
+                [0.85, 0.15, 0.0, 0.0],
+                [0.15, 0.85, 0.0, 0.0],
+                [0.15, 0.85, 0.0, 0.0],
+                [0.15, 0.85, 0.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
+        return {
+            "attributes": {
+                "POSITION": add(
+                    (verts_mj @ _TO_GLTF.T).astype(np.float32), "VEC3", 5126
+                ),
+                "JOINTS_0": add(jnts, "VEC4", 5123),
+                "WEIGHTS_0": add(wts, "VEC4", 5126),
+            },
+            "indices": add(faces.ravel(), "SCALAR", 5125),
+        }
+
+    prim_leg = prism_between(joint_pos_mj[0], joint_pos_mj[1], 0, 1)
+    prim_arm = prism_between(joint_pos_mj[2], joint_pos_mj[3], 2, 3)
+
+    nodes: list[dict[str, object]] = [
+        {"name": f"bone_{b}", "translation": joint_pos_gltf[i].tolist()}
+        for i, b in enumerate(bone_bodies)
+    ]
+    nodes.append({"name": "Armature", "children": [0, 1, 2, 3]})
+    nodes.append({"name": "recfem_r", "mesh": 0, "skin": 0})
+    nodes.append({"name": "BIClong_r", "mesh": 1, "skin": 0})
+
+    gltf = {
+        "asset": {"version": "2.0"},
+        "scene": 0,
+        "scenes": [{"nodes": [4, 5, 6]}],
+        "nodes": nodes,
+        "meshes": [
+            {"name": "recfem_r", "primitives": [prim_leg]},
+            {"name": "BIClong_r", "primitives": [prim_arm]},
+        ],
+        "skins": [{"name": "Rig", "joints": [0, 1, 2, 3], "skeleton": 4}],
+        "accessors": accessors,
+        "bufferViews": views,
+        "buffers": [{"byteLength": len(blob)}],
+    }
+    txt = json.dumps(gltf).encode("utf-8")
+    txt += b" " * (-len(txt) % 4)
+    blob += b"\0" * (-len(blob) % 4)
+    raw = (
+        struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(txt) + 8 + len(blob))
+        + struct.pack("<I4s", len(txt), b"JSON")
+        + txt
+        + struct.pack("<I4s", len(blob), b"BIN\0")
+        + bytes(blob)
+    )
+    path.write_bytes(raw)
+    return path
+
+
+def test_subject_scaling_invariants_fullbody_and_myolegs(
+    fullbody: mujoco.MjModel,
+) -> None:
+    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+    from myosuite.viz.muscle_tubes import muscle_actuators
+
+    spec_fb = model_cfg("myofullbody").build_spec(True)
+    gt_scales = {
+        "pelvis": 1.08,
+        "sacrum": 1.12,
+        "clavicle_l": 1.05,
+        "clavicle_r": 1.05,
+        "femur_l": 1.18,
+        "femur_r": 1.18,
+        "tibia_l": 1.14,
+        "tibia_r": 1.14,
+        "talus_l": 1.10,
+        "talus_r": 1.10,
+        "humerus_l": 1.15,
+        "humerus_r": 1.15,
+        "ulna_l": 1.11,
+        "ulna_r": 1.11,
+        "lunate_l": 1.06,
+        "lunate_r": 1.06,
+    }
+    gt_model = ri.scale_spec_from_instanthmr(
+        spec_fb, gt_scales, body_mass=82.5
+    ).compile()
+
+    cal_gt = ri.calibrate(gt_model, ri.INSTANTHMR_MYOFULLBODY)
+    q_gt = np.tile(cal_gt.qpos, (10, 1))
+    j_cam = _synthesize_mhr70_cam(gt_model, ri.INSTANTHMR_MYOFULLBODY, q_gt)
+    clip_dict = {"joints_3d_cam": j_cam, "fps": 30.0}
+
+    est = ri.estimate_instanthmr_scales(clip_dict, fullbody, ri.INSTANTHMR_MYOFULLBODY)
+    for key, val in gt_scales.items():
+        assert est[key] == pytest.approx(val, abs=1e-4), f"{key}: {est[key]} != {val}"
+
+    m_scaled, _, _ = ri.scale_model_from_instanthmr(
+        spec_fb, clip_dict, ri.INSTANTHMR_MYOFULLBODY, body_mass=82.5
+    )
+    assert m_scaled.body_mass[1:].sum() == pytest.approx(82.5, rel=1e-6)
+    scaphoid_id = m_scaled.body("scaphoid_r").id
+    assert np.all(m_scaled.body_inertia[scaphoid_id] > 0)
+
+    # Muscle peak force stays constant and normalized resting tendon length is preserved.
+    muscles = muscle_actuators(fullbody)
+    assert np.allclose(
+        m_scaled.actuator_gainprm[muscles, 2],
+        fullbody.actuator_gainprm[muscles, 2],
+        rtol=1e-5,
+    )
+    q0 = fullbody.qpos0.copy()
+    project_joint_couplings(JointCouplings.from_model(fullbody), q0)
+    d0 = mujoco.MjData(fullbody)
+    d0.qpos[:] = q0
+    mujoco.mj_forward(fullbody, d0)
+
+    qs = m_scaled.qpos0.copy()
+    project_joint_couplings(JointCouplings.from_model(m_scaled), qs)
+    ds = mujoco.MjData(m_scaled)
+    ds.qpos[:] = qs
+    mujoco.mj_forward(m_scaled, ds)
+
+    tids = fullbody.actuator_trnid[muscles, 0]
+    lr0 = fullbody.actuator_lengthrange[muscles]
+    lrs = m_scaled.actuator_lengthrange[muscles]
+    norm0 = (d0.ten_length[tids] - lr0[:, 0]) / (lr0[:, 1] - lr0[:, 0])
+    norms = (ds.ten_length[tids] - lrs[:, 0]) / (lrs[:, 1] - lrs[:, 0])
+    assert np.allclose(norm0, norms, atol=1e-6)
+
+    # Sole floor height at assembled qpos0 matches nominal model.
+    assert ri._sole_lowest_z(m_scaled, qs) == pytest.approx(
+        ri._sole_lowest_z(fullbody, q0), abs=1e-6
+    )
+
+    # Polynomial knee coupling residual remains zero across flexion angles.
+    couplings = JointCouplings.from_model(m_scaled)
+    q_flex = qs.copy()
+    q_flex[m_scaled.jnt_qposadr[m_scaled.joint("knee_angle_r").id]] = 1.2
+    project_joint_couplings(couplings, q_flex)
+    q_check = q_flex.copy()
+    project_joint_couplings(couplings, q_check)
+    assert np.max(np.abs(q_check - q_flex)) < 1e-12
+
+    # Also verify scaling on myoLegWalk-v0 MjSpec (keyframes + 80 leg muscles).
+    env = make_env("myoLegWalk-v0")
+    try:
+        spec_leg = env.unwrapped._mj_spec.copy()
+        m_leg0 = env.unwrapped.model.__copy__()
+    finally:
+        env.close()
+    cal_leg = ri.calibrate(m_leg0, ri.INSTANTHMR_MYOLEGS)
+    j_leg = _synthesize_mhr70_cam(
+        m_leg0,
+        ri.INSTANTHMR_MYOLEGS,
+        np.tile(cal_leg.qpos, (8, 1)),
+        subject_scale=1.12,
+    )
+    m_leg_s, _, leg_scales = ri.scale_model_from_instanthmr(
+        spec_leg, {"joints_3d_cam": j_leg, "fps": 30.0}, body_mass=76.0
+    )
+    assert leg_scales["femur_r"] == pytest.approx(1.12, abs=1e-4)
+    assert leg_scales["tibia_l"] == pytest.approx(1.12, abs=1e-4)
+    assert m_leg_s.body_mass[1:].sum() == pytest.approx(76.0, rel=1e-6)
+
+
+def test_solve_instanthmr_ik_metric_scaled_roundtrip() -> None:
+    from myosuite.core.trajectory_io import expand_motion_clip_to_model
+    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+
+    spec = model_cfg("myofullbody").build_spec(True)
+    subject_scale = 1.15
+    gt_model = ri.scale_spec_from_instanthmr(
+        spec,
+        {
+            k: subject_scale
+            for k in (
+                "pelvis",
+                "sacrum",
+                "clavicle_l",
+                "clavicle_r",
+                "femur_l",
+                "femur_r",
+                "tibia_l",
+                "tibia_r",
+                "talus_l",
+                "talus_r",
+                "humerus_l",
+                "humerus_r",
+                "ulna_l",
+                "ulna_r",
+                "lunate_l",
+                "lunate_r",
+            )
+        },
+    ).compile()
+    cal = ri.calibrate(gt_model, ri.INSTANTHMR_MYOFULLBODY)
+
+    T = 25
+    t = np.linspace(0.0, 0.4, T)
+    q_gt = np.tile(cal.qpos, (T, 1))
+    q_gt[:, 0] = 0.55 * (t / t[-1])
+    for jn, amp in (
+        ("hip_flexion_r", 0.3),
+        ("knee_angle_r", 0.45),
+        ("elbow_flexion_l", 0.5),
+    ):
+        q_gt[:, gt_model.jnt_qposadr[gt_model.joint(jn).id]] = amp * np.sin(
+            np.pi * t / t[-1]
+        )
+    project_joint_couplings(JointCouplings.from_model(gt_model), q_gt)
+    low0 = rt._foot_kinematics(gt_model, cal.lmap, q_gt)[0].min()
+    q_gt[:, 2] -= low0
+
+    j_cam = _synthesize_mhr70_cam(gt_model, ri.INSTANTHMR_MYOFULLBODY, q_gt)
+    res = ri.solve_instanthmr_ik(
+        {"joints_3d_cam": j_cam, "fps": 60.0},
+        spec=spec,
+        scale=True,
+        body_mass=80.0,
+        target_sigma=0.0,
+    )
+    assert res.scales is not None
+    # Knee condyle slide coupling shifts tibia origin ~1.4 mm over 0.45 rad flexion.
+    assert res.scales["femur_r"] == pytest.approx(subject_scale, abs=3e-3)
+    assert res.metrics["root_scale"] == pytest.approx(1.0)
+    assert res.metrics["landmark_rmse_mm"] < 5.0
+    assert res.metrics["coupling_residual"] < 1e-9
+    # Metric 0.55 m forward progression preserved 1:1 on the scaled subject.
+    dx_fit = float(res.qpos[-1, 0] - res.qpos[0, 0])
+    assert dx_fit == pytest.approx(0.55, abs=0.015)
+    assert res.qvel.shape == (T, res.model.nv)
+    assert res.qacc.shape == (T, res.model.nv)
+    assert res.landmark_error.shape == (T, len(cal.lmap.landmarks))
+    expanded = expand_motion_clip_to_model(res.clip, res.model)
+    assert np.allclose(expanded.qpos, res.qpos)
+
+
+def test_reconstruct_muscle_meshes_volumetric_static_opt_and_glb(
+    tmp_path: Path,
+) -> None:
+    import struct
+
+    env = make_env("myoLegWalk-v0")
+    try:
+        spec_leg = env.unwrapped._mj_spec.copy()
+        m_leg = env.unwrapped.model.__copy__()
+    finally:
+        env.close()
+
+    cal = ri.calibrate(m_leg, ri.INSTANTHMR_MYOLEGS)
+    T = 12
+    t = np.linspace(0.0, 0.35, T)
+    q_gt = np.tile(cal.qpos, (T, 1))
+    q_gt[:, m_leg.jnt_qposadr[m_leg.joint("knee_angle_r").id]] = 0.8 * np.sin(
+        np.pi * t / t[-1]
+    )
+    q_gt[:, m_leg.jnt_qposadr[m_leg.joint("hip_flexion_r").id]] = 0.4 * np.sin(
+        np.pi * t / t[-1]
+    )
+    project_joint_couplings(JointCouplings.from_model(m_leg), q_gt)
+    low0 = rt._foot_kinematics(m_leg, cal.lmap, q_gt)[0].min()
+    q_gt[:, 2] -= low0
+
+    j_cam = _synthesize_mhr70_cam(m_leg, ri.INSTANTHMR_MYOLEGS, q_gt, subject_scale=1.1)
+    recon = ri.reconstruct_from_instanthmr(
+        {"joints_3d_cam": j_cam, "fps": 30.0},
+        spec=spec_leg,
+        scale=True,
+        activation_mode="static_optimization",
+        mesh_mode="volumetric",
+        target_sigma=0.0,
+    )
+    mus = recon.muscles
+    assert mus.num_muscles == 80
+    assert isinstance(mus.vertices, np.ndarray)
+    assert mus.vertices.shape[:2] == (T, 80)
+    assert mus.faces.ndim == 2 and mus.faces.shape[1] == 3
+    assert np.isfinite(mus.activation).all()
+    assert float(mus.activation.min()) >= 0.0
+    assert float(mus.activation.max()) <= 1.0
+    assert float(mus.activation.max()) > 0.01
+
+    # Constant-volume muscle belly preservation across flexion.
+    rf_idx = mus.muscle_names.index("recfem_r")
+    v_f0 = _closed_mesh_volume(mus.muscle_vertices(rf_idx)[0], mus.muscle_faces(rf_idx))
+    v_mid = _closed_mesh_volume(
+        mus.muscle_vertices(rf_idx)[T // 2], mus.muscle_faces(rf_idx)
+    )
+    assert v_f0 > 0.0
+    assert v_mid == pytest.approx(v_f0, rel=0.03)
+
+    glb_path = mus.write_glb(
+        tmp_path / "leg_muscles.glb",
+        frame=T // 2,
+        model=recon.model,
+        qpos=recon.ik.qpos,
+        include_bones=True,
+    )
+    buf = glb_path.read_bytes()
+    magic, ver, total_len = struct.unpack_from("<4sII", buf)
+    assert magic == b"glTF" and ver == 2 and total_len == len(buf)
+    jlen, jtype = struct.unpack_from("<I4s", buf, 12)
+    assert jtype == b"JSON"
+    gltf = json.loads(buf[20 : 20 + jlen])
+    node_names = {n.get("name") for n in gltf["nodes"]}
+    assert {"Muscles", "Bones", "recfem_r"} <= node_names
+    assert len(gltf["materials"]) >= 81
+
+    npz_path = mus.save_npz(tmp_path / "leg_muscles.npz")
+    with np.load(npz_path, allow_pickle=False) as d:
+        assert d["vertices"].shape == mus.vertices.shape
+        assert d["activation"].shape == (T, 80)
+        assert list(d["muscle_names"])[rf_idx] == "recfem_r"
+
+
+def test_reconstruct_skinned_glb_muscle_mesh_with_scaling(
+    fullbody: mujoco.MjModel, myolegs: mujoco.MjModel, tmp_path: Path
+) -> None:
+    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+    from myosuite.viz import blender_render as br
+    from myosuite.viz.muscle_meshes import reconstruct_muscle_meshes
+
+    glb_path = _write_test_muscle_glb(tmp_path / "test_atlas.glb", fullbody)
+
+    # 1. Scaled myofullbody (1.2x): both leg & arm muscles bind, scale by 1.2x, and deform.
+    spec_fb = model_cfg("myofullbody").build_spec(True)
+    m_scaled = ri.scale_spec_from_instanthmr(
+        spec_fb,
+        {
+            "pelvis": 1.2,
+            "sacrum": 1.2,
+            "femur_r": 1.2,
+            "tibia_r": 1.2,
+            "humerus_r": 1.2,
+            "ulna_r": 1.2,
+        },
+    ).compile()
+    q = np.tile(m_scaled.qpos0, (5, 1))
+    q[:, m_scaled.jnt_qposadr[m_scaled.joint("elbow_flexion_r").id]] = np.linspace(
+        0.0, 1.0, 5
+    )
+    project_joint_couplings(JointCouplings.from_model(m_scaled), q)
+
+    recon_fb = reconstruct_muscle_meshes(
+        m_scaled,
+        q,
+        fps=30.0,
+        activation_mode="shortening",
+        mesh_mode=glb_path,
+        reference_model=fullbody,
+    )
+    assert recon_fb.muscle_names == ("recfem_r", "BIClong_r")
+    v_bic = recon_fb.muscle_vertices("BIClong_r")
+    assert v_bic.shape == (5, 6, 3)
+    assert not np.allclose(v_bic[0], v_bic[-1])
+
+    recon_unscaled = reconstruct_muscle_meshes(
+        fullbody,
+        fullbody.qpos0[None, :],
+        fps=30.0,
+        activation_mode="none",
+        mesh_mode=glb_path,
+        reference_model=fullbody,
+    )
+    span_unscaled = float(
+        np.ptp(recon_unscaled.muscle_vertices("recfem_r")[0], axis=0).max()
+    )
+    span_scaled = float(np.ptp(recon_fb.muscle_vertices("recfem_r")[0], axis=0).max())
+    assert span_scaled == pytest.approx(1.2 * span_unscaled, rel=0.02)
+
+    # Verify blender_render._muscle_rigs uses unscaled reference when model is scaled.
+    cfg = br.RenderConfig(
+        env="myoMimicFullbody-v0", output=tmp_path / "br_out", muscle_mesh="atlas"
+    )
+    bone_geoms = {
+        m_scaled.mesh(m_scaled.geom_dataid[g]).name: g
+        for g in range(m_scaled.ngeom)
+        if m_scaled.geom_type[g] == mujoco.mjtGeom.mjGEOM_MESH
+        and m_scaled.geom_dataid[g] >= 0
+    }
+    rigs = br._muscle_rigs(cfg, m_scaled, bone_geoms)
+    assert len(rigs) >= 1
+
+    # 2. Partial skeleton (myolegs): leg muscle binds, arm muscle is cleanly omitted.
+    recon_leg = reconstruct_muscle_meshes(
+        myolegs,
+        np.tile(myolegs.qpos0, (4, 1)),
+        fps=30.0,
+        activation_mode="none",
+        mesh_mode=glb_path,
+        reference_model=fullbody,
+    )
+    assert recon_leg.muscle_names == ("recfem_r",)
+
+
+def test_cli_scale_and_muscle_export(myolegs: mujoco.MjModel, tmp_path: Path) -> None:
+    from scripts.mimic import retarget_instanthmr as cli
+
+    cal = ri.calibrate(myolegs, ri.INSTANTHMR_MYOLEGS)
+    T = 10
+    q_gt = np.tile(cal.qpos, (T, 1))
+    q_gt[:, 0] = np.linspace(0.0, 0.2, T)
+    low0 = rt._foot_kinematics(myolegs, cal.lmap, q_gt)[0].min()
+    q_gt[:, 2] -= low0
+
+    clip_in = tmp_path / "subj_walk.npz"
+    np.savez(
+        clip_in,
+        joints_3d_cam=_synthesize_mhr70_cam(
+            myolegs, ri.INSTANTHMR_MYOLEGS, q_gt, subject_scale=1.08
+        ),
+        fps=30.0,
+    )
+    out_root = tmp_path / "scaled_out"
+    rc = cli.main(
+        [
+            str(clip_in),
+            "--model",
+            "myolegs",
+            "--out-root",
+            str(out_root),
+            "--dataset",
+            "subj01",
+            "--scale",
+            "--body-mass",
+            "78.0",
+            "--reconstruct-muscles",
+            "volumetric",
+            "--activation",
+            "shortening",
+            "--export-glb",
+        ]
+    )
+    assert rc == 0
+    ds_dir = out_root / "subj01"
+    assert (ds_dir / "subject_scales.json").is_file()
+    assert (ds_dir / "subj_walk.npz").is_file()
+    assert (ds_dir / "subj_walk_muscles.npz").is_file()
+    assert (ds_dir / "subj_walk_muscles.glb").is_file()
+
+    meta = rt.read_refit_meta(ds_dir / "subj_walk.npz")
+    assert meta is not None
+    assert meta["scaled"] is True
+    assert meta["subject_body_mass_kg"] == 78.0
+    assert meta["muscle_mesh_mode"] == "volumetric"
+    assert meta["muscle_glb"] == "subj_walk_muscles.glb"

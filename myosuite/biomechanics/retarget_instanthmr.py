@@ -2,26 +2,37 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""InstantHMR MHR70 motions straight onto a body model: a :class:`~.retarget.ClipSource`."""
+"""InstantHMR MHR70 scaling, inverse kinematics, retargeting and muscle reconstruction."""
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 import numpy as np
 
+from myosuite.biomechanics.inverse_dynamics import clip_kinematics
 from myosuite.biomechanics.retarget import (
     ClipTargets,
     Landmark,
     LandmarkIK,
     LandmarkMap,
     OrientationTarget,
+    RefitConfig,
+    RefitThresholds,
     _foot_kinematics,
+    _geom_lowest_z,
+    validate_refit,
 )
+from myosuite.core.trajectory_io import MotionClip
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
+
+if TYPE_CHECKING:
+    from myosuite.viz.muscle_meshes import MuscleMeshReconstruction
 
 MHR70_JOINTS: tuple[str, ...] = (
     "nose", "left_eye", "right_eye", "left_ear", "right_ear",
@@ -72,56 +83,65 @@ def _interpolate_gaps(joints: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return out
 
 
-def load_instanthmr(path: str | Path) -> dict[str, Any]:
-    """Read an InstantHMR ``.npz`` clip and linearly interpolate dropped frames."""
-    with np.load(Path(path), allow_pickle=False) as data:
-        files = set(data.files)
-        if "joints_3d_cam" in files:
-            joints = np.asarray(data["joints_3d_cam"], np.float64)
-        elif "joints_3d_local" in files or "joints_3d" in files:
-            key = "joints_3d_local" if "joints_3d_local" in files else "joints_3d"
-            joints = np.asarray(data[key], np.float64)
-            if "cam_trans" in files:
-                trans = np.asarray(data["cam_trans"], np.float64)
-                if trans.shape != (len(joints), 3):
-                    raise ValueError(
-                        f"cam_trans shape {trans.shape} != ({len(joints)}, 3)"
-                    )
-                joints = joints + trans[:, None, :]
-        else:
-            raise ValueError(f"{path}: expected 'joints_3d_cam' or 'joints_3d_local'")
-        fps_key = (
-            "fps" if "fps" in files else ("frequency" if "frequency" in files else None)
-        )
-        if fps_key is None:
-            raise ValueError(f"{path}: missing 'fps' (or 'frequency')")
-        fps = float(data[fps_key])
-        valid_raw = np.asarray(data["valid"], bool) if "valid" in files else None
-        cam_R = (
-            _check_rotation(data["cam_to_world"]) if "cam_to_world" in files else None
-        )
+def _normalize_clip_dict(
+    raw: dict[str, Any], label: str | Path = "<memory>"
+) -> dict[str, Any]:
+    files = set(raw)
+    if "joints_3d_cam" in files:
+        joints = np.asarray(raw["joints_3d_cam"], np.float64)
+    elif "joints_3d_local" in files or "joints_3d" in files:
+        key = "joints_3d_local" if "joints_3d_local" in files else "joints_3d"
+        joints = np.asarray(raw[key], np.float64)
+        if "cam_trans" in files and raw["cam_trans"] is not None:
+            trans = np.asarray(raw["cam_trans"], np.float64)
+            if trans.shape != (len(joints), 3):
+                raise ValueError(f"cam_trans shape {trans.shape} != ({len(joints)}, 3)")
+            joints = joints + trans[:, None, :]
+    else:
+        raise ValueError(f"{label}: expected 'joints_3d_cam' or 'joints_3d_local'")
+    fps_key = (
+        "fps" if "fps" in files else ("frequency" if "frequency" in files else None)
+    )
+    if fps_key is None:
+        raise ValueError(f"{label}: missing 'fps' (or 'frequency')")
+    fps = float(raw[fps_key])
+    valid_raw = (
+        np.asarray(raw["valid"], bool)
+        if "valid" in files and raw["valid"] is not None
+        else None
+    )
+    cam_R = (
+        _check_rotation(raw["cam_to_world"])
+        if "cam_to_world" in files and raw["cam_to_world"] is not None
+        else None
+    )
+    shape_params = (
+        np.asarray(raw["shape_params"], np.float64)
+        if "shape_params" in files and raw["shape_params"] is not None
+        else None
+    )
 
     if joints.ndim != 3 or joints.shape[1:] != (len(MHR70_JOINTS), 3):
         raise ValueError(
-            f"{path}: expected joints shape (T, 70, 3), got {joints.shape}"
+            f"{label}: expected joints shape (T, 70, 3), got {joints.shape}"
         )
     if len(joints) < 2:
-        raise ValueError(f"{path}: clip needs at least 2 frames, got {len(joints)}")
+        raise ValueError(f"{label}: clip needs at least 2 frames, got {len(joints)}")
     if not np.isfinite(fps) or fps <= 0:
-        raise ValueError(f"{path}: fps must be finite and positive, got {fps}")
+        raise ValueError(f"{label}: fps must be finite and positive, got {fps}")
 
     finite = np.isfinite(joints).all(axis=(1, 2))
     if valid_raw is not None:
         if valid_raw.shape != (len(joints),):
             raise ValueError(
-                f"{path}: valid mask shape {valid_raw.shape} != ({len(joints)},)"
+                f"{label}: valid mask shape {valid_raw.shape} != ({len(joints)},)"
             )
         valid = valid_raw & finite
     else:
         valid = finite
     if int(valid.sum()) < 2:
         raise ValueError(
-            f"{path}: need at least 2 valid frames, got {int(valid.sum())}"
+            f"{label}: need at least 2 valid frames, got {int(valid.sum())}"
         )
     return {
         "joints_3d_cam": _interpolate_gaps(joints, valid),
@@ -129,7 +149,21 @@ def load_instanthmr(path: str | Path) -> dict[str, Any]:
         "valid": valid,
         "interpolated_frames": int((~valid).sum()),
         "cam_to_world": cam_R,
+        "shape_params": shape_params,
     }
+
+
+def load_instanthmr(path: str | Path) -> dict[str, Any]:
+    """Read an InstantHMR ``.npz`` clip and linearly interpolate dropped frames."""
+    with np.load(Path(path), allow_pickle=False) as data:
+        raw = {k: data[k] for k in data.files}
+    return _normalize_clip_dict(raw, path)
+
+
+def _as_clip(clip: str | Path | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(clip, dict):
+        return _normalize_clip_dict(clip)
+    return load_instanthmr(clip)
 
 
 @dataclass(frozen=True)
@@ -614,6 +648,7 @@ class InstantHMRSource:
     contact_speed: float = 0.5
     ground_sigma: float = 0.05
     target_sigma: float = 0.015
+    metric_targets: bool = False
     name: str = "instanthmr-mhr70"
     _last: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
@@ -634,11 +669,14 @@ class InstantHMRSource:
         return j_cam @ R_cw.T, clip["valid"][sl]
 
     def targets(
-        self, path: str | Path, model: mujoco.MjModel, lmap: LandmarkMap
+        self,
+        path: str | Path | dict[str, Any],
+        model: mujoco.MjModel,
+        lmap: LandmarkMap,
     ) -> ClipTargets:
         """Construct scaled landmark, orientation, contact and hinge targets for *path*."""
         c, imap = self.calibration, self.imap
-        clip = load_instanthmr(path)
+        clip = _as_clip(path)
         jw, valid = self._world_joints(clip)
         fps, T = clip["fps"], len(jw)
         names = [p.name for p in imap.points]
@@ -651,8 +689,11 @@ class InstantHMRSource:
                 float(np.median(d_edge[valid] if valid.any() else d_edge)), 1e-6
             )
 
-        s_root = c.leg_length / max(
-            0.5 * sum(subj_len[names.index(b)] for _, b in imap.leg_edges), 1e-6
+        s_root = (
+            1.0
+            if self.metric_targets
+            else c.leg_length
+            / max(0.5 * sum(subj_len[names.index(b)] for _, b in imap.leg_edges), 1e-6)
         )
         sole = jw[:, [_JIDX[j] for side in imap.contact_keypoints for j in side]]
         sole_floor = np.percentile(sole[..., 2], 2, axis=0)
@@ -801,10 +842,788 @@ def map_dict(imap: InstantHMRMap) -> dict[str, Any]:
     return asdict(imap)
 
 
+def default_instanthmr_map(
+    model_or_spec: mujoco.MjModel | mujoco.MjSpec,
+) -> InstantHMRMap:
+    """Select :data:`INSTANTHMR_MYOFULLBODY` or :data:`INSTANTHMR_MYOLEGS` from body names."""
+    if isinstance(model_or_spec, mujoco.MjModel):
+        names = {model_or_spec.body(i).name for i in range(model_or_spec.nbody)}
+    else:
+        names = {b.name for b in model_or_spec.bodies}
+    if {"pelvis", "torso", "humerus_l", "humerus_r", "head"} <= names:
+        return INSTANTHMR_MYOFULLBODY
+    if {"pelvis", "femur_l", "femur_r", "tibia_l", "tibia_r"} <= names:
+        return INSTANTHMR_MYOLEGS
+    raise ValueError(
+        "Could not infer InstantHMRMap from model bodies; pass imap explicitly"
+    )
+
+
+def estimate_instanthmr_scales(
+    clip: str | Path | dict[str, Any],
+    model: mujoco.MjModel,
+    imap: InstantHMRMap | None = None,
+    *,
+    cam_to_world: np.ndarray | None = None,
+    trim: tuple[int, int] = (0, 0),
+    bilateral_symmetry: bool = True,
+    bounds: tuple[float, float] = (0.5, 2.0),
+) -> dict[str, float]:
+    """Estimate isotropic per-segment scale factors from metric MHR70 3D landmarks.
+
+    Segment lengths are measured as medians over valid frames of *clip* and divided by
+    the corresponding bone-frame distances of *model* in its calibration T-pose.
+
+    Args:
+        clip: InstantHMR ``.npz`` path or loaded clip dictionary.
+        model: Unscaled target MuJoCo model.
+        imap: Optional :class:`InstantHMRMap` (inferred from *model* when ``None``).
+        cam_to_world: Optional ``(3, 3)`` camera-to-world rotation.
+        trim: ``(start, end)`` frames dropped before measuring segment lengths.
+        bilateral_symmetry: Average left and right limb scales to keep the model
+            laterally symmetric.
+        bounds: ``(min_scale, max_scale)`` clamp on estimated ratios.
+
+    Returns:
+        ``{body_name: scale_factor}`` mapping segment root bodies to scalar scales.
+    """
+    if bounds[0] <= 0 or bounds[0] > bounds[1]:
+        raise ValueError(f"invalid scale bounds {bounds}")
+    imap = imap or default_instanthmr_map(model)
+    cal = calibrate(model, imap)
+    src = InstantHMRSource(imap, cal, cam_to_world=cam_to_world, trim=trim)
+    jw, valid = src._world_joints(_as_clip(clip))
+
+    d = mujoco.MjData(model)
+    d.qpos[:] = cal.qpos
+    mujoco.mj_kinematics(model, d)
+    body_names = {model.body(i).name for i in range(model.nbody)}
+
+    def med_dist(mhr_a: tuple[str, ...], mhr_b: tuple[str, ...]) -> float:
+        pa = jw[:, [_JIDX[j] for j in mhr_a]].mean(axis=1)
+        pb = jw[:, [_JIDX[j] for j in mhr_b]].mean(axis=1)
+        dist = np.linalg.norm(pb - pa, axis=-1)
+        return max(float(np.median(dist[valid] if valid.any() else dist)), 1e-6)
+
+    def mod_dist(bodies_a: tuple[str, ...], bodies_b: tuple[str, ...]) -> float:
+        pa = np.mean([d.xpos[model.body(b).id] for b in bodies_a], axis=0)
+        pb = np.mean([d.xpos[model.body(b).id] for b in bodies_b], axis=0)
+        return max(float(np.linalg.norm(pb - pa)), 1e-6)
+
+    def clamp(val: float) -> float:
+        return float(np.clip(val, bounds[0], bounds[1]))
+
+    scales: dict[str, float] = {}
+    s_pelvis = clamp(
+        med_dist(("left_hip",), ("right_hip",)) / mod_dist(("femur_l",), ("femur_r",))
+    )
+    scales["pelvis"] = s_pelvis
+
+    L_torso = med_dist(("left_hip", "right_hip"), ("left_shoulder", "right_shoulder"))
+    if {"sacrum", "humerus_l", "humerus_r"} <= body_names:
+        root_0 = d.xpos[model.body("sacrum").id]
+        v_lo = (
+            0.5 * (d.xpos[model.body("femur_l").id] + d.xpos[model.body("femur_r").id])
+            - root_0
+        )
+        has_clav = {"clavicle_l", "clavicle_r"} <= body_names
+        if has_clav:
+            clav_mid = 0.5 * (
+                d.xpos[model.body("clavicle_l").id]
+                + d.xpos[model.body("clavicle_r").id]
+            )
+            hum_mid = 0.5 * (
+                d.xpos[model.body("humerus_l").id] + d.xpos[model.body("humerus_r").id]
+            )
+            v_up = clav_mid - root_0
+            v_hum_off = hum_mid - clav_mid
+            L_sh = med_dist(("left_shoulder",), ("right_shoulder",))
+            c_diff = (
+                d.xpos[model.body("clavicle_l").id]
+                - d.xpos[model.body("clavicle_r").id]
+            )
+            h_diff = (
+                d.xpos[model.body("humerus_l").id] - d.xpos[model.body("clavicle_l").id]
+            ) - (
+                d.xpos[model.body("humerus_r").id] - d.xpos[model.body("clavicle_r").id]
+            )
+        else:
+            v_up = (
+                0.5
+                * (
+                    d.xpos[model.body("humerus_l").id]
+                    + d.xpos[model.body("humerus_r").id]
+                )
+                - root_0
+            )
+            v_hum_off = np.zeros(3)
+            L_sh = 0.0
+            c_diff = h_diff = np.zeros(3)
+
+        s_trunk = s_clav = s_pelvis
+        a = float(np.dot(v_up, v_up))
+        ah = float(np.dot(h_diff, h_diff))
+        for _ in range(4):
+            v_rem = s_clav * v_hum_off - s_pelvis * v_lo
+            b_coef = 2.0 * float(np.dot(v_up, v_rem))
+            c_coef = float(np.dot(v_rem, v_rem)) - L_torso**2
+            disc = max(b_coef * b_coef - 4.0 * a * c_coef, 0.0)
+            s_trunk = clamp((-b_coef + float(np.sqrt(disc))) / max(2.0 * a, 1e-12))
+            if has_clav and ah > 1e-8:
+                bh = 2.0 * s_trunk * float(np.dot(c_diff, h_diff))
+                ch = (s_trunk**2) * float(np.dot(c_diff, c_diff)) - L_sh**2
+                s_clav = clamp(
+                    (-bh + float(np.sqrt(max(bh * bh - 4.0 * ah * ch, 0.0))))
+                    / (2.0 * ah)
+                )
+        scales["sacrum"] = s_trunk
+        if has_clav and ah > 1e-8:
+            scales["clavicle_l"] = s_clav
+            scales["clavicle_r"] = s_clav
+    elif "torso" in body_names:
+        scales["torso"] = clamp(L_torso / 0.5824)
+
+    limb_pairs: list[
+        tuple[
+            str,
+            str,
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+        ]
+    ] = [
+        (
+            "femur_l",
+            "femur_r",
+            ("left_hip",),
+            ("left_knee",),
+            ("right_hip",),
+            ("right_knee",),
+            ("femur_l",),
+            ("tibia_l",),
+            ("femur_r",),
+            ("tibia_r",),
+        ),
+        (
+            "tibia_l",
+            "tibia_r",
+            ("left_knee",),
+            ("left_ankle",),
+            ("right_knee",),
+            ("right_ankle",),
+            ("tibia_l",),
+            ("talus_l",),
+            ("tibia_r",),
+            ("talus_r",),
+        ),
+        (
+            "talus_l",
+            "talus_r",
+            ("left_heel",),
+            ("left_big_toe_tip", "left_small_toe_tip"),
+            ("right_heel",),
+            ("right_big_toe_tip", "right_small_toe_tip"),
+            ("calcn_l",),
+            ("toes_l",),
+            ("calcn_r",),
+            ("toes_r",),
+        ),
+    ]
+    if {
+        "humerus_l",
+        "humerus_r",
+        "ulna_l",
+        "ulna_r",
+        "lunate_l",
+        "lunate_r",
+    } <= body_names:
+        limb_pairs.extend(
+            [
+                (
+                    "humerus_l",
+                    "humerus_r",
+                    ("left_shoulder",),
+                    ("left_elbow",),
+                    ("right_shoulder",),
+                    ("right_elbow",),
+                    ("humerus_l",),
+                    ("ulna_l",),
+                    ("humerus_r",),
+                    ("ulna_r",),
+                ),
+                (
+                    "ulna_l",
+                    "ulna_r",
+                    ("left_elbow",),
+                    ("left_wrist",),
+                    ("right_elbow",),
+                    ("right_wrist",),
+                    ("ulna_l",),
+                    ("lunate_l",),
+                    ("ulna_r",),
+                    ("lunate_r",),
+                ),
+            ]
+        )
+    if {"lunate_l", "lunate_r", "3proxph_l", "3proxph_r"} <= body_names:
+        limb_pairs.append(
+            (
+                "lunate_l",
+                "lunate_r",
+                ("left_wrist",),
+                ("left_middle_third_joint",),
+                ("right_wrist",),
+                ("right_middle_third_joint",),
+                ("lunate_l",),
+                ("3proxph_l",),
+                ("lunate_r",),
+                ("3proxph_r",),
+            )
+        )
+
+    for bl, br, mpl, mdl, mpr, mdr, bpl, bdl, bpr, bdr in limb_pairs:
+        sl = med_dist(mpl, mdl) / mod_dist(bpl, bdl)
+        sr = med_dist(mpr, mdr) / mod_dist(bpr, bdr)
+        if bilateral_symmetry:
+            scales[bl] = scales[br] = clamp(0.5 * (sl + sr))
+        else:
+            scales[bl], scales[br] = clamp(sl), clamp(sr)
+    return scales
+
+
+def _sole_lowest_z(model: mujoco.MjModel, qpos: np.ndarray) -> float | None:
+    body_names = {model.body(i).name for i in range(model.nbody)}
+    foot_names = ("calcn_l", "toes_l", "calcn_r", "toes_r")
+    if not all(b in body_names for b in foot_names):
+        return None
+    foot_ids = {model.body(b).id for b in foot_names}
+    geoms = [
+        g
+        for g in range(model.ngeom)
+        if model.geom_bodyid[g] in foot_ids
+        and (model.geom_contype[g] != 0 or model.geom_conaffinity[g] != 0)
+    ]
+    if not geoms:
+        return None
+    d = mujoco.MjData(model)
+    d.qpos[:] = qpos
+    mujoco.mj_kinematics(model, d)
+    return float(min(_geom_lowest_z(model, d, g) for g in geoms))
+
+
+def scale_spec_from_instanthmr(
+    spec: mujoco.MjSpec,
+    scales: dict[str, float | tuple[float, float, float]],
+    *,
+    body_mass: float | None = None,
+) -> mujoco.MjSpec:
+    """Return a subject-scaled copy of *spec* from per-segment scale factors.
+
+    Delegates to ``myo_sim.scaling.scale_spec`` when installed, and otherwise applies
+    exact isotropic per-segment scaling across bone offsets, slide joints and polynomial
+    couplings, wrapping/collision geoms, meshes, body masses/inertias, spatial tendons,
+    muscle ``lengthrange`` (preserving peak isometric force) and sole floor alignment.
+    """
+    if body_mass is not None and (not np.isfinite(body_mass) or body_mass <= 0):
+        raise ValueError(f"body_mass must be finite and positive, got {body_mass}")
+
+    if importlib.util.find_spec("myo_sim.scaling") is not None:
+        mod = importlib.import_module("myo_sim.scaling")
+        if hasattr(mod, "scale_spec"):
+            return mod.scale_spec(spec, scales, total_mass=body_mass)
+
+    scalar_scales: dict[str, float] = {}
+    for k, v in scales.items():
+        arr = np.asarray(v, dtype=np.float64).ravel()
+        if arr.size == 1:
+            s = float(arr[0])
+        elif arr.size == 3 and np.allclose(arr, arr[0], rtol=1e-5, atol=1e-6):
+            s = float(arr[0])
+        else:
+            raise ValueError(
+                f"Isotropic scaler requires scalar or uniform 3-vector for {k!r}, got {v}"
+            )
+        if not np.isfinite(s) or s <= 0:
+            raise ValueError(f"Scale for {k!r} must be finite and positive, got {s}")
+        scalar_scales[k] = s
+
+    m0 = spec.compile()
+    body_names = {b.name for b in spec.bodies}
+    unknown = sorted(set(scalar_scales) - body_names)
+    if unknown:
+        raise ValueError(f"Unknown body names in scales: {unknown}")
+
+    q0 = m0.qpos0.copy()
+    project_joint_couplings(JointCouplings.from_model(m0), q0)
+    d0 = mujoco.MjData(m0)
+    d0.qpos[:] = q0
+    mujoco.mj_forward(m0, d0)
+    z0 = _sole_lowest_z(m0, q0)
+
+    out = spec.copy()
+    for i, ac in enumerate(out.actuators):
+        if ac.gaintype == mujoco.mjtGain.mjGAIN_MUSCLE and ac.gainprm[2] <= 0:
+            f_peak = float(m0.actuator_gainprm[i, 3]) / max(
+                float(m0.actuator_acc0[i]), 1e-10
+            )
+            gp = np.array(ac.gainprm, dtype=np.float64)
+            gp[2] = f_peak
+            ac.gainprm = gp
+            if ac.biastype == mujoco.mjtBias.mjBIAS_MUSCLE:
+                bp = np.array(ac.biasprm, dtype=np.float64)
+                bp[2] = f_peak
+                ac.biasprm = bp
+
+    top_roots = [
+        b
+        for b in out.worldbody.bodies
+        if any(j.type == mujoco.mjtJoint.mjJNT_FREE for j in b.joints)
+    ] or list(out.worldbody.bodies)
+
+    subject_bodies: list[Any] = []
+    body_scales: dict[str, float] = {}
+    jnt_parent_scale: dict[str, float] = {}
+    jnt_types: dict[str, Any] = {}
+    mesh_scales: dict[str, float] = {}
+
+    def walk(body: Any, s_par: float, is_root: bool) -> None:
+        s_b = scalar_scales.get(body.name, s_par)
+        body_scales[body.name] = s_b
+        subject_bodies.append(body)
+        if not is_root:
+            body.pos = s_par * np.asarray(body.pos, dtype=np.float64)
+        for j in body.joints:
+            jnt_parent_scale[j.name] = s_par
+            jnt_types[j.name] = j.type
+            if j.type != mujoco.mjtJoint.mjJNT_FREE:
+                j.pos = s_b * np.asarray(j.pos, dtype=np.float64)
+            if j.type == mujoco.mjtJoint.mjJNT_SLIDE:
+                j.range = s_par * np.asarray(j.range, dtype=np.float64)
+                j.ref = s_par * float(j.ref)
+                j.springref = s_par * float(j.springref)
+                j.margin = s_par * float(j.margin)
+                j.stiffness = np.asarray(j.stiffness, dtype=np.float64) / s_par
+                j.damping = np.asarray(j.damping, dtype=np.float64) / s_par
+        for st in body.sites:
+            st.pos = s_b * np.asarray(st.pos, dtype=np.float64)
+            st.size = s_b * np.asarray(st.size, dtype=np.float64)
+        for g in body.geoms:
+            g.pos = s_b * np.asarray(g.pos, dtype=np.float64)
+            ft = np.asarray(g.fromto, dtype=np.float64)
+            if np.all(np.isfinite(ft)):
+                g.fromto = s_b * ft
+            if np.isfinite(g.mass) and g.mass > 0:
+                g.mass = float(g.mass) * (s_b**3)
+            if g.meshname:
+                mesh_scales[g.meshname] = s_b
+            elif g.type != mujoco.mjtGeom.mjGEOM_PLANE:
+                g.size = s_b * np.asarray(g.size, dtype=np.float64)
+        if body.mass > 0:
+            body.mass = float(body.mass) * (s_b**3)
+            body.ipos = s_b * np.asarray(body.ipos, dtype=np.float64)
+            fi = np.asarray(body.fullinertia, dtype=np.float64)
+            if np.all(np.isfinite(fi)):
+                body.fullinertia = (s_b**5) * fi
+            else:
+                body.inertia = (s_b**5) * np.asarray(body.inertia, dtype=np.float64)
+        for child in body.bodies:
+            walk(child, s_b, False)
+
+    for rb in top_roots:
+        walk(rb, scalar_scales.get(rb.name, 1.0), True)
+
+    for frm in out.frames:
+        if frm.parent is not None and frm.parent.name in body_scales:
+            sf = body_scales[frm.parent.name]
+            frm.pos = sf * np.asarray(frm.pos, dtype=np.float64)
+
+    for mesh in out.meshes:
+        if mesh.name in mesh_scales:
+            sm = mesh_scales[mesh.name]
+            mesh.scale = sm * np.asarray(mesh.scale, dtype=np.float64)
+            mesh.refpos = sm * np.asarray(mesh.refpos, dtype=np.float64)
+
+    for eq in out.equalities:
+        if eq.type == mujoco.mjtEq.mjEQ_JOINT:
+            a = (
+                jnt_parent_scale.get(eq.name1, 1.0)
+                if jnt_types.get(eq.name1) == mujoco.mjtJoint.mjJNT_SLIDE
+                else 1.0
+            )
+            bm = (
+                jnt_parent_scale.get(eq.name2, 1.0)
+                if jnt_types.get(eq.name2) == mujoco.mjtJoint.mjJNT_SLIDE
+                else 1.0
+            )
+            edata = np.array(eq.data, dtype=np.float64)
+            for k in range(5):
+                edata[k] = a * edata[k] / (bm**k)
+            eq.data = edata
+
+    for key in out.keys:
+        kq = np.array(key.qpos, dtype=np.float64) if len(key.qpos) == m0.nq else None
+        kv = np.array(key.qvel, dtype=np.float64) if len(key.qvel) == m0.nv else None
+        for jname, jtype in jnt_types.items():
+            if jtype == mujoco.mjtJoint.mjJNT_SLIDE:
+                jid = m0.joint(jname).id
+                sp = jnt_parent_scale[jname]
+                if kq is not None:
+                    kq[m0.jnt_qposadr[jid]] *= sp
+                if kv is not None:
+                    kv[m0.jnt_dofadr[jid]] *= sp
+        if kq is not None:
+            key.qpos = kq
+        if kv is not None:
+            key.qvel = kv
+
+    m1 = out.compile()
+    if body_mass is not None:
+        cur_mass = float(sum(m1.body_mass[m1.body(b.name).id] for b in subject_bodies))
+        if cur_mass <= 0:
+            raise ValueError("Cannot normalize body_mass on a massless model")
+        m_ratio = float(body_mass) / cur_mass
+        for b in subject_bodies:
+            if b.mass > 0:
+                b.mass = float(b.mass) * m_ratio
+                fi = np.asarray(b.fullinertia, dtype=np.float64)
+                if np.all(np.isfinite(fi)):
+                    b.fullinertia = m_ratio * fi
+                else:
+                    b.inertia = m_ratio * np.asarray(b.inertia, dtype=np.float64)
+            else:
+                for g in b.geoms:
+                    if np.isfinite(g.mass) and g.mass > 0:
+                        g.mass = float(g.mass) * m_ratio
+                    elif np.isfinite(g.density) and g.density > 0:
+                        g.density = float(g.density) * m_ratio
+    q1 = m1.qpos0.copy()
+    project_joint_couplings(JointCouplings.from_model(m1), q1)
+    d1 = mujoco.MjData(m1)
+    d1.qpos[:] = q1
+    mujoco.mj_forward(m1, d1)
+
+    ten_ratio = np.ones(m0.ntendon, dtype=np.float64)
+    for t in range(m0.ntendon):
+        if d0.ten_length[t] > 1e-6 and d1.ten_length[t] > 1e-6:
+            ten_ratio[t] = float(d1.ten_length[t] / d0.ten_length[t])
+
+    for t_idx, td in enumerate(out.tendons):
+        rt = ten_ratio[t_idx]
+        if abs(rt - 1.0) > 1e-12:
+            sl = np.asarray(td.springlength, dtype=np.float64)
+            td.springlength = np.where(sl >= 0.0, sl * rt, sl)
+            td.stiffness = np.asarray(td.stiffness, dtype=np.float64) / rt
+            td.damping = np.asarray(td.damping, dtype=np.float64) / rt
+            td.margin = float(td.margin) * rt
+            if td.limited == mujoco.mjtLimited.mjLIMITED_TRUE:
+                td.range = rt * np.asarray(td.range, dtype=np.float64)
+
+    for a_idx, ac in enumerate(out.actuators):
+        if ac.trntype == mujoco.mjtTrn.mjTRN_TENDON:
+            tid = int(m0.actuator_trnid[a_idx, 0])
+            rt = ten_ratio[tid]
+            lr = np.asarray(ac.lengthrange, dtype=np.float64)
+            if np.any(lr != 0.0):
+                ac.lengthrange = rt * lr
+
+    z1 = _sole_lowest_z(m1, q1)
+    if z0 is not None and z1 is not None and top_roots:
+        dz = z0 - z1
+        rb = top_roots[0]
+        rpos = np.array(rb.pos, dtype=np.float64)
+        rpos[2] += dz
+        rb.pos = rpos
+        free_jnts = [
+            j for j in range(m0.njnt) if m0.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+        ]
+        if free_jnts:
+            z_adr = int(m0.jnt_qposadr[free_jnts[0]]) + 2
+            for key in out.keys:
+                if len(key.qpos) == m0.nq:
+                    kq = np.array(key.qpos, dtype=np.float64)
+                    kq[z_adr] += dz
+                    key.qpos = kq
+    return out
+
+
+def scale_model_from_instanthmr(
+    spec: mujoco.MjSpec,
+    clip: str | Path | dict[str, Any],
+    imap: InstantHMRMap | None = None,
+    *,
+    body_mass: float | None = None,
+    cam_to_world: np.ndarray | None = None,
+    trim: tuple[int, int] = (0, 0),
+    bilateral_symmetry: bool = True,
+    bounds: tuple[float, float] = (0.5, 2.0),
+) -> tuple[mujoco.MjModel, mujoco.MjSpec, dict[str, float]]:
+    """Estimate anthropometric scales from *clip* and compile a subject-scaled model."""
+    nominal = spec.compile()
+    scales = estimate_instanthmr_scales(
+        clip,
+        nominal,
+        imap,
+        cam_to_world=cam_to_world,
+        trim=trim,
+        bilateral_symmetry=bilateral_symmetry,
+        bounds=bounds,
+    )
+    scaled_spec = scale_spec_from_instanthmr(spec, scales, body_mass=body_mass)
+    return scaled_spec.compile(), scaled_spec, scales
+
+
+def _short_clip_derivatives(
+    model: mujoco.MjModel, qpos: np.ndarray, dt: float
+) -> tuple[np.ndarray, np.ndarray]:
+    n = len(qpos)
+    step = np.empty((n - 1, model.nv), dtype=np.float64)
+    for t in range(n - 1):
+        mujoco.mj_differentiatePos(model, step[t], dt, qpos[t], qpos[t + 1])
+    qvel = np.empty((n, model.nv), dtype=np.float64)
+    qvel[0], qvel[-1] = step[0], step[-1]
+    if n == 3:
+        qvel[1] = 0.5 * (step[0] + step[1])
+        qacc = np.tile((step[1] - step[0]) / dt, (3, 1))
+    else:
+        qacc = np.zeros((n, model.nv), dtype=np.float64)
+    return qvel, qacc
+
+
+@dataclass(frozen=True)
+class InstantHMRIKResult:
+    """Subject-scaled or nominal IK solution for an InstantHMR MHR70 clip."""
+
+    model: mujoco.MjModel
+    clip: MotionClip
+    qacc: np.ndarray
+    targets: ClipTargets
+    landmark_error: np.ndarray
+    metrics: dict[str, Any]
+    scales: dict[str, float] | None = None
+    spec: mujoco.MjSpec | None = None
+
+    @property
+    def qpos(self) -> np.ndarray:
+        return self.clip.qpos
+
+    @property
+    def qvel(self) -> np.ndarray:
+        assert self.clip.qvel is not None
+        return self.clip.qvel
+
+    @property
+    def fps(self) -> float:
+        assert self.clip.frequency_hz is not None
+        return float(self.clip.frequency_hz)
+
+
+def solve_instanthmr_ik(
+    clip: str | Path | dict[str, Any],
+    model: mujoco.MjModel | None = None,
+    *,
+    spec: mujoco.MjSpec | None = None,
+    imap: InstantHMRMap | None = None,
+    scale: bool = False,
+    body_mass: float | None = None,
+    bilateral_symmetry: bool = True,
+    metric_targets: bool | None = None,
+    config: RefitConfig | None = None,
+    thresholds: RefitThresholds | None = None,
+    lowpass_hz: float | None = None,
+    **source_kwargs: Any,
+) -> InstantHMRIKResult:
+    """Solve full-body or lower-limb IK from an InstantHMR clip, optionally scaling first.
+
+    Args:
+        clip: InstantHMR ``.npz`` path or in-memory clip dictionary.
+        model: Compiled target ``MjModel`` (optional if *spec* is supplied).
+        spec: ``MjSpec`` of the target model (required when ``scale=True``).
+        imap: Optional :class:`InstantHMRMap` (auto-detected when ``None``).
+        scale: Estimate anthropometric scales from *clip* and scale *spec* before IK.
+        body_mass: Optional total subject body mass in kg applied when ``scale=True``.
+        bilateral_symmetry: Keep left/right limb scales symmetric when ``scale=True``.
+        metric_targets: Preserve metric 1:1 root displacement (defaults to ``scale``).
+        config: Optional :class:`~.retarget.RefitConfig` for :class:`~.retarget.LandmarkIK`.
+        thresholds: Optional :class:`~.retarget.RefitThresholds` for validation.
+        lowpass_hz: Optional zero-phase Butterworth cut-off (Hz) before differentiating
+            ``qpos`` into ``qvel`` and ``qacc``.
+        **source_kwargs: Extra keyword arguments forwarded to :func:`instanthmr_source`.
+
+    Returns:
+        An :class:`InstantHMRIKResult` with the fitted :class:`~myosuite.core.trajectory_io.MotionClip`,
+        manifold accelerations ``qacc``, per-landmark errors (m) and validation metrics.
+    """
+    if scale and spec is None:
+        raise ValueError("spec must be provided when scale=True")
+    if model is None and spec is None:
+        raise ValueError("Provide at least one of model or spec")
+
+    scales: dict[str, float] | None = None
+    out_spec = spec
+    if scale:
+        assert spec is not None
+        model, out_spec, scales = scale_model_from_instanthmr(
+            spec,
+            clip,
+            imap,
+            body_mass=body_mass,
+            cam_to_world=source_kwargs.get("cam_to_world"),
+            trim=source_kwargs.get("trim", (0, 0)),
+            bilateral_symmetry=bilateral_symmetry,
+        )
+    elif model is None:
+        assert spec is not None
+        model = spec.compile()
+
+    assert model is not None
+    imap = imap or default_instanthmr_map(model)
+    use_metric = scale if metric_targets is None else bool(metric_targets)
+    src, lmap = instanthmr_source(
+        model, imap, metric_targets=use_metric, **source_kwargs
+    )
+    ik = LandmarkIK(model, lmap, config)
+    targets = src.targets(clip, model, lmap)
+    qpos_fit, iters = ik.fit(targets.pos, targets.quat, targets.seed, targets.posture)
+    qpos_fit, targets, extra = src.finish(ik, targets, qpos_fit)
+
+    dt = 1.0 / targets.frequency
+    if len(qpos_fit) >= 4:
+        kin = clip_kinematics(model, qpos_fit, dt, lowpass_hz=lowpass_hz)
+        qpos_out, qvel, qacc = kin.qpos, kin.qvel, kin.qacc
+    else:
+        if lowpass_hz is not None:
+            raise ValueError("lowpass_hz filtering requires at least 4 frames")
+        qpos_out = qpos_fit
+        qvel, qacc = _short_clip_derivatives(model, qpos_out, dt)
+
+    landmark_err = np.stack(
+        [
+            np.linalg.norm(ik.landmarks(q) - p, axis=-1)
+            for q, p in zip(qpos_out, targets.pos)
+        ]
+    )
+    val_metrics = validate_refit(ik, targets, qpos_out, thresholds)
+    joint_names = [
+        model.joint(j).name
+        for j in sorted(range(model.njnt), key=lambda i: int(model.jnt_qposadr[i]))
+        if model.joint(j).name
+    ]
+    motion_clip = MotionClip(
+        qpos=qpos_out,
+        qvel=qvel,
+        site_xpos=None,
+        site_names=None,
+        qpos_joint_names=joint_names or None,
+        qvel_joint_names=joint_names or None,
+        qpos_model_indices=np.arange(model.nq, dtype=np.int32),
+        qvel_model_indices=np.arange(model.nv, dtype=np.int32),
+        frequency_hz=float(targets.frequency),
+        source_path=Path(clip) if isinstance(clip, (str, Path)) else None,
+    )
+    metrics: dict[str, Any] = {
+        **val_metrics,
+        **extra,
+        "iterations_mean": float(iters.mean()),
+        "iterations_max": int(iters.max()),
+        "scaled": bool(scale),
+        **({"scales": scales} if scales is not None else {}),
+    }
+    return InstantHMRIKResult(
+        model=model,
+        clip=motion_clip,
+        qacc=qacc,
+        targets=targets,
+        landmark_error=landmark_err,
+        metrics=metrics,
+        scales=scales,
+        spec=out_spec,
+    )
+
+
+@dataclass(frozen=True)
+class InstantHMRReconstruction:
+    """End-to-end scaling, IK and 3D muscle mesh reconstruction from InstantHMR."""
+
+    ik: InstantHMRIKResult
+    muscles: MuscleMeshReconstruction
+
+    @property
+    def model(self) -> mujoco.MjModel:
+        return self.ik.model
+
+    @property
+    def scales(self) -> dict[str, float] | None:
+        return self.ik.scales
+
+    @property
+    def clip(self) -> MotionClip:
+        return self.ik.clip
+
+
+def reconstruct_from_instanthmr(
+    clip: str | Path | dict[str, Any],
+    model: mujoco.MjModel | None = None,
+    *,
+    spec: mujoco.MjSpec | None = None,
+    imap: InstantHMRMap | None = None,
+    scale: bool = True,
+    body_mass: float | None = None,
+    bilateral_symmetry: bool = True,
+    metric_targets: bool | None = None,
+    config: RefitConfig | None = None,
+    thresholds: RefitThresholds | None = None,
+    lowpass_hz: float | None = None,
+    activation_mode: str = "shortening",
+    mesh_mode: str | Path = "volumetric",
+    muscle_scale: float = 1.0,
+    so_config: Any | None = None,
+    **source_kwargs: Any,
+) -> InstantHMRReconstruction:
+    """Run subject scaling, IK and 3D muscle mesh reconstruction from an InstantHMR clip."""
+    from myosuite.viz.muscle_meshes import reconstruct_muscle_meshes  # noqa: PLC0415
+
+    if scale and spec is None and model is not None:
+        scale = False
+    ik_res = solve_instanthmr_ik(
+        clip,
+        model=model,
+        spec=spec,
+        imap=imap,
+        scale=scale,
+        body_mass=body_mass,
+        bilateral_symmetry=bilateral_symmetry,
+        metric_targets=metric_targets,
+        config=config,
+        thresholds=thresholds,
+        lowpass_hz=lowpass_hz,
+        **source_kwargs,
+    )
+    muscles = reconstruct_muscle_meshes(
+        ik_res.model,
+        ik_res.qpos,
+        ik_res.fps,
+        qvel=ik_res.qvel,
+        qacc=ik_res.qacc,
+        activation_mode=activation_mode,
+        mesh_mode=mesh_mode,
+        muscle_scale=muscle_scale,
+        so_config=so_config,
+    )
+    return InstantHMRReconstruction(ik=ik_res, muscles=muscles)
+
+
 __all__ = [
     "CAM_TO_WORLD", "INSTANTHMR_MAPS", "INSTANTHMR_MYOFULLBODY", "INSTANTHMR_MYOLEGS",
-    "MHR70_JOINTS", "Calibration", "InstantHMRHinge", "InstantHMRMap",
-    "InstantHMROrientation", "InstantHMRPoint", "InstantHMRSource", "calibrate",
-    "instanthmr_source", "knee_flexion", "landmark_bodies", "load_instanthmr",
-    "map_dict", "segment_orientations",
+    "MHR70_JOINTS", "Calibration", "InstantHMRHinge", "InstantHMRIKResult",
+    "InstantHMRMap", "InstantHMROrientation", "InstantHMRPoint",
+    "InstantHMRReconstruction", "InstantHMRSource", "calibrate",
+    "default_instanthmr_map", "estimate_instanthmr_scales", "instanthmr_source",
+    "knee_flexion", "landmark_bodies", "load_instanthmr", "map_dict",
+    "reconstruct_from_instanthmr", "scale_model_from_instanthmr",
+    "scale_spec_from_instanthmr", "segment_orientations", "solve_instanthmr_ik",
 ]  # fmt: skip
