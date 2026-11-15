@@ -46,3 +46,11 @@ the nominal diagnostics are on ``bands.nominal``.
 
 .. automodule:: myosuite.biomechanics.uncertainty
    :members:
+
+External loads
+--------------
+
+Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
+
+.. automodule:: myosuite.biomechanics.external_loads
+   :members:
