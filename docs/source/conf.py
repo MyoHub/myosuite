@@ -45,6 +45,7 @@ except ImportError:
 
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
+napoleon_use_ivar = True
 
 autodoc_typehints = "description"
 autodoc_member_order = "bysource"
@@ -62,6 +63,7 @@ if "autoapi.extension" in extensions:
         os.path.join(_repo_root, "myosuite", "core"),
         os.path.join(_repo_root, "myosuite", "terms"),
     ]
+    autoapi_ignore = ["*terms/base_action.py"]
     autoapi_type = "python"
     autoapi_options = [
         "members",
@@ -70,6 +72,23 @@ if "autoapi.extension" in extensions:
         "show-module-summary",
     ]
     autoapi_keep_files = False
+    suppress_warnings = ["autoapi.python_import_resolution"]
+
+
+def setup(app):
+    if "autoapi.extension" in extensions:
+
+        def _populate_autoapi_root_toctree(app, docname, source):
+            if docname == "autoapi/index":
+                source[0] = source[0].replace(
+                    ".. toctree::\n   :titlesonly:\n",
+                    ".. toctree::\n   :titlesonly:\n\n"
+                    "   /autoapi/myosuite/core/index\n"
+                    "   /autoapi/myosuite/terms/index\n",
+                )
+
+        app.connect("source-read", _populate_autoapi_root_toctree)
+
 
 # Exclude build artifacts only (no legacy source/ subdir)
 exclude_patterns = []
