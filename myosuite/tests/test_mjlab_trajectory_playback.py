@@ -839,7 +839,7 @@ class TestMimicMjlabCacheDispatch:
         assert not torch.allclose(tgt0, tgt1)
 
     def test_sync_random_fallback_still_works(self) -> None:
-        """Without a clip each env's targets are one table posture at its origin."""
+        """Without a clip each env's targets are one env-local table posture."""
         cache = _make_cache_random()
         env = _make_mock_env(t=0.0)
         origins = torch.arange(_N * 3, dtype=torch.float32).reshape(_N, 3)
@@ -851,8 +851,7 @@ class TestMimicMjlabCacheDispatch:
         assert tgt is not None
         assert tgt.shape == (_N, _N_SITES, 3)
         table = torch.as_tensor(cache["target_table"], dtype=torch.float32)
-        local = tgt - origins[:, None, :]
-        gap = (local[:, None] - table[None]).abs().amax(dim=(2, 3)).amin(dim=1)
+        gap = (tgt[:, None] - table[None]).abs().amax(dim=(2, 3)).amin(dim=1)
         assert (gap < 1e-5).all()
 
     def test_sync_random_resamples_on_episode_reset(self) -> None:

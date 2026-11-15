@@ -96,10 +96,11 @@ def reachable_target_points(
 ) -> np.ndarray:
     """World positions of the sites over the joint ranges, restricted to the target box.
 
-    Joint configurations are drawn uniformly within the joint limits (other joints stay at
-    ``qpos0``); a configuration is kept when every site lies inside its box. Sampling
-    targets from the result guarantees that a policy can reach them. The result is
-    deterministic and cached, so the CPU env and the mjlab twin see the same table.
+    Joint configurations are drawn uniformly within the joint limits (other independent
+    joints stay at ``qpos0``), then projected onto active joint equalities. A configuration
+    is kept when it respects the joint limits and every site lies inside its box. This
+    establishes kinematic reachability, not dynamic or collision-free reachability.
+    The result is deterministic and cached, so both backends see the same table.
 
     Args:
         model: Compiled model.
@@ -113,13 +114,16 @@ def reachable_target_points(
         Array ``(M, k, 3)``: for each kept configuration, the position of every site.
 
     Raises:
-        ValueError: If no configuration puts the sites inside their boxes.
+        ValueError: If no valid configuration puts the sites inside their boxes, or an
+            active non-joint equality would require a different projection.
     """
     ids = tuple(int(i) for i in site_ids)
     low, high = (
         np.asarray(low, float).reshape(len(ids), 3),
         np.asarray(high, float).reshape(len(ids), 3),
     )
+    if np.any((model.eq_active0 != 0) & (model.eq_type != mujoco.mjtEq.mjEQ_JOINT)):
+        raise ValueError("workspace sampling supports only active joint equalities")
     key = (
         _kinematic_model_key(model, ids),
         low.tobytes(),
@@ -129,7 +133,15 @@ def reachable_target_points(
     )
     if key not in _CACHE:
         qpos = _uniform_joint_qpos(model, np.random.default_rng(seed), n_samples)
-        positions = _site_positions(model, qpos, ids)
+        project_joint_couplings(JointCouplings.from_model(model), qpos)
+        valid = np.isfinite(qpos).all(axis=1)
+        for j in range(model.njnt):
+            if model.jnt_limited[j] and int(model.jnt_type[j]) in _JOINT_TYPES:
+                lo, hi = model.jnt_range[j]
+                valid &= (qpos[:, model.jnt_qposadr[j]] >= lo) & (
+                    qpos[:, model.jnt_qposadr[j]] <= hi
+                )
+        positions = _site_positions(model, qpos[valid], ids)
         inside = np.all((positions >= low) & (positions <= high), axis=(1, 2))
         if not inside.any():
             raise ValueError("no joint configuration reaches the target box")

@@ -153,8 +153,8 @@ def test_both_halves_reset_to_one_state_on_the_joint_couplings(env_id: str) -> N
 
 @pytest.mark.parametrize("env_id", sorted(_ENTITY))
 def test_twin_draws_the_cpu_posture_targets(env_id: str) -> None:
-    """Each env of the twin tracks the sites of one posture of the CPU table, at its
-    own origin, in the frame its tracked sites are read in (it drew box targets)."""
+    """Each env of the twin tracks the sites of one posture of the CPU table, in
+    the env-local frame its tracked sites are read in (it drew box targets)."""
     require_mjlab()
     require_mujoco_warp()
     require_musclemimic_models()
@@ -171,13 +171,11 @@ def test_twin_draws_the_cpu_posture_targets(env_id: str) -> None:
         mj.reset()
         variant = "bimanual" if "Bimanual" in env_id else "fullbody"
         cache = mimic._resolve_mimic_mjlab_ids(mj, _ENTITY[env_id], variant)
-        origins = mj.scene.env_origins[:, None, :]
         table = torch.as_tensor(cpu._target_sites, dtype=torch.float32)
-        local = cache["target_torch"] - origins
+        local = cache["target_torch"]
         gap = (local[:, None] - table[None]).abs().amax(dim=(2, 3)).amin(dim=1)
         assert (gap < 1e-5).all(), gap
-        site_xpos = mj.scene[_ENTITY[env_id]].data.data.site_xpos
-        sites = site_xpos[:, cache["site_ids"]] - origins
+        sites = mimic._tracked_site_pos(mj, _ENTITY[env_id], cache)
         np.testing.assert_allclose(
             sites.numpy(),
             np.tile(cpu.data.site_xpos[cpu._site_ids], (3, 1, 1)),
