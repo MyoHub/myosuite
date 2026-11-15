@@ -13,6 +13,13 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Changed
+
+* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
+  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
+  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
+  Python 3.15 on Linux for the ONNX-free native CPU path.
+
 ### Fixed
 
 * **ChaseTag EVADE episodes can be won again.** Since 3.1.0 `ChaseTagEnv` compared the summed `data.time` with
@@ -24,6 +31,9 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* Uncertainty bands now reject failed/nonfinite nominal and sampled solves instead of
+  including them in quantiles. OSQP statuses, iterations and residuals are retained;
+  accepting `solved inaccurate` requires `UncertaintyConfig(allow_inaccurate=True)`.
 * **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
   registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
   target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip
@@ -34,6 +44,7 @@ Changes since **v3.1.0** (2026-11-11).
   with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#808]: https://github.com/MyoHub/myosuite/pull/808
 
 ## [3.1.0] - 2026-11-11
 
