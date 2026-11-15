@@ -62,6 +62,8 @@ def test_save_keeps_the_recorded_values(tmp_path, suffix: str) -> None:
     np.testing.assert_array_equal(
         np.ravel(group["action"]), 0.1234567 * np.arange(0, 400, 50)
     )
+
+
 def test_get_selects_group_dataset_or_item() -> None:
     trace = _trace(1)
     trace.append_datum("Trial0", "x", np.array([2.0, 3.0]))
