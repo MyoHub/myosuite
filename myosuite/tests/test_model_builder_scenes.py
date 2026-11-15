@@ -14,8 +14,7 @@ Tests are split into two groups:
 - myo_sim-dependent: require the myo_sim pip package (hand/arm/leg fragments).
 - Asset-only: only require the mesh/texture files checked into the repo.
 
-These tests require the myo_sim package to be installed.
-Skip markers are applied globally so CI without the package stays green.
+myo-sim is a mandatory dependency: these tests fail, not skip, without it.
 
 Parity notes
 ------------
@@ -30,21 +29,6 @@ import pytest
 import numpy as np
 
 pytestmark = [pytest.mark.tier2]
-
-
-def _hand_fragment_available() -> bool:
-    try:
-        import myo_sim  # type: ignore[import-untyped]
-
-        return (myo_sim.MODELS_DIR / "hand" / "myohand_r.xml").exists()
-    except (ImportError, AttributeError):
-        return False
-
-
-_SKIP = pytest.mark.skipif(
-    not _hand_fragment_available(),
-    reason="myo_sim pip package required",
-)
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +49,6 @@ def _nq_for(fragment: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-@_SKIP
 def test_baoding_scene_body_count():
     """Hand + 2 free spheres: each sphere adds exactly 1 body."""
     import mujoco
@@ -97,7 +80,6 @@ def test_baoding_scene_body_count():
     assert model_scene.nq == model_hand.nq + 14  # 7 dof per free sphere
 
 
-@_SKIP
 def test_baoding_scene_ball_positions():
     """Ball bodies are placed at the positions provided to add_free_body."""
     import mujoco
@@ -136,7 +118,6 @@ def test_baoding_scene_ball_positions():
         )
 
 
-@_SKIP
 def test_baoding_ball_size_range():
     """Ball radius randomisation (0.018–0.024 m) reflects in compiled geom size."""
     import mujoco
@@ -165,7 +146,6 @@ def test_baoding_ball_size_range():
 # ---------------------------------------------------------------------------
 
 
-@_SKIP
 def test_soccer_scene_body_count():
     """Leg fragment + soccer ball: adds exactly 1 body and 7 dof."""
     import mujoco
@@ -190,7 +170,6 @@ def test_soccer_scene_body_count():
     assert model_scene.nq == model_leg.nq + 7
 
 
-@_SKIP
 def test_soccer_ball_size():
     """Soccer ball radius matches FIFA size-5 spec (0.117 m)."""
     import mujoco
@@ -218,7 +197,6 @@ def test_soccer_ball_size():
 # ---------------------------------------------------------------------------
 
 
-@_SKIP
 def test_tabletennis_scene_body_count():
     """Arm + pingpong ball + paddle cylinder: adds 2 bodies, 14 dof."""
     import mujoco
@@ -250,7 +228,6 @@ def test_tabletennis_scene_body_count():
     assert model_scene.nq == model_arm.nq + 14
 
 
-@_SKIP
 def test_tabletennis_geom_types():
     """Pingpong is a sphere; paddle is a cylinder."""
     import mujoco
@@ -289,7 +266,6 @@ def test_tabletennis_geom_types():
     assert model.geom_size[pad_gid, 1] == pytest.approx(0.020)
 
 
-@_SKIP
 def test_tabletennis_object_positions():
     """Pingpong and paddle are placed at the positions used in the real env."""
     import mujoco
@@ -331,7 +307,6 @@ def test_tabletennis_object_positions():
 # ---------------------------------------------------------------------------
 
 
-@_SKIP
 def test_place_fragment_elbow_offset():
     """place_fragment sets a non-zero attachment offset visible after mj_forward."""
     from myosuite.core.model_builder import ModelBuilder
@@ -341,7 +316,6 @@ def test_place_fragment_elbow_offset():
     assert model.nbody > 1  # worldbody + at least one elbow body
 
 
-@_SKIP
 def test_place_fragment_different_pos_different_model():
     """Two place_fragment calls with different pos produce different models."""
     from myosuite.core.model_builder import ModelBuilder
@@ -415,7 +389,6 @@ def test_free_body_condim_default_and_override():
 # Challenge recipe tests: what ModelBuilder replicates natively
 # ---------------------------------------------------------------------------
 
-_SKIP_SIMHIVE = _SKIP  # alias for clarity
 
 _ASSETS = __import__("pathlib").Path(__file__).parents[1] / "envs" / "myo" / "assets"
 _SKIP_ASSETS = pytest.mark.skipif(
@@ -424,7 +397,6 @@ _SKIP_ASSETS = pytest.mark.skipif(
 )
 
 
-@_SKIP_SIMHIVE
 def test_challenge_baoding_recipe_body_count():
     """challenge_baoding recipe: hand + 2 balls → correct body and DoF counts."""
     import myosuite.core.model_recipes  # noqa: F401 — registers recipes
@@ -440,7 +412,6 @@ def test_challenge_baoding_recipe_body_count():
     assert model.nq == model_hand.nq + 14  # 7 dof × 2 balls
 
 
-@_SKIP_SIMHIVE
 def test_challenge_baoding_recipe_ball_mass():
     """challenge_baoding recipe: balls have the correct 43 g mass."""
     import mujoco
@@ -458,7 +429,6 @@ def test_challenge_baoding_recipe_ball_mass():
         assert model.body_mass[bid] == pytest.approx(0.043, abs=1e-4)
 
 
-@_SKIP_SIMHIVE
 def test_challenge_baoding_recipe_ball_condim():
     """challenge_baoding recipe: balls use condim=4 (torsional friction)."""
     import mujoco
@@ -510,7 +480,6 @@ def test_challenge_tabletennis_mesh_bodies_no_arm():
     assert model.nmat == 3
 
 
-@_SKIP_SIMHIVE
 @_SKIP_ASSETS
 def test_challenge_tabletennis_recipe_matches_the_legacy_model():
     """challenge_tabletennis recipe: torso, both arms, legs, table, paddle and ball.
@@ -556,7 +525,6 @@ def _mesh_world_aabb(model, data, geom_name: str):
     return world.min(axis=0), world.max(axis=0)
 
 
-@_SKIP_SIMHIVE
 @_SKIP_ASSETS
 def test_challenge_tabletennis_table_is_horizontal():
     """Visual table/net sit in the collision table's XY plane, not on edge.
@@ -597,7 +565,6 @@ def test_challenge_tabletennis_table_is_horizontal():
     assert model.body_quat[bid, 0] == pytest.approx(0.6994, abs=0.02)
 
 
-@_SKIP_SIMHIVE
 def test_challenge_relocate_recipe_object_mass():
     """challenge_relocate recipe: object has the correct 100 g mass."""
     import mujoco
