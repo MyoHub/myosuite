@@ -302,14 +302,15 @@ class ActuatorGroupSpec:
         name: Logical group name (e.g. ``"elbow_muscles"``).
         actuator_type: ``"muscle"`` for Hill-type muscles or ``"motor"`` for
             direct torque/position actuators.
-        normalize_actions: If ``True``, actions are passed through a sigmoid
-            ``σ(5(a − 0.5))`` to map ``ℝ → (0, 1)`` before being written to
-            ``ctrl``.  Set to ``False`` when actions are already in ``[0, 1]``.
+        normalize_actions: Reserved. The CPU env and the mjlab twin take
+            actions in ``[0, 1]`` and write them to ``ctrl`` as they are;
+            :class:`~myosuite.envs.modular_env.ModularTaskEnv` raises for
+            ``True``. (The experimental MJX env has its own ``norm_actions``.)
     """
 
     name: str = "muscles"
     actuator_type: str = "muscle"
-    normalize_actions: bool = True
+    normalize_actions: bool = False
 
 
 @dataclass
