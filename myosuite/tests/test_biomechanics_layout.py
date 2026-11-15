@@ -19,6 +19,8 @@ _PACKAGE = Path(__file__).parents[1]
 # NumPy, SciPy and MuJoCo; OSQP (a core dependency) solves the static-optimization QPs,
 # and absl comes with MuJoCo (inverse kinematics logs through it).
 _METHOD_DEPENDENCIES = {"numpy", "scipy", "mujoco", "osqp", "absl", "myosuite"}
+# Canonical differential IK uses the explicitly declared core Mink dependency.
+_MODULE_DEPENDENCIES = {"inverse_kinematics.py": {"mink"}}
 
 
 def _imports(path: Path) -> set[str]:
@@ -32,10 +34,12 @@ def _imports(path: Path) -> set[str]:
     return names
 
 
-def test_biomechanics_depends_on_numpy_scipy_and_mujoco_only() -> None:
+def test_biomechanics_depends_only_on_approved_runtime_libraries() -> None:
     allowed = _METHOD_DEPENDENCIES | set(sys.stdlib_module_names)
     for path in sorted((_PACKAGE / "biomechanics").rglob("*.py")):
-        extra = {n for n in _imports(path) if n.split(".")[0] not in allowed}
+        module = path.relative_to(_PACKAGE / "biomechanics").as_posix()
+        dependencies = allowed | _MODULE_DEPENDENCIES.get(module, set())
+        extra = {n for n in _imports(path) if n.split(".")[0] not in dependencies}
         assert not extra, f"{path.relative_to(_PACKAGE)} imports {sorted(extra)}"
 
 

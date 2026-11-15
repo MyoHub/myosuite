@@ -50,10 +50,18 @@ class RslRlPolicy(torch.nn.Module):
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
-        self.obs_dim = next(
-            m.in_features for m in mlp.modules() if isinstance(m, torch.nn.Linear)
+        first_linear = next(
+            (m for m in mlp.modules() if isinstance(m, torch.nn.Linear)), None
         )
+        if first_linear is None:
+            raise ValueError("Actor MLP must contain at least one Linear layer.")
+        self.obs_dim = first_linear.in_features
         self.register_buffer("std", None if std is None else std.flatten().clone())
+        self.generator: torch.Generator | None = None
+
+    def seed(self, seed: int) -> None:
+        """Seed the noise of :meth:`sample` (CPU) without touching torch's global RNG."""
+        self.generator = torch.Generator().manual_seed(int(seed))
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         if obs.shape[-1] != self.obs_dim:
@@ -72,13 +80,23 @@ class RslRlPolicy(torch.nn.Module):
         if self.std is None:
             raise ValueError("The checkpoint has no action std to sample from.")
         mean = self(obs)
-        return mean + self.std * torch.randn_like(mean)
+        if self.generator is None:
+            return mean + self.std * torch.randn_like(mean)
+        noise = torch.randn(mean.shape, generator=self.generator, dtype=mean.dtype)
+        return mean + self.std * noise.to(mean.device)
 
     @torch.no_grad()
     def act(self, obs: np.ndarray, stochastic: bool = False) -> np.ndarray:
         """Numpy convenience wrapper (single or batched observations)."""
-        x = torch.as_tensor(np.asarray(obs), dtype=torch.float32)
-        return (self.sample(x) if stochastic else self(x)).numpy()
+        param = next(self.parameters(), None)
+        buf = next(self.buffers(), None)
+        device = (
+            param.device
+            if param is not None
+            else (buf.device if buf is not None else torch.device("cpu"))
+        )
+        x = torch.as_tensor(np.asarray(obs), dtype=torch.float32, device=device)
+        return (self.sample(x) if stochastic else self(x)).cpu().numpy()
 
 
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
@@ -112,7 +130,9 @@ def load_rslrl_policy(
 
     Raises:
         ValueError: The checkpoint records an action map and ``action_map_applied``
-            is not set: its actions are not one action per muscle.
+            is not set: its actions are not one action per muscle; or the actor's
+            outputs do not fit ``action_dim`` (a learned std means one output per
+            action, no std means one or two per action).
     """
     checkpoint = Path(checkpoint)
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
@@ -127,9 +147,17 @@ def load_rslrl_policy(
     actor_cfg = _agent_params(checkpoint).get("actor", {})
 
     linear = sorted(
-        (k for k in actor_state if k.startswith("mlp.") and k.endswith(".weight")),
+        (
+            k
+            for k in actor_state
+            if k.startswith("mlp.")
+            and k.endswith(".weight")
+            and k.split(".")[1].isdigit()
+        ),
         key=lambda k: int(k.split(".")[1]),
     )
+    if not linear:
+        raise ValueError(f"No mlp.<index>.weight layers found in {checkpoint}.")
     shapes = [tuple(actor_state[k].shape) for k in linear]
     obs_dim, out_dim = shapes[0][1], shapes[-1][0]
     hidden = [s[0] for s in shapes[:-1]]
@@ -153,6 +181,16 @@ def load_rslrl_policy(
         )
     else:
         normalizer = torch.nn.Identity()
+    learned_std = any(
+        k in actor_state
+        for k in ("distribution.std_param", "distribution.log_std_param")
+    )
+    if out_dim != action_dim and (learned_std or out_dim != 2 * action_dim):
+        raise ValueError(
+            f"{checkpoint} outputs {out_dim} values"
+            f"{' (one per action, with a learned std)' if learned_std else ''}; "
+            f"the env takes {action_dim} actions. It was trained on another env."
+        )
     std = None
     if "distribution.std_param" in actor_state:
         std = actor_state["distribution.std_param"]

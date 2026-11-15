@@ -134,7 +134,7 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     betas = [float(b) for b in a.betas.split(",")]
     init = (
-        torch.load(out / f"walker_r{a.start_round - 1}_full.pt", weights_only=False)
+        torch.load(out / f"walker_r{a.start_round - 1}_full.pt", weights_only=True)
         if a.start_round
         else None
     )

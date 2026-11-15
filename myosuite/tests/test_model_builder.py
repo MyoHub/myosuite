@@ -585,7 +585,7 @@ def test_build_from_recipe_cache_keys_recipe_and_cwd(monkeypatch, tmp_path):
 
 
 def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
-    """An edit_fn runs once, on the compiled recipe spec; the plain recipe stays unedited."""
+    """An edit_fn runs once, on the uncompiled recipe spec; the plain recipe stays unedited."""
     from myosuite.core import model_builder
 
     calls: list[int] = []
@@ -607,6 +607,54 @@ def test_build_from_recipe_caches_the_edit_with_the_recipe(monkeypatch):
     assert len(calls) == 3
     assert [model.nsite for model in edited] == [1, 1, 1]
     assert plain.nsite == 0
+
+
+def test_recipe_edit_fn_and_recursive_immobilize_skip_throwaway_compiles() -> None:
+    """Recipe edits run before compilation and recursive_immobilize accepts temp_model=None."""
+    import mujoco
+
+    from myosuite.core import model_builder
+    from myosuite.core.model_builder import ModelBuilder
+    from myosuite.tests.support.model_compare import assert_same_model
+    from myosuite.utils.spec_processing import recursive_immobilize
+
+    spec_a = mujoco.MjSpec()
+    child_a = spec_a.worldbody.add_body(name="arm")
+    child_a.add_geom(size=[0.05, 0.0, 0.0])
+    child_a.add_joint(name="hinge_a", type=mujoco.mjtJoint.mjJNT_HINGE)
+    child_a.add_site(name="tip_a")
+    spec_b = spec_a.copy()
+
+    removed = recursive_immobilize(spec_a, spec_a.copy().compile(), spec_a.body("arm"))
+    assert removed == [0]
+    assert recursive_immobilize(spec_b, None, spec_b.body("arm")) == []
+    assert_same_model(spec_a.compile(), spec_b.compile())
+
+    seen_specs: list[mujoco.MjSpec] = []
+
+    def _prune(spec: mujoco.MjSpec) -> None:
+        seen_specs.append(spec)
+        spec.delete(spec.meshes[0])
+        spec.delete(spec.worldbody.bodies[0])
+
+    def _recipe(builder: ModelBuilder) -> ModelBuilder:
+        def _seed(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+            spec.add_mesh(name="pruned_before_compile", file="missing_pruned_mesh.stl")
+            body = spec.worldbody.add_body(name="tmp")
+            body.add_geom(size=[0.02, 0.0, 0.0])
+            return spec
+
+        return builder.apply_transform(_seed)
+
+    model_builder._RECIPES["_test_uncompiled_edit"] = _recipe
+    try:
+        model, _ = model_builder.build_from_recipe(
+            "_test_uncompiled_edit", edit_fn=_prune
+        )
+        assert model.nbody == 1
+        assert len(seen_specs) == 1
+    finally:
+        model_builder._RECIPES.pop("_test_uncompiled_edit", None)
 
 
 def test_spec_cache_opt_out_builds_every_call(monkeypatch):
@@ -833,3 +881,55 @@ def test_materialize_recipe_xml_default_file_is_named_by_content(
     assert list(first.parent.iterdir()) == [first]
     assert first.parent == (tmp_path / "myosuite_recipes").resolve()
     mujoco.MjModel.from_xml_path(str(first))
+
+
+# Visual-only target geoms added through the MjSpec API after an empty-prefix
+# attach: MuJoCo 3 gave them the attached body's main default (contype 0),
+# MuJoCo 4 gives them the parent's (1/1), so they must set 0/0 explicitly.
+_TARGET_GEOM_RECIPES = (
+    "hand_sar",
+    "hand_pen",
+    "hand_hold",
+    "hand_keyturn",
+    "arm_reach",
+)
+# hand_pen's target cylinder collides on MuJoCo 3 and 4 alike; kept as it is.
+_COLLIDING_TARGETS = {("hand_pen", "target")}
+
+
+@_REQUIRES_MYO_SIM
+@pytest.mark.parametrize("recipe", _TARGET_GEOM_RECIPES)
+def test_recipe_target_geoms_do_not_collide(recipe: str) -> None:
+    """Translucent target/goal/marker geoms of a recipe have contype=conaffinity=0."""
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import build_from_recipe
+
+    model, _ = build_from_recipe(recipe)
+    colliding = [
+        model.geom(i).name
+        for i in range(model.ngeom)
+        if any(k in model.geom(i).name.lower() for k in ("target", "goal", "marker"))
+        and model.geom_rgba[i][3] < 1.0
+        and (recipe, model.geom(i).name) not in _COLLIDING_TARGETS
+        and (model.geom_contype[i] or model.geom_conaffinity[i])
+    ]
+    assert not colliding, f"{recipe}: visual target geoms collide: {colliding}"
+
+
+@_REQUIRES_MYO_SIM
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        f"myo{v}HandReorient{s}-v0"
+        for v in ("", "Fati", "Sarc", "Reaf")
+        for s in ("8", "100", "ID", "OOD")
+    ],
+)
+def test_hand_reorient_target_does_not_collide(env_id: str) -> None:
+    """The HandReorient goal ellipsoid is visual only in every registered variant."""
+    env = make_env(env_id)
+    model = env.unwrapped.model
+    for name in ("target", "t_top", "t_bot"):
+        geom = model.geom(name)
+        assert (int(geom.contype[0]), int(geom.conaffinity[0])) == (0, 0), name
+    env.close()
