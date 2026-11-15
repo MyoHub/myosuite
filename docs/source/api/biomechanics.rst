@@ -54,3 +54,11 @@ Measured body/site wrenches and held-mass gravity loads mapped to generalized fo
 
 .. automodule:: myosuite.biomechanics.external_loads
    :members:
+
+Camera
+------
+
+Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+
+.. automodule:: myosuite.biomechanics.camera
+   :members:
