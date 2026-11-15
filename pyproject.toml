@@ -55,6 +55,10 @@ dependencies = [
     # into site-packages/mujoco/ over mujoco<4 on unpinned pip/uv installs.
     "mjviser>=0.0.14,<0.0.17",
     "loop-rate-limiters>=1.2.0",
+    # solve_ik runs on mink. mink>=1.3.0, needed on 3.14 (the first release without its
+    # own <3.14 cap), also raises mink's mujoco floor, so older interpreters take any 1.x.
+    "mink>=1.0.0; python_version < '3.14'",
+    "mink>=1.3.0; python_version >= '3.14'",
     # Core registered envs (myoFullBodyDirectional-v0, ChaseTagFBVs) download
     # reference gait clips at runtime via hf_hub_download -- not gated behind
     # the [musclemimic] extra since these envs are reachable via plain make_env.
@@ -76,13 +80,11 @@ rl = [
     "wandb>=0.25.0",
     "tensorboard>=2.20.0",
 ]
-# mink dropped its "examples" extra in 1.0.0 (depend on the plain package instead); split by
-# interpreter because mink>=1.3.0 -- needed on 3.14, the first release without its own <3.14
-# cap -- also raises mink's own mujoco floor, which an unconditional pin would drag in everywhere.
-examples = [
-    "mink; python_version >= '3.10' and python_version < '3.14'",
-    "mink>=1.3.0; python_version >= '3.14'",
-]
+# mink, which the examples needed, is a core dependency now; the extra stays so that
+# `pip install "myosuite[examples]"` keeps working.
+examples = []
+# Read .c3d marker files in myosuite.core.retargeting.retarget.
+capture = ["ezc3d>=1.5"]
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
     "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
