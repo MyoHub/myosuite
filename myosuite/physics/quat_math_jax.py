@@ -201,10 +201,13 @@ def quat2euler(quat):
 
 
 def quat2mat(quat):
+    """Quaternion to rotation matrix (identity for a near-zero quaternion)."""
     quat = jp.asarray(quat, dtype=jp.float32)
     w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
     Nq = jp.sum(quat * quat, axis=-1)
-    s = 2.0 / Nq
+    # Mask the denominator before division so fallback rows have finite gradients.
+    valid = Nq > _FLOAT_EPS
+    s = 2.0 / jp.where(valid, Nq, 1.0)
     X, Y, Z = x * s, y * s, z * s
     wX, wY, wZ = w * X, w * Y, w * Z
     xX, xY, xZ = x * X, x * Y, x * Z
@@ -220,7 +223,7 @@ def quat2mat(quat):
     mat = mat.at[..., 2, 0].set(xZ - wY)
     mat = mat.at[..., 2, 1].set(yZ + wX)
     mat = mat.at[..., 2, 2].set(1.0 - (xX + yY))
-    return jp.where((Nq > _FLOAT_EPS)[..., jp.newaxis, jp.newaxis], mat, jp.eye(3))
+    return jp.where(valid[..., jp.newaxis, jp.newaxis], mat, jp.eye(3))
 
 
 def rot_vec_mat_t(vec, mat):
