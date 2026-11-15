@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
@@ -172,9 +173,9 @@ class TestChaseTagVsRegistry:
 
         try:
             env = make_env(self.ENV_ID)
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
-            return
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         try:
             obs, info = env.reset(seed=0)
             assert set(obs.keys()) == {"agent_0", "agent_1"}
@@ -183,8 +184,9 @@ class TestChaseTagVsRegistry:
                 obs, rewards, terminated, truncated, info = env.step(actions)
                 for agent_id in ("agent_0", "agent_1"):
                     assert np.isfinite(rewards[agent_id])
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         finally:
             env.close()
 
@@ -513,8 +515,9 @@ class TestChaseTagFullbodyBody:
                 )
                 if terminated["agent_0"] or truncated["agent_0"]:
                     break
-        except OSError as exc:
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
+        except Exception as exc:
+            skip_if_hf_gated("myoChallengeChaseTagFBVs-v0", exc)
+            raise
         finally:
             env.close()
         assert info["tagged"]
