@@ -27,6 +27,12 @@ Static optimization
 .. automodule:: myosuite.biomechanics.static_optimization
    :members:
 
+Computed muscle control
+-----------------------
+
+.. automodule:: myosuite.biomechanics.computed_muscle_control
+   :members:
+
 Uncertainty bands
 -----------------
 
