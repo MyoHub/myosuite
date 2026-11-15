@@ -261,8 +261,21 @@ def _replace_path(obj: Any, path: list[str], value: Any) -> Any:
         f.name for f in dataclasses.fields(obj)
     }:
         raise KeyError(f"{type(obj).__name__} has no field {name!r}")
+    cur = getattr(obj, name)
     if len(path) > 1:
-        value = _replace_path(getattr(obj, name), path[1:], value)
+        value = _replace_path(cur, path[1:], value)
+    elif dataclasses.is_dataclass(cur) and isinstance(value, Mapping):
+        for k, v in value.items():
+            cur = _replace_path(cur, k.split("."), v)
+        value = cur
+    elif (
+        isinstance(obj, RewardCfg)
+        and name == "terms"
+        and isinstance(value, (list, tuple))
+    ):
+        value = tuple(
+            RewardTermCfg(**t) if isinstance(t, Mapping) else t for t in value
+        )
     elif isinstance(value, list):
         value = tuple(value)
     return dataclasses.replace(obj, **{name: value})

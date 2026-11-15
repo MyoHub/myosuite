@@ -29,7 +29,7 @@ import gc
 import math
 import os
 import time
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, is_dataclass
 
 import torch
 import torch.nn as nn
@@ -1148,7 +1148,7 @@ class SuperMimicRunner:
         map_location=None,
     ):
         ck = torch.load(
-            path, map_location=map_location or self.device, weights_only=False
+            path, map_location=map_location or self.device, weights_only=True
         )
         # the policy's action map (identity; checkpoints from before action maps have none): another map would need
         # another policy head, so a mismatch is an error rather than a silent reinterpretation of the outputs
@@ -1270,11 +1270,16 @@ class SuperMimicRunner:
 
     def env_settings(self) -> dict:
         """The env settings a policy depends on, stored in each checkpoint so evaluation can match them."""
+        task = {
+            f.name: asdict(v) if is_dataclass(v) else copy.deepcopy(v)
+            for f in fields(self.cmd.task)
+            if f.name not in ("motion", "reset", "episode_length_s", "reward_fn")
+            for v in (getattr(self.cmd.task, f.name),)
+        }
         return {"decimation": self.uenv.cfg.decimation, "ctrl_dt": self.uenv.step_dt, "model": self.cmd.cfg.model,
                 "stride": self.cmd.stride, "lookahead": self.cmd.lookahead,
                 "muscle_obs": self.cmd.observes_muscles, "obs_dim": self.obs_policy.dim, "goal_dim": self.obs_goal.dim,
-                "task": {f.name: copy.deepcopy(getattr(self.cmd.task, f.name)) for f in fields(self.cmd.task)
-                         if f.name not in ("motion", "reset", "episode_length_s")}}  # fmt: skip
+                "task": task}  # fmt: skip
 
     def get_inference_policy(self, device=None):
         pi = self.deployed

@@ -86,7 +86,10 @@ def generate_baseline(
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"{env_id}.pkl"
 
+    env = None
     try:
+        import gymnasium as gym
+
         env = make_env(env_id)
         # Seed the env's internal RNG with the fixed seed for reproducibility.
         # env.reset(seed=seed) does NOT propagate through to env.np_random in
@@ -105,32 +108,56 @@ def generate_baseline(
         records: list[dict] = []
         episode_np_state = env.unwrapped.np_random.bit_generator.state
         obs, _ = env.reset()
+        is_dict_action = isinstance(env.action_space, gym.spaces.Dict)
         for _ in range(n_steps):
-            action = rng.uniform(
-                env.action_space.low,
-                env.action_space.high,
-            ).astype(np.float32)
+            if is_dict_action:
+                action = {
+                    agent_id: rng.uniform(sp.low, sp.high).astype(np.float32)
+                    for agent_id, sp in env.action_space.spaces.items()
+                }
+            else:
+                action = rng.uniform(
+                    env.action_space.low,
+                    env.action_space.high,
+                ).astype(np.float32)
             obs, rwd, terminated, truncated, info = env.step(action)
             # Strip non-picklable info values
             safe_info = {
                 k: v for k, v in info.items() if k not in ("obs_dict", "rwd_dict")
             }
-            records.append(
-                {
-                    "action": np.array(action, dtype=np.float32),
-                    "obs": np.array(obs, dtype=np.float64),
-                    "rwd": float(rwd),
-                    "terminated": bool(terminated),
-                    "truncated": bool(truncated),
-                    "info": safe_info,
-                    "episode_np_state": episode_np_state,
-                }
-            )
-            if terminated or truncated:
+            if is_dict_action:
+                records.append(
+                    {
+                        "action": {
+                            k: np.array(v, dtype=np.float32) for k, v in action.items()
+                        },
+                        "obs": {
+                            k: np.array(v, dtype=np.float64) for k, v in obs.items()
+                        },
+                        "rwd": {k: float(v) for k, v in rwd.items()},
+                        "terminated": {k: bool(v) for k, v in terminated.items()},
+                        "truncated": {k: bool(v) for k, v in truncated.items()},
+                        "info": safe_info,
+                        "episode_np_state": episode_np_state,
+                    }
+                )
+                done = any(terminated.values()) or any(truncated.values())
+            else:
+                records.append(
+                    {
+                        "action": np.array(action, dtype=np.float32),
+                        "obs": np.array(obs, dtype=np.float64),
+                        "rwd": float(rwd),
+                        "terminated": bool(terminated),
+                        "truncated": bool(truncated),
+                        "info": safe_info,
+                        "episode_np_state": episode_np_state,
+                    }
+                )
+                done = bool(terminated or truncated)
+            if done:
                 episode_np_state = env.unwrapped.np_random.bit_generator.state
                 obs, _ = env.reset()
-
-        env.close()
 
         with open(out_path, "wb") as f:
             pickle.dump(records, f, protocol=5)
@@ -143,6 +170,9 @@ def generate_baseline(
         if "--verbose" in sys.argv:
             traceback.print_exc()
         return False
+    finally:
+        if env is not None:
+            env.close()
 
 
 def main() -> int:
@@ -185,7 +215,11 @@ def main() -> int:
 
     failures = []
     for env_id in sorted(env_ids):
-        n_steps = args.n_steps or N_STEPS_OVERRIDES.get(env_id, DEFAULT_N_STEPS)
+        n_steps = (
+            args.n_steps
+            if args.n_steps is not None
+            else N_STEPS_OVERRIDES.get(env_id, DEFAULT_N_STEPS)
+        )
         ok = generate_baseline(
             env_id,
             n_steps=n_steps,

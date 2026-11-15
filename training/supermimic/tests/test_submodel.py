@@ -226,7 +226,7 @@ def test_the_task_contract_records_the_body(
     _, runner = _make(model, str(d / "clip0.npz"))
     runner.log_dir = str(tmp_path)
     runner.save(str(tmp_path / "model.pt"))
-    ck = torch.load(tmp_path / "model.pt", weights_only=False)
+    ck = torch.load(tmp_path / "model.pt", weights_only=True)
     c = ck["contract"]
     info = runner.cmd.info
     assert c["root"] == "fixed" and c["actuators"] == info.actuator_names

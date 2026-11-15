@@ -161,11 +161,11 @@ class ReferenceMotion:
         assert "time" in reference.keys(), "Missing key (time) in reference"
         if "robot_init" not in reference.keys():
             reference["robot_init"] = (
-                reference["robot"][0] if "robot" in reference.keys() else None
+                reference["robot"][0] if reference.get("robot") is not None else None
             )
         if "object_init" not in reference.keys():
             reference["object_init"] = (
-                reference["object"][0] if "object" in reference.keys() else None
+                reference["object"][0] if reference.get("object") is not None else None
             )
 
         # Handle conversion from euler to quaternion format for object_init if needed
@@ -205,11 +205,11 @@ class ReferenceMotion:
         # build reference
         ref = ReferenceStruct(
             time=reference["time"],  # Must have
-            robot=reference["robot"] if "robot" in reference.keys() else None,
+            robot=reference["robot"] if reference.get("robot") is not None else None,
             robot_vel=reference["robot_vel"]
             if "robot_vel" in reference.keys()
             else None,
-            object=reference["object"] if "object" in reference.keys() else None,
+            object=reference["object"] if reference.get("object") is not None else None,
             robot_init=reference["robot_init"],
             object_init=reference["object_init"],
         )
@@ -273,27 +273,28 @@ class ReferenceMotion:
         """
         Return the reference at the given time. Linearly interpolate if there is no exact match
         """
+        channels = (self.reference[k] for k in ("robot", "robot_vel", "object"))
         if self.type == ReferenceType.FIXED:
-            robot_ref = self.reference["robot"][0]
-            robot_vel_ref = self.reference["robot_vel"][0]
-            object_ref = self.reference["object"][0]
+            robot_ref, robot_vel_ref, object_ref = (
+                None if values is None else values[0] for values in channels
+            )
         elif self.type == ReferenceType.RANDOM:
-            robot_ref = self.np_random.uniform(
-                low=self.reference["robot"][0, :], high=self.reference["robot"][1, :]
-            )
-            robot_vel_ref = self.np_random.uniform(
-                low=self.reference["robot_vel"][0, :],
-                high=self.reference["robot_vel"][1, :],
-            )
-            object_ref = self.np_random.uniform(
-                low=self.reference["object"][0, :], high=self.reference["object"][1, :]
+            robot_ref, robot_vel_ref, object_ref = (
+                None
+                if values is None
+                else values[0]
+                if len(values) == 1
+                else self.np_random.uniform(low=values[0], high=values[1])
+                for values in channels
             )
         elif self.type == ReferenceType.TRACK:
             ind, ind_next = self.find_timeslot_in_reference(time=time)
             if ind == ind_next:
                 # Exact frame[time] found for reference
                 robot_ref = (
-                    self.reference["robot"][ind]
+                    None
+                    if self.reference["robot"] is None
+                    else self.reference["robot"][ind]
                     if self.robot_horizon > 1
                     else self.reference["robot"][0]
                 )
@@ -334,7 +335,11 @@ class ReferenceMotion:
                             ind
                         ] + blend * self.reference["robot_vel"][ind_next]
                 else:
-                    robot_ref = self.reference["robot"][0]
+                    robot_ref = (
+                        None
+                        if self.reference["robot"] is None
+                        else self.reference["robot"][0]
+                    )
                     robot_vel_ref = (
                         None
                         if self.reference["robot_vel"] is None
