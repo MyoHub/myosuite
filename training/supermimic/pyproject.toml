@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-supermimic"
+version = "0.1.0"
+description = "myoSuperMimic: SuperMimic (world model + backpropagation through imagined rollouts) on MyoSuite's myoMimic-v0 task"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE-muscle-supermimic.txt", "LICENSE-*.txt"]
+# Consumes MyoSuite's myoMimic-v0 task through make_env; install MyoSuite first (from the same checkout or branch).
+dependencies = [
+    "myosuite[mjlab]",
+    "torch>=2.13",
+    "mjlab>=1.6",
+    "mujoco-warp>=3.11,<4",
+    "tensordict",
+    "tyro",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["supermimic*"]
+
+[tool.setuptools.package-data]
+supermimic = ["data/*.txt"]

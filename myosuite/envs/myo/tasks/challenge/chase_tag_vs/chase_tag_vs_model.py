@@ -6,9 +6,8 @@
 
 Both supported host models -- the myoLeg-only ``myolegs_with_torso.xml``
 (the same host used by ``LegWalkEnvV0`` / the directional locomotion tasks)
-and the MuscleMimic full-body model (legs + torso + arms, 354 muscles each,
-which lets the chase-tag policy reuse a pretrained MuscleMimic locomotion
-checkpoint as a competent walking substrate) -- are combined into a two-agent
+and myo_sim's ``myofullbody`` (legs + torso + arms, 354 muscles each without
+the fingers, the same joints and muscles as the tutorial 5.4 directional walker) -- are combined into a two-agent
 scene by the *same* parameterized builder below. The only thing that varies
 per host model is how a single agent's ``MjSpec`` (+ its standing keyframe
 qpos) is constructed; that piece is supplied as the ``agent_spec_builder``
@@ -79,7 +78,7 @@ AgentSpecBuilder = Callable[
 class ChaseTagVsModelMeta(CombatModelMetaBase):
     """Pre-computed indices into MjModel/MjData arrays for both chase-tag agents.
 
-    Shared across every host model (myoLeg-only, MuscleMimic full-body) --
+    Shared across every host model (myoLeg-only, myofullbody) --
     the set of cached indices is identical regardless of which agent model
     the combined scene was built from.
     """
@@ -143,22 +142,19 @@ def _build_leg_agent_spec(
 def _build_fullbody_agent_spec(
     config: ChaseTagVsConfig,
 ) -> tuple[mujoco.MjSpec, np.ndarray | None]:
-    """Build one standalone MuscleMimic full-body agent spec (+ its standing keyframe)."""
+    """Build one standalone myo_sim ``myofullbody`` agent spec (+ its standing pose)."""
     # Deferred: env registration imports this module, and the full-body builder
     # pulls in ml_collections.
     from myosuite.integrations.musclemimic.fullbody_model import (  # noqa: PLC0415
-        build_mimic_fullbody_spec,
+        build_native_mimic_fullbody_spec,
         default_mimic_fullbody_config,
     )
 
     fullbody_cfg = default_mimic_fullbody_config()
     fullbody_cfg.sim_dt = config.sim_dt
-    spec, _ = build_mimic_fullbody_spec(fullbody_cfg)
-    standalone_model = spec.compile()
-    standing_key_qpos = (
-        standalone_model.key_qpos[0].copy() if standalone_model.nkey > 0 else None
-    )
-    return spec, standing_key_qpos
+    spec = build_native_mimic_fullbody_spec(fullbody_cfg)
+    # myofullbody ships no keyframe; its qpos0 is the standing pose.
+    return spec, spec.compile().qpos0.copy()
 
 
 def _build_two_agent_spec(
@@ -346,7 +342,7 @@ def build_chase_tag_vs_model(
 
 
 # ---------------------------------------------------------------------------
-# MuscleMimic full-body variant
+# myofullbody variant
 # ---------------------------------------------------------------------------
 
 _FULLBODY_FLOOR_RGBA: list[float] = [1.0, 1.0, 1.0, 1.0]

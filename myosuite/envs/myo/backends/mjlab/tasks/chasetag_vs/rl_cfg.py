@@ -10,6 +10,9 @@ from pathlib import Path
 from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 
 import myosuite
+from myosuite.envs.myo.backends.mjlab.tasks.rl import (
+    muscle_gaussian_distribution_cfg,
+)
 
 # The tutorial 5.4 directional walker the 5.6 ChaseTag Colab submits (in a checkout).
 WALKER_CHECKPOINT = (
@@ -54,12 +57,10 @@ def chasetag_vs_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     return RslRlOnPolicyRunnerCfg(
         actor=DirectionalWalkerActorCfg(
             obs_normalization=False,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 0.1,
-                "std_type": "scalar",
-                "std_range": (0.01, 0.2),
-            },
+            distribution_cfg=muscle_gaussian_distribution_cfg(
+                init_std=0.1,
+                std_range=(0.01, 0.2),
+            ),
         ),
         critic=RslRlModelCfg(
             hidden_dims=(512, 256, 128), activation="elu", obs_normalization=True

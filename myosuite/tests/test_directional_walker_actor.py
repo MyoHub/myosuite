@@ -15,13 +15,13 @@ pytest.importorskip("rsl_rl")
 from tensordict import TensorDict  # noqa: E402
 
 from myosuite import make_env  # noqa: E402
+from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: E402
+    ChaseTagVsFullbodySteeredTaskConfig,
+)
 from myosuite.envs.myo.tasks.mimic.policy import ActorCritic  # noqa: E402
 from myosuite.integrations.musclemimic.directional_walker_actor import (  # noqa: E402
     DirectionalWalkerActor,
     FbvsDirectionalAdapter,
-)
-from myosuite.tests.support.optional_deps import (  # noqa: E402
-    require_musclemimic_models,
 )
 
 pytestmark = pytest.mark.tier2
@@ -46,8 +46,12 @@ def _walker_checkpoint():
 
 def _fbvs_observations(n_steps: int = 30) -> np.ndarray:
     """Train-env observations of both roles (learner and opponent views)."""
-    require_musclemimic_models()
-    env = make_env(ENV_ID, opponent_policy=lambda o: np.full(N_ACT, 0.1))
+    cfg = ChaseTagVsFullbodySteeredTaskConfig(
+        w_gait_jpos=0.0, w_gait_jvel=0.0, w_steering=0.0
+    )
+    env = make_env(
+        ENV_ID, task_config=cfg, opponent_policy=lambda o: np.full(N_ACT, 0.1)
+    )
     rows = []
     try:
         for seed in (0, 1, 2):
@@ -98,11 +102,15 @@ def test_adapter_is_the_chasetag_heading_directional_obs() -> None:
         chasetag_heading_directional_obs,
     )
 
-    require_musclemimic_models()
     single = _build_fullbody_agent_spec(ChaseTagVsConfig())[0].compile()
     data = mujoco.MjData(single)
     world, body = FbvsDirectionalAdapter(False), FbvsDirectionalAdapter()
-    env = make_env(ENV_ID, opponent_policy=lambda o: np.full(N_ACT, 0.1))
+    cfg = ChaseTagVsFullbodySteeredTaskConfig(
+        w_gait_jpos=0.0, w_gait_jvel=0.0, w_steering=0.0
+    )
+    env = make_env(
+        ENV_ID, task_config=cfg, opponent_policy=lambda o: np.full(N_ACT, 0.1)
+    )
     u = env.unwrapped
     try:
         roles = set()

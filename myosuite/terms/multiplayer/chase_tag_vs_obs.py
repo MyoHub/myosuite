@@ -29,6 +29,16 @@ CHASER_ID = "agent_0"
 RUNNER_ID = "agent_1"
 
 
+def agent_is_chaser(agent_id: str, task: str) -> bool:
+    """True when *agent_id* is the chaser for this episode's *task*.
+
+    ``CHASE`` → ``agent_0`` chases; ``EVADE`` → ``agent_1`` chases.
+    """
+    return (agent_id == CHASER_ID and task == "CHASE") or (
+        agent_id == RUNNER_ID and task == "EVADE"
+    )
+
+
 def own_kinematics_obs(
     model: mujoco.MjModel,
     data: mujoco.MjData,
@@ -95,10 +105,10 @@ def role_obs(agent_id: str, task: str, config: ChaseTagVsConfig) -> np.ndarray:
     """
     if not config.observe_role:
         return np.empty(0, dtype=np.float32)
-    is_chaser = (agent_id == CHASER_ID and task == "CHASE") or (
-        agent_id == RUNNER_ID and task == "EVADE"
+    return np.array(
+        [1.0, 0.0] if agent_is_chaser(agent_id, task) else [0.0, 1.0],
+        dtype=np.float32,
     )
-    return np.array([1.0, 0.0] if is_chaser else [0.0, 1.0], dtype=np.float32)
 
 
 def get_agent_obs(

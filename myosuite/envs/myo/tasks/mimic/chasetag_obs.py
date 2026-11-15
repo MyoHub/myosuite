@@ -53,14 +53,13 @@ zero-shot.
 
 from __future__ import annotations
 
-import math
-
 import mujoco
 import numpy as np
 
 from myosuite.integrations.musclemimic.bc_directional_collector import (
     _directional_obs,
 )
+from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
 from myosuite.terms.opponent_relative_obs import relative_pose_obs
 
 #: Fixed heading passed to ``_directional_obs`` — chase-tag has no external
@@ -108,12 +107,8 @@ def chasetag_heading_directional_obs(
         Float32 array of shape ``(528,)`` -- identical layout to
         :func:`~myosuite.integrations.musclemimic.bc_directional_collector._directional_obs`.
     """
-    pelvis_xy = data.qpos[:2]
-    delta = np.asarray(opponent_pos_xy, dtype=np.float64) - pelvis_xy
-    if evade:
-        delta = -delta
-    heading_theta = float(math.atan2(delta[1], delta[0]))
-    return _directional_obs(model, data, heading_theta)
+    heading = role_heading_xy(data.qpos[:2], opponent_pos_xy, pursue=not evade)
+    return _directional_obs(model, data, heading_yaw(heading))
 
 
 def chasetag_obs(
@@ -187,6 +182,7 @@ def chasetag_obs_blocks(
 
 
 __all__ = [
+    "chasetag_heading_directional_obs",
     "chasetag_obs",
     "chasetag_obs_blocks",
     "CHASETAG_OBS_DIM",

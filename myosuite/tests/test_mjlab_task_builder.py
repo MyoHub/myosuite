@@ -45,6 +45,8 @@ from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: E40
     _make_elbow_env_cfg,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def _dummy_reward_a(env) -> object:
     """Arbitrary reward term: only its presence/weight is checked, not its value."""
@@ -109,7 +111,7 @@ def _build_reference_cfg() -> ManagerBasedRlEnvCfg:
     return ManagerBasedRlEnvCfg(
         scene=scene_cfg,
         decimation=10,
-        episode_length_s=20.0,
+        episode_length_s=(1000 - 0.5) * 10 * 0.002,
         observations=kw["observations"],
         actions=kw["actions"],
         terminations=terminations,
@@ -137,7 +139,6 @@ def _build_factory_cfg() -> ManagerBasedRlEnvCfg:
         num_envs=1,
         decimation=10,
         sim_cfg=SimulationCfg(mujoco=MujocoCfg(timestep=0.002, ccd_iterations=500)),
-        episode_length_s=20.0,
     )
 
 
@@ -241,4 +242,4 @@ def test_episode_length_uses_sim_timestep() -> None:
         decimation=5,
         sim_cfg=SimulationCfg(mujoco=MujocoCfg(timestep=non_default_dt)),
     )
-    assert result.episode_length_s == pytest.approx(500 * 5 * non_default_dt)
+    assert result.episode_length_s == pytest.approx((500 - 0.5) * 5 * non_default_dt)

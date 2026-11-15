@@ -7,7 +7,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from myosuite.integrations.musclemimic.hf_demo_cache import get_demo_motions
+
+pytestmark = pytest.mark.tier2
 
 
 def test_get_demo_motions_includes_fullbody_demos() -> None:

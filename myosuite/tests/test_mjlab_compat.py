@@ -997,6 +997,8 @@ def test_train_mjlab_cli_offers_the_myosuite_twins() -> None:
     env["PYTHONPATH"] = os.pathsep.join(
         p for p in (str(repo), env.get("PYTHONPATH", "")) if p
     )
+    # A Windows pipe encodes stdout in cp1252, which lacks characters the help prints.
+    env["PYTHONIOENCODING"] = "cp1252"
     proc = subprocess.run(
         [
             sys.executable,
@@ -1008,7 +1010,7 @@ def test_train_mjlab_cli_offers_the_myosuite_twins() -> None:
         env=env,
         check=False,
         capture_output=True,
-        text=True,
+        encoding="cp1252",
     )
     output = f"{proc.stdout}\n{proc.stderr}"
     assert proc.returncode == 0, output[-3000:]

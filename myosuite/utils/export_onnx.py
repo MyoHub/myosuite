@@ -68,13 +68,26 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import torch
 from myosuite.core.registry import make_env
 
+try:
+    import torch
+except ImportError:  # pragma: no cover - optional on CPU-only playback installs
+    torch = None  # type: ignore[assignment]
+
 if TYPE_CHECKING:
+    import torch
     from stable_baselines3.common.vec_env import VecNormalize
 
+_ModuleBase: type = torch.nn.Module if torch is not None else object
+
 log = logging.getLogger(__name__)
+
+
+def _require_torch() -> Any:
+    if torch is None:
+        raise ImportError("ONNX policy export requires PyTorch (`pip install torch`).")
+    return torch
 
 
 def _export_policy(
@@ -86,10 +99,11 @@ def _export_policy(
     writes the weights to a separate ``.onnx.data`` file, so the ``.onnx`` alone does
     not load, and prints progress that a non-UTF-8 stdout cannot encode.
     """
+    _torch = _require_torch()
     output.parent.mkdir(parents=True, exist_ok=True)
-    torch.onnx.export(
+    _torch.onnx.export(
         policy,
-        torch.zeros(1, obs_dim, dtype=torch.float32),
+        _torch.zeros(1, obs_dim, dtype=_torch.float32),
         str(output),
         opset_version=opset,
         input_names=["obs"],
@@ -152,6 +166,7 @@ def export_sb3_to_onnx(
             ``clip((obs - mean) / sqrt(var + epsilon), -clip_obs, clip_obs)`` is
             folded into the graph, so the ONNX model takes raw observations.
     """
+    _require_torch()
     from myosuite.utils.checkpoint_utils import (  # noqa: PLC0415
         load_sb3_model,
         load_vec_normalize,
@@ -321,7 +336,7 @@ def _residual_block_indices(actor: dict[str, Any]) -> list[int]:
     return sorted(indices)
 
 
-class _OrbaxResBlock(torch.nn.Module):
+class _OrbaxResBlock(_ModuleBase):
     """PyTorch mirror of one residual block in the Orbax/Flax actor."""
 
     def __init__(
@@ -331,6 +346,7 @@ class _OrbaxResBlock(torch.nn.Module):
         out_dim: int,
         has_proj: bool,
     ) -> None:
+        _require_torch()
         super().__init__()
         self.dense0 = torch.nn.Linear(in_dim, mid_dim)
         self.ln0 = torch.nn.LayerNorm(mid_dim, eps=1e-5)
@@ -349,10 +365,11 @@ class _OrbaxResBlock(torch.nn.Module):
         return torch.nn.functional.silu(shortcut + gate * y)
 
 
-class _OrbaxActorNet(torch.nn.Module):
+class _OrbaxActorNet(_ModuleBase):
     """PyTorch mirror of the Orbax/Flax residual actor network."""
 
     def __init__(self, params: dict) -> None:
+        _require_torch()
         super().__init__()
         actor = params["actor"]
         block_indices = _residual_block_indices(actor)
@@ -443,7 +460,7 @@ class _OrbaxActorNet(torch.nn.Module):
         return self.output_dense(h)
 
 
-class _OrbaxPolicyWrapper(torch.nn.Module):
+class _OrbaxPolicyWrapper(_ModuleBase):
     """Actor with baked-in obs normalization stats from the checkpoint."""
 
     def __init__(
@@ -452,6 +469,7 @@ class _OrbaxPolicyWrapper(torch.nn.Module):
         obs_mean: np.ndarray,
         obs_var: np.ndarray,
     ) -> None:
+        _require_torch()
         super().__init__()
         self.actor = actor_net
         self.register_buffer(
@@ -552,18 +570,21 @@ def verify_onnx_on_cpu(
     output_name = sess.get_outputs()[0].name
 
     env = make_env(env_id)
-    obs, _ = env.reset(seed=seed)
+    try:
+        obs, _ = env.reset(seed=seed)
 
-    total_reward = 0.0
-    steps = 0
-    for _ in range(n_steps):
-        action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze()
-        obs, rew, term, trunc, _ = env.step(action)
-        total_reward += float(rew)
-        steps += 1
-        if term or trunc:
-            break
-    env.close()
+        total_reward = 0.0
+        steps = 0
+        term = False
+        for _ in range(n_steps):
+            action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze(0)
+            obs, rew, term, trunc, _ = env.step(action)
+            total_reward += float(rew)
+            steps += 1
+            if term or trunc:
+                break
+    finally:
+        env.close()
 
     mean_reward = total_reward / max(steps, 1)
     if mean_reward < min_mean_reward:
@@ -575,7 +596,7 @@ def verify_onnx_on_cpu(
         "total_reward": total_reward,
         "mean_reward": mean_reward,
         "n_steps": steps,
-        "terminated": term if "term" in dir() else False,
+        "terminated": bool(term),
     }
 
 
@@ -612,16 +633,20 @@ def compare_onnx_across_backends(
 
     def _rollout(env_id: str, env_kwargs: dict) -> tuple[np.ndarray, np.ndarray]:
         env = make_env(env_id, **env_kwargs)
-        obs, _ = env.reset(seed=seed)
-        obs_seq, rew_seq = [obs.copy()], []
-        for _ in range(n_steps):
-            action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze()
-            obs, rew, term, trunc, _ = env.step(action)
-            obs_seq.append(np.asarray(obs).ravel().copy())
-            rew_seq.append(float(rew))
-            if term or trunc:
-                break
-        env.close()
+        try:
+            obs, _ = env.reset(seed=seed)
+            obs_seq, rew_seq = [obs.copy()], []
+            for _ in range(n_steps):
+                action = sess.run([output_name], {input_name: _onnx_obs(obs)})[
+                    0
+                ].squeeze(0)
+                obs, rew, term, trunc, _ = env.step(action)
+                obs_seq.append(np.asarray(obs).ravel().copy())
+                rew_seq.append(float(rew))
+                if term or trunc:
+                    break
+        finally:
+            env.close()
         return np.array(obs_seq), np.array(rew_seq)
 
     cpu_obs, cpu_rew = _rollout("myoLegWalk-v0", {})

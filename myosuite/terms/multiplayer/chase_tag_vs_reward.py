@@ -31,6 +31,7 @@ from myosuite.terms.mimic_reward import (
     mimic_joint_vel_reward,
     mimic_root_vel_reward,
 )
+from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
 
 CHASER_ID = "agent_0"
 RUNNER_ID = "agent_1"
@@ -125,7 +126,7 @@ def compute_agent_reward(
     Returns:
         Scalar reward.
     """
-    is_chaser = agent_id == CHASER_ID if task == "CHASE" else agent_id == RUNNER_ID
+    is_chaser = agent_is_chaser(agent_id, task)
     return float(
         chase_tag_dense_reward(
             np,

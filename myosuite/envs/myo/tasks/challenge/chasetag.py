@@ -346,6 +346,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         normalize_act: If ``True``, action space is ``[-1, 1]``.
         reset_type: One of ``"none"``, ``"init"``, ``"random"``.
         win_distance: Tagging distance threshold (m).
+        max_time: Time limit of the episode (s).
         min_spawn_distance: Minimum opponent spawn radius (m).
         task_choice: ``"CHASE"``, ``"EVADE"``, or ``"random"``.
         terrain: ``"FLAT"`` or ``"random"``.
@@ -413,6 +414,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         normalize_act: bool = True,
         reset_type: str = "none",
         win_distance: float = 0.5,
+        max_time: float = 20.0,
         min_spawn_distance: float = 2.0,
         task_choice: str = "CHASE",
         terrain: str = "FLAT",
@@ -442,6 +444,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             normalize_act=normalize_act,
             reset_type=reset_type,
             win_distance=win_distance,
+            max_time=max_time,
             min_spawn_distance=min_spawn_distance,
             task_choice=task_choice,
             terrain=terrain,
@@ -477,7 +480,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.task_choice = task_choice
         self.terrain = terrain
         self.win_distance = win_distance
-        self.maxTime = 20
+        self.maxTime = max_time
         self.repeller_opponent = repeller_opponent
 
         # ── Terrain ─────────────────────────────────────────────────────────
@@ -829,9 +832,14 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             return self._evade_lose_condition(obs_dict)
         raise NotImplementedError
 
+    def _horizon_steps(self) -> int:
+        """Control steps in ``maxTime``; the summed ``data.time`` is not exact."""
+        return round(self.maxTime / self.dt)
+
     def _chase_lose_condition(self, obs_dict: dict) -> int:
         root_pos = self.data.body(self._pelvis_body_name).xpos[:2]
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime:
+        # Past the horizon only: at the horizon ``TimeLimit`` truncates a CHASE.
+        if self.steps > self._horizon_steps():
             return 1
         if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
             return 1
@@ -854,9 +862,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return 0
 
     def _evade_win_condition(self, obs_dict: dict) -> int:
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime:
-            return 1
-        return 0
+        return 1 if self.steps >= self._horizon_steps() else 0
 
     def _get_fallen_condition(self) -> int:
         if self.terrain == "FLAT":

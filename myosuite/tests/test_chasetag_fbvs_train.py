@@ -29,18 +29,13 @@ from myosuite.envs.myo.tasks.challenge.chase_tag_vs.train_env import (
     load_opponent_policy,
 )
 from myosuite.envs.wrappers import FatigueWrapper
-from myosuite.tests.support.optional_deps import require_musclemimic_models
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier2
 
 ENV_ID = "myoChallengeChaseTagFBVsTrain-v0"
 FBVS_ID = "myoChallengeChaseTagFBVs-v0"
 N_ACT = 354
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _models() -> None:
-    require_musclemimic_models()
 
 
 class _Replay:
@@ -69,10 +64,14 @@ def _rollout_both(
     np.testing.assert_array_equal(obs, obs_f[LEARNER])
     for t in range(n_steps):
         opp_obs = train.unwrapped.opponent_obs.copy()
-        obs, rew, term, trunc, info = train.step(acts[t, 0])
-        obs_f, rew_f, term_f, trunc_f, info_f = fbvs.step(
-            {LEARNER: acts[t, 0], OPPONENT: acts[t, 1]}
-        )
+        try:
+            obs, rew, term, trunc, info = train.step(acts[t, 0])
+            obs_f, rew_f, term_f, trunc_f, info_f = fbvs.step(
+                {LEARNER: acts[t, 0], OPPONENT: acts[t, 1]}
+            )
+        except Exception as exc:
+            skip_if_hf_gated(ENV_ID, exc)
+            raise
         np.testing.assert_array_equal(replay.seen[t], opp_obs)
         np.testing.assert_array_equal(obs, obs_f[LEARNER], err_msg=str(t))
         np.testing.assert_array_equal(
@@ -121,14 +120,14 @@ def test_tag_ends_the_episode_with_the_fbvs_score(seed: int) -> None:
         chaser = info["task"] == "CHASE"
         assert info["solved"] == chaser and info["chaser"] == chaser
         # Only the winner scores: a tagged runner gets 0.
-        assert info["score"] == pytest.approx(1 - 0.01 / 20 if chaser else 0.0)
+        assert info["score"] == pytest.approx(1 - 0.01 / 10 if chaser else 0.0)
     finally:
         train.close()
         fbvs.close()
 
 
 def test_horizon_truncates_and_a_surviving_runner_wins() -> None:
-    """Step 2000 (20 s) truncates; as runner the learner then scores 1."""
+    """Step 1000 (10 s) truncates; as runner the learner then scores 1."""
     env = make_env(ENV_ID)
     try:
         for seed in range(20):
@@ -138,8 +137,12 @@ def test_horizon_truncates_and_a_surviving_runner_wins() -> None:
         wrapper = env
         while not isinstance(wrapper, gym.wrappers.TimeLimit):
             wrapper = wrapper.env
-        wrapper._elapsed_steps = env.unwrapped.steps = 1999
-        _, _, term, trunc, info = env.step(np.zeros(N_ACT, dtype=np.float32))
+        wrapper._elapsed_steps = env.unwrapped.steps = 999
+        try:
+            _, _, term, trunc, info = env.step(np.zeros(N_ACT, dtype=np.float32))
+        except Exception as exc:
+            skip_if_hf_gated(ENV_ID, exc)
+            raise
         assert trunc and not term
         assert info["solved"] and info["score"] == 1.0
     finally:
@@ -170,7 +173,11 @@ def test_opponent_policies(tmp_path) -> None:
     env = make_env(ENV_ID).unwrapped
     try:
         env.reset(seed=0)
-        env.step(np.zeros(N_ACT, dtype=np.float32))
+        try:
+            env.step(np.zeros(N_ACT, dtype=np.float32))
+        except Exception as exc:
+            skip_if_hf_gated(ENV_ID, exc)
+            raise
         np.testing.assert_array_equal(env.data.ctrl[env._act[OPPONENT]], 0.0)
 
         net = torch.nn.Sequential(torch.nn.Linear(CHASETAG_VS_OBS_DIM, N_ACT))

@@ -173,7 +173,8 @@ Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwarg
 | `max_episode_steps` | episode length limit | passed to `gym.make` | sets the twin's episode length |
 | `ctrl_dt` | control step in seconds (physics substeps follow) | sets `frame_skip = ctrl_dt / model timestep` | sets the twin's `decimation` to the same value |
 | `num_envs` | parallel envs | must be 1 | number of parallel envs |
-| `task_kwargs` | env constructor kwargs | passed to the env | not supported (raises): the twin reads the registration |
+| `task_kwargs` | env constructor kwargs | passed to the env | registrations with `mjlab_task_kwargs=True` accept scene/task overrides (waypoint, `myoMimic-v0`); other twins read the registration |
+| `model` | body model of a task registered with `models=` (`myoMimic-v0`) | passed as the env's `model` kwarg | the twin is rebuilt on that model |
 | `backend_options`, extra kwargs | options of one backend only | passed to `gym.make` (for example `render_mode`) | passed to the env (for example `device`) |
 
 - `ctrl_dt` must be a whole multiple of the model timestep (`ValueError` otherwise). The `ModularTaskEnv` ids take their
@@ -184,6 +185,41 @@ Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwarg
   `reafferentation`, see `myosuite/utils/feature_cli.py`).
 - Harness wrappers (`PerturbationWrapper`, recording, a delay on the raw action) are not features. They are plain
   gymnasium wrappers on the CPU env and not part of the config.
+
+### Motion preprocessing
+
+`myoMimic-v0` accepts `motion.workers` and `motion.cache_dir` through the task's
+dotted overrides on both CPU and mjlab:
+
+```python
+cfg = EnvConfig("myoMimic-v0", task_kwargs={"overrides": {
+    "motion.clips": "motions.txt",
+    "motion.workers": 2,
+    "motion.cache_dir": "/path/to/local/motion-cache",
+}})
+```
+
+One worker is the conservative default; larger values use threads, one `MjData`
+per clip, and preserve clip order and numerical results. Benchmark worker counts
+on your clips and machine: more threads can cost more than they save. These two
+execution options do not change the task fingerprint.
+
+The disk cache is opt-in (empty `cache_dir` disables it). It stores only NumPy
+arrays and JSON metadata, loaded with `allow_pickle=False`. Its key covers the
+ordered, resolved source paths and their complete contents, the compiled model
+(including scene variants), tracked-body order, control step, reset bins,
+preprocessing implementation/schema and NumPy/MuJoCo versions. Source bytes are
+hashed on every library lookup, including in-process hits; hashing and validated
+archive reads still cost I/O. Cache hits skip resampling and per-frame MuJoCo
+kinematics. This cache does not replace clip/model compatibility checks.
+
+Shapes, dtypes, finite values, clip metadata and array checksums are checked on
+disk reads. Invalid archives warn and are rebuilt. Writers use unique temporary
+files and atomic replacement; concurrent processes can redundantly build the
+same library but readers never consume a partially written archive. An unwritable
+cache warns and falls back to preprocessing. Cache directories are disposable;
+old entries are retained until you remove them. Each process also retains up to
+two loaded libraries in memory, keyed by current input content.
 
 ## Which features run where
 
@@ -207,6 +243,8 @@ features of that registration or of the `EnvConfig`.
 | Key turn, object hold, pen, reorient (SAR, ID, OOD, 100, 8) | yes | no | - |
 | MyoChallenge Baoding, Bimanual, Relocate, Die Reorient, Soccer, OSL run | yes | no | - |
 | ChaseTag, single agent | yes | only `myoChallengeChaseTagFBP2-v0` | no |
+| Waypoint (`myoFullBodyWaypoint-v0`, `WaypointEnv`) | yes | yes | yes |
+| Motion tracking (`myoMimic-v0`, `MimicEnv`) | yes | yes | yes |
 | Table Tennis P0, P1, P2 | yes | yes | no |
 | ChaseTag 1v1, both players (`myoChallengeChaseTagFBVs-v0`, multi-agent) | no | no | - |
 | ChaseTag 1v1, one player vs. an in-env opponent (`myoChallengeChaseTagFBVsTrain-v0`) | no | yes | no |

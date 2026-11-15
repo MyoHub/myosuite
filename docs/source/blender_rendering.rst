@@ -147,12 +147,63 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
   task's floor planes. The scene uses warm key, cool fill and rim area
   lights, and an 85 mm perspective camera. Use ``--scene mujoco`` to keep the
   task's own floor, for example a soccer pitch or an arena.
+- **Sport** (``--scene sport``). Keeps the task geometry and gives floor planes
+  a navy material, with Breakaway's orange/cyan rim lights, bright anatomy,
+  dark perimeter and a low 45 mm camera with a slight roll. Chase-tag exports
+  include sparse court lines and broken identity arcs following both agents.
+  The arcs are decorative, not tag radii, paths or performance data.
+  The court is glossy, with a soft team glow under each agent that follows
+  its arc; out-of-focus LED bars, a stage spot through thin haze, shallow
+  depth of field, bloom and a vignette give it a broadcast look. The haze
+  makes renders slower than the studio preset.
+  In Blender, the 194 court strokes use lightweight box meshes (2,328
+  triangles total). The depth-of-field target follows the midpoint of the
+  two identity markers throughout the animation.
+  Camera fitting still samples the recorded poses. The light
+  colours are fixed scene accents, independent of agent roles and muscle
+  activation. For a chase-tag preview from a recorded joint-state clip:
+
+  .. code-block:: bash
+
+     python scripts/render_blender.py --env myoChallengeChaseTagFBVs-v0 \
+       --motion chase.npz --scene sport --muscles paths --muscle-color uniform \
+       --resolution 1920 1080 --preview --output chase-sport
 
 Collidable world geometry, such as goals and arena fences, stays
 visible; visual-only world meshes (room shells and wall props, with
 ``contype`` and ``conaffinity`` 0) are hidden because the studio replaces them.
 Static world geometry is excluded from camera fitting. Camera fitting
 samples three poses with a margin; check longer clips for framing before final use.
+
+.. figure:: images/rendering/sport_blender.jpg
+   :alt: Chase-tag Blender rendering with studio and sport scene presets
+
+   Studio (left) and sport (right), using the same staged Breakaway pose and
+   each preset's camera and lighting. Blender 5.2, Cycles, 48 samples; atlas
+   muscle meshes in a uniform colour, not measured activation.
+
+Reproduce the Breakaway still from the repository root. It works on a plain
+install; the clip's ``elbow_flex_*`` joints map onto the native
+``elbow_flexion_*`` ones.
+
+.. code-block:: bash
+
+   python scripts/render_blender.py --env myoChallengeChaseTagFBVs-v0 \
+       --motion docs/source/images/rendering/chase_tag_breakaway.npz \
+       --scene sport --muscle-mesh atlas --muscle-color uniform \
+       --seconds 0.0333333333 --resolution 1280 720 --samples 48 \
+       --preview --output renders/breakaway
+
+The anatomical muscle meshes (see *Anatomical muscle meshes* below) follow the
+bones and take the sport red. With ``--muscles paths`` in place of
+``--muscle-mesh atlas`` the muscles are drawn along their MuJoCo paths instead;
+in extreme arm poses such as this one, the shoulder paths fold back on
+themselves.
+
+The supplied clip holds a hand-staged pose for two samples at 30 Hz, with
+joint couplings and tendon paths recomputed in MuJoCo. It is a composition
+example, not a learned or contact-validated rollout. The preset preserves
+recorded poses; use an actual checkpoint or motion recording for action footage.
 
 Body skin
 ---------
@@ -304,3 +355,30 @@ random-action hand motion (0.18 seconds). Saved Blender scenes matched MuJoCo
 body-geometry positions at two timestamps to within 6.1e-8 metres; visible
 anatomy stayed inside the camera throughout those clips. These checks do not
 establish compatibility with every environment or policy success rates.
+
+Reference skeletons and custom policies
+---------------------------------------
+
+Reuse ``GhostBodyViz`` for a desired motion without adding a simulated body.
+``from_motion_clip`` computes body poses once from full-model ``MotionClip.qpos``.
+Set ``bone_meshes=True`` to reuse the model's anatomical bone meshes instead
+of joint markers and capsules. The reference changes their poses, not their shape.
+For a MuJoCo image, call ``ghost.draw(frame, renderer.scene)`` after
+``renderer.update_scene(...)`` and before ``renderer.render()``.
+
+The Python exporter also accepts an existing ``env``, an observation-to-action
+``policy`` callback, and the same viewer ``viz_fn``. It resets the supplied env
+with the configured seed and leaves it open. Visualization callbacks receive
+control-step indices starting at zero, must only edit the scene, and should
+append geometry in a stable order so USD objects retain their identity.
+The overlay retains its color and animation in the editable Blender scene.
+
+.. code-block:: python
+
+   from myosuite.viz.ghost_body_viz import GhostBodyViz
+
+   ghost = GhostBodyViz.from_motion_clip(reference, env.unwrapped.model, bone_meshes=True)
+   render_rollout(config, env=env, policy=action, viz_fn=ghost.as_viz_fn())
+
+Tutorial ``4.4_Programmatic_Waypoint_Tasks.ipynb`` shows a reference snapshot,
+an optional live overlay and a TERRA export using the shared policy runner.

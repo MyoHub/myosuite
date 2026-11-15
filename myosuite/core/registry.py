@@ -13,6 +13,8 @@ backend-aware factory.
 from __future__ import annotations
 
 import dataclasses
+import importlib
+import sys
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -25,10 +27,16 @@ from myosuite.core.multi_agent_config import MultiAgentTaskConfig
 from myosuite.envs.wrappers import normalize_features
 
 if TYPE_CHECKING:
+    from types import FrameType
+
     from myosuite.core.specs import EnvSpec
 
 # Internal store: env_id -> registration metadata
 _ENV_REGISTRY: dict[str, dict[str, Any]] = {}
+# env_id -> module that registered it; only that module may change its spec
+_REGISTERED_BY: dict[str, str] = {}
+# MJX twins of register_task(..., backends={"mjx"}): env_id -> (task_config, overrides)
+_MJX_TASKS: dict[str, tuple[TaskConfig, dict[str, Any]]] = {}
 _MJ_INSTABILITY_WRAPPER_ENTRY_POINT = (
     "myosuite.envs.wrappers:MjInstabilityTerminationWrapper"
 )
@@ -81,6 +89,14 @@ def _deep_equal(a: Any, b: Any) -> bool:
     return bool(a == b)
 
 
+def _registering_module() -> str:
+    """Name of the module that called into this registry (first frame outside it)."""
+    frame: FrameType | None = sys._getframe(1)
+    while frame is not None and frame.f_globals.get("__name__") == __name__:
+        frame = frame.f_back
+    return frame.f_globals.get("__name__", "") if frame is not None else ""
+
+
 def register_env(
     env_id: str,
     entry_point: str,
@@ -88,13 +104,18 @@ def register_env(
     backend_configs: dict[str, Any] | None = None,
     wrap_mj_instability_termination: bool = True,
     time_limit: bool = True,
+    mjlab_task_kwargs: bool = False,
+    models: tuple[str, ...] = (),
     **kwargs: Any,
 ) -> None:
     """Register an environment for the CPU (Gymnasium) path.
 
     Registration is deterministic across import order. If *env_id* already
     exists with identical spec, this is a no-op. If the existing spec differs
-    (entry point / max steps / kwargs), the stale spec is replaced in-place.
+    (entry point / max steps / kwargs / wrappers), the module that first
+    registered *env_id* may replace it in place (e.g. on ``importlib.reload``);
+    any other module gets a ``ValueError``, since the winner would otherwise
+    depend on import order.
 
     Args:
         env_id: Gymnasium env id (e.g. "myoElbowPose1D6MRandom-v0").
@@ -108,7 +129,15 @@ def register_env(
             itself, such as the multi-agent env, whose per-agent ``truncated``
             dict ``TimeLimit`` would replace with a bare ``True``; the limit is
             then only recorded here.
+        mjlab_task_kwargs: Whether the mjlab twin supports constructor overrides
+            through ``EnvConfig.task_kwargs`` when rebuilt from the CPU registration.
+        models: Body models the task runs on (``EnvConfig.model``, passed to the env
+            as its ``model`` kwarg); empty for a task with one fixed model.
         **kwargs: Additional keyword arguments forwarded to gym.register().
+
+    Raises:
+        ValueError: If *env_id* is already registered by another module with a
+            different spec.
 
     Example:
         >>> register_env(
@@ -122,26 +151,39 @@ def register_env(
         kwargs.get("additional_wrappers", ()),
         wrap_mj_instability_termination=wrap_mj_instability_termination,
     )
+    gym_max_episode_steps = max_episode_steps if time_limit else None
+    owner = _registering_module()
+    existing = _gym_registry.get(env_id)
+    same_spec = existing is not None and (
+        existing.entry_point == entry_point
+        and existing.max_episode_steps == gym_max_episode_steps
+        and _deep_equal(dict(existing.kwargs or {}), dict(kwargs.get("kwargs") or {}))
+        and tuple(existing.additional_wrappers or ())
+        == tuple(kwargs["additional_wrappers"] or ())
+    )
+    if existing is not None and not same_spec:
+        first_owner = _REGISTERED_BY.get(env_id, owner)
+        if first_owner != owner:
+            raise ValueError(
+                f"{env_id!r} is already registered by {first_owner} with a different "
+                f"spec; {owner} must register it under its own env id."
+            )
     _ENV_REGISTRY[env_id] = {
         "entry_point": entry_point,
         "max_episode_steps": max_episode_steps,
         "backend_configs": backend_configs or {},
+        "mjlab_task_kwargs": mjlab_task_kwargs,
+        "models": tuple(models),
         "additional_wrappers": kwargs["additional_wrappers"],
     }
-    gym_max_episode_steps = max_episode_steps if time_limit else None
-    if env_id in _gym_registry:
-        existing = _gym_registry[env_id]
-        new_kwargs = kwargs.get("kwargs", {})
-        same_spec = (
-            existing.entry_point == entry_point
-            and existing.max_episode_steps == gym_max_episode_steps
-            and _deep_equal(dict(existing.kwargs or {}), dict(new_kwargs or {}))
-            and tuple(existing.additional_wrappers or ())
-            == tuple(kwargs["additional_wrappers"] or ())
-        )
-        if same_spec:
-            return
-        # Replace stale registration deterministically (avoids import-order drift).
+    if existing is None:
+        _REGISTERED_BY[env_id] = owner
+    else:
+        _REGISTERED_BY.setdefault(env_id, owner)
+    if same_spec:
+        return
+    if existing is not None:
+        # The owning module re-registers with a new spec (e.g. on reload): replace it.
         del _gym_registry[env_id]
     gym.register(
         id=env_id,
@@ -263,36 +305,14 @@ def _register_task_mjx(
 ) -> None:
     """Register a TaskConfig-based env on the MJX backend.
 
+    Only records the task; :func:`make_env` imports JAX/MJX when it builds the env.
+
     Args:
         env_id: Gymnasium env id to use for MJX registration.
         task_config: Task specification.
         features: Wrapper specs of the registration (see :func:`mjx_feature_overrides`).
     """
-    try:
-        from mujoco_playground import registry as pg_registry
-        from myosuite.envs.myo.backends.mjx.mjx_modular_env import (
-            MjxModularTaskEnv,
-            modular_task_config,
-        )
-    except ImportError:
-        return  # MJX extras not installed; skip silently
-
-    cfg = modular_task_config(task_config)
-    defaults = mjx_feature_overrides(features) or {}
-
-    def _cfg_fn() -> Any:
-        return cfg
-
-    def _env_cls(
-        config: Any, config_overrides: dict[str, Any] | None = None
-    ) -> MjxModularTaskEnv:
-        # The env rebuilds its config from task_config; overrides apply on top.
-        return MjxModularTaskEnv(
-            task_config, config_overrides={**defaults, **(config_overrides or {})}
-        )
-
-    if env_id not in pg_registry._envs:  # type: ignore[attr-defined]
-        pg_registry.register_environment(env_id, _env_cls, _cfg_fn)
+    _MJX_TASKS[env_id] = (task_config, mjx_feature_overrides(features) or {})
 
 
 def _register_task_variants(
@@ -324,13 +344,15 @@ def _register_task_variants(
     for vspec in variants:
         if base_env_id.startswith("myo"):
             variant_id = "myo" + vspec.suffix + base_env_id[3:]
-        else:
+        elif "-" in base_env_id:
             # e.g. "ElbowPoseTask-v0" → "ElbowPoseTaskSarc-v0"
             base, ver = base_env_id.rsplit("-", 1)
             variant_id = f"{base}{vspec.suffix}-{ver}"
+        else:
+            variant_id = f"{base_env_id}{vspec.suffix}"
 
         # Build variant config by replacing fields from config_delta
-        variant_cfg = copy.copy(task_config)
+        variant_cfg = copy.deepcopy(task_config)
         for field_name, value in vspec.config_delta.items():
             if dataclasses.is_dataclass(variant_cfg):
                 object.__setattr__(variant_cfg, field_name, value)
@@ -369,8 +391,10 @@ def make_env(
         backend: One of "cpu", "mjx", or "mjlab"; default: ``EnvConfig.backend``
             ("cpu" for a plain id).
         **overrides: Backend-specific options, merged over ``EnvConfig.backend_options``
-            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``
-            etc. on mjlab, ``config_overrides`` on "mjx".
+            and (CPU) ``task_kwargs``: env constructor kwargs on the CPU, ``device``,
+            ``seed`` etc. on mjlab, ``config_overrides`` on "mjx".
+            ``ctrl_dt`` and a string ``model`` set the :class:`EnvConfig` fields of that
+            name; any other ``model`` value is passed on as an env constructor kwarg.
 
     Returns:
         An environment instance appropriate for the backend.
@@ -392,6 +416,13 @@ def make_env(
     config = env_id if isinstance(env_id, EnvConfig) else EnvConfig(env_id=env_id)
     # A config edited after construction may hold classes or pairs: normalize again.
     config = dataclasses.replace(config, features=normalize_features(config.features))
+    # EnvConfig fields given as keywords; a non-string ``model`` (e.g. an MjModel) stays
+    # a constructor kwarg of the env
+    if isinstance(overrides.get("model"), str):
+        config = dataclasses.replace(config, model=overrides.pop("model"))
+    if "ctrl_dt" in overrides:
+        config = dataclasses.replace(config, ctrl_dt=overrides.pop("ctrl_dt"))
+    config = _with_model(config)
     backend = backend or config.backend
     if backend == "cpu":
         return _make_cpu(config, overrides)
@@ -401,6 +432,24 @@ def make_env(
         return _make_mjlab(config, overrides)
     else:
         raise ValueError(f"Unknown backend: {backend!r}. Choose from: cpu, mjx, mjlab")
+
+
+def _with_model(config: EnvConfig) -> EnvConfig:
+    """Move ``EnvConfig.model`` into the task kwargs of an id registered with models."""
+    if config.model is None:
+        return config
+    models = _ENV_REGISTRY.get(config.env_id, {}).get("models", ())
+    if config.model not in models:
+        raise ValueError(
+            f"{config.env_id} does not run on model {config.model!r}"
+            + (
+                f"; choose from {list(models)}"
+                if models
+                else " (it has one fixed model)"
+            )
+        )
+    task_kwargs = {**config.task_kwargs, "model": config.model}
+    return dataclasses.replace(config, task_kwargs=task_kwargs, model=None)
 
 
 def _substeps(ctrl_dt: float, timestep: float) -> int:
@@ -443,19 +492,32 @@ def _make_mjx(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             "The experimental mjx backend supports only SarcopeniaWrapper in "
             "EnvConfig.features."
         )
-    try:
-        from mujoco_playground import registry as pg_registry
-    except ImportError as e:
-        raise ImportError(
-            "MJX backend requires mujoco_playground. "
-            "Install with: pip install myosuite[mjx]"
-        ) from e
     options = {**feature_options, **config.backend_options, **overrides}
     if config.num_envs is not None:
         options["num_envs"] = config.num_envs
     if config.ctrl_dt is not None:
         options["ctrl_dt"] = config.ctrl_dt
-    return pg_registry.load(config.env_id, config_overrides=options or None)
+    if config.env_id in _MJX_TASKS:
+        task_config, defaults = _MJX_TASKS[config.env_id]
+        modular = _import_mjx("myosuite.envs.myo.backends.mjx.mjx_modular_env")
+        return modular.MjxModularTaskEnv(
+            task_config, config_overrides={**defaults, **options} or None
+        )
+    # The hand-written MJX envs (``Mjx*-v0``).
+    return _import_mjx("myosuite.envs.myo.backends.mjx").make(
+        config.env_id, config_overrides=options or None
+    )
+
+
+def _import_mjx(module: str) -> Any:
+    """Import a module of the MJX backend, naming the extra if JAX/MJX is missing."""
+    try:
+        return importlib.import_module(module)
+    except ImportError as e:
+        raise ImportError(
+            "The mjx backend requires JAX and MuJoCo MJX. "
+            "Install with: pip install myosuite[mjx]"
+        ) from e
 
 
 def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
@@ -471,7 +533,9 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # something else imported the backend first.
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
 
-    if config.task_kwargs:
+    if config.task_kwargs and not _ENV_REGISTRY.get(config.env_id, {}).get(
+        "mjlab_task_kwargs", False
+    ):
         raise NotImplementedError(
             "EnvConfig.task_kwargs are CPU env constructor kwargs; the mjlab twin reads "
             "them from the registration."
@@ -480,11 +544,17 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     if config.num_envs is not None:
         options["num_envs"] = config.num_envs
     env_id = config.env_id
+    seed = options.pop("seed", None)
 
-    if hasattr(mjlab.envs, "make") and not (
-        config.features
-        or config.max_episode_steps is not None
-        or config.ctrl_dt is not None
+    if (
+        hasattr(mjlab.envs, "make")
+        and seed is None
+        and not (
+            config.features
+            or config.task_kwargs
+            or config.max_episode_steps is not None
+            or config.ctrl_dt is not None
+        )
     ):
         return mjlab.envs.make(env_id, **options)
 
@@ -508,19 +578,19 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # The registered cfg is built once at import; features and ctrl_dt rebuild it from
     # the CPU registration (extra wrappers, ``frame_skip``).
     cfg = load_env_cfg(env_id)
-    task_kwargs: dict[str, Any] = {}
-    if config.ctrl_dt is not None:
-        n_substeps = _substeps(config.ctrl_dt, cfg.sim.mujoco.timestep)
-        if n_substeps != cfg.decimation:
-            task_kwargs["frame_skip"] = n_substeps
-    # The twin-rebuild modules are imported only when needed: a plain call works with
-    # any mjlab build that provides tasks.registry.
-    if config.features or task_kwargs:
+    task_kwargs: dict[str, Any] = dict(config.task_kwargs)
+    if config.features or task_kwargs or config.ctrl_dt is not None:
         from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: PLC0415
             rebuild_twin_cfg,
         )
 
+    if config.features or task_kwargs:
         cfg = rebuild_twin_cfg(env_id, config.features, task_kwargs)
+    if config.ctrl_dt is not None:
+        n_substeps = _substeps(config.ctrl_dt, cfg.sim.mujoco.timestep)
+        if n_substeps != cfg.decimation:
+            task_kwargs["frame_skip"] = n_substeps
+            cfg = rebuild_twin_cfg(env_id, config.features, task_kwargs)
 
     num_envs = options.pop("num_envs", None)
     if num_envs is not None and hasattr(cfg, "scene"):
@@ -541,5 +611,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
         except Exception:
             device = "cpu"
+    if seed is not None:
+        cfg.seed = int(seed)
     env_cls = getattr(cfg, "env_cls", ManagerBasedRlEnv)
     return env_cls(cfg, device=device, **options)

@@ -5,9 +5,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from myosuite.integrations.musclemimic.fullbody_native_playback import (
     parse_native_playback_argv,
 )
+
+pytestmark = pytest.mark.tier2
 
 
 def test_parse_native_playback_accepts_record_flags() -> None:

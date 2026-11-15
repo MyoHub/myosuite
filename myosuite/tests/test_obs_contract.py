@@ -18,6 +18,7 @@ import pytest
 
 from myosuite.envs.gymnasium_env import MyoGymnasiumEnv
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
@@ -90,7 +91,11 @@ def test_step_keeps_base_contract(env_id: str, monkeypatch: pytest.MonkeyPatch) 
         frames: list[int] = []
         monkeypatch.setattr(env, "mj_render", lambda: frames.append(1))
         env.mujoco_render_frames = True
-        env.step(action)
+        try:
+            env.step(action)
+        except Exception as exc:
+            skip_if_hf_gated(env_id, exc)
+            raise
         assert frames == [1]
         env.mujoco_render_frames = False
 
@@ -132,7 +137,11 @@ def test_step_leaves_derived_quantities_fresh(env_id: str) -> None:
         env.reset(seed=0)
         rng = np.random.default_rng(0)
         for _ in range(3):
-            env.step(rng.uniform(env.action_space.low, env.action_space.high))
+            try:
+                env.step(rng.uniform(env.action_space.low, env.action_space.high))
+            except Exception as exc:
+                skip_if_hf_gated(env_id, exc)
+                raise
             ref = mujoco.MjData(env.model)
             mujoco.mj_copyData(ref, env.model, env.data)
             mujoco.mj_forward(env.model, ref)
@@ -188,7 +197,11 @@ def _state_trajectory(env_id: str, n_steps: int = 40) -> np.ndarray:
         rng = np.random.default_rng(0)
         states = []
         for _ in range(n_steps):  # termination ignored: keep simulating
-            env.step(rng.uniform(env.action_space.low, env.action_space.high))
+            try:
+                env.step(rng.uniform(env.action_space.low, env.action_space.high))
+            except Exception as exc:
+                skip_if_hf_gated(env_id, exc)
+                raise
             d = env.data
             states.append(
                 np.concatenate([[d.time], d.qpos, d.qvel, d.act, d.mocap_pos.ravel()])

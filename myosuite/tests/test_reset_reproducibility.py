@@ -24,6 +24,7 @@ from myosuite.envs.gymnasium_env import CpuEnvAccessor
 from myosuite.envs.heightfields import TrackTypes
 from myosuite.utils import gym
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
@@ -112,12 +113,18 @@ def _case_id(case: tuple[str, dict]) -> str:
     return env_id + "".join(f"-{k}" for k in kwargs)
 
 
-def _rollout(env: gym.Env, actions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _rollout(
+    env: gym.Env, actions: np.ndarray, env_id: str = ""
+) -> tuple[np.ndarray, np.ndarray]:
     """Return the obs and reward trajectory of ``reset(seed=SEED)`` + actions."""
     obs, _ = env.reset(seed=SEED)
     obs_traj, rwd_traj = [np.asarray(obs, dtype=np.float64)], []
     for action in actions:
-        obs, rwd, terminated, truncated, _ = env.step(action)
+        try:
+            obs, rwd, terminated, truncated, _ = env.step(action)
+        except Exception as exc:
+            skip_if_hf_gated(env_id or str(getattr(env.spec, "id", "env")), exc)
+            raise
         obs_traj.append(np.asarray(obs, dtype=np.float64))
         rwd_traj.append(float(rwd))
         if terminated or truncated:

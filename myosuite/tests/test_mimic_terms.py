@@ -20,6 +20,8 @@ from myosuite.terms.mimic_reward import (
     mimic_site_tracking_reward,
 )
 
+pytestmark = pytest.mark.tier2
+
 RNG = np.random.default_rng(0)
 N_SITES = 17
 NQ = 69

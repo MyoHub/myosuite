@@ -40,10 +40,17 @@ def gait_clip_local(repo_id: str, filename: str) -> tuple[np.ndarray, np.ndarray
     """
     from huggingface_hub import hf_hub_download  # noqa: PLC0415
 
-    path = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="dataset")
-    npz = np.load(path)
-    qpos = np.asarray(npz["qpos"], dtype=np.float64)[:, 7:]
-    qvel = np.asarray(npz["qvel"], dtype=np.float64)[:, 6:]
+    from myosuite.core.hf_io import pinned_revision  # noqa: PLC0415
+
+    path = hf_hub_download(
+        repo_id=repo_id,
+        filename=filename,
+        repo_type="dataset",
+        revision=pinned_revision(repo_id),
+    )
+    with np.load(path) as npz:
+        qpos = np.asarray(npz["qpos"], dtype=np.float64)[:, 7:]
+        qvel = np.asarray(npz["qvel"], dtype=np.float64)[:, 6:]
     qpos.flags.writeable = qvel.flags.writeable = False
     return qpos, qvel
 
@@ -60,10 +67,11 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     matching the MyoChallenge evaluation protocol.
     """
 
-    # --- Episode / timing (MyoChallenge: 20 s) ---
-    maxTime: float = 20.0
+    # --- Episode / timing ---
+    maxTime: float = 10.0
     ctrl_dt: float = 0.01
     sim_dt: float = 0.002
+    render_scene: str = "sport"
 
     # --- Role ---
     task_choice: str = "random"  # "CHASE" | "EVADE" | "random"
@@ -284,7 +292,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
 
 @dataclass
 class ChaseTagVsFullbodyTaskConfig(ChaseTagVsTaskConfig):
-    """Chase-tag on the MuscleMimic full-body model instead of myoLeg-only.
+    """Chase-tag on myo_sim's ``myofullbody`` instead of myoLeg-only.
 
     Identical hyperparameters and reward/obs term functions to
     :class:`ChaseTagVsTaskConfig` — only the model builder differs.
@@ -364,18 +372,19 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
         base = super().compute_reward(
             data, meta, agent_id, damage_delivered, health, actions, fell, ko
         )
+        # The shaping term is linear in its weights: with all of them 0 it adds nothing,
+        # so the gait clip (a gated download) is not needed.
+        if not (self.w_gait_jpos or self.w_gait_jvel or self.w_steering):
+            return base
         self._ensure_gait_clip()
+        from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
         from myosuite.terms.multiplayer.chase_tag_vs_reward import (
-            CHASER_ID,
             compute_gait_steering_reward,
         )
 
         frame = int(round(data.time / self.ctrl_dt)) % self._gait_T
         opp = self.opponent_id(agent_id)
-        # Determine whether this agent is the chaser given the current task
-        is_chaser = (agent_id == CHASER_ID and self.current_task == "CHASE") or (
-            agent_id != CHASER_ID and self.current_task == "EVADE"
-        )
+        is_chaser = agent_is_chaser(agent_id, self.current_task)
         steering_dense, _ = compute_gait_steering_reward(
             model=self._model_cache,
             data=data,

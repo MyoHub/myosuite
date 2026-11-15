@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+
 import gymnasium as gym
 import numpy as np
 import pytest
 
-from myosuite.tests.support.optional_deps import require_musclemimic_models
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
@@ -168,15 +169,13 @@ class TestChaseTagVsRegistry:
     ENV_ID = "myoChallengeChaseTagFBVs-v0"
 
     def test_registered_and_runs(self) -> None:
-        require_musclemimic_models()
-
         assert gym.spec(self.ENV_ID) is not None
 
         try:
             env = make_env(self.ENV_ID)
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
-            return
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         try:
             obs, info = env.reset(seed=0)
             assert set(obs.keys()) == {"agent_0", "agent_1"}
@@ -185,8 +184,9 @@ class TestChaseTagVsRegistry:
                 obs, rewards, terminated, truncated, info = env.step(actions)
                 for agent_id in ("agent_0", "agent_1"):
                     assert np.isfinite(rewards[agent_id])
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         finally:
             env.close()
 
@@ -221,7 +221,6 @@ class TestChaseTagVsRegistry:
         platform): >= 2.5x headroom. At the centre every body geom touches all
         eight fences, which no state reaches (~27-36 MiB used): it must still fit.
         """
-        require_musclemimic_models()
         import mujoco
 
         from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
@@ -449,3 +448,76 @@ class TestChaseTagVsRules:
             assert info["score"] > 0.0
         finally:
             env.close()
+
+
+class TestChaseTagFullbodyBody:
+    """Full-body ChaseTag builds myo_sim's myofullbody only."""
+
+    def test_bodies_come_from_myo_sim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import myosuite.integrations.musclemimic.fullbody_model as fullbody
+        from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+            build_fullbody_chasetag_spec,
+        )
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+            ChaseTagVsConfig,
+        )
+        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
+            _build_fullbody_agent_spec,
+        )
+
+        def no_external_body(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("built from the musclemimic_models MJCF")
+
+        monkeypatch.setattr(fullbody, "build_mimic_fullbody_spec", no_external_body)
+        native = fullbody.build_native_mimic_fullbody_spec(
+            fullbody.default_mimic_fullbody_config()
+        ).compile()
+        vs_spec, standing = _build_fullbody_agent_spec(ChaseTagVsConfig())
+        np.testing.assert_array_equal(standing, native.qpos0)
+        for model in (build_fullbody_chasetag_spec().compile(), vs_spec.compile()):
+            for joint_id in range(native.njnt):
+                joint = model.joint(native.joint(joint_id).name)
+                np.testing.assert_array_equal(
+                    joint.damping, native.joint(joint_id).damping
+                )
+                np.testing.assert_array_equal(
+                    joint.stiffness, native.joint(joint_id).stiffness
+                )
+            for muscle_id in range(native.nu):
+                muscle = model.actuator(native.actuator(muscle_id).name)
+                np.testing.assert_array_equal(
+                    muscle.gainprm, native.actuator(muscle_id).gainprm
+                )
+
+    def test_baseline_policy_tags_an_idle_player(self) -> None:
+        ort = pytest.importorskip("onnxruntime")
+
+        from myosuite.core.hf_io import download_baseline_file
+
+        # The release's tag, or main while the tag doesn't hold the file yet.
+        path = download_baseline_file("onnx/chasetag_fbvs_baseline.onnx")
+        if path is None:
+            pytest.skip("baseline ONNX unavailable (no network?)")
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        name = session.get_inputs()[0].name
+        env = make_env("myoChallengeChaseTagFBVs-v0")
+        try:
+            seed = 0
+            obs, info = env.reset(seed=seed)
+            while info["task"] != "CHASE":
+                seed += 1
+                obs, info = env.reset(seed=seed)
+            for _ in range(600):
+                batch = np.asarray(obs["agent_0"], np.float32)[None]
+                action = np.clip(session.run(None, {name: batch})[0][0], 0, 1)
+                obs, _, terminated, truncated, info = env.step(
+                    {"agent_0": action, "agent_1": np.zeros(354)}
+                )
+                if terminated["agent_0"] or truncated["agent_0"]:
+                    break
+        except Exception as exc:
+            skip_if_hf_gated("myoChallengeChaseTagFBVs-v0", exc)
+            raise
+        finally:
+            env.close()
+        assert info["tagged"]

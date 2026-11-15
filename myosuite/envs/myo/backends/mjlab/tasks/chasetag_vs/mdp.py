@@ -225,16 +225,27 @@ class GaitSteeringReward(ManagerTermBase):
     """FBVs ``compute_gait_steering_reward`` of the learner (gait clip on the device).
 
     The clip frame is the episode step (CPU ``round(data.time / ctrl_dt)``).
+    When all three shaping weights are 0, the gated gait clip is not downloaded.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv) -> None:
         super().__init__(env)
+        self._qpos: torch.Tensor | None = None
+        self._qvel: torch.Tensor | None = None
+        if cfg.params["w_jpos"] or cfg.params["w_jvel"] or cfg.params["w_heading"]:
+            self._load_clip(
+                cfg.params["clip_repo"], cfg.params["clip_file"], env.device
+            )
+
+    def _load_clip(
+        self, clip_repo: str, clip_file: str, device: str | torch.device
+    ) -> None:
         from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
             gait_clip_local,
         )
 
-        qpos, qvel = gait_clip_local(cfg.params["clip_repo"], cfg.params["clip_file"])
-        f32 = {"dtype": torch.float32, "device": env.device}
+        qpos, qvel = gait_clip_local(clip_repo, clip_file)
+        f32 = {"dtype": torch.float32, "device": device}
         self._qpos = torch.as_tensor(qpos.copy(), **f32)
         self._qvel = torch.as_tensor(qvel.copy(), **f32)
 
@@ -248,7 +259,11 @@ class GaitSteeringReward(ManagerTermBase):
         w_jvel: float,
         w_heading: float,
     ) -> torch.Tensor:
-        del clip_repo, clip_file
+        if not (w_jpos or w_jvel or w_heading):
+            return torch.zeros(env.num_envs, dtype=torch.float32, device=env.device)
+        if self._qpos is None or self._qvel is None:
+            self._load_clip(clip_repo, clip_file, env.device)
+        assert self._qpos is not None and self._qvel is not None
         frame = env.episode_length_buf % self._qpos.shape[0]
         entity = env.scene[PLAYERS[0]]
         rel_xy = (pelvis_pos(env, 1) - pelvis_pos(env, 0))[:, :2]

@@ -151,3 +151,61 @@ class ActorCritic(nn.Module):
                 new_state[key] = value
         net.load_state_dict(new_state)
         return net
+
+
+_HEADING_DIRS = torch.tensor(
+    [
+        [1.0, 0.0],
+        [0.70710678, 0.70710678],
+        [0.0, 1.0],
+        [-0.70710678, 0.70710678],
+        [-1.0, 0.0],
+        [-0.70710678, -0.70710678],
+        [0.0, -1.0],
+        [0.70710678, -0.70710678],
+    ],
+    dtype=torch.float32,
+)
+
+
+class HeadingTablePolicy(nn.Module):
+    """528-d walker: ActorCritic mean plus a left-leg bias per heading octant."""
+
+    def __init__(self, ac: ActorCritic, table: torch.Tensor) -> None:
+        super().__init__()
+        self.trunk = ac.trunk
+        self.actor_mean = ac.actor_mean
+        self.register_buffer("dirs", _HEADING_DIRS.clone())
+        self.register_buffer("table", torch.as_tensor(table, dtype=torch.float32))
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        # Do not pre-clamp the BC mean; the env clips actions.
+        base = self.actor_mean(self.trunk(obs))
+        heading = obs[:, 520:522]
+        idx = torch.argmax(heading @ self.dirs.T, dim=-1)
+        out = base.clone()
+        out[:, 314:354] = torch.clamp(out[:, 314:354] + self.table[idx], 0.0, 1.0)
+        return out
+
+    @torch.no_grad()
+    def act(self, obs: np.ndarray) -> np.ndarray:
+        t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).reshape(1, -1)
+        t = t.to(self.table.device)
+        return self.forward(t).squeeze(0).cpu().numpy()
+
+    @classmethod
+    def load(cls, path: str | Path) -> HeadingTablePolicy:
+        ckpt = torch.load(str(path), map_location="cpu", weights_only=True)
+        if not (isinstance(ckpt, dict) and ckpt.get("kind") == "heading_table"):
+            raise ValueError(f"{path} is not a heading-table checkpoint")
+        ac = ActorCritic(obs_dim=528, act_dim=354)
+        ac.load_state_dict(ckpt["actor"])
+        return cls(ac, ckpt["table"]).eval()
+
+
+def load_directional_policy(path: str | Path) -> nn.Module:
+    """Load a 528-d walker: heading-table package or a raw ActorCritic state-dict."""
+    ckpt = torch.load(str(path), map_location="cpu", weights_only=True)
+    if isinstance(ckpt, dict) and ckpt.get("kind") == "heading_table":
+        return HeadingTablePolicy.load(path)
+    return ActorCritic.load(path, obs_dim=528, act_dim=354)

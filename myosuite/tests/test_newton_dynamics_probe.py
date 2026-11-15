@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import mujoco
 import numpy as np
@@ -24,7 +25,7 @@ _XML = """<mujoco><worldbody><body name="body">
 </body></worldbody></mujoco>"""
 
 
-def _array(value: list[list[int]]) -> SimpleNamespace:
+def _array(value: list[Any]) -> SimpleNamespace:
     return SimpleNamespace(numpy=lambda: np.array(value))
 
 
@@ -42,6 +43,7 @@ def _models() -> tuple[mujoco.MjModel, SimpleNamespace, SimpleNamespace]:
         body_label=["prefix/body"],
         shape_label=["prefix/body/site-with-hyphen"],
         joint_label=["prefix/body/q1_q2"],
+        joint_qd_start=_array([0, 2]),
         mujoco=SimpleNamespace(joint_dof_label=["prefix/body/q1", "prefix/body/q2"]),
     )
     solver = SimpleNamespace(
@@ -54,8 +56,11 @@ def _models() -> tuple[mujoco.MjModel, SimpleNamespace, SimpleNamespace]:
     return reference, model, solver
 
 
-def test_combined_joint_reordering_keeps_source_correspondence() -> None:
+@pytest.mark.parametrize("labelled", [True, False], ids=["dof-labels", "merged-name"])
+def test_combined_joint_reordering_keeps_source_correspondence(labelled: bool) -> None:
     reference, model, solver = _models()
+    if not labelled:
+        model.mujoco.joint_dof_label = ["", ""]
     mapping, dofs = probe._joint_mapping(reference, model, solver)
     np.testing.assert_array_equal(mapping, [1, 0])
     assert dofs == {0: 0, 1: 1}
@@ -68,10 +73,47 @@ def test_combined_joint_reordering_keeps_source_correspondence() -> None:
     assert identities["body"][1]["source"] == "body"
 
 
-def test_duplicate_dof_mapping_is_rejected() -> None:
+@pytest.mark.parametrize("labelled", [True, False], ids=["dof-labels", "merged-name"])
+def test_duplicate_dof_mapping_is_rejected(labelled: bool) -> None:
     reference, model, solver = _models()
+    if not labelled:
+        model.mujoco.joint_dof_label = ["", ""]
     solver.mjc_jnt_to_newton_dof = _array([[0, 0]])
     with pytest.raises(ValueError, match="complete correspondence"):
+        probe._joint_mapping(reference, model, solver)
+
+
+def test_merged_joint_dofs_put_slides_first() -> None:
+    # Newton orders a merged joint's DoFs linear first, whatever the MJCF order.
+    body = """<mujoco><worldbody><body name="body">{}
+      <geom type="sphere" size="0.1"/></body></worldbody></mujoco>"""
+    reference = mujoco.MjModel.from_xml_string(
+        body.format('<joint name="h" axis="1 0 0"/><joint name="s" type="slide"/>')
+    )
+    model = SimpleNamespace(
+        joint_label=["prefix/body/h_s"],
+        joint_qd_start=_array([0, 2]),
+        mujoco=SimpleNamespace(joint_dof_label=["", ""]),
+    )
+    solver = SimpleNamespace(
+        mj_model=mujoco.MjModel.from_xml_string(
+            body.format(
+                '<joint name="lin" type="slide"/><joint name="ang" axis="1 0 0"/>'
+            )
+        ),
+        mjc_jnt_to_newton_dof=_array([[0, 1]]),
+        mjc_jnt_to_newton_jnt=_array([[0, 0]]),
+    )
+    mapping, dofs = probe._joint_mapping(reference, model, solver)
+    np.testing.assert_array_equal(mapping, [1, 0])
+    assert dofs == {1: 0, 0: 1}
+
+
+def test_unknown_merged_joint_name_is_not_guessed() -> None:
+    reference, model, solver = _models()
+    model.mujoco.joint_dof_label = ["", ""]
+    model.joint_label = ["prefix/body/q2_q1"]
+    with pytest.raises(KeyError, match="q2_q1"):
         probe._joint_mapping(reference, model, solver)
 
 
@@ -84,6 +126,7 @@ def test_free_and_ball_joint_positions_are_mapped_as_blocks() -> None:
     model = SimpleNamespace(
         mujoco=SimpleNamespace(joint_dof_label=[""] * 9),
         joint_label=["prefix/root-joint", "prefix/ball-joint"],
+        joint_qd_start=_array([0, 6, 9]),
     )
     solver = SimpleNamespace(
         mj_model=mujoco.MjModel.from_xml_string(xml.replace("-joint", "-export")),
@@ -101,6 +144,30 @@ def test_incomplete_body_mapping_is_rejected() -> None:
     solver.mjc_body_to_newton = _array([[-1]])
     with pytest.raises(ValueError, match="body identity mapping"):
         probe._identity_mapping(reference, model, solver, mapping)
+
+
+def test_solver_integrates_like_the_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    xml = tmp_path / "rk4.xml"
+    xml.write_text('<mujoco><option integrator="RK4"/></mujoco>')
+    calls: list[dict[str, object]] = []
+
+    def solver(model: object, **options: object) -> None:
+        calls.append(options)
+        raise RuntimeError("stop after the first solver")
+
+    builder = SimpleNamespace(add_mjcf=lambda *_, **__: None, finalize=lambda **_: None)
+    newton = SimpleNamespace(
+        ModelBuilder=lambda: builder, solvers=SimpleNamespace(SolverMuJoCo=solver)
+    )
+    monkeypatch.setitem(sys.modules, "newton", newton)
+    monkeypatch.setitem(sys.modules, "warp", SimpleNamespace())
+    monkeypatch.setattr(probe, "authored_xml", lambda *_: xml)
+    result = probe.run_case("rk4", "cpu", "cpu", 2, 1, tmp_path)
+    assert result["integrator"] == "rk4"
+    assert [call["integrator"] for call in calls] == ["rk4"]
+    assert result["error"]["message"] == "stop after the first solver"
 
 
 def test_cli_requires_multiple_poses(tmp_path: Path) -> None:

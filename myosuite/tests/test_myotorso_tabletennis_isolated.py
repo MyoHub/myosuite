@@ -18,6 +18,8 @@ from myosuite.tests.support.myotorso_tabletennis_isolated import (
 )
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 
+pytestmark = pytest.mark.tier2
+
 
 def _bimanual_ref_model() -> mujoco.MjModel:
     """Compiled MuscleMimic bimanual model, or skip if dependency missing."""

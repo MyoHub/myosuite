@@ -164,6 +164,8 @@ class EnvConfig:
             :func:`myosuite.envs.wrappers.wrapper_spec`); stored as specs. Every backend
             runs them identically. All are off unless listed here or in the registration.
         task_kwargs: Task-specific constructor overrides (CPU env kwargs).
+        model: Body model of a task registered with several (``register_env(models=...)``,
+            e.g. ``myoMimic-v0``); ``None`` keeps the registered default.
         backend_options: Options of one backend only (``device``, ``render_mode``, ...);
             nothing portable belongs here.
     """
@@ -176,6 +178,7 @@ class EnvConfig:
     features: tuple[Any, ...] = ()
     task_kwargs: dict[str, Any] = field(default_factory=dict)
     backend_options: dict[str, Any] = field(default_factory=dict)
+    model: str | None = None
 
     def __post_init__(self) -> None:
         from myosuite.envs.wrappers import normalize_features  # noqa: PLC0415
@@ -299,14 +302,15 @@ class ActuatorGroupSpec:
         name: Logical group name (e.g. ``"elbow_muscles"``).
         actuator_type: ``"muscle"`` for Hill-type muscles or ``"motor"`` for
             direct torque/position actuators.
-        normalize_actions: If ``True``, actions are passed through a sigmoid
-            ``σ(5(a − 0.5))`` to map ``ℝ → (0, 1)`` before being written to
-            ``ctrl``.  Set to ``False`` when actions are already in ``[0, 1]``.
+        normalize_actions: Reserved. The CPU env and the mjlab twin take
+            actions in ``[0, 1]`` and write them to ``ctrl`` as they are;
+            :class:`~myosuite.envs.modular_env.ModularTaskEnv` raises for
+            ``True``. (The experimental MJX env has its own ``norm_actions``.)
     """
 
     name: str = "muscles"
     actuator_type: str = "muscle"
-    normalize_actions: bool = True
+    normalize_actions: bool = False
 
 
 @dataclass
@@ -332,8 +336,9 @@ class TaskConfig:
     Args:
         model: Named model recipe from ``myosuite.core.model_recipes``
             (e.g. ``"elbow_standard"``).
-        scene: Named scene spec from ``myosuite.scenes.library``
-            (e.g. ``"flat_floor"``).
+        scene: ``"flat_floor"`` (the task model's own ground) or a callable
+            that edits the model spec. Other named scenes and scene lists are
+            not applied on the CPU env, which raises ``NotImplementedError``.
         max_episode_steps: Episode length limit before truncation.
         backend: Backend-specific physics settings.
         obs: Observation channel specification.

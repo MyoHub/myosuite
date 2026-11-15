@@ -9,11 +9,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from myosuite.core.playback_contract import (
     PlaybackArtifacts,
     PlaybackRequest,
     PlaybackResult,
 )
+
+pytestmark = pytest.mark.tier2
 
 
 def test_playback_contract_objects_construct() -> None:

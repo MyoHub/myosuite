@@ -45,6 +45,8 @@ class TestEnvs(unittest.TestCase):
         print("\n=================================", flush=True)
         print("Testing module:: ", module_name)
         assert env_names, f"{module_name}: no envs to test"
+        from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
+
         try:
             from huggingface_hub.errors import HfHubHTTPError
         except ImportError:
@@ -60,6 +62,8 @@ class TestEnvs(unittest.TestCase):
             except HfHubHTTPError as exc:
                 # Gated HF reference data (no token in CI) is not a code failure.
                 print(f"Skipping {env_name}: gated HF dataset unavailable ({exc})")
+            except MissingMotionData as exc:
+                print(f"Skipping {env_name}: motion clips unavailable ({exc})")
 
     def check_env(self, environment_id, input_seed):
         # If requested, skip tests for envs that requires encoder downloading

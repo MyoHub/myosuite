@@ -7,6 +7,10 @@
 import subprocess
 import sys
 
+import pytest
+
+pytestmark = pytest.mark.tier2
+
 _SCRIPT = """
 import warnings
 import myosuite.envs.myo.backends.mjlab  # installs the filters

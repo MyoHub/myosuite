@@ -16,6 +16,8 @@ from myosuite.terms.mimic_obs import (
     mimic_termination_mask,
 )
 
+pytestmark = pytest.mark.tier2
+
 RNG = np.random.default_rng(42)
 T = 100
 N_SITES = 17

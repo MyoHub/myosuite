@@ -46,7 +46,7 @@ from myosuite.envs.myo.tasks.challenge.chase_tag_vs.train_env import (  # noqa: 
     OPPONENT,
 )
 from myosuite.tests.support.optional_deps import (  # noqa: E402
-    require_musclemimic_models,
+    skip_if_hf_gated,
 )
 
 ENV_ID = "myoChallengeChaseTagFBVsTrain-v0"
@@ -78,14 +78,18 @@ _TERM_ATOL = 1e-5
 @pytest.fixture(scope="module")
 def pair() -> tuple[gym.Env, ManagerBasedRlEnv]:
     """The CPU env and a 2-env mjlab env (env 0 is synced)."""
-    require_musclemimic_models()
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
 
     cpu_env = make_env(ENV_ID)
     cpu_env.reset(seed=0)
     cfg = load_env_cfg(ENV_ID)
     cfg.scene.num_envs = 2
-    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    try:
+        mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    except Exception as exc:
+        cpu_env.close()
+        skip_if_hf_gated(ENV_ID, exc)
+        raise
     mj.reset()
     yield cpu_env, mj
     cpu_env.close()
@@ -180,7 +184,7 @@ def test_spaces_timing_and_physics_match(pair) -> None:
 
     assert cpu.frame_skip == cfg.decimation == 5
     assert cpu.dt == pytest.approx(mj.step_dt) == pytest.approx(0.01)
-    assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 2000
+    assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 1000
     assert cfg.sim.mujoco == mujoco_cfg_from_model(cpu.model)
     assert cfg.scale_rewards_by_dt is False
 
@@ -370,7 +374,7 @@ def test_termination_and_score_parity(pair, case: str) -> None:
 
 
 def test_horizon_is_a_truncation_on_both(pair) -> None:
-    """The 2000th step (20 s) truncates; the score is FBVs's on both."""
+    """The 1000th step (10 s) truncates; the score is FBVs's on both."""
     cpu_env, mj = pair
     cpu = cpu_env.unwrapped
     wrapper = cpu_env
@@ -378,8 +382,8 @@ def test_horizon_is_a_truncation_on_both(pair) -> None:
         wrapper = wrapper.env
     for seed in (4, 5):
         cpu_env.reset(seed=seed)
-        wrapper._elapsed_steps = cpu.steps = 1999
-        for _ in range(1999 * cpu.frame_skip):  # the float64 sum MuJoCo would hold
+        wrapper._elapsed_steps = cpu.steps = 999
+        for _ in range(999 * cpu.frame_skip):  # the float64 sum MuJoCo would hold
             cpu.data.time += cpu.model.opt.timestep  # (the gait-clip frame)
         _sync(cpu, mj)
         action = np.zeros(N_ACT, dtype=np.float32)
@@ -402,7 +406,6 @@ def test_opponent_modes_and_submission_export(tmp_path) -> None:
     then plays the opponent of a ``"policy"`` env, and its ONNX export plays
     both players of ``myoChallengeChaseTagFBVs-v0``.
     """
-    require_musclemimic_models()
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
     from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper  # noqa: PLC0415
     from mjlab.tasks.registry import load_rl_cfg  # noqa: PLC0415
@@ -413,7 +416,12 @@ def test_opponent_modes_and_submission_export(tmp_path) -> None:
     cfg = load_env_cfg(ENV_ID)
     cfg.scene.num_envs = 4
     cfg.actions["muscles"].self_play = SelfPlayCfg(snapshot_every=1, pool_size=8)
-    env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device="cpu"))
+    try:
+        mj_env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    except Exception as exc:
+        skip_if_hf_gated(ENV_ID, exc)
+        raise
+    env = RslRlVecEnvWrapper(mj_env)
     agent = load_rl_cfg(ENV_ID)
     agent.num_steps_per_env = 4
     agent.logger = "tensorboard"
