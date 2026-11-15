@@ -927,6 +927,7 @@ def evaluate_cpu(
         action_map_applied=trained is not None,
     )
     _check_stochastic(cfg, policy)
+    policy.seed(cfg.seed)
     for env in envs:  # two-player envs (ChaseTag train): a mirror match
         if hasattr(env.unwrapped, "set_opponent_policy"):
             env.unwrapped.set_opponent_policy(policy.act)

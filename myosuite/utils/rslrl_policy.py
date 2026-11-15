@@ -63,6 +63,11 @@ class RslRlPolicy(torch.nn.Module):
                 raise ValueError("Actor MLP must contain at least one Linear layer.")
             self.obs_dim = first_linear.in_features
         self.register_buffer("std", None if std is None else std.flatten().clone())
+        self.generator: torch.Generator | None = None
+
+    def seed(self, seed: int) -> None:
+        """Seed the noise of :meth:`sample` (CPU) without touching torch's global RNG."""
+        self.generator = torch.Generator().manual_seed(int(seed))
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         if obs.shape[-1] != self.obs_dim:
@@ -81,7 +86,10 @@ class RslRlPolicy(torch.nn.Module):
         if self.std is None:
             raise ValueError("The checkpoint has no action std to sample from.")
         mean = self(obs)
-        return mean + self.std * torch.randn_like(mean)
+        if self.generator is None:
+            return mean + self.std * torch.randn_like(mean)
+        noise = torch.randn(mean.shape, generator=self.generator, dtype=mean.dtype)
+        return mean + self.std * noise.to(mean.device)
 
     @torch.no_grad()
     def act(self, obs: np.ndarray, stochastic: bool = False) -> np.ndarray:
@@ -137,7 +145,9 @@ def load_rslrl_policy(
 
     Raises:
         ValueError: The checkpoint records an action map and ``action_map_applied``
-            is not set: its actions are not one action per muscle.
+            is not set: its actions are not one action per muscle; or the actor's
+            outputs do not fit ``action_dim`` (a learned std means one output per
+            action, no std means one or two per action).
     """
     checkpoint = Path(checkpoint)
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
@@ -150,6 +160,10 @@ def load_rslrl_policy(
         )
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})
+    learned_std = any(
+        k in actor_state
+        for k in ("distribution.std_param", "distribution.log_std_param")
+    )
     std = None
     if "distribution.std_param" in actor_state:
         std = actor_state["distribution.std_param"]
@@ -169,6 +183,15 @@ def load_rslrl_policy(
         net, adapter = resolve_callable(class_name).deterministic_modules(
             actor_state, actor_cfg
         )
+        linears = [m for m in net.modules() if isinstance(m, torch.nn.Linear)]
+        if linears:
+            out_dim = linears[-1].out_features
+            if out_dim != action_dim and (learned_std or out_dim != 2 * action_dim):
+                raise ValueError(
+                    f"{checkpoint} outputs {out_dim} values"
+                    f"{' (one per action, with a learned std)' if learned_std else ''}; "
+                    f"the env takes {action_dim} actions. It was trained on another env."
+                )
         return RslRlPolicy(net, adapter, action_dim, std).eval()
 
     linear = sorted(
@@ -206,4 +229,10 @@ def load_rslrl_policy(
         )
     else:
         normalizer = torch.nn.Identity()
+    if out_dim != action_dim and (learned_std or out_dim != 2 * action_dim):
+        raise ValueError(
+            f"{checkpoint} outputs {out_dim} values"
+            f"{' (one per action, with a learned std)' if learned_std else ''}; "
+            f"the env takes {action_dim} actions. It was trained on another env."
+        )
     return RslRlPolicy(mlp, normalizer, action_dim, std).eval()
