@@ -9,6 +9,7 @@ import enum
 import os
 import pickle
 from sys import platform
+from typing import Any
 
 import h5py
 import numpy as np
@@ -27,21 +28,28 @@ class TraceType(enum.Enum):
     ROBOHIVE = 0
     ROBOSET = 1
 
-    def get_type(input_type):
+    @staticmethod
+    def get_type(input_type: object) -> TraceType:
+        """Resolve a trace type, preserving enum instances.
+
+        Args:
+            input_type: An enum or case-insensitive ``robohive`` / ``roboset`` name.
+
+        Returns:
+            The trace type; unknown values warn and fall back to ``UNSET``.
         """
-        A more robust way of getting trace type. Supports strings
-        """
+        if isinstance(input_type, TraceType):
+            return input_type
         if isinstance(input_type, str):
             if input_type.lower() == "robohive":
                 return TraceType.ROBOHIVE
             elif input_type.lower() == "roboset":
                 return TraceType.ROBOSET
-            else:
-                prompt(
-                    f"unknown TraceType{input_type}. Setting it to TraceType.UNSET",
-                    type=Prompt.WARN,
-                )
-                return TraceType.UNSET
+        prompt(
+            f"unknown TraceType{input_type}. Setting it to TraceType.UNSET",
+            type=Prompt.WARN,
+        )
+        return TraceType.UNSET
 
 
 class Trace:
@@ -97,8 +105,23 @@ class Trace:
             )
 
     # Get data
-    def get(self, group_key, dataset_key=None, dataset_ind=None):
-        if dataset_ind is None:
+    def get(
+        self,
+        group_key: str,
+        dataset_key: str | None = None,
+        dataset_ind: int | slice | None = None,
+    ) -> Any:
+        """Get a group, one of its datasets, or an indexed part of the dataset.
+
+        Args:
+            group_key: Group name.
+            dataset_key: Dataset name, or ``None`` to return the group.
+            dataset_ind: Optional dataset index or slice; requires a dataset key.
+
+        Returns:
+            The selected object, preserving the dictionary or HDF5 representation.
+        """
+        if dataset_key is None and dataset_ind is None:
             return self.trace[group_key]
         elif dataset_ind is None:
             return self.trace[group_key][dataset_key]
