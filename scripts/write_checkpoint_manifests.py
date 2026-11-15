@@ -31,7 +31,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    success = {env: float(pct) for env, _, pct in ROW.findall(args.table.read_text())}
+    success = {
+        env: float(pct)
+        for env, _, pct in ROW.findall(args.table.read_text(encoding="utf-8"))
+    }
     for folder in sorted((args.root / "checkpoints").iterdir()):
         if not folder.is_dir() or not any(folder.glob("model_*.pt")):
             continue

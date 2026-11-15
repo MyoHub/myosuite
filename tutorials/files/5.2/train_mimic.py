@@ -71,6 +71,8 @@ def _default_clip() -> Path:
         env = Path(env_raw).expanduser()
         if env.is_file():
             return env
+    from myosuite.core.hf_io import HF_REVISIONS
+
     hf_hub_download = importlib.import_module("huggingface_hub").hf_hub_download
 
     return Path(
@@ -78,6 +80,7 @@ def _default_clip() -> Path:
             repo_id=_CLIP_REPO_ID,
             filename=_CLIP_FILENAME,
             repo_type="dataset",
+            revision=HF_REVISIONS[_CLIP_REPO_ID],
         )
     )
 
