@@ -220,9 +220,7 @@ def build_cpu_spec(task: CpuTaskSpec) -> mujoco.MjSpec:
     kwargs = task.kwargs
     edit_fn = kwargs.get("edit_fn")
     if task.uses_recipe:
-        _, spec = build_from_recipe(kwargs["model_recipe"])
-        if edit_fn is not None:
-            edit_fn(spec)
+        _, spec = build_from_recipe(kwargs["model_recipe"], edit_fn=edit_fn)
     else:
         builder = ModelBuilder.from_xml_file(kwargs["model_path"])
         if edit_fn is not None:
