@@ -61,7 +61,7 @@ if a.augment:
 print(len(X), "samples", flush=True)
 if a.canon:
     canonicalise_inplace(X)
-init = torch.load(a.init, weights_only=False) if a.init else None
+init = torch.load(a.init, weights_only=True) if a.init else None
 res = train(X, Y, epochs=a.epochs, batch=a.batch, lr=a.lr, device=a.device, init=init, yaw_aug=a.yaw_aug,
             log=lambda s: print(s, flush=True))  # fmt: skip
 res["canon"] = a.canon
