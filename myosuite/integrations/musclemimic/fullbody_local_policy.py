@@ -1083,6 +1083,7 @@ class LocalPolicyRunner:
         n_substeps = max(1, int(self.frame_skip))
         for _ in range(n_substeps):
             mujoco.mj_step(model, data)
+        mujoco.mj_forward(model, data)
 
 
 def read_checkpoint_config_metadata(checkpoint_root: Path) -> dict[str, Any]:
@@ -1255,6 +1256,7 @@ class OnnxPolicyRunner:
         data.ctrl[:] = ctrl
         for _ in range(max(1, int(self.frame_skip))):
             mujoco.mj_step(model, data)
+        mujoco.mj_forward(model, data)
 
 
 __all__ = [
