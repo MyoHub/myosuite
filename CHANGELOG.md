@@ -8,10 +8,22 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
+* **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink), now a core dependency: each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.core.retargeting.retarget(model, markers)` fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
+* **Computed muscle control** (`myosuite.biomechanics.computed_muscle_control`): `computed_muscle_control(model, qpos, qvel, qacc, dt)` (or `ComputedMuscleControl.reset` and `.step` per control step) finds the excitations that make a forward simulation track a motion (Thelen, Anderson & Delp 2003) with `StaticOptimizer` and its per-frame `min_activation`. Every step bounds each actuator by the activations its dynamics can reach, takes velocity-dependent forces (force-velocity, joint damping) at the velocity that delivers the desired acceleration over MuJoCo's Euler steps, inverts MuJoCo's own activation dynamics exactly (any `dyntype`, `tausmooth` included) and applies the reserves and residuals, as OpenSim does. For standing and walking the simulation has no contacts and the estimated ground reactions (`contact_forces=True`) are applied, as OpenSim applies measured ones. A 37-degree motion that the 2-dof elbow's muscles produced in simulation is tracked within 0.03 deg at 500 Hz control and 0.25 deg at 100 Hz; myoArm reaches at 100 Hz within 2.4 deg (RMS 0.19 deg); MyoLeg stands on its estimated ground reactions within 0.1 mm; retargeted KIT walks on MyoFullBody (354 muscles, 100 Hz, about 25 ms per step) within 1.5 mm at the root and 0.27 deg RMS at the joints (6-8 deg max), with the residuals that static optimization of the same clips already needs ([#644]).
+* Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
+* Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+
+### Fixed
+
+* `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
+  per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
+  and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
+* `scripts/eval_mjlab_policy.py --stochastic` on the CPU backend draws the action noise from a generator seeded with
+  `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
 
 ### Changed
 
@@ -104,6 +116,14 @@ Changes since **v3.1.0** (2026-11-11).
   switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
   empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
   with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
+* **Volumetric muscles with pulleys follow their tendon path in Blender renders.** MuJoCo starts each branch of a
+  tendon path after a `<pulley>` with a `(0, 0, 0)` marker point (`wrap_obj = -2`), and `--muscles volumetric` drew
+  the whole path as one tube, so a muscle with pulleys ran to the world origin and back once per pulley. The finger
+  extensor (`extn`, two pulleys) of `myoFingerPose*` and `myoFingerReach*` and their `myoSarc` / `myoFati` variants
+  became a 1.63 m tube for its 0.19 m tendon, with its belly on the detour. Each branch is now a tube of its own
+  (`muscle_tubes.split_branches`), joined into one mesh per muscle: the belly lies on the first branch, from the
+  origin, and takes its shape from that branch's length; the branches after the pulleys are tendon. Muscles without
+  pulleys export exactly as before, and `--muscles paths` was already correct ([#810]).
 * **`solved` of the walk tasks means sustained walking.** `myoLegWalk-v0`, the rough, hilly and stairs walks and their
   `myoSarc`/`myoFati` variants set `solved` on every step on which the body was upright and within 0.5 m/s of the target
   velocity. The reset keyframe already moves at about the target speed, so a zero-action episode that falls after
@@ -118,9 +138,10 @@ Changes since **v3.1.0** (2026-11-11).
   success rate of these ids (`evaluate_success`, `scripts/eval_mjlab_policy.py`, `scripts/train_sb3.py`,
   `--stop-on-success`, the success curves of tutorial 2.3). See `docs/baseline_checkpoints.md`.
 
+[#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
-
+[#810]: https://github.com/MyoHub/myosuite/pull/810
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
