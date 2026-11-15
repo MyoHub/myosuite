@@ -34,9 +34,9 @@ def rotate_xy(xy: np.ndarray, yaw: float, origin_xy: np.ndarray) -> np.ndarray:
     return out
 
 
-def _rotate_cvel(cvel: np.ndarray, yaw: float) -> np.ndarray:
+def _rotate_spatial_velocity(velocity: np.ndarray, yaw: float) -> np.ndarray:
     q = yaw_quat(yaw)
-    out = np.array(cvel, copy=True, dtype=np.float64)
+    out = np.array(velocity, copy=True, dtype=np.float64)
     if out.ndim < 1 or out.shape[-1] != 6:
         return out
     ang = np.zeros(out.shape[:-1] + (3,), dtype=np.float64)
@@ -72,7 +72,8 @@ def write_rotated_clip_npz(src: Path, dst: Path, yaw: float) -> Path:
     """Write *dst* as *src* yaw-rotated about the first-frame root XY.
 
     Rotates free-joint ``qpos`` and world-frame linear ``qvel``, plus
-    ``site_xpos``, ``site_xmat``, ``subtree_com``, and ``cvel`` when those
+    ``site_xpos``, ``site_xmat``, ``subtree_com``, ``cvel`` and world-frame
+    ``site_velocity`` when those
     keys are present so a
     :class:`~myosuite.integrations.musclemimic.fullbody_local_policy.FullbodyObsAdapter`
     can reload the file. MuJoCo free-joint angular velocity stays in the
@@ -110,10 +111,11 @@ def write_rotated_clip_npz(src: Path, dst: Path, yaw: float) -> Path:
     if "site_xmat" in data:
         xmat = np.array(data["site_xmat"], copy=True, dtype=np.float64)
         r = quat_math.quat2mat(qz)
-        m = xmat.reshape(*xmat.shape[:-1], 3, 3)
+        m = xmat if xmat.shape[-2:] == (3, 3) else xmat.reshape(*xmat.shape[:-1], 3, 3)
         data["site_xmat"] = np.einsum("ij,...jk->...ik", r, m).reshape(xmat.shape)
-    if "cvel" in data:
-        data["cvel"] = _rotate_cvel(np.asarray(data["cvel"]), yaw)
+    for key in ("cvel", "site_velocity"):
+        if key in data:
+            data[key] = _rotate_spatial_velocity(np.asarray(data[key]), yaw)
     dst.parent.mkdir(parents=True, exist_ok=True)
     np.savez(dst, **data)
     return dst.resolve()

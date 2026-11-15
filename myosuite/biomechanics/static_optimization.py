@@ -56,7 +56,7 @@ import copy
 import warnings
 from collections import Counter
 from dataclasses import dataclass, fields, replace
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 import mujoco
 import numpy as np
@@ -121,8 +121,8 @@ class StaticOptimizationConfig:
             keeps its unconverged solution and warns
             (:func:`static_optimization` once per clip, with the failed frame
             count), ``"raise"`` raises :class:`StaticOptimizationError`, and
-            ``"nan"`` returns NaN activations and forces for it (``joint_torque``
-            and ``status`` stay).
+            ``"nan"`` returns NaN activations and forces for it (``joint_torque``,
+            ``status`` and solver diagnostics stay).
     """
 
     reserve_optimal_force: float | tuple[float, ...] | None = None
@@ -152,6 +152,9 @@ class StaticOptimizationResult:
         joint_torque: ``(..., nv)`` inverse dynamics ``tau``, the sum of the actuator,
             reserve and constraint generalized forces.
         status: ``(...)`` OSQP status, ``"solved"`` when converged.
+        iterations: ``(...)`` OSQP iteration count.
+        primal_residual: ``(...)`` OSQP primal residual of the QP.
+        dual_residual: ``(...)`` OSQP dual residual of the QP.
         contact_force: ``(..., nbody, 3)`` world-frame contact force on each body
             (zero without ``contact_forces``); body 0 holds the reaction on the world.
         contact_qfrc: ``(..., nv)`` generalized force of those contact forces, the
@@ -166,6 +169,9 @@ class StaticOptimizationResult:
     status: np.ndarray
     contact_force: np.ndarray
     contact_qfrc: np.ndarray
+    iterations: np.ndarray
+    primal_residual: np.ndarray
+    dual_residual: np.ndarray
 
 
 class StaticOptimizer:
@@ -277,8 +283,8 @@ class StaticOptimizer:
         """Per dof, ``sum_i |R_ij| F_i`` at ``qpos0`` and rest [N m or N].
 
         ``R`` are the moment arms; ``F`` each muscle's peak isometric force and,
-        for other actuators, the force at the larger-magnitude end of the
-        activation or control range. This scales the default reserves.
+        for other actuators, the largest absolute force at either end of the
+        activation or control range, including bias. This scales the default reserves.
 
         Returns:
             ``(nv,)`` peak generalized force the actuators can apply at each dof
@@ -289,8 +295,8 @@ class StaticOptimizer:
         mujoco.mj_fwdPosition(m, d)
         mujoco.mj_fwdVelocity(m, d)
         lo, hi = self._probe
-        gain = (self._actuator_force(hi) - self._actuator_force(lo)) / (hi - lo)
-        force = np.abs(gain) * np.maximum(np.abs(lo), np.abs(hi))
+        f_hi, f_lo = self._actuator_force(hi), self._actuator_force(lo)
+        force = np.maximum(np.abs(f_hi), np.abs(f_lo))
         muscle = m.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE
         force[muscle] = np.abs(_peak_force(m)[muscle])
         moment = np.zeros((m.nu, m.nv))
@@ -309,7 +315,7 @@ class StaticOptimizer:
 
     def _solve_qp(
         self, A: np.ndarray, lower: np.ndarray, upper: np.ndarray, weight: np.ndarray
-    ) -> tuple[np.ndarray, str]:
+    ) -> tuple[np.ndarray | None, Any]:
         """Minimise the cost subject to ``lower <= A x <= upper``, warm-started.
 
         OSQP's matrix keeps the union of all sparsity patterns seen so far, so most
@@ -320,7 +326,7 @@ class StaticOptimizer:
             if not (pattern & ~self._pattern).any():
                 self._solver.update(Ax=A.T[self._pattern.T], l=lower, u=upper)
                 res = self._solver.solve(raise_error=False)
-                return res.x, res.info.status
+                return res.x, res.info
             pattern |= self._pattern
         self._pattern = pattern
         cols, rows = np.nonzero(pattern.T)  # CSC order
@@ -341,7 +347,7 @@ class StaticOptimizer:
             warm_starting=True,
         )
         res = self._solver.solve(raise_error=False)
-        return res.x, res.info.status
+        return res.x, res.info
 
     def solve(
         self,
@@ -420,7 +426,9 @@ class StaticOptimizer:
             np.full(n_eq, _CONSTRAINT_WEIGHT),
             np.ones(n_c),
         ]
-        x, status = self._solve_qp(A, lower, upper, weight)
+        x, solver = self._solve_qp(A, lower, upper, weight)
+        if x is None:
+            x = np.full(A.shape[1], np.nan)
 
         a = np.clip(x[:nu], lo, hi)
         f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
@@ -432,9 +440,12 @@ class StaticOptimizer:
             constraint_force=J_eq.T @ (_CONSTRAINT_SCALE * x[nu + nv : nu + nv + n_eq])
             + contact_qfrc,
             joint_torque=tau,
-            status=np.asarray(status),
+            status=np.asarray(solver.status),
             contact_force=self._body_contact_forces(rows, f),
             contact_qfrc=contact_qfrc,
+            iterations=np.asarray(solver.iter),
+            primal_residual=np.asarray(solver.prim_res),
+            dual_residual=np.asarray(solver.dual_res),
         )
         return self._apply_failure_policy(result)
 
@@ -454,7 +465,13 @@ class StaticOptimizer:
                 stacklevel=3,
             )
             return result
-        kept = ("joint_torque", "status")
+        kept = (
+            "joint_torque",
+            "status",
+            "iterations",
+            "primal_residual",
+            "dual_residual",
+        )
         return replace(
             result,
             **{

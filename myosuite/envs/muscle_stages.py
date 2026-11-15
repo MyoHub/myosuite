@@ -297,6 +297,13 @@ class CtrlStageHost:
             if reset is not None:
                 reset(self)
 
+    def __getstate__(self) -> Any:
+        state = super().__getstate__()  # type: ignore[misc]
+        if isinstance(state, dict) and "_ctrl_stage_store" in state:
+            state = dict(state)
+            state.pop("_ctrl_stage_store", None)
+        return state
+
 
 def noise_stage(get_cfg: Callable[[], Any]) -> CtrlStage:
     """Signal-dependent + constant Gaussian noise on the muscle excitations.
