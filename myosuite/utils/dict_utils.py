@@ -14,6 +14,7 @@ def dict_numpify(data: dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16) ->
     i_res:  int resolution: Skip if none
     f_res:  float resolution: Skip if none
     """
+    out = {}
     for key, val in data.items():
         # non iteratables
         if np.isscalar(val):
@@ -37,8 +38,14 @@ def dict_numpify(data: dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16) ->
             elif np.issubdtype(val.dtype, np.floating) and f_res:
                 val = val.astype(f_res, copy=False)
             elif val.dtype == np.dtype("O"):
-                # switch none with nan
-                val = val.astype(f_res or np.float16, copy=False)
+                if val.size == 0 or all(
+                    x is None or isinstance(x, (int, float, np.number))
+                    for x in val.flat
+                ):
+                    val = np.array(
+                        [np.nan if x is None else x for x in val.flat],
+                        dtype=f_res or np.float16,
+                    ).reshape(val.shape)
 
         # dict
         elif isinstance(val, dict):
@@ -54,10 +61,9 @@ def dict_numpify(data: dict, u_res=np.uint8, i_res=np.int8, f_res=np.float16) ->
                 val = np.array(val, dtype=f_res)
             elif not isinstance(val[0], str):
                 val = np.array(val)  # let numpy handle it for nested stuctures
-                # raise TypeError("Data type {} not supported for {}".format(type(val[0]), key))
 
-        data[key] = val
-    return data
+        out[key] = val
+    return out
 
 
 def print_dtype(data: dict, name: str = "", delimiter: str = "/") -> None:
@@ -117,7 +123,7 @@ def demo_dict_util():
         "f16_np": np.array([0, 1, 3], dtype=np.float16),
         "f32_np": np.array([0, 1, 3], dtype=np.float32),
         "f64_np": np.array([0, 1, 3], dtype=np.float64),
-        "f128_np": np.array([0, 1, 3], dtype=np.float128),
+        "f128_np": np.array([0, 1, 3], dtype=getattr(np, "float128", np.longdouble)),
     }
     # data['dict'] = data.copy()
 

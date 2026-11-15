@@ -55,20 +55,43 @@ _STATE: dict[str, Any] = {}
 
 
 def _mem_available_gb() -> float:
-    for line in Path("/proc/meminfo").read_text().splitlines():
-        if line.startswith("MemAvailable:"):
-            return int(line.split()[1]) / 2**20
+    meminfo = Path("/proc/meminfo")
+    if meminfo.is_file():
+        for line in meminfo.read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) / 2**20
+    if sys.platform == "win32":
+        import ctypes  # noqa: PLC0415
+
+        class _MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        stat = _MemoryStatusEx(dwLength=ctypes.sizeof(_MemoryStatusEx))
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return float(stat.ullAvailPhys) / 2**30
     return float("inf")
 
 
 def choose_workers(requested: int) -> int:
     """Workers within the cap, the idle cores (load) and the RAM headroom."""
     cores = os.cpu_count() or 1
-    idle = cores - math.ceil(os.getloadavg()[0]) - 4  # keep cores for other users
-    ram = int((_mem_available_gb() - MIN_FREE_GB) / WORKER_GB)
+    load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
+    idle = cores - math.ceil(load) - 4  # keep cores for other users
+    mem_gb = _mem_available_gb()
+    ram = MAX_WORKERS if math.isinf(mem_gb) else int((mem_gb - MIN_FREE_GB) / WORKER_GB)
     n = max(1, min(requested, MAX_WORKERS, idle, ram))
-    print(f"cores {cores}, load {os.getloadavg()[0]:.1f}, "
-          f"MemAvailable {_mem_available_gb():.1f} GB -> {n} workers", flush=True)  # fmt: skip
+    print(f"cores {cores}, load {load:.1f}, "
+          f"MemAvailable {mem_gb:.1f} GB -> {n} workers", flush=True)  # fmt: skip
     return n
 
 
@@ -296,7 +319,9 @@ def main(argv: list[str] | None = None) -> int:
     src = Path(args.input)
     if src.suffix == ".txt":
         files = [
-            Path(line.strip()) for line in src.read_text().splitlines() if line.strip()
+            Path(line.strip())
+            for line in src.read_text(encoding="utf-8").splitlines()
+            if line.strip()
         ]
         base = Path(os.path.commonpath([str(f.parent) for f in files]))
     else:
@@ -310,12 +335,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     dataset = args.dataset or base.name
     curation = (
-        json.loads(Path(args.quality_flags).read_text()) if args.quality_flags else {}
+        json.loads(Path(args.quality_flags).read_text(encoding="utf-8"))
+        if args.quality_flags
+        else {}
     )
     jobs = []
     for f in files:
-        label = f"AMASS/{dataset}/{f.relative_to(base)}"
-        dst = str(out_root / dataset / f.relative_to(base))
+        rel = f.relative_to(base)
+        label = f"AMASS/{dataset}/{rel.as_posix()}"
+        dst = str(out_root / dataset / rel)
         jobs.append((str(f), dst, label, curation.get(label, {})))
     workers = choose_workers(args.workers)
     t0 = time.time()
@@ -345,9 +373,11 @@ def main(argv: list[str] | None = None) -> int:
                    twist=_pooled_twist(results))  # fmt: skip
     report = Path(args.report_dir)
     report.mkdir(parents=True, exist_ok=True)
-    (report / "retarget_summary.json").write_text(json.dumps(summary, indent=1))
-    (report / "retarget_summary.md").write_text(_markdown(summary))
-    with (report / "retarget_clips.jsonl").open("w") as f:
+    (report / "retarget_summary.json").write_text(
+        json.dumps(summary, indent=1), encoding="utf-8"
+    )
+    (report / "retarget_summary.md").write_text(_markdown(summary), encoding="utf-8")
+    with (report / "retarget_clips.jsonl").open("w", encoding="utf-8") as f:
         for m in sorted(metas, key=lambda m: m["source"]):
             f.write(json.dumps(m) + "\n")
     print(_markdown(summary))

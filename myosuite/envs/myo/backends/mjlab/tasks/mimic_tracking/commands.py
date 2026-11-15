@@ -18,11 +18,13 @@ commit 8a6244b, ``src/muscle_supermimic/tasks/tracking/mdp/commands.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import TYPE_CHECKING
 
 import torch
 from mjlab.managers.command_manager import CommandTerm, CommandTermCfg
 
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.tasks.mimic.tracking.config import MimicTaskCfg
 from myosuite.envs.myo.tasks.mimic.tracking.models import ModelInfo, model_cfg
 from myosuite.envs.myo.tasks.mimic.tracking.motion import MotionLib, load_motion_lib
@@ -63,11 +65,13 @@ class MotionCommand(CommandTerm):
         lib = load_motion_lib(
             task.motion.clips, task.motion.root, cfg.model, task.self_collisions,
             round(env.step_dt, 9), task.motion.bin_s,
+            workers=task.motion.workers, cache_dir=task.motion.cache_dir,
         )  # fmt: skip
         self.motion: MotionLib = lib.map(lambda x: torch.as_tensor(x, device=dev))
         self.touch_sensor = env.scene[cfg.touch_sensor_name]
+        body_patterns = tuple(f"^{re.escape(b)}$" for b in mc.tracked_bodies)
         self._body_ids = torch.tensor(
-            self.robot.find_bodies(mc.tracked_bodies, preserve_order=True)[0],
+            self.robot.find_bodies(body_patterns, preserve_order=True)[0],
             device=dev,
         )
         idx = self.robot.indexing
@@ -192,8 +196,9 @@ class MotionCommand(CommandTerm):
 
     # ------------------------------------------------------------------ reset
     def reset(self, env_ids: torch.Tensor | slice | None) -> dict[str, float]:
-        if isinstance(env_ids, torch.Tensor) and len(env_ids) > 0:
-            self._finish_episodes(env_ids)
+        ids = normalize_mjlab_env_ids(self._env, env_ids)
+        if ids.numel() > 0:
+            self._finish_episodes(ids)
         return super().reset(env_ids)
 
     def _finish_episodes(self, ids: torch.Tensor) -> None:

@@ -70,6 +70,7 @@ def test_missing_runtime_explains_optional_extra(
 
 
 def test_onnx_actor_reports_missing_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("torch")
     from myosuite.integrations.musclemimic.actor_onnx import load_onnx_session
 
     monkeypatch.setitem(sys.modules, "onnxruntime", None)

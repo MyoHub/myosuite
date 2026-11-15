@@ -1048,7 +1048,7 @@ def _recipe_spec(
     edit_fn: Callable[[mujoco.MjSpec], None] | None,
     params: tuple[tuple[str, Any], ...],
 ) -> mujoco.MjSpec:
-    """Uncompiled spec of recipe *name*, edited by *edit_fn* after a first compile.
+    """Uncompiled spec of recipe *name*, edited in place by *edit_fn*.
 
     *recipe_fn* tells a re-registered recipe apart, *cwd* the relative asset
     paths a recipe may write (the TableTennis furniture meshes), *params* the
@@ -1057,7 +1057,6 @@ def _recipe_spec(
     spec_fn = _SPEC_RECIPES.get(name)
     spec = spec_fn() if spec_fn is not None else recipe_fn(ModelBuilder()).build_spec()
     if edit_fn is not None:
-        spec.compile()  # the edit sees a compiled spec, as when envs applied it
         edit_fn(spec)
     return spec
 
@@ -1075,7 +1074,7 @@ def build_from_recipe(
 
     Args:
         name: Recipe name registered via @model_recipe.
-        edit_fn: In-place edit of the compiled recipe spec, e.g. the ``edit_fn``
+        edit_fn: In-place edit of the recipe spec, e.g. the ``edit_fn``
             kwarg of an env; built and cached with the recipe.
         **kwargs: Unused; reserved for future recipe parameterisation.
 
