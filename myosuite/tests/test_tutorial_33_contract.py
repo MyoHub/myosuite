@@ -39,6 +39,10 @@ def test_tutorial_33_reads_the_trajectory_by_joint_name(
         exec(load_cell.replace("FULL_ID = False", "FULL_ID = True"), scope)
         frame = pd.read_csv(_CSV)
         assert scope["traj"].shape == (len(frame), 1 + model.nq)
+        expected_names = [
+            model.joint(j).name.removesuffix("_r") for j in range(model.njnt)
+        ]
+        assert list(frame.columns) == ["time", *expected_names]
         for j in range(model.njnt):
             name = model.joint(j).name.removesuffix("_r")
             np.testing.assert_array_equal(

@@ -115,9 +115,9 @@ Changes since **v3.1.0** (2026-11-11).
   switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
   empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
   with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
-* Tutorial 3.3 (inverse dynamics) assigns the reference trajectory to the hand's joints by name. The CSV
-  lists `cmc_abduction` before `cmc_flexion` and the model the other way round, so the positional read swapped
-  the two thumb CMC joints.
+* Tutorial 3.3 (inverse dynamics) fixes the swapped `cmc_abduction` / `cmc_flexion` header labels in
+  `tutorials/files/3.3/trajectory.csv` (left over from the older MyoHand joint naming) and selects trajectory
+  columns by joint name.
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
