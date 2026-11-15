@@ -22,7 +22,7 @@ training/          # self-contained training projects outside the package, one p
 | `core/` | Registry and `make_env`, config dataclasses (`EnvConfig`, `TaskConfig`), model builder/recipes, muscle conditions |
 | `terms/` | Backend-agnostic pure term functions (obs, reward, action, event, termination) |
 | `physics/` | Model-level runtime math — quaternions, fatigue, joint couplings, min-jerk. No backend imports. |
-| `biomechanics/` | Musculoskeletal analysis of motions (inverse kinematics and dynamics, static optimization, OpenSim motions). NumPy / SciPy / MuJoCo only. |
+| `biomechanics/` | Musculoskeletal analysis of motions (inverse kinematics and dynamics, static optimization, CMC, OpenSim motions). NumPy / SciPy / MuJoCo only. |
 | `envs/` | `gymnasium_env.py` (CPU base), `modular_env.py` and `multi_agent_modular_env.py` (data-driven envs), `wrappers.py` and `muscle_stages.py` (muscle noise / fatigue / reafferentation / sarcopenia as wrappers) |
 | `envs/myo/tasks/` | Task definitions organized by collection (`basic/`, `challenge/`, `mimic/`) |
 | `envs/myo/backends/` | `mjx/` (JAX) and `mjlab/` (Warp) execution backends |
@@ -72,7 +72,7 @@ guaranteed long-term.)
 | Add/change model composition | `myosuite/core/model_builder.py`, `model_recipes.py` |
 | Add/change a term function | `myosuite/terms/base_*.py` |
 | Add/change biomechanics math | `myosuite/physics/` |
-| Analyse a motion (IK, ID, static optimization), retarget motion data (SMPL+H), muscle effort of rollouts | `myosuite/biomechanics/` |
+| Analyse a motion (IK, ID, static optimization, CMC), retarget motion data (SMPL+H), muscle effort of rollouts | `myosuite/biomechanics/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/tasks/<family>/` (twins of CPU envs), `register_mjlab_*.py` (special tasks) |
 | Muscle noise, fatigue, reafferentation, sarcopenia | `envs/wrappers.py`, `envs/muscle_stages.py`; on mjlab `backends/mjlab/tasks/mdp/actions.py` |
