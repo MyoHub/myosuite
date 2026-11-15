@@ -335,8 +335,9 @@ class TaskConfig:
     Args:
         model: Named model recipe from ``myosuite.core.model_recipes``
             (e.g. ``"elbow_standard"``).
-        scene: Named scene spec from ``myosuite.scenes.library``
-            (e.g. ``"flat_floor"``).
+        scene: ``"flat_floor"`` (the task model's own ground) or a callable
+            that edits the model spec. Other named scenes and scene lists are
+            not applied on the CPU env, which raises ``NotImplementedError``.
         max_episode_steps: Episode length limit before truncation.
         backend: Backend-specific physics settings.
         obs: Observation channel specification.
