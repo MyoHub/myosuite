@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-dynsyn"
+version = "0.1.0"
+description = "DynSyn muscle synergies (He et al., ICML 2024) for PPO on MyoSuite tasks"
+requires-python = ">=3.10"
+# Imports myosuite.utils.action_map; install MyoSuite from the same checkout (or dev) first.
+dependencies = ["myosuite[mjlab]", "mujoco", "numpy", "torch", "tyro"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+dynsyn-groups = "myosuite_dynsyn.groups:main"
+dynsyn-train = "myosuite_dynsyn.train:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_dynsyn*"]

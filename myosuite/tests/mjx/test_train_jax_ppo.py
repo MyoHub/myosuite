@@ -17,7 +17,7 @@ that would be too slow for routine CI. Instead it checks that the key wiring
 between:
 
 * MyoSuite MJX envs (``myosuite.envs.myo.backends.mjx.make``),
-* `mujoco_playground`'s `MjxEnv` interface, and
+* their brax env interface (``MyoMjxEnvBase``), and
 * Brax PPO configs (`ppo_config`)
 
 is correct. When the optional MJX stack (``myosuite[mjx]``) is not installed,
@@ -35,16 +35,16 @@ pytestmark = [pytest.mark.tier3, pytest.mark.slow]
 
 
 # ---------------------------------------------------------------------------
-# Module-level guard: require MJX + mujoco_playground stack
+# Module-level guard: require MJX + brax stack
 # ---------------------------------------------------------------------------
 
 try:
     from mujoco import mjx as _mjx_mod  # noqa: F401
     import jax  # noqa: F401
-    import mujoco_playground as _mp  # noqa: F401
+    import brax  # noqa: F401
 except (ImportError, AttributeError) as _err:  # pragma: no cover - defensive
     pytest.skip(
-        f"MJX / mujoco_playground stack not available ({_err}); "
+        f"MJX / brax stack not available ({_err}); "
         "install extras with `pip install -e '.[mjx]'` or "
         "`uv sync --extra mjx-cuda` to run MJX training tests.",
         allow_module_level=True,
@@ -76,8 +76,9 @@ def test_train_jax_ppo_env_reset_and_step(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("WANDB_DIR", str(tmp_path))
 
     env_name = "MjxFingerPoseRandom-v0"
+    # "jax" (MJX) is the script's --impl default.
     env, ppo_params, network_factory = train_jax_ppo.load_env_and_network_factory(
-        env_name
+        env_name, impl="jax"
     )
 
     # Basic sanity checks on returned objects.

@@ -21,12 +21,14 @@ from gymnasium import spaces
 from gymnasium.utils import EzPickle
 
 import gymnasium as gym
+from myosuite.core.model_names import resolve_model_names
 from myosuite.integrations.musclemimic.fullbody_model import (
     FULLBODY_BODY2SITES_FOR_MIMIC,
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
 from myosuite.core.trajectory_io import check_clip_rate, read_npz_names
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.running_stats import RunningMeanStd, normalize, update
 from myosuite.terms.mimic_obs import (
     mimic_lookahead_obs,
@@ -172,6 +174,9 @@ def _resolve_joint_field_selection(
         )
 
     model_index_map = _build_model_joint_index_map(model, use_qvel=use_qvel)
+    clip_joint_names = tuple(
+        resolve_model_names(clip_joint_names, model_index_map, field_name=field_name)
+    )
     missing = sorted(set(clip_joint_names) - set(model_index_map))
     if missing:
         raise ValueError(
@@ -307,6 +312,7 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         cfg = default_mimic_fullbody_config()
         self.model, self._mj_spec, _ = compile_mimic_fullbody_mjmodel(cfg)
         self.data = mujoco.MjData(self.model)
+        self._couplings = JointCouplings.from_model(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * self.frame_skip)
         if self.model.nkey > 0:
             mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
@@ -540,6 +546,8 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         self.data.act[:] = self._default_act
         self.data.qpos[:] = self._clip_qpos[self._frame_offset]
         self.data.qvel[:] = self._clip_qvel[self._frame_offset]
+        # Coupled joints on their polynomials, as the mjlab RSI reset.
+        project_joint_couplings(self._couplings, self.data.qpos, self.data.qvel)
         mujoco.mj_forward(self.model, self.data)
 
         obs = self._build_obs()

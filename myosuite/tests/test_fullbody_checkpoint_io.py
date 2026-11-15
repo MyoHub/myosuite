@@ -16,6 +16,8 @@ from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
     resolve_checkpoint_ref,
 )
 
+pytestmark = pytest.mark.tier2
+
 
 def test_resolve_checkpoint_ref_local_dir(tmp_path: Path) -> None:
     """Local directory checkpoint paths should resolve directly."""

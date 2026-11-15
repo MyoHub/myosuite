@@ -76,9 +76,10 @@ This integration **does not** read or require anything under the MyoSuite
   `--mujoco_viewer` or `--record`): MyoSuite-native playback — resolves
   the checkpoint reference (`hf://…` or local), loads the motion NPZ from cache
   or disk, steps MuJoCo and shows the viewer. Does **not** import upstream
-  `fullbody` / `musclemimic`. If local Orbax policy artifacts are present
-  (`train_state` + `config/metadata`), a minimal local policy runner is used;
-  otherwise it replays reference trajectory states.
+  `fullbody` / `musclemimic`. It plays the checkpoint's policy: `--onnx` for an
+  exported policy, otherwise the local Orbax artifacts (`train_state` +
+  `config/metadata`; `orbax-checkpoint` is Linux-only). If no policy loads, it exits
+  with an error; `--replay` plays the reference trajectory states instead.
 - **Without `--path`** but with `--use_mujoco --mujoco_viewer`:** physics-only
   preview on the MyoFullBody MJCF (random muscle activity). `--path` /
   `--motion_path` are ignored.
@@ -93,7 +94,7 @@ toward the opponent and the runner walks away. Headings turn off the
 ±6 m fence so they stay inside the arena. Each step blends toward
 the current clip frame (``track_alpha``, default 0.45) so the gait stays
 continuous — no mid-episode joint teleport. The scored 546-d observation
-is unchanged. Playback: tutorial 5.7. Expert pairs: ``training/chasetag_teacher``.
+is unchanged.
 A 546 → 354 student is 5.4 / 5.6 / ``myoChallengeChaseTagFBVsTrain-v0``.
 
 ```python
@@ -318,7 +319,11 @@ from myosuite.core.trajectory_io import load_motion_clip, resolve_motion_path
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
 from mjlab.tasks.registry import register_mjlab_task
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
-from myosuite.integrations.musclemimic.fullbody_local_policy import FullbodyObsAdapter
+from myosuite.integrations.musclemimic.fullbody_local_policy import (
+    FullbodyObsAdapter,
+    fullbody_obs_adapter_params_from_metadata,
+    read_checkpoint_config_metadata,
+)
 from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
@@ -328,11 +333,17 @@ from myosuite.integrations.musclemimic.mjlab_onnx_policy import FullbodyOnnxMjla
 # Load clip and register trajectory-mode env
 motion_file = resolve_motion_path("KIT/314/walking_medium09_poses")
 clip = load_motion_clip(motion_file, expected_nq=89, expected_nv=88)
-register_mimic_mjlab_tasks_with_clip(register_mjlab_task, _elbow_ppo_runner_cfg, clip=clip)
+# "direct": checkpoint actions are excitations in [0, 1] (the default "sigmoid" is for training)
+register_mimic_mjlab_tasks_with_clip(
+    register_mjlab_task, _elbow_ppo_runner_cfg, clip=clip, action_mode="direct"
+)
 
-# CPU model for obs adapter
+# CPU model for obs adapter; goal settings from the checkpoint's config
 cpu_model, _, _ = compile_mimic_fullbody_mjmodel(default_mimic_fullbody_config())
-obs_adapter = FullbodyObsAdapter(model=cpu_model, clip=clip, goal_params={})
+goal_params = fullbody_obs_adapter_params_from_metadata(
+    read_checkpoint_config_metadata(checkpoint_root)
+)
+obs_adapter = FullbodyObsAdapter(model=cpu_model, clip=clip, goal_params=goal_params)
 
 # Build mjlab GPU env
 env = ManagerBasedRlEnv(cfg=load_env_cfg("myoMimicFullbody-v0", play=True), device="cpu")
@@ -345,6 +356,7 @@ policy = FullbodyOnnxMjlabPolicy(
     obs_adapter=obs_adapter,
     onnx_path="mm-10m-2.onnx",
     clip=clip,
+    output_ctrl=True,  # matches action_mode="direct"
 )
 
 NativeMujocoViewer(env_wrapped, policy).run()
@@ -429,7 +441,7 @@ are available in both trajectory-replay mode and local-policy-inference mode.
 To use the same machinery programmatically:
 
 ```python
-from myosuite.core.site_marker_viz import make_site_marker_viz_fn
+from myosuite.viz.site_marker_viz import make_site_marker_viz_fn
 from myosuite.core.mujoco_playback import run_passive_viewer_loop
 
 viz_fn = make_site_marker_viz_fn(
@@ -532,8 +544,11 @@ data = mujoco.MjData(model)
 motion_file = resolve_motion_path("KIT/314/walking_medium09_poses")
 clip = load_motion_clip(motion_file, expected_nq=model.nq, expected_nv=model.nv)
 
-# goal_params from the checkpoint's config/metadata (or {} for defaults)
-obs_adapter = FullbodyObsAdapter(model=model, clip=clip, goal_params={})
+# goal_params from the checkpoint's config (required: it names the mimic sites)
+goal_params = fullbody_obs_adapter_params_from_metadata(
+    read_checkpoint_config_metadata(checkpoint_root)
+)
+obs_adapter = FullbodyObsAdapter(model=model, clip=clip, goal_params=goal_params)
 runner = OnnxPolicyRunner(
     onnx_path="mm-10m-2.onnx",
     obs_dim=2418,
@@ -548,6 +563,12 @@ for i in range(len(clip.qpos)):
     runner.step(model, data, action)
 ```
 
+Both CPU runners refresh MuJoCo's derived quantities after their final physics
+substep. The next observation, tracking score and rendered frame therefore use
+the returned state. This corrects standalone playback that previously mixed the
+new joint state with site, muscle and sensor quantities from the previous substep;
+old CPU rollout observations and scores may differ even with the same checkpoint.
+
 > **Why not use the ONNX model directly with mjlab's env?**
 > mjlab's `myoMimicFullbody-v0` env produces ~684-dim observations
 > (qpos + qvel + act + site positions), while the mm-10m-2 ONNX model expects
@@ -559,7 +580,7 @@ for i in range(len(clip.qpos)):
 | Variable | Purpose |
 |----------|---------|
 | `MYOSUITE_PREVIEW_REEXEC_MJPYTHON` | Internal guard for one-time preview relaunch under `mjpython` on macOS |
-| `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY` | Set to `1` to force trajectory replay even when local Orbax artifacts are present |
+| `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY` | Set to `1` to replay the reference trajectory instead of a policy (as `--replay`) |
 | `MYOSUITE_MUSCLEMIMIC_USE_UPSTREAM` | Set to `1` to delegate `--path --mujoco_viewer` to upstream `fullbody.eval` instead of the native runner |
 | `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION` | `musclemimic_models` release the models are built as when the config sets no `model_version` (default `1.0.6`; `1.0.5` for checkpoints trained on it) |
 

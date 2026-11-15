@@ -42,6 +42,7 @@ class ChaseTagVsTaskConfig(MultiAgentTaskConfig):
     maxTime: float = 10.0
     ctrl_dt: float = 0.01
     sim_dt: float = 0.002
+    render_scene: str = "sport"
 
     # --- Role ---
     task_choice: str = "random"  # "CHASE" | "EVADE" | "random"
@@ -323,11 +324,14 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
             return
         from huggingface_hub import hf_hub_download
 
+        from myosuite.core.hf_io import pinned_revision
+
         path = Path(
             hf_hub_download(
                 repo_id=self.gait_clip_repo,
                 filename=self.gait_clip_filename,
                 repo_type="dataset",
+                revision=pinned_revision(self.gait_clip_repo),
             )
         )
         npz = np.load(path)
@@ -352,6 +356,10 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
         base = super().compute_reward(
             data, meta, agent_id, damage_delivered, health, actions, fell, ko
         )
+        # The shaping term is linear in its weights: with all of them 0 it adds nothing,
+        # so the gait clip (a gated download) is not needed.
+        if not (self.w_gait_jpos or self.w_gait_jvel or self.w_steering):
+            return base
         self._ensure_gait_clip()
         from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
         from myosuite.terms.multiplayer.chase_tag_vs_reward import (

@@ -36,6 +36,7 @@ from myosuite.core.body_scaling import _plain_scales, _scale_spec
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
+from myosuite.physics.joint_coupling import JointCouplings
 from myosuite.terms.base_action import MotorNoiseCfg
 
 _CONDITION_WRAPPERS = {
@@ -278,6 +279,7 @@ class CompiledModelInfo:
     actuator_names: tuple[str, ...]
     actuator_targets: dict[int, tuple[str, ...]]
     na: int
+    couplings: JointCouplings
 
 
 def _model_key(task: CpuTaskSpec) -> tuple[Any, ...]:
@@ -320,6 +322,7 @@ def _compiled_info(key: tuple[Any, ...]) -> CompiledModelInfo:
         actuator_names=tuple(model.actuator(i).name for i in range(model.nu)),
         actuator_targets=_actuator_targets(model),
         na=int(model.na),
+        couplings=JointCouplings.from_model(model),
     )
 
 

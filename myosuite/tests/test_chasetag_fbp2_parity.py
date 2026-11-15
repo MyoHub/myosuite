@@ -64,8 +64,11 @@ _STEP_ATOL = {
 _STEP_MEDIAN_ATOL = 1e-3  # a block that is merely bounded (e.g. zeros) fails this
 # Blocks whose median float32/solver noise exceeds the default. Orientation stays near 1e-4,
 # with rare single-step spikes on any body: up to 0.0105 on the MuscleMimic body and 0.0071
-# on myofullbody over seeds 2-6, with matching contact sets.
-_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 1e-2}
+# on myofullbody over seeds 2-6, with matching contact sets. qvel_local spikes at one
+# contact-rich step of seed 2 with mujoco / mujoco-warp 3.11: 6e-4 on Windows, 1.5e-3 and
+# 1.6e-3 on some Linux runners (the same tree passes on others). Dropped joint velocities
+# still give a 4e-2 median.
+_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 1e-2, "qvel_local": 5e-3}
 _STEP_REW_ATOL = 1e-3
 # Same state, no physics: term functions must agree to float32 precision.
 _TERM_ATOL = 1e-5
@@ -161,12 +164,9 @@ def test_spaces_timing_physics_and_reward_terms_match(pair) -> None:
     assert cpu.dt == pytest.approx(mj.step_dt) == pytest.approx(0.01)
     assert cpu_env.spec.max_episode_steps == mj.max_episode_length == 1000
     assert cpu_env.spec.max_episode_steps * cpu.dt == pytest.approx(10.0)
-    # CHASE also loses past maxTime; the float64 time after the last step is
-    # within rounding of it, so the horizon is a truncation on both.
-    time = 0.0
-    for _ in range(cpu_env.spec.max_episode_steps * cpu.frame_skip):
-        time += cpu.model.opt.timestep
-    assert time == pytest.approx(cpu.maxTime, abs=1e-10)
+    # CHASE also loses one control step past maxTime, so the horizon is a
+    # truncation on both.
+    assert cpu._horizon_steps() == cpu_env.spec.max_episode_steps
 
     assert cfg.sim.mujoco == mujoco_cfg_from_model(cpu.model)
     for field in (

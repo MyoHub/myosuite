@@ -176,3 +176,6 @@ benchmarks/*
 docs/source/tutorials/checkpoints/*
 tutorials/**/*.zip
 *.out
+
+# outputs of tutorials 5.4 and 5.6
+tutorials/*.onnx

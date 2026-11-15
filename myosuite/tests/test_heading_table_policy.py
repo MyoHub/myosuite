@@ -65,66 +65,17 @@ def test_load_directional_policy_raw_actor() -> None:
 
 def test_heading_table_onnx_fbvs_wrap(table_ckpt: Path, tmp_path: Path) -> None:
     pytest.importorskip("onnx")
-
-    class FbvsWalker(torch.nn.Module):
-        def __init__(self, walker: torch.nn.Module) -> None:
-            super().__init__()
-            self.walker = walker
-
-        def forward(self, obs: torch.Tensor) -> torch.Tensor:
-            qpos, qvel = obs[:, 0:89], obs[:, 89:177]
-            act, opp_rel, role = obs[:, 177:531], obs[:, 537:544], obs[:, 544:546]
-            w, x, y, z = qpos[:, 3], qpos[:, 4], qpos[:, 5], qpos[:, 6]
-            yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
-            c, s = torch.cos(-yaw), torch.sin(-yaw)
-            vx, vy = qvel[:, 0], qvel[:, 1]
-            delta = opp_rel[:, :2]
-            evade = (role[:, 1:2] > 0.5).to(obs.dtype)
-            delta = torch.where(evade > 0.5, -delta, delta)
-            n = torch.linalg.norm(delta, dim=-1, keepdim=True).clamp_min(1e-6)
-            roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
-            pitch = torch.asin((2 * (w * y - z * x)).clamp(-1.0, 1.0))
-            wx_w, wy_w = qvel[:, 3], qvel[:, 4]
-            obs528 = torch.cat(
-                [
-                    qpos[:, 7:89],
-                    qvel[:, 6:],
-                    act,
-                    torch.stack([c * vx - s * vy, s * vx + c * vy], dim=-1),
-                    delta / n,
-                    torch.stack(
-                        [
-                            roll,
-                            pitch,
-                            c * wx_w - s * wy_w,
-                            s * wx_w + c * wy_w,
-                            qvel[:, 5],
-                            qvel[:, 2],
-                        ],
-                        dim=-1,
-                    ),
-                ],
-                dim=-1,
-            )
-            return torch.clamp(self.walker(obs528), 0.0, 1.0)
-
-    walker = load_directional_policy(table_ckpt).eval()
-    wrap = FbvsWalker(walker).eval()
-    out = tmp_path / "chasetag_player.onnx"
-    torch.onnx.export(
-        wrap,
-        torch.zeros(1, 546),
-        str(out),
-        opset_version=17,
-        input_names=["obs"],
-        output_names=["action"],
-        dynamo=False,
+    from myosuite.integrations.musclemimic.fbvs_player import (
+        export_fbvs_onnx,
+        load_fbvs_player,
     )
+
+    out = export_fbvs_onnx(table_ckpt, tmp_path / "chasetag_player.onnx")
     assert out.is_file() and out.stat().st_size > 1000
     dummy = torch.zeros(1, 546)
     dummy[0, 3] = 1.0  # unit quat w
     dummy[0, 537] = 1.0  # opponent +x
     dummy[0, 544] = 1.0  # chase
-    act = wrap(dummy)
+    act = load_fbvs_player(table_ckpt)(dummy)
     assert act.shape == (1, 354)
     assert torch.isfinite(act).all()

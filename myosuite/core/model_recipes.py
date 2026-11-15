@@ -93,34 +93,41 @@ def materialize_recipe_xml(
     Args:
         name: Recipe name registered via ``@model_recipe``.
         dest: Output path. Default: an OS temp directory
-            (``<tempdir>/myosuite_recipes/<name>.xml``); required with *edit_fn*.
+            (``<tempdir>/myosuite_recipes/<name>_<digest>.xml``, named by its
+            content); required with *edit_fn*.
         edit_fn: In-place edit of the recipe spec, applied as an env applies
             its ``edit_fn`` kwarg (see :func:`build_from_recipe`).
 
     Returns:
-        Absolute path to the written file.
+        Absolute path to the written file. The write is atomic, so processes
+        materializing the recipe at once all get a complete file.
 
     Raises:
-        ValueError: If *edit_fn* is given without *dest* (the default path
-            holds the unedited recipe).
+        ValueError: If *edit_fn* is given without *dest* (default files hold
+            unedited recipes).
     """
     if edit_fn is not None and dest is None:
         raise ValueError("edit_fn needs an explicit dest.")
     import myo_sim  # type: ignore[import-untyped]
     from myo_sim.build.compose import sanitize_spec_xml  # type: ignore[import-untyped]
 
+    from myosuite.utils.asset_path_resolver import write_atomic
+
     model, spec = build_from_recipe(name, edit_fn=edit_fn)
-    xml = sanitize_spec_xml(
+    data = sanitize_spec_xml(
         spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
-    )
+    ).encode("utf-8")
 
     out = dest
     if out is None:
+        import hashlib
         import tempfile
 
-        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}.xml"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(xml, encoding="utf-8")
+        # Named by content: processes share one file, and a different version's
+        # recipe never overwrites a file another process is loading.
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}_{digest}.xml"
+    write_atomic(out, data)
     return out.resolve()
 
 
@@ -613,7 +620,7 @@ def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     ts_ball.name = "target_ball"
     ts_ball.type = mujoco.mjtGeom.mjGEOM_SPHERE
     ts_ball.size = [0.045, 0.045, 0.045]
-    ts_ball.rgba = [2.0, 0.0, 0.2, 0.1]
+    ts_ball.rgba = [1.0, 0.0, 0.2, 0.1]
 
     return spec
 
@@ -715,6 +722,10 @@ def _add_sar_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     tgt_geom.size = [0.015, 0.015, 0.045]
     tgt_geom.condim = 4
     tgt_geom.rgba = [0.6, 0.6, 0.6, 0.6]
+    # Visual only. Set explicitly: after an empty-prefix attach, MuJoCo 4 gives
+    # API-added geoms the parent's main default (1/1), not the hand's (0/0).
+    tgt_geom.contype = 0
+    tgt_geom.conaffinity = 0
 
     for gname, gpos in [("t_top", [0, 0, -0.035]), ("t_bot", [0, 0, 0.035])]:
         tg = tgt_body.add_geom()
@@ -1280,18 +1291,19 @@ def _add_tabletennis_contacts(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 
 
 def _match_tabletennis_compiler(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-    """Apply legacy ``myoarm_tabletennis.xml``'s compiler and visual globals.
+    """Apply legacy ``myoarm_tabletennis.xml``'s compiler bounds.
 
-    Without ``boundinertia`` the ping-pong ball keeps its authored 7.2e-7
-    rotational inertia instead of the 1e-4 floor the legacy model runs with,
-    which changes how much spin a paddle hit imparts. The offscreen buffer
-    matches legacy's ``<global offwidth="1280" offheight="1080"/>``.
+    MuJoCo compiles each element with the compiler of the spec that created it,
+    so the bounds reach only the bodies this spec creates (the scaffold bodies
+    ``Full Body``, ``neck``, ``head_attach``, ``cervical_spine``, ``chest_r``,
+    ``Arm_attachment``). Bones from myo_sim's fragments keep their own inertias
+    (hand bones down to 2e-8 kg m^2), and the ping-pong ball keeps its hollow-sphere
+    inertia of 7.2e-7 kg m^2 on both backends, where the legacy model floored it at
+    1e-4 (139x harder to spin).
     """
     spec.compiler.boundmass = 0.001
     spec.compiler.boundinertia = 0.0001
     spec.compiler.balanceinertia = True
-    spec.visual.global_.offwidth = 1280
-    spec.visual.global_.offheight = 1080
     return spec
 
 
@@ -1334,7 +1346,12 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     Mesh/texture ``file=`` paths are absolute: MuJoCo does not prepend
     ``spec.compiler.meshdir`` to them, so the spec compiles from any working
     directory and drive (relative paths depended on the working directory).
+
+    Also sets legacy's ``<global offwidth="1280" offheight="1080"/>`` on the spec
+    that gets compiled: ``MjSpec.attach`` does not carry ``visual`` over.
     """
+    spec.visual.global_.offwidth = 1280
+    spec.visual.global_.offheight = 1080
     wb = spec.worldbody
 
     def _abs(path: Path) -> str:
@@ -1808,8 +1825,15 @@ for _mm_name in _MUSCLEMIMIC_NAMES:
 
     _make_mm_recipe(_name)
 
-# The full-body spec compiles to the same model as _musclemimic_build (its timestep is
-# set on the spec), so build_from_recipe and the mjlab twins can use it directly.
-register_spec_recipe(
-    "musclemimic_fullbody", lambda: _musclemimic_build("musclemimic_fullbody")[1]
-)
+
+# Each MuscleMimic spec sets its options on the spec before compilation, so
+# build_from_recipe and the mjlab twins can build every registered variant directly.
+def _make_mm_spec_builder(name: str) -> Callable[[], mujoco.MjSpec]:
+    def _build_spec() -> mujoco.MjSpec:
+        return _musclemimic_build(name)[1]
+
+    return _build_spec
+
+
+for _mm_spec_name in _MUSCLEMIMIC_NAMES:
+    register_spec_recipe(_mm_spec_name, _make_mm_spec_builder(_mm_spec_name))

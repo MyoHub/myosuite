@@ -24,6 +24,7 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import (
     LocalPolicyArtifacts,
     LocalPolicyRunner,
 )
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 pytestmark = pytest.mark.tier1
 
@@ -249,7 +250,12 @@ def test_policy_inference_drives_the_env(model: mujoco.MjModel) -> None:
         initial_qvel=ref.qvel[0],
     )
     env.reset(seed=0)
-    np.testing.assert_array_equal(env.data.qvel, ref.qvel[0])
+    # The reset puts the coupled joints, which this synthetic clip moves freely,
+    # on their polynomials.
+    qpos, qvel = ref.qpos[0].copy(), ref.qvel[0].copy()
+    project_joint_couplings(JointCouplings.from_model(model), qpos, qvel)
+    np.testing.assert_array_equal(env.data.qpos, qpos)
+    np.testing.assert_array_equal(env.data.qvel, qvel)
     for step in range(3):
         policy.stochastic = False
         mean = policy.action_from_obs(observe(env.data, ref, step))
@@ -335,6 +341,9 @@ def test_matches_upstream_terra_rollout() -> None:
         initial_qpos=ref.qpos[0],
         initial_qvel=ref.qvel[0],
     )
+    # TERRA's env starts at the reference frame as given; this synthetic reference
+    # offsets every joint, the coupled ones too, so keep them off their couplings.
+    env._project_joint_couplings = lambda: None
     env.reset(seed=0)
     controller = TerrainController(policy, model, ref, env.frame_skip)
     for qpos in up["qpos"]:

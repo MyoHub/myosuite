@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compare authored MyoSuite models with Newton CPU/GPU trajectories.
 
-This diagnostic requires Newton with MJCF DoF-label preservation. It does not
-register a MyoSuite backend. Failures and numerical drift remain report results.
+This diagnostic does not register a MyoSuite backend. Failures and numerical
+drift remain report results.
 """
 
 from __future__ import annotations
@@ -24,7 +24,33 @@ from newton_compat_probe import (
     _version,
     authored_xml,
     converted_actuator_names,
+    integrator_name,
 )
+
+
+def _merged_dof_sources(reference: Any, model: Any) -> dict[int, int]:
+    """Map the DoFs of Newton's merged joints to their source joints.
+
+    Newton merges the hinge and slide joints of a body into one joint, labelled by
+    joining their names, with the slides first and each type in source order. Its
+    DoFs may carry no labels of their own.
+    """
+    slide = int(mujoco.mjtJoint.mjJNT_SLIDE)
+    merged: dict[str, list[int]] = {}
+    for body in range(reference.nbody):
+        start = reference.body_jntadr[body]
+        rows = range(start, start + reference.body_jntnum[body])
+        if len(rows) > 1:
+            name = "_".join(reference.joint(row).name for row in rows)
+            merged[name] = sorted(
+                rows, key=lambda row: int(reference.jnt_type[row]) != slide
+            )
+    starts = model.joint_qd_start.numpy()
+    sources: dict[int, int] = {}
+    for joint, label in enumerate(model.joint_label):
+        rows = merged.get(label.rsplit("/", 1)[-1], [])
+        sources.update(zip(range(int(starts[joint]), int(starts[joint + 1])), rows))
+    return sources
 
 
 def _joint_mapping(
@@ -36,17 +62,18 @@ def _joint_mapping(
     dofs = solver.mjc_jnt_to_newton_dof.numpy()[0]
     joints = solver.mjc_jnt_to_newton_jnt.numpy()[0]
     source = {reference.joint(row).name: row for row in range(reference.njnt)}
+    merged = _merged_dof_sources(reference, model)
     mapping = np.full(converted.nq, -1, dtype=int)
     source_dofs = {}
     for row in range(converted.njnt):
         dof = int(dofs[row])
-        label = (
-            labels[dof]
-            if dof >= 0 and labels[dof]
-            else model.joint_label[int(joints[row])]
-        )
-        name = label.rsplit("/", 1)[-1]
-        original = source[name]
+        if dof >= 0 and labels[dof]:
+            original = source[labels[dof].rsplit("/", 1)[-1]]
+        elif dof in merged:
+            original = merged[dof]
+        else:
+            original = source[model.joint_label[int(joints[row])].rsplit("/", 1)[-1]]
+        name = reference.joint(original).name
         if reference.jnt_type[original] != converted.jnt_type[row]:
             raise ValueError(f"Joint type changed for {name}")
         size = {
@@ -124,8 +151,9 @@ def run_case(
         workdir: Directory for materialized model inputs.
 
     Returns:
-        Identity maps, numerical errors and pass/fail results, or the exception
-        that prevented the case from completing. Newton warnings are retained.
+        The integrator, identity maps, numerical errors and pass/fail results, or
+        the exception that prevented the case from completing. Newton warnings are
+        retained.
     """
     import newton
     import warp as wp
@@ -134,6 +162,9 @@ def run_case(
     notes: dict[str, list[Any]] = {}
     try:
         reference = mujoco.MjModel.from_xml_path(str(authored_xml(model_id, workdir)))
+        # Newton defaults to implicitfast; integrate as the reference does, so the
+        # trajectories compare the conversion and not two integrators.
+        result["integrator"] = integrator_name(reference)
         with _captured(notes):
             builder = newton.ModelBuilder()
             builder.add_mjcf(str(authored_xml(model_id, workdir)), ctrl_direct=True)
@@ -145,6 +176,7 @@ def run_case(
                 nconmax=2048,
                 njmax=8192,
                 strict_capacity=True,
+                integrator=result["integrator"],
             )
         mapping, source_dofs = _joint_mapping(reference, model, solver)
         result["identity_mapping"] = _identity_mapping(
@@ -177,6 +209,7 @@ def run_case(
                     nconmax=2048,
                     njmax=8192,
                     strict_capacity=True,
+                    integrator=result["integrator"],
                 )
             baseline = mujoco.MjData(reference)
             baseline.qpos[:] = source_qpos
@@ -376,6 +409,7 @@ def main(argv: list[str] | None = None) -> int:
                         "force_atol_N": 0.05,
                         "mutation": "10% muscle force/scale increase must exceed the force bounds",
                         "contacts": "native MuJoCo contacts enabled",
+                        "integrator": "the reference model's, per case",
                         "nconmax": 2048,
                         "njmax": 8192,
                         "strict_capacity": True,

@@ -6,6 +6,11 @@ checkpoint and compared with the current env when a downloaded checkpoint is use
 
 A policy trained on a subject (``make_env(env_id, scales=..., total_mass=...)``) also
 records that subject: its scales, total mass and the digest of the compiled model.
+
+A policy trained through an action map (:mod:`myosuite.utils.action_map`) does not command one
+action per muscle. Its checkpoint records the map under :data:`ACTION_MAP_FIELD` (in the
+checkpoint's ``infos`` and, if written, in ``manifest.json``); :func:`action_map_kind` finds
+it, so plain loaders can refuse such checkpoints without importing any method.
 """
 
 from __future__ import annotations
@@ -20,10 +25,33 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 import myosuite
 
 MANIFEST_NAME = "manifest.json"
 SCHEMA_VERSION = 1
+# Action map a checkpoint needs: ``{"manifest": {"kind": ..., ...}, "env_steps": ...}``.
+ACTION_MAP_FIELD = "action_map"
+# Checkpoints written before ACTION_MAP_FIELD: ``infos`` key -> kind.
+_LEGACY_INFOS_KEYS = {"dynsyn": "dynsyn"}
+# Earlier DynSyn-only action term in ``params/env.yaml``: its class and a key only it has.
+_LEGACY_ENV_CLASS, _LEGACY_ENV_KEY = "DynSynActionCfg", "start_steps"
+
+
+class CfgLoader(yaml.SafeLoader):
+    """SafeLoader that reads ``!!python/*`` tags (e.g. tuples) as plain data."""
+
+
+def _construct_plain(loader: yaml.SafeLoader, _suffix: str, node: yaml.Node) -> Any:
+    if isinstance(node, yaml.SequenceNode):
+        return tuple(loader.construct_sequence(node, deep=True))
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
 
 
 def _shape(space: Any) -> list[int] | dict[str, Any]:
@@ -135,6 +163,7 @@ def write_manifest(
     note: str | None = None,
     scales: Mapping[str, Any] | str | os.PathLike[str] | None = None,
     total_mass: float | None = None,
+    action_map: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``manifest.json`` into a checkpoint folder.
 
@@ -147,6 +176,7 @@ def write_manifest(
         note: Free text (for example how success is scored).
         scales: The ``scales`` the env was built with, if a subject.
         total_mass: The ``total_mass`` the env was built with, if any.
+        action_map: Manifest of the action map the policy acts through, if any.
 
     Returns:
         Path of the written manifest. For envs whose body is built from ``musclemimic_models``
@@ -168,6 +198,8 @@ def write_manifest(
         "files": sorted(p.name for p in checkpoint_dir.glob("model_*.pt")),
         "note": note,
     }
+    if action_map is not None:
+        manifest[ACTION_MAP_FIELD] = action_map
     from myosuite.integrations.musclemimic.model_versions import (
         MANIFEST_FIELD,
         env_models_version,
@@ -244,3 +276,50 @@ def check_contract(
         stacklevel=2,
     )
     return False
+
+
+def env_yaml_action_term(env: dict[str, Any]) -> dict[str, Any] | None:
+    """The action-map term of a run's ``params/env.yaml`` (read with :class:`CfgLoader`).
+
+    Returns:
+        The term's fields (``action_map``, ``step_offset``, ...; the earlier DynSyn-only
+        term: ``groups``, ``start_steps``, ...), or ``None`` if the run used no map.
+    """
+    for term in (env.get("actions") or {}).values():
+        if isinstance(term, dict) and (
+            ACTION_MAP_FIELD in term or {_LEGACY_ENV_KEY, "groups"} <= term.keys()
+        ):
+            return term
+    return None
+
+
+def action_map_kind(infos: dict[str, Any], checkpoint: str | Path) -> str | None:
+    """Kind of the action map a checkpoint was trained through, if any.
+
+    Args:
+        infos: The checkpoint's ``infos`` (``torch.load(checkpoint)["infos"]``).
+        checkpoint: ``model_*.pt`` path; its folder's ``manifest.json`` and the run's
+            ``params/env.yaml`` are checked too.
+
+    Returns:
+        The kind (e.g. ``"dynsyn"``), or ``None`` for one action per muscle.
+    """
+    if ACTION_MAP_FIELD in infos:
+        return infos[ACTION_MAP_FIELD]["manifest"]["kind"]
+    for key, kind in _LEGACY_INFOS_KEYS.items():
+        if key in infos:
+            return kind
+    folder = Path(checkpoint).parent
+    manifest = read_manifest(folder)
+    if manifest is not None and ACTION_MAP_FIELD in manifest:
+        return manifest[ACTION_MAP_FIELD]["kind"]
+    env_yaml = folder / "params" / "env.yaml"
+    if not env_yaml.is_file():
+        return None
+    text = env_yaml.read_text(errors="replace")
+    if ACTION_MAP_FIELD not in text and _LEGACY_ENV_CLASS not in text:
+        return None  # skip parsing the env.yaml of plain runs
+    term = env_yaml_action_term(yaml.load(text, Loader=CfgLoader) or {})
+    if term is None:
+        return None
+    return term[ACTION_MAP_FIELD]["kind"] if ACTION_MAP_FIELD in term else "dynsyn"

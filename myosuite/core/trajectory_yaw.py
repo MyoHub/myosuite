@@ -34,9 +34,9 @@ def rotate_xy(xy: np.ndarray, yaw: float, origin_xy: np.ndarray) -> np.ndarray:
     return out
 
 
-def _rotate_cvel(cvel: np.ndarray, yaw: float) -> np.ndarray:
+def _rotate_spatial_velocity(velocity: np.ndarray, yaw: float) -> np.ndarray:
     q = yaw_quat(yaw)
-    out = np.array(cvel, copy=True, dtype=np.float64)
+    out = np.array(velocity, copy=True, dtype=np.float64)
     if out.ndim < 1 or out.shape[-1] != 6:
         return out
     ang = np.zeros(out.shape[:-1] + (3,), dtype=np.float64)
@@ -51,23 +51,20 @@ def _rotate_cvel(cvel: np.ndarray, yaw: float) -> np.ndarray:
 
 
 def _load_clip_npz(path: Path) -> dict[str, Any]:
-    """Load a motion NPZ without unpickling object arrays."""
-    try:
-        with np.load(path, allow_pickle=False) as npz:
-            data = {key: np.array(npz[key], copy=True) for key in npz.files}
-    except ValueError as err:
-        if "allow_pickle" not in str(err):
-            raise
-        raise ValueError(
-            f"{path} contains a pickled object array; motion files are "
-            "loaded without pickle."
-        ) from err
-    for key, arr in data.items():
-        if arr.dtype.hasobject:
-            raise ValueError(
-                f"{key!r} in {path} is an object array; motion files cannot "
-                "contain pickled metadata."
-            )
+    """Load the plain arrays of a motion NPZ; pickled object arrays are left out.
+
+    Retargeted clips (``amathislab/musclemimic-retargeted``) carry a pickled
+    ``metadata`` entry. NumPy refuses it before unpickling anything, so the
+    entry is skipped instead of loaded.
+    """
+    data: dict[str, Any] = {}
+    with np.load(path, allow_pickle=False) as npz:
+        for key in npz.files:
+            try:
+                data[key] = np.array(npz[key], copy=True)
+            except ValueError as err:
+                if "allow_pickle" not in str(err):
+                    raise
     return data
 
 
@@ -75,7 +72,8 @@ def write_rotated_clip_npz(src: Path, dst: Path, yaw: float) -> Path:
     """Write *dst* as *src* yaw-rotated about the first-frame root XY.
 
     Rotates free-joint ``qpos`` and world-frame linear ``qvel``, plus
-    ``site_xpos``, ``site_xmat``, ``subtree_com``, and ``cvel`` when those
+    ``site_xpos``, ``site_xmat``, ``subtree_com``, ``cvel`` and world-frame
+    ``site_velocity`` when those
     keys are present so a
     :class:`~myosuite.integrations.musclemimic.fullbody_local_policy.FullbodyObsAdapter`
     can reload the file. MuJoCo free-joint angular velocity stays in the
@@ -113,10 +111,11 @@ def write_rotated_clip_npz(src: Path, dst: Path, yaw: float) -> Path:
     if "site_xmat" in data:
         xmat = np.array(data["site_xmat"], copy=True, dtype=np.float64)
         r = quat_math.quat2mat(qz)
-        m = xmat.reshape(*xmat.shape[:-1], 3, 3)
+        m = xmat if xmat.shape[-2:] == (3, 3) else xmat.reshape(*xmat.shape[:-1], 3, 3)
         data["site_xmat"] = np.einsum("ij,...jk->...ik", r, m).reshape(xmat.shape)
-    if "cvel" in data:
-        data["cvel"] = _rotate_cvel(np.asarray(data["cvel"]), yaw)
+    for key in ("cvel", "site_velocity"):
+        if key in data:
+            data[key] = _rotate_spatial_velocity(np.asarray(data[key]), yaw)
     dst.parent.mkdir(parents=True, exist_ok=True)
     np.savez(dst, **data)
     return dst.resolve()

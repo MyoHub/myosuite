@@ -188,6 +188,18 @@ def normalized_xml(source: Path, dest: Path) -> Path:
     return dest
 
 
+def integrator_name(m: mujoco.MjModel) -> str:
+    """Return the integrator of *m* as ``SolverMuJoCo(integrator=...)`` accepts it.
+
+    Args:
+        m: A compiled MuJoCo model.
+
+    Returns:
+        The lower-case MuJoCo name, e.g. ``"euler"``.
+    """
+    return mujoco.mjtIntegrator(m.opt.integrator).name.removeprefix("mjINT_").lower()
+
+
 def model_counts(m: mujoco.MjModel) -> dict[str, Any]:
     """Return the sizes and options of a model that a conversion can lose or change.
 
@@ -198,7 +210,6 @@ def model_counts(m: mujoco.MjModel) -> dict[str, Any]:
         Element counts, muscles, equalities by type, total mass and integrator.
     """
     equalities = Counter(mujoco.mjtEq(t).name.removeprefix("mjEQ_") for t in m.eq_type)
-    integrator = mujoco.mjtIntegrator(m.opt.integrator).name.removeprefix("mjINT_")
     return {
         "nbody": m.nbody,
         "njnt": m.njnt,
@@ -215,7 +226,7 @@ def model_counts(m: mujoco.MjModel) -> dict[str, Any]:
         "nsensor": m.nsensor,
         "mass": float(m.body_mass.sum()),
         "timestep": float(m.opt.timestep),
-        "integrator": integrator.lower(),
+        "integrator": integrator_name(m),
     }
 
 

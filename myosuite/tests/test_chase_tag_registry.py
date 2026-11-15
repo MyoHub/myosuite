@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
@@ -172,9 +173,9 @@ class TestChaseTagVsRegistry:
 
         try:
             env = make_env(self.ENV_ID)
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
-            return
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         try:
             obs, info = env.reset(seed=0)
             assert set(obs.keys()) == {"agent_0", "agent_1"}
@@ -183,8 +184,9 @@ class TestChaseTagVsRegistry:
                 obs, rewards, terminated, truncated, info = env.step(actions)
                 for agent_id in ("agent_0", "agent_1"):
                     assert np.isfinite(rewards[agent_id])
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         finally:
             env.close()
 
@@ -488,15 +490,12 @@ class TestChaseTagFullbodyBody:
                 )
 
     def test_baseline_policy_tags_an_idle_player(self) -> None:
-        import onnxruntime as ort
+        ort = pytest.importorskip("onnxruntime")
 
         from myosuite.core.hf_io import download_baseline_file
 
-        # Pinned to the Hugging Face commit that added the file (#594).
-        path = download_baseline_file(
-            "onnx/chasetag_fbvs_baseline.onnx",
-            revision="ed40fb4f0a53470ff2106ba5dc2f93f4fd7e68d8",
-        )
+        # The release's tag, or main while the tag doesn't hold the file yet.
+        path = download_baseline_file("onnx/chasetag_fbvs_baseline.onnx")
         if path is None:
             pytest.skip("baseline ONNX unavailable (no network?)")
         session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
@@ -516,8 +515,9 @@ class TestChaseTagFullbodyBody:
                 )
                 if terminated["agent_0"] or truncated["agent_0"]:
                     break
-        except OSError as exc:
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
+        except Exception as exc:
+            skip_if_hf_gated("myoChallengeChaseTagFBVs-v0", exc)
+            raise
         finally:
             env.close()
         assert info["tagged"]

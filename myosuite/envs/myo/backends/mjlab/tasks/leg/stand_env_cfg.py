@@ -138,7 +138,8 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
     }
 
     # CPU reset: keyframe 0 (qpos and qvel), with the first qpos entry of every
-    # joint perturbed by U(joint_random_range) and clipped to the joint range.
+    # joint perturbed by U(joint_random_range) and clipped to the joint range,
+    # then the coupled joints put on their polynomials.
     noise = tuple(kw.get("joint_random_range", (0.0, 0.0)))
     events = {
         "reset_scene_to_default": EventTermCfg(
@@ -148,6 +149,7 @@ def make_leg_stand_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnv
                 "asset_cfg": robot,
                 "qpos": info.key_qpos[0],
                 "qvel": info.key_qvel[0],
+                "couplings": info.couplings,
                 "joint_noise": noise,
             },
         ),

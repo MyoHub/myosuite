@@ -48,7 +48,9 @@ separately from structural preservation.
 The numerical harness records complete one-to-one source-to-converted identity
 maps for bodies, joints and sites in all six models. Hierarchical namespace
 prefixes and generated joint/shape suffixes explain the changed names; the
-scalar joint identities can be recovered through per-DoF metadata. A stable
+scalar joint identities are recovered through per-DoF labels or, where Newton
+merges a body's joints without them, through the merged joint's name and DoF
+order. A stable
 public mapping API and exact-name round trips are tracked in
 `Newton issue 4904 <https://github.com/newton-physics/newton/issues/4904>`_.
 Raw names are not counted as preserved by the strict probe.
@@ -59,11 +61,12 @@ Matched trajectories
 ``.github/newton_probe/newton_dynamics_probe.py`` compares the original authored native CPU
 model with Newton's converted CPU MuJoCo or CUDA MuJoCo-Warp solver. It uses
 the default pose and a deterministic small scalar-joint perturbation, identical
-sinusoidal muscle controls, and 128 steps at the authored timestep. The bounds
-were fixed before these runs: qpos ``rtol=1e-4, atol=1e-4`` (radians/metres), and
-muscle force ``rtol=1e-3, atol=0.05`` N. The force bounds reject a 10% muscle
-force/scale mutation in every model and pose. The qpos bounds reject the earlier
-incorrect leg contact-gap import by more than three orders of magnitude.
+sinusoidal muscle controls, and 128 steps at the authored timestep and integrator.
+The bounds were fixed before these runs: qpos ``rtol=1e-4, atol=1e-4``
+(radians/metres), and muscle force ``rtol=1e-3, atol=0.05`` N. The force bounds
+reject a 10% muscle force/scale mutation in every model and pose. The qpos bounds
+reject the earlier incorrect leg contact-gap import by more than three orders of
+magnitude.
 
 Each row gives the largest absolute errors over both poses and all steps.
 Pass/fail uses the component-wise relative and absolute bounds, rather than

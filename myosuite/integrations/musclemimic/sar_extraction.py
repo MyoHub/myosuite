@@ -306,6 +306,33 @@ def encode_activations(model: SynergyModel, acts: np.ndarray) -> np.ndarray:
     return X_norm[0] if single else X_norm
 
 
+def decode_synergies(model: SynergyModel, syn: np.ndarray) -> np.ndarray:
+    """Map synergy activations back to muscle activations (inverse of :func:`encode_activations`).
+
+    Pipeline: ``MinMaxScaler``⁻¹ → ``FastICA``⁻¹ → ``PCA``⁻¹ → clamp ``[0, 1]``.
+
+    Args:
+        model: Fitted :class:`SynergyModel`.
+        syn: Synergy activations (array-like), shape ``(T, n_synergies)`` or ``(n_synergies,)``.
+
+    Returns:
+        Muscle activations, shape ``(T, n_muscles)`` or ``(n_muscles,)``, in
+        ``[0, 1]``, dtype ``float32``.
+
+    Raises:
+        ValueError: If ``syn`` last dimension does not match ``n_synergies``.
+    """
+    syn = np.asarray(syn)
+    single = syn.ndim == 1
+    S = syn.reshape(1, -1) if single else syn
+    if S.shape[1] != model.n_synergies:
+        raise ValueError(f"Expected {model.n_synergies} synergies, got {S.shape[1]}")
+    X = model.scaler.inverse_transform(S.astype(np.float64))
+    X = model.pca.inverse_transform(model.ica.inverse_transform(X))
+    acts = np.clip(X, 0.0, 1.0).astype(np.float32)
+    return acts[0] if single else acts
+
+
 # ---------------------------------------------------------------------------
 # Serialisation
 # ---------------------------------------------------------------------------
@@ -425,6 +452,7 @@ def _validate_acts(acts: np.ndarray) -> None:
 __all__ = [
     "SynergyModel",
     "compute_vaf_curve",
+    "decode_synergies",
     "encode_activations",
     "extract_synergies",
     "load_synergy_model",

@@ -12,7 +12,7 @@ import pytest
 
 import myosuite.utils.video_io as video_io
 from myosuite.utils.policy_utils import examine_policy
-from myosuite.viz.mj_renderer import MJRenderer
+from myosuite.viz.mj_renderer import MJRenderer, _sport_court
 from myosuite import make_env
 from myosuite.envs.gymnasium_env import MyoGymnasiumEnv
 
@@ -21,7 +21,9 @@ pytestmark = pytest.mark.tier2
 _XML = """
 <mujoco>
   <asset>
-    <material name="mirror" rgba=".5 .5 .5 1" reflectance="0.7"/>
+    <texture name="checker" type="2d" builtin="checker" width="32" height="32"
+             rgb1=".2 .2 .2" rgb2=".8 .8 .8"/>
+    <material name="mirror" rgba=".5 .5 .5 1" reflectance="0.7" texture="checker"/>
   </asset>
   <worldbody>
     <light pos="0 0 3" dir="0 0 -1"/>
@@ -80,6 +82,120 @@ def test_rgb_render_leaves_model_reflectance_untouched(scene) -> None:
     # reflection is off in the scene, so zeroing reflectance changes no pixel
     model.mat_reflectance[:] = 0.0
     _assert_same_image(renderer.render_offscreen(width=160, height=120), frame)
+
+
+@pytest.mark.parametrize("camera_id", [-1, "fixed"])
+def test_sport_scene_is_rgb_only_and_does_not_leak(scene, camera_id) -> None:
+    """Styling changes pixels while preserving model/state, sensor outputs and defaults."""
+    model, data, renderer = scene
+    fields = ("geom_rgba", "mat_rgba", "mat_reflectance", "light_diffuse", "light_pos")
+    before = {name: getattr(model, name).copy() for name in fields}
+    qpos, qvel = data.qpos.copy(), data.qvel.copy()
+    default = renderer.render_offscreen(
+        width=160, height=120, depth=True, segmentation=True, camera_id=camera_id
+    )
+    sport = renderer.render_offscreen(
+        width=160,
+        height=120,
+        depth=True,
+        segmentation=True,
+        scene="sport",
+        camera_id=camera_id,
+    )
+    assert np.abs(sport[0].astype(int) - default[0].astype(int)).max() > 10
+    np.testing.assert_array_equal(sport[1], default[1])
+    np.testing.assert_array_equal(sport[2], default[2])
+    for name, values in before.items():
+        np.testing.assert_array_equal(getattr(model, name), values)
+    np.testing.assert_array_equal(data.qpos, qpos)
+    np.testing.assert_array_equal(data.qvel, qvel)
+    _assert_same_image(
+        renderer.render_offscreen(width=160, height=120, camera_id=camera_id),
+        default[0],
+    )
+
+
+def test_offscreen_rejects_unknown_scene(scene) -> None:
+    _, _, renderer = scene
+    with pytest.raises(ValueError, match="Unknown offscreen scene"):
+        renderer.render_offscreen(scene="unknown")
+
+
+def test_sport_graphics_follow_agents_and_preserve_sensors() -> None:
+    """Identity arcs follow the current pose and stay out of depth/segmentation."""
+    model = mujoco.MjModel.from_xml_string("""<mujoco><worldbody>
+      <geom type="plane" size="6 6 .1"/>
+      <body name="a0_pelvis" pos="-.6 0 .5"><freejoint/><geom size=".1"/></body>
+      <body name="a1_pelvis" pos=".6 0 .5"><freejoint/><geom size=".1"/></body>
+    </worldbody></mujoco>""")
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    renderer = MJRenderer(model, data)
+    try:
+        original = renderer.render_offscreen(
+            width=160, height=120, depth=True, segmentation=True
+        )
+        count = renderer._renderer.scene.ngeom
+        qpos, rgba = data.qpos.copy(), model.geom_rgba.copy()
+        sport = renderer.render_offscreen(
+            width=160, height=120, depth=True, segmentation=True, scene="sport"
+        )
+        np.testing.assert_array_equal(sport[1], original[1])
+        np.testing.assert_array_equal(sport[2], original[2])
+        np.testing.assert_array_equal(data.qpos, qpos)
+        np.testing.assert_array_equal(model.geom_rgba, rgba)
+        renderer.render_offscreen(width=160, height=120, scene="sport")
+        assert renderer._renderer.scene.ngeom > count
+        first = renderer._renderer.scene.geoms[count].pos.copy()
+        data.qpos[0] += 0.25
+        mujoco.mj_forward(model, data)
+        renderer.render_offscreen(width=160, height=120, scene="sport")
+        np.testing.assert_allclose(
+            renderer._renderer.scene.geoms[count].pos - first, [0.25, 0, 0], atol=1e-6
+        )
+        renderer.render_offscreen(width=160, height=120)
+        assert renderer._renderer.scene.ngeom == count
+        limited = mujoco.MjvScene(model, maxgeom=1)
+        mujoco.mjv_initGeom(
+            limited.geoms[0],
+            mujoco.mjtGeom.mjGEOM_PLANE,
+            np.ones(3),
+            np.zeros(3),
+            np.eye(3).ravel(),
+            np.ones(4),
+        )
+        limited.ngeom = 1
+        _sport_court(limited, model, data)
+        assert limited.ngeom == 1
+    finally:
+        renderer.close()
+
+
+@pytest.mark.parametrize("render_scene", [None, "default"])
+def test_chase_tag_task_default_and_original_override(render_scene) -> None:
+    """The registered chase-tag render path defaults to sport, with an original fallback."""
+    kwargs = {} if render_scene is None else {"render_scene": render_scene}
+    env = make_env("myoChallengeChaseTagFBVs-v0", render_mode="rgb_array", **kwargs)
+    reference = None
+    try:
+        env.reset(seed=0)
+        task = env.unwrapped
+        assert task._config.render_scene == "sport"
+        assert task.render_scene == ("sport" if render_scene is None else "default")
+        qpos = task.data.qpos.copy()
+        frame = env.render()
+        reference = mujoco.Renderer(task.model, height=480, width=640)
+        reference.update_scene(task.data)
+        original = reference.render()
+        if render_scene is None:
+            assert np.abs(frame.astype(int) - original.astype(int)).max() > 10
+        else:
+            _assert_same_image(frame, original)
+        np.testing.assert_array_equal(task.data.qpos, qpos)
+    finally:
+        if reference is not None:
+            reference.close()
+        env.close()
 
 
 @pytest.mark.parametrize("size", [(160, 120), (80, 60)])

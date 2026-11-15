@@ -17,36 +17,14 @@ import numpy as np
 import pytest
 import torch
 
-_CLIP_REPO_ID = "amathislab/musclemimic-retargeted"
-_CLIP_FILENAME = "MyoFullBody/gmr/KIT/167/walking_medium06_poses.npz"
+from myosuite.tests.support.hf_clip import resolve_walk_clip
 
+_HF_CLIP = resolve_walk_clip()
 
-def _resolve_clip_path() -> pathlib.Path | None:
-    """Resolve the default mimic clip path in a machine-agnostic way."""
-    try:
-        from huggingface_hub import hf_hub_download
-
-        return pathlib.Path(
-            hf_hub_download(
-                repo_id=_CLIP_REPO_ID,
-                filename=_CLIP_FILENAME,
-                repo_type="dataset",
-            )
-        )
-    except ImportError:
-        return None
-    except RuntimeError:
-        return None
-    except OSError:
-        return None
-
-
-_HF_CLIP = _resolve_clip_path()
-
-pytestmark = pytest.mark.skipif(
-    _HF_CLIP is None or not _HF_CLIP.is_file(),
-    reason="HuggingFace motion clip not in cache",
-)
+pytestmark = [
+    pytest.mark.tier2,
+    pytest.mark.skipif(_HF_CLIP is None, reason="HuggingFace motion clip not in cache"),
+]
 
 
 # ``tutorials/files/5.2`` is not a package (dots in the name): put it on sys.path.

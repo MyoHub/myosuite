@@ -68,7 +68,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
 )
 
 # ---------------------------------------------------------------------------
-# Conversion helper: dataclass → ConfigDict (required by mujoco_playground)
+# Conversion helper: dataclass → ConfigDict (required by MyoMjxEnvBase)
 # ---------------------------------------------------------------------------
 
 
@@ -180,7 +180,7 @@ _musclemimic_fullbody_config = default_mimic_fullbody_config()
 # Per-environment config factories
 #
 # Each _cfg_* function returns a typed dataclass.  make() converts to
-# ConfigDict at the mujoco_playground boundary via _to_config_dict().
+# ConfigDict at the env boundary via _to_config_dict().
 # To add a new MJX env: add a factory and an entry in _MJX_SPECS below.
 # ---------------------------------------------------------------------------
 
@@ -311,7 +311,7 @@ def make(
 
     Typed dataclass configs (pose/reach/walk) are converted to
     ``ml_collections.ConfigDict`` at this boundary because
-    ``mujoco_playground.MjxEnv`` requires ``config.lock()``.
+    ``MyoMjxEnvBase`` locks its config.
 
     Args:
         env_name: One of the names in ``ALL_ENVS``.

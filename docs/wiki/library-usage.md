@@ -36,7 +36,12 @@ See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full patter
 | Contact force | `mujoco.mj_contactForce` | Manual contact struct field access |
 | Body/site/joint ID | `mujoco.mj_name2id` | Hardcoded integer indices |
 | Jacobian | `mujoco.mj_jacBody`, `mj_jacSite` | Manual Jacobian computation |
-| Site IK / marker fitting | `myosuite.physics.inverse_kinematics.solve_ik`, `myosuite.core.retargeting.retarget` | Per-task IK loops or finite-difference Jacobians |
+| Site IK / marker fitting | `myosuite.biomechanics.inverse_kinematics.solve_ik`, `myosuite.core.retargeting.retarget` | Per-task IK loops or finite-difference Jacobians |
+| Muscle activations for a motion (static optimization) | `myosuite.biomechanics.static_optimization.StaticOptimizer` | Optimizer loops copied from tutorial 3.3 |
+| OpenSim `.mot` / `.sto` coordinates (free root included) as model `qpos` | `myosuite.biomechanics.opensim_motion.opensim_motion_to_qpos` | Hand-written readers and pelvis mappings in tutorials |
+| Coupled joints (`mjEQ_JOINT`) on their polynomials | `myo_sim.physics.joint_coupling.project_joint_couplings`, re-exported as `myosuite.physics.joint_coupling` (in place, NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`); `projected_joint_couplings` (out of place, differentiable with Torch; `JointCouplings.as_torch`) | Hand-rolled `eq_data` polynomial evaluation |
+| AMASS SMPL+H motion onto a body model | `myosuite.biomechanics.retarget_smplh` (one SMPL+H -> model table, `smplh_source`; `scripts/mimic/retarget_amass.py`), FK in `myosuite.biomechanics.smplh`, landmark IK on the couplings in `myosuite.biomechanics.retarget` | Another SMPL FK or IK loop, `smplx`/torch at runtime, or projecting coupled joints of clips fitted on another body |
+| Muscle effort of recorded rollouts (squared activations, co-contraction, saturation) | `myosuite.biomechanics.effort` (NumPy or torch, `(..., T, M)`) | Per-script effort or co-contraction formulas |
 
 **Unified dispatcher (preferred for new code):**
 

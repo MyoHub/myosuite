@@ -19,6 +19,8 @@ from myosuite.utils.onnx_checkpoint import (
 )
 from myosuite import make_env
 
+pytestmark = pytest.mark.tier2
+
 
 def test_onnx_checkpoint_bundle_round_trip() -> None:
     pytest.importorskip("onnx")

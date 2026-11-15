@@ -12,6 +12,7 @@ import pytest
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 
 
+@pytest.mark.tier2
 def test_compile_fullbody_mjmodel_dimensions() -> None:
     """Compiled full-body model should have consistent DoF counts."""
     require_musclemimic_models()
@@ -81,6 +82,7 @@ def test_fullbody_arena_fits_every_contact_and_limit_active() -> None:
         assert 4 * data.maxuse_arena < worst.narena
 
 
+@pytest.mark.tier2
 def test_fullbody_mimic_site_count() -> None:
     """Mimic site map matches MuscleMimic MyoFullBody (17 sites)."""
     from myosuite.integrations.musclemimic.fullbody_model import (

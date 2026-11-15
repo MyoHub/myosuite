@@ -176,3 +176,69 @@ def test_near_singular_cutoffs_agree_across_backends() -> None:
         quat_math_torch.quat2mat(torch.tensor(tiny)).double().numpy(),
         atol=1e-6,
     )
+
+
+@pytest.mark.parametrize("batched", [False, True])
+def test_quat2mat_identity_fallback_does_not_divide_by_zero(batched: bool) -> None:
+    """The documented zero-quaternion fallback also works with strict NumPy errors."""
+    quats = np.array([[0, 0, 0, 0], [0, 1e-4, 0, 0]], dtype=np.float64)
+    if not batched:
+        quats = quats[0]
+    with np.errstate(divide="raise", invalid="raise"):
+        matrices = quat_math.quat2mat(quats)
+    np.testing.assert_array_equal(matrices, np.broadcast_to(np.eye(3), matrices.shape))
+
+
+def test_quat2mat_torch_fallback_has_finite_zero_gradient() -> None:
+    """A masked zero norm must not poison gradients of a mixed quaternion batch."""
+    torch = pytest.importorskip("torch")
+    from myosuite.physics import quat_math_torch
+
+    quats = torch.tensor(
+        [[0, 0, 0, 0], [0, 1e-4, 0, 0], [2, 0, 0, 0]],
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    matrices = quat_math_torch.quat2mat(quats)
+    torch.testing.assert_close(matrices, torch.eye(3).expand(3, 3, 3))
+    matrices[:, 0, 1].sum().backward()
+    # d R_xy / d z = -2 / w at an identity rotation; fallback rows are constant.
+    torch.testing.assert_close(
+        quats.grad, torch.tensor([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, -1.0]])
+    )
+
+
+@pytest.mark.parametrize("compiled", [False, True])
+def test_quat2mat_jax_fallback_has_finite_zero_gradient(compiled: bool) -> None:
+    """The fallback is differentiable in eager execution and inside a JIT trace."""
+    jax = pytest.importorskip("jax")
+    jnp = pytest.importorskip("jax.numpy")
+    from myosuite.physics import quat_math_jax
+
+    quats = jnp.array([[0, 0, 0, 0], [0, 1e-4, 0, 0], [2, 0, 0, 0]])
+    fn = jax.value_and_grad(lambda q: quat_math_jax.quat2mat(q)[:, 0, 1].sum())
+    value, gradient = (jax.jit(fn) if compiled else fn)(quats)
+    assert float(value) == 0.0
+    np.testing.assert_array_equal(
+        gradient, [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, -1.0]]
+    )
+
+
+@pytest.mark.parametrize("xp_name", ["numpy", "torch"])
+def test_quat_yaw_is_the_world_heading_of_the_body_x_axis(xp_name: str) -> None:
+    from myosuite.physics.quat import quat_yaw
+
+    rng = np.random.default_rng(0)
+    q = rng.normal(size=(64, 4))
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+    # ZYX yaw: heading of the rotated x-axis, from MuJoCo's rotation matrix.
+    mats = np.empty((len(q), 9))
+    for row, mat in zip(q, mats):
+        mujoco.mju_quat2Mat(mat, row)
+    expected = np.arctan2(mats[:, 3], mats[:, 0])
+    if xp_name == "torch":
+        torch = pytest.importorskip("torch")
+        got = quat_yaw(torch, torch.as_tensor(q)).numpy()
+    else:
+        got = quat_yaw(np, q)
+    np.testing.assert_allclose(got, expected, atol=1e-12)

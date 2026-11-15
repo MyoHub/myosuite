@@ -22,6 +22,8 @@ from myosuite.integrations.musclemimic.model_bridge import (
 )
 from myosuite.tests.support.optional_deps import require_musclemimic_models
 
+pytestmark = pytest.mark.tier2
+
 _JOINT = mujoco.mjtObj.mjOBJ_JOINT
 _ACTUATOR = mujoco.mjtObj.mjOBJ_ACTUATOR
 

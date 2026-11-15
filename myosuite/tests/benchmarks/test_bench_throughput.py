@@ -31,11 +31,11 @@ _GPU_REQUESTED = os.environ.get("MYOSUITE_GPU_TESTS", "").strip().lower() in (
 
 
 # MJX guard: benchmark uses mjx_impl=None (JAX XLA), so it runs on CPU without warp.
-# Only require mjx + jax + playground; warp is optional (needed only for impl="warp").
+# Only require mjx + jax + flax; warp is optional (needed only for impl="warp").
 try:
     from mujoco import mjx as _mjx  # noqa: F401
     import jax as _jax_guard  # noqa: F401 — guard: ensure JAX available for benchmark
-    import mujoco_playground as _mp  # noqa: F401
+    import flax as _flax  # noqa: F401
 
     _MJX_AVAILABLE = True
 except (ImportError, AttributeError):
@@ -71,7 +71,7 @@ def test_bench_cpu_elbow_pose(benchmark):
 @pytest.mark.skipif(
     not (_MJX_AVAILABLE and _GPU_REQUESTED),
     reason=(
-        "MJX throughput benchmark requires MJX/mujoco_playground and an explicit "
+        "MJX throughput benchmark requires JAX/MJX and an explicit "
         "GPU run (set MYOSUITE_GPU_TESTS=1 on a CUDA-enabled machine)."
     ),
 )

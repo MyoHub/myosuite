@@ -242,6 +242,35 @@ def has_local_policy_artifacts(checkpoint_root: Path) -> bool:
     return (p / "train_state").is_dir() and (p / "config" / "metadata").exists()
 
 
+def _restore_on_cpu(checkpointer: Any, path: str) -> Any:
+    """Restore an Orbax checkpoint onto this process's CPU device.
+
+    Without a target tree Orbax rebuilds each array's sharding from the device
+    name saved in the checkpoint (``TFRT_CPU_0`` for ``mm-10m-2``), which JAX
+    >= 0.10 no longer reports. A target on ``jax.devices("cpu")[0]`` restores
+    on any JAX version. The target also turns scalar leaves into JAX arrays and,
+    with x64 disabled, narrows 64-bit leaves to 32-bit; callers here cast to
+    float32 anyway.
+    """
+    if not hasattr(checkpointer, "metadata"):
+        return checkpointer.restore(path)
+    import jax
+
+    meta = checkpointer.metadata(path)
+    tree = getattr(meta, "item_metadata", meta)
+    tree = getattr(tree, "tree", tree)
+    if not isinstance(tree, dict):
+        return checkpointer.restore(path)
+    cpu = jax.sharding.SingleDeviceSharding(jax.devices("cpu")[0])
+
+    def abstract(leaf: Any) -> Any:
+        if hasattr(leaf, "shape") and hasattr(leaf, "dtype"):
+            return jax.ShapeDtypeStruct(leaf.shape, leaf.dtype, sharding=cpu)
+        return leaf
+
+    return checkpointer.restore(path, jax.tree_util.tree_map(abstract, tree))
+
+
 def load_local_policy_artifacts(
     checkpoint_root: Path, seed: int = 0
 ) -> LocalPolicyArtifacts:
@@ -257,7 +286,7 @@ def load_local_policy_artifacts(
             "orbax.checkpoint is required for local policy inference."
         ) from err
 
-    restored = ocp.StandardCheckpointer().restore(str(train_state_dir))
+    restored = _restore_on_cpu(ocp.StandardCheckpointer(), str(train_state_dir))
     params_raw = restored["params"]
     run_stats = restored["run_stats"]["RunningMeanStd_0"]
     params = _to_numpy_tree(params_raw)
@@ -487,6 +516,9 @@ class FullbodyStateAdapter:
         self._model = model
         self._egocentric_root = egocentric_root
         flags = obs_flags or {}
+        self._exclude_non_actor_joints = bool(
+            flags.get("exclude_non_actor_joints", False)
+        )
         self._obs_flags = {
             key: bool(flags.get(key, default))
             for key, default in _FULLBODY_OBS_FLAG_DEFAULTS.items()
@@ -512,7 +544,7 @@ class FullbodyStateAdapter:
         actor_root = int(model.body_rootid[model.jnt_bodyid[root_jid]])
         for jid in range(model.njnt):
             if (
-                flags.get("exclude_non_actor_joints", False)
+                self._exclude_non_actor_joints
                 and int(model.body_rootid[model.jnt_bodyid[jid]]) != actor_root
             ):
                 continue
@@ -692,6 +724,7 @@ class FullbodyObsAdapter(FullbodyStateAdapter):
             "use_concise_lookahead": g.use_concise_lookahead,
             "enable_mimic_site_rpos_observations": g.enable_mimic_site_rpos_observations,
             "sites_for_mimic": list(g.sites_for_mimic),
+            "exclude_non_actor_joints": self._exclude_non_actor_joints,
         }
         gp.update(self._obs_flags)
         return FullbodyObsAdapter(self._model, clip, gp)
@@ -1054,6 +1087,7 @@ class LocalPolicyRunner:
         n_substeps = max(1, int(self.frame_skip))
         for _ in range(n_substeps):
             mujoco.mj_step(model, data)
+        mujoco.mj_forward(model, data)
 
 
 def read_checkpoint_config_metadata(checkpoint_root: Path) -> dict[str, Any]:
@@ -1226,6 +1260,7 @@ class OnnxPolicyRunner:
         data.ctrl[:] = ctrl
         for _ in range(max(1, int(self.frame_skip))):
             mujoco.mj_step(model, data)
+        mujoco.mj_forward(model, data)
 
 
 __all__ = [
@@ -1324,15 +1359,15 @@ class StandaloneBCPolicy:
         """
         import pickle
 
-        pack = np.load(str(Path(path)), allow_pickle=False)
-        params = pickle.loads(pack["actor_params_blob"].tobytes())
-        artifacts = LocalPolicyArtifacts(
-            params=params,
-            obs_mean=np.asarray(pack["obs_mean"], dtype=np.float32),
-            obs_var=np.asarray(pack["obs_var"], dtype=np.float32),
-            obs_count=np.asarray(pack["obs_count"], dtype=np.float32),
-            obs_dim=int(np.asarray(pack["obs_dim"]).item()),
-            action_dim=int(np.asarray(pack["action_dim"]).item()),
-        )
-        goal_params = json.loads(str(pack["goal_params_json"]))
+        with np.load(str(Path(path)), allow_pickle=False) as pack:
+            params = pickle.loads(pack["actor_params_blob"].tobytes())
+            artifacts = LocalPolicyArtifacts(
+                params=params,
+                obs_mean=np.asarray(pack["obs_mean"], dtype=np.float32),
+                obs_var=np.asarray(pack["obs_var"], dtype=np.float32),
+                obs_count=np.asarray(pack["obs_count"], dtype=np.float32),
+                obs_dim=int(np.asarray(pack["obs_dim"]).item()),
+                action_dim=int(np.asarray(pack["action_dim"]).item()),
+            )
+            goal_params = json.loads(str(pack["goal_params_json"]))
         return cls(artifacts), goal_params

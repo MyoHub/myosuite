@@ -536,17 +536,15 @@ def test_callable_reward_term() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_scene_list_env_resets() -> None:
-    """list[str] scene — reset must not crash and obs shape is stable."""
+@pytest.mark.parametrize(
+    "scene", [["flat_floor", "rough_terrain"], ["flat_floor"], "definitely_not_a_scene"]
+)
+def test_unapplied_scenes_are_refused(scene: str | list[str]) -> None:
+    """Scene lists and named scenes were accepted and silently ignored."""
     task = _ElbowTask()
-    task.scene = [
-        "flat_floor",
-        "flat_floor",
-    ]  # two variants (same model, different scene labels)
-    env = ModularTaskEnv(task)
-    obs1, _ = env.reset(seed=0)
-    obs2, _ = env.reset(seed=1)
-    assert obs1.shape == obs2.shape
+    task.scene = scene
+    with pytest.raises(NotImplementedError, match="TaskConfig.scene"):
+        ModularTaskEnv(task)
 
 
 # ---------------------------------------------------------------------------
@@ -585,8 +583,8 @@ def test_backend_config_rejects_a_control_step_it_does_not_simulate() -> None:
         BackendConfig(n_substeps=0, ctrl_dt=0.0, sim_dt=0.001)
 
 
-@pytest.mark.parametrize("scene", ["flat_floor", ["flat_floor"]])
-def test_cpu_control_step_is_the_simulated_step(scene: str | list[str]) -> None:
+@pytest.mark.parametrize("scene", ["flat_floor"])
+def test_cpu_control_step_is_the_simulated_step(scene: str) -> None:
     """A step advances ``ctrl_dt`` and ``joint_vel`` is ``qvel * ctrl_dt``.
 
     The default backend declares 10 steps of 1 ms. The CPU used to keep the
@@ -647,6 +645,23 @@ def test_mjx_modular_env_step() -> None:
     action = jnp.zeros(env.action_size)
     next_state = env.step(state, action)
     assert next_state.obs["state"].shape == state.obs["state"].shape
+
+
+@pytest.mark.tier2
+@pytest.mark.skipif(not _MJX_OK, reason="JAX/MJX not available")
+def test_register_task_mjx_builds_with_make_env() -> None:
+    import jax.numpy as jnp
+
+    from myosuite.envs.myo.backends.mjx.mjx_modular_env import MjxModularTaskEnv
+
+    env_id = register_task(
+        _ElbowTask(), env_id="TestElbowMjxMakeEnv-v0", backends={"cpu", "mjx"}
+    )
+    env = make_env(env_id, backend="mjx", num_envs=2)
+    assert isinstance(env, MjxModularTaskEnv)
+    assert env._config.num_envs == 2
+    state = env.step(env.reset(_jax.random.PRNGKey(0)), jnp.zeros(env.action_size))
+    assert jnp.isfinite(state.reward)
 
 
 # ---------------------------------------------------------------------------
@@ -833,3 +848,19 @@ def test_make_env_unknown_backend_raises() -> None:
 
     with pytest.raises(ValueError, match="Unknown backend"):
         make_env("TestMakeEnv-v0", backend="foobar")
+
+
+def test_normalize_actions_is_refused_not_ignored() -> None:
+    """The CPU env writes actions to ctrl as they are; a sigmoid request must not pass silently."""
+    from dataclasses import replace
+
+    from myosuite.core.config import ActuatorGroupSpec
+    from myosuite.envs.myo.tasks.basic.specs.elbow_pose_spec import ElbowPoseFixedTask
+
+    task = ElbowPoseFixedTask()
+    assert not any(g.normalize_actions for g in task.actuators)
+    mapped = replace(
+        task, actuators=[ActuatorGroupSpec(name="m", normalize_actions=True)]
+    )
+    with pytest.raises(ValueError, match="normalize_actions"):
+        ModularTaskEnv(mapped)

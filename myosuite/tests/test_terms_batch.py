@@ -12,6 +12,8 @@ import pytest
 from myosuite.terms.base_action import MuscleActionTerm, MuscleActionTermCfg
 from myosuite.terms.base_reward import joint_penalty, reach_reward
 
+pytestmark = pytest.mark.tier2
+
 
 class _Accessor:
     def __init__(self, tip_pos, qpos=None, ctrl_range=None):

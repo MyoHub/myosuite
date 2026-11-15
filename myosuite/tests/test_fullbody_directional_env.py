@@ -16,6 +16,8 @@ import numpy as np
 import pytest
 from myosuite import make_env
 
+pytestmark = pytest.mark.tier2
+
 pytest.importorskip("musclemimic_models", reason="musclemimic_models package required")
 pytest.importorskip("huggingface_hub", reason="huggingface_hub required")
 

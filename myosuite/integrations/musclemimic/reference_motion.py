@@ -25,6 +25,7 @@ from myosuite.core.trajectory_io import (
     expand_motion_clip_to_model,
     motion_clip_from_states,
 )
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2yaw
 
 
@@ -233,18 +234,6 @@ class GaitParameters:
             )
 
 
-def _coupling_projection(model: mujoco.MjModel, q: np.ndarray) -> None:
-    """Apply the model's own polynomial joint constraints to an offline pose."""
-    ids = np.flatnonzero(model.eq_type == mujoco.mjtEq.mjEQ_JOINT)
-    first, second = model.eq_obj1id[ids], model.eq_obj2id[ids]
-    c = model.eq_data[ids, :5]
-    for _ in range(2):
-        source = np.where(second >= 0, q[model.jnt_qposadr[np.maximum(second, 0)]], 0.0)
-        q[model.jnt_qposadr[first]] = c[:, 0] + source * (
-            c[:, 1] + source * (c[:, 2] + source * (c[:, 3] + source * c[:, 4]))
-        )
-
-
 def _yaw_matrix(yaw: float) -> np.ndarray:
     """Use MuJoCo quaternion conversion for a world-Z heading."""
     quat = np.array([np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)])
@@ -288,6 +277,7 @@ def plan_waypoint_reference(
         Existing MotionClip and planner diagnostics.
     """
     m, d = model, mujoco.MjData(model)
+    couplings = JointCouplings.from_model(m)
     base = np.asarray(initial_qpos, dtype=float).copy()
     d.qpos[:] = base
     mujoco.mj_forward(m, d)
@@ -549,7 +539,7 @@ def plan_waypoint_reference(
 
             def error(x: np.ndarray) -> np.ndarray:
                 d.qpos[address] = x
-                _coupling_projection(m, d.qpos)
+                project_joint_couplings(couplings, d.qpos)
                 mujoco.mj_kinematics(m, d)
                 return np.r_[
                     (d.site_xpos[ankle_ids[side]] - targets[i, side]) * 10,
@@ -564,11 +554,11 @@ def plan_waypoint_reference(
             q[i, address] = result.x
             previous_legs[side] = result.x
             residuals.append(float(np.linalg.norm(error(result.x)[:6]) / 10))
-        _coupling_projection(m, q[i])
+        project_joint_couplings(couplings, q[i])
     for j in range(7, m.nq):
         q[:, j] = np.interp(t, t[knots], q[knots, j])
     for pose in q:
-        _coupling_projection(m, pose)
+        project_joint_couplings(couplings, pose)
     v = np.zeros((len(q), m.nv))
     for i in range(len(q) - 1):
         mujoco.mj_differentiatePos(m, v[i], 0.01, q[i], q[i + 1])

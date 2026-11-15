@@ -12,7 +12,7 @@ import pytest
 try:
     import jax
     from mujoco import mjx as _mjx  # noqa: F401
-    import mujoco_playground as _mp  # noqa: F401
+    import flax as _flax  # noqa: F401
 
     _MJX_AVAILABLE = True
 except (ImportError, AttributeError):
@@ -22,7 +22,7 @@ except (ImportError, AttributeError):
 pytestmark = pytest.mark.tier2
 
 
-@pytest.mark.skipif(not _MJX_AVAILABLE, reason="MJX/mujoco_playground not available")
+@pytest.mark.skipif(not _MJX_AVAILABLE, reason="JAX/MJX not available")
 def test_musclemimic_bimanual_smoke_reset() -> None:
     from myosuite.envs.myo.backends.mjx import make
 
@@ -33,7 +33,7 @@ def test_musclemimic_bimanual_smoke_reset() -> None:
     assert state.obs["state"].ndim == 1
 
 
-@pytest.mark.skipif(not _MJX_AVAILABLE, reason="MJX/mujoco_playground not available")
+@pytest.mark.skipif(not _MJX_AVAILABLE, reason="JAX/MJX not available")
 def test_musclemimic_bimanual_default_sites() -> None:
     from myosuite.envs.myo.backends.mjx import make
 
@@ -49,7 +49,7 @@ def test_musclemimic_bimanual_default_sites() -> None:
     )
 
 
-@pytest.mark.skipif(not _MJX_AVAILABLE, reason="MJX/mujoco_playground not available")
+@pytest.mark.skipif(not _MJX_AVAILABLE, reason="JAX/MJX not available")
 def test_musclemimic_fullbody_smoke_reset() -> None:
     pytest.importorskip("musclemimic_models")
     import jax
@@ -63,7 +63,7 @@ def test_musclemimic_fullbody_smoke_reset() -> None:
     assert state.obs["state"].ndim == 1
 
 
-@pytest.mark.skipif(not _MJX_AVAILABLE, reason="MJX/mujoco_playground not available")
+@pytest.mark.skipif(not _MJX_AVAILABLE, reason="JAX/MJX not available")
 def test_musclemimic_fullbody_default_site_count() -> None:
     pytest.importorskip("musclemimic_models")
     from myosuite.envs.myo.backends.mjx import make
