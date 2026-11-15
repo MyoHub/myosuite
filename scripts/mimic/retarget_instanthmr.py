@@ -431,7 +431,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     curation = (
-        json.loads(Path(args.quality_flags).read_text()) if args.quality_flags else {}
+        json.loads(Path(args.quality_flags).read_text(encoding="utf-8"))
+        if args.quality_flags
+        else {}
     )
     jobs = []
     for f in files:
@@ -513,7 +515,8 @@ def main(argv: list[str] | None = None) -> int:
                 {"model": args.model, "scales": scales, "body_mass_kg": args.body_mass},
                 indent=2,
             )
-            + "\n"
+            + "\n",
+            encoding="utf-8",
         )
     print(rt.write_refit_report(report, summary, metas, title="InstantHMR retarget"))
     return len(errors)

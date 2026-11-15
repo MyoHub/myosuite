@@ -32,6 +32,7 @@ import hashlib
 import json
 import math
 import os
+import sys
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -94,8 +95,9 @@ class LandmarkMap:
         name: Map name (dataset and model).
         version: Bumped whenever a target, offset or weight changes.
         landmarks: Site targets.
-        orientations: Orientation targets.
-        feet: ``(left, right)`` body tuples whose collision geoms are the soles.
+        orientations: Optional orientation targets.
+        feet: ``(left, right)`` body tuples whose collision geoms are the soles;
+            an empty tuple leaves that foot's metrics unavailable.
         twist_pairs: ``(left, right)`` bodies of the axial-twist symmetry check.
         twist_reference: Body the axial twist is measured against (heading).
         coupling_term: Dependent joint whose polynomial value the twist asymmetry is
@@ -559,7 +561,7 @@ def _geom_lowest_z(m: mujoco.MjModel, d: mujoco.MjData, g: int) -> float:
 def _foot_kinematics(
     m: mujoco.MjModel, lmap: LandmarkMap, qpos: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """``(T, 2)`` lowest sole z per foot and ``(T, 2, 3)`` foot origin (mean of the bodies)."""
+    """Sole z ``(T, 2)`` and foot origins ``(T, 2, 3)``; missing geometry is NaN."""
     d = mujoco.MjData(m)
     feet = [[m.body(b).id for b in side] for side in lmap.feet]
     geoms = [
@@ -567,21 +569,24 @@ def _foot_kinematics(
          and (m.geom_contype[g] or m.geom_conaffinity[g])]
         for ids in feet
     ]  # fmt: skip
-    low = np.empty((len(qpos), 2))
-    org = np.empty((len(qpos), 2, 3))
+    low = np.full((len(qpos), 2), np.nan)
+    org = np.full((len(qpos), 2, 3), np.nan)
     for t, q in enumerate(qpos):
         d.qpos[:] = q
         mujoco.mj_kinematics(m, d)
         for s in range(2):
-            low[t, s] = min(_geom_lowest_z(m, d, g) for g in geoms[s])
-            org[t, s] = d.xpos[feet[s]].mean(0)
+            if geoms[s]:
+                low[t, s] = min(_geom_lowest_z(m, d, g) for g in geoms[s])
+            if feet[s]:
+                org[t, s] = d.xpos[feet[s]].mean(0)
     return low, org
 
 
-def _sliding(low: np.ndarray, org: np.ndarray, contact: np.ndarray, dt: float) -> float:
-    """Mean horizontal foot speed (m/s) over the contact frames."""
+def _sliding(org: np.ndarray, contact: np.ndarray, dt: float) -> float | None:
+    """Mean foot-origin speed over known contacts; collision soles are not needed."""
     v = np.linalg.norm(np.gradient(org[..., :2], dt, axis=0), axis=-1)
-    return float(v[contact].mean()) if contact.any() else 0.0
+    measured = contact & np.isfinite(v)
+    return float(v[measured].mean()) if measured.any() else None
 
 
 def _yaw(R: np.ndarray) -> np.ndarray:
@@ -660,7 +665,11 @@ def validate_refit(
         thresholds: Limits; a failed check is listed in ``"flags"``.
 
     Returns:
-        JSON-serialisable metrics and ``"flags"`` (empty when the clip passes).
+        JSON-serialisable metrics and ``"flags"`` (empty when the assessed checks
+        pass). Unavailable metrics are ``None``, not measured zero: orientation
+        needs targets, penetration needs collision soles, sliding needs foot bodies
+        and source contacts, contact float needs soles and contacts, and joint speed
+        needs independent scalar joints.
     """
     th = thresholds or RefitThresholds()
     m, lmap = ik.model, ik.lmap
@@ -689,9 +698,10 @@ def validate_refit(
     # feet: penetration of the ground plane (z = 0), sliding and floating in contact
     low, org = _foot_kinematics(m, lmap, qpos)
     contact = np.asarray(targets.contact, bool)
-    pen = float(max(0.0, -low.min()) * 1e3)
-    slide = _sliding(low, org, contact, dt)
-    float_mm = np.where(contact, np.maximum(low, 0.0), np.nan) * 1e3
+    soles = low[np.isfinite(low)]
+    pen = float(max(0.0, -soles.min()) * 1e3) if soles.size else None
+    slide = _sliding(org, contact, dt)
+    float_mm = np.maximum(low[contact & np.isfinite(low)], 0.0) * 1e3
     # velocity spikes: joint accelerations above the floor, off and at the limits
     v = np.gradient(qpos[:, a], dt, axis=0)
     acc = np.abs(np.diff(qpos[:, a], 2, axis=0)) / dt**2
@@ -706,20 +716,20 @@ def validate_refit(
         "landmark_max_by_site_mm": {
             lm.source: float(e) for lm, e in zip(lmap.landmarks, err.max(0))
         },
-        "orientation_mean_deg": float(ori_vals.mean()) if ori_vals.size else 0.0,
-        "orientation_max_deg": float(ori_vals.max()) if ori_vals.size else 0.0,
+        "orientation_mean_deg": float(ori_vals.mean()) if ori_vals.size else None,
+        "orientation_max_deg": float(ori_vals.max()) if ori_vals.size else None,
         "coupling_residual": coupling,
         "limit_violations": viol,
         "dependent_limit_violations": dep_viol,
         "penetration_mm": pen,
         "sliding_mps": slide,
-        "contact_float_mm_median": float(np.nanmedian(float_mm))
-        if contact.any()
-        else 0.0,
-        "contact_float_mm_p95": float(np.nanpercentile(float_mm, 95))
-        if contact.any()
-        else 0.0,
-        "joint_speed_max_rps": float(np.abs(v).max()),
+        "contact_float_mm_median": float(np.median(float_mm))
+        if float_mm.size
+        else None,
+        "contact_float_mm_p95": float(np.percentile(float_mm, 95))
+        if float_mm.size
+        else None,
+        "joint_speed_max_rps": float(np.abs(v).max()) if v.size else None,
         "velocity_spikes": spikes,
         "limit_stops": stops,
     }
@@ -728,8 +738,8 @@ def validate_refit(
         "landmark_max": out["landmark_max_mm"] > th.landmark_max_mm,
         "coupling_residual": coupling > th.coupling_residual,
         "limit_violations": viol > th.limit_violations,
-        "penetration": pen > th.penetration_mm,
-        "sliding": slide > th.sliding_mps,
+        "penetration": pen is not None and pen > th.penetration_mm,
+        "sliding": slide is not None and slide > th.sliding_mps,
         "velocity_spikes": spikes > th.velocity_spikes,
         "limit_stops": stops > th.limit_stops,
     }
@@ -942,18 +952,22 @@ def _ground_clip(
 ) -> tuple[np.ndarray, ClipTargets, np.ndarray]:
     """Shift free-joint root height and target ``z`` so standing feet touch ``z = 0``."""
     low, _ = _foot_kinematics(m, lmap, qpos)
-    any_c = contact.any(1)
-    dz = np.full(len(qpos), np.nan)
-    dz[any_c] = -np.where(contact, low, np.inf)[any_c].min(1)
-    if any_c.any():
-        t = np.arange(len(qpos))
-        dz = np.interp(t, t[any_c], dz[any_c])
+    if not np.isfinite(low).any():
+        dz = np.zeros(len(qpos))
     else:
-        dz[:] = -low.min()
-    lift = -low.min(1)
-    dz = np.maximum(
-        _smooth(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
-    )
+        valid_c = contact & np.isfinite(low)
+        any_c = valid_c.any(1)
+        dz = np.full(len(qpos), np.nan)
+        dz[any_c] = -np.where(valid_c, low, np.inf)[any_c].min(1)
+        if any_c.any():
+            t = np.arange(len(qpos))
+            dz = np.interp(t, t[any_c], dz[any_c])
+        else:
+            dz[:] = -np.nanmin(low)
+        lift = -np.nanmin(low, axis=1)
+        dz = np.maximum(
+            _smooth(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
+        )
     root_jnt = next(
         j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
     )
@@ -1332,21 +1346,29 @@ def merge_quality_flags(*flag_lists: Sequence[str] | None) -> list[str]:
 
 
 def summarize(metas: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """Aggregate per-clip metadata: medians, worst clips and the flagged list."""
+    """Aggregate measured metrics, their clip counts, and the flagged list.
+
+    Each statistic has a ``count`` of clips with that measurement. If none is
+    available, its median, p95 and max are ``None``.
+    """
     ms = [x["metrics"] for x in metas]
 
     def col(k: str) -> np.ndarray:
-        return np.array([x[k] for x in ms], np.float64)
+        return np.array([x[k] for x in ms if x[k] is not None], np.float64)
 
     keys = ("landmark_rmse_mm", "landmark_max_mm", "orientation_mean_deg",
             "coupling_residual", "limit_violations", "penetration_mm", "sliding_mps",
             "contact_float_mm_median", "contact_float_mm_p95", "velocity_spikes",
             "limit_stops", "joint_speed_max_rps")  # fmt: skip
-    stats = {
-        k: {"median": float(np.median(col(k))), "p95": float(np.percentile(col(k), 95)),
-            "max": float(col(k).max())}
-        for k in keys
-    }  # fmt: skip
+    stats = {}
+    for k in keys:
+        values = col(k)
+        stats[k] = {
+            "count": len(values),
+            "median": float(np.median(values)) if values.size else None,
+            "p95": float(np.percentile(values, 95)) if values.size else None,
+            "max": float(values.max()) if values.size else None,
+        }
     frames = sum(x["frames"] for x in ms)
     flagged = [
         {
@@ -1433,8 +1455,14 @@ def summary_markdown(summary: dict[str, Any], title: str = "Retarget") -> str:
         "| metric | median | p95 | max |",
         "|---|---|---|---|",
     ]
+
+    def _fmt(val: float | None) -> str:
+        return "-" if val is None else f"{val:.4g}"
+
     for k, v in s["stats"].items():
-        lines.append(f"| {k} | {v['median']:.4g} | {v['p95']:.4g} | {v['max']:.4g} |")
+        lines.append(
+            f"| {k} | {_fmt(v['median'])} | {_fmt(v['p95'])} | {_fmt(v['max'])} |"
+        )
     lines += [
         "",
         "Thresholds: " + ", ".join(f"{k}={v}" for k, v in s["thresholds"].items()),
@@ -1473,9 +1501,11 @@ def write_refit_report(
     report = Path(report_dir)
     report.mkdir(parents=True, exist_ok=True)
     md = summary_markdown(summary, title=title)
-    (report / "retarget_summary.json").write_text(json.dumps(summary, indent=1))
-    (report / "retarget_summary.md").write_text(md)
-    with (report / "retarget_clips.jsonl").open("w") as f:
+    (report / "retarget_summary.json").write_text(
+        json.dumps(summary, indent=1), encoding="utf-8"
+    )
+    (report / "retarget_summary.md").write_text(md, encoding="utf-8")
+    with (report / "retarget_clips.jsonl").open("w", encoding="utf-8") as f:
         for m in sorted(metas, key=lambda m: m["source"]):
             f.write(json.dumps(m) + "\n")
     return md
@@ -1516,9 +1546,28 @@ def stamp_tree(
 def _mem_available_gb() -> float:
     meminfo = Path("/proc/meminfo")
     if meminfo.is_file():
-        for line in meminfo.read_text().splitlines():
+        for line in meminfo.read_text(encoding="utf-8").splitlines():
             if line.startswith("MemAvailable:"):
                 return int(line.split()[1]) / 2**20
+    if sys.platform == "win32":
+        import ctypes  # noqa: PLC0415
+
+        class _MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        stat = _MemoryStatusEx(dwLength=ctypes.sizeof(_MemoryStatusEx))
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return float(stat.ullAvailPhys) / 2**30
     return float("inf")
 
 
@@ -1558,7 +1607,7 @@ def collect_clip_files(
     if src.is_file() and src.suffix == ".txt":
         files = [
             Path(line.split("#", 1)[0].strip())
-            for line in src.read_text().splitlines()
+            for line in src.read_text(encoding="utf-8").splitlines()
             if line.split("#", 1)[0].strip()
         ]
         base = Path(os.path.commonpath([str(f.parent) for f in files]))

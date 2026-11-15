@@ -53,6 +53,12 @@ STRAIGHT_WALK = re.compile(
 _STATE: dict[str, Any] = {}
 
 
+def _mem_available_gb() -> float:
+    from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
+
+    return rt._mem_available_gb()
+
+
 def choose_workers(requested: int) -> int:
     """Workers within the cap, the idle cores (load) and the RAM headroom."""
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
@@ -229,12 +235,15 @@ def main(argv: list[str] | None = None) -> int:
         else rt.default_cache_root(args.model, version)
     )
     curation = (
-        json.loads(Path(args.quality_flags).read_text()) if args.quality_flags else {}
+        json.loads(Path(args.quality_flags).read_text(encoding="utf-8"))
+        if args.quality_flags
+        else {}
     )
     jobs = []
     for f in files:
-        label = f"AMASS/{dataset}/{f.relative_to(base).as_posix()}"
-        dst = str(out_root / dataset / f.relative_to(base))
+        rel = f.relative_to(base)
+        label = f"AMASS/{dataset}/{rel.as_posix()}"
+        dst = str(out_root / dataset / rel)
         jobs.append((str(f), dst, label, curation.get(label, {})))
     workers = choose_workers(args.workers)
     t0 = time.time()

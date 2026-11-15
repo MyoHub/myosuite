@@ -614,8 +614,8 @@ def _chasetag_solved(env: ManagerBasedRlEnv, win_distance: float) -> torch.Tenso
 
 
 def _chasetag_lose(env: ManagerBasedRlEnv) -> torch.Tensor:
-    """``lose``: 1 on a fall or out of bounds (the CHASE time limit lies beyond
-    the horizon: CPU ``data.time`` after the last step is still below it). (N,)."""
+    """``lose``: 1 on a fall or out of bounds (the CHASE time-limit loss lies one
+    control step past the horizon, where the episode is truncated). (N,)."""
     return (_chasetag_fallen(env) | _chasetag_out_of_bounds(env)).float()
 
 
