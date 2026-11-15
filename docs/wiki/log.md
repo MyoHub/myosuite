@@ -4,6 +4,10 @@ Append-only record of PRs to `dev` that introduced a new feature or a
 critical/breaking change, and why. Routine fixes, refactors, and doc edits
 don't get an entry here.
 
+## [2026-11-15] feature | canonical differential IK (`solve_ik`) and marker retargeting (`retarget`)
+
+- Added `myosuite.biomechanics.inverse_kinematics.solve_ik` (re-exported at `myosuite.physics.inverse_kinematics`) on `mink` and `myosuite.core.retargeting.retarget` with `.trc`/`.c3d` marker readers (`myosuite.integrations.capture.markers`). See [library-usage.md](library-usage.md).
+
 ## [2026-11-12] feature | data-only performance cards
 
 - Added typed run records, explicit measurement/quality contracts and a JSON CLI with independent-seed bootstrap intervals and observed crossing/censoring summaries. See [performance-cards.md](performance-cards.md).
