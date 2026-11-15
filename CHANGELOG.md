@@ -31,6 +31,79 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`info["obs_dict"]` keeps the values of its own step.** Die Reorient, Bimanual and TableTennis (21 ids with the
+  `myoSarc` / `myoFati` variants) put views of `MjData` into their observation dict (object, fingertip, ball and
+  paddle positions, `sensordata` slices). The arrays in a step's `info` changed at the next step, so a logged
+  rollout (`examine_policy`, code that keeps `info`) showed the final state at every step for these keys.
+  `MyoGymnasiumEnv._finalize_step` now stores copies of such views, for every env. Observations and rewards are
+  unchanged.
+* `Trace.close()` and `Trace.save()` keep the recorded dtypes. They cast signed integers to int8 and floats to
+  float16 by default, so a step counter above 127 wrapped, values above 65504 became `inf` and actions kept three
+  significant digits (`examine_logs --save_paths`, `Trace.save(path)`). Pass `i_res` / `f_res` to down-cast.
+* `myoChallengeTableTennis*` keep the legacy 1280x1080 offscreen buffer on the CPU backend. `MjSpec.attach` dropped
+  the body spec's `visual` settings, so rendering above 640x480 raised `Image width 1280 > framebuffer width 640`.
+  Physics is unchanged; the recipe's docstring now says which bodies the legacy compiler bounds reach (six scaffold
+  bodies, not the hand bones or the ball, whose 7.2e-7 kg m^2 hollow-sphere inertia differs from the legacy model's
+  1e-4 floor).
+* **The walk tasks observe and reward the velocity of the centre of mass.** `myoLegWalk-v0`, the rough, hilly and stairs
+  walks and their `myoSarc`/`myoFati` variants computed `com_vel` as the mass-weighted mean of the linear part of
+  `data.cvel` (inherited from 2.x). MuJoCo takes that part at the subtree centre of mass of the kinematic root, not at
+  each body's own centre of mass, so the rotation of the segments was left out. On random-action rollouts (seed 0) the
+  value was 0.20 to 0.27 m/s off the true velocity (`mj_subtreeVel`) on average and up to 1.06 m/s along the walking
+  direction, and at the reset keyframe it read 1.30 m/s where the body moves at 1.76 m/s. The CPU env, the mjlab twin
+  and `MjxLegWalk-v0` now use one shared term, `terms.base_obs.com_linear_velocity`. This changes the `com_vel`
+  observation (2 of 403 values), `vel_reward` (by up to 0.68 of its range of 2; weight 5 in the dense reward) and
+  `solved` of these ids. Dynamics, terminations and the other observations are unchanged. The parity baselines of
+  `myoLegWalk-v0` and `myoLegRoughTerrainWalk-v0` are regenerated. Checkpoints trained before the fix still load but
+  read a different `com_vel`; see `docs/baseline_checkpoints.md`.
+* **A diverged step is no longer scored from MuJoCo's reset state.** When `mj_step` meets a bad `qpos` / `qvel` /
+  `qacc` it resets the data to `qpos0`, and the reward dict of that step was computed from the reset state. In the
+  ChaseTag envs the agent and the opponent are then both at the origin, so the step paid the tag (reward +1002.8,
+  `solved = 1`, score 0.9995) and `get_metrics` reported a win after 0.01 s; `myoTorsoPoseFixed-v0` reported `solved`
+  with reward +8.0. From the first diverged step until the next reset, `MyoGymnasiumEnv._finalize_step` now caps the
+  reward and the `sparse` score at 0 (a failure penalty of the env stays, e.g. -10 in `myoFullBodyWaypoint-v0`),
+  clears `solved` and sets `lose` where the env has one (ChaseTag and RunTrack `get_metrics` then report the full
+  `maxTime`). Every step's `info` has a boolean `mj_unstable`. This also covers rollouts of the unwrapped env
+  (`examine_policy`). `MjInstabilityTerminationWrapper` still ends the episode, and applies the same cap and flag to
+  envs whose `step` does not end in `_finalize_step`. `env.unwrapped.mj_instability_termination = False` switches
+  both off. Regular steps are unchanged.
+* **`myosuite-musclemimic-fullbody-eval --path` no longer replays the clip in place of a failed policy.** When the
+  checkpoint's policy could not be loaded (for example without `orbax-checkpoint`, which installs on Linux only) or the
+  checkpoint had no policy, native playback logged a warning, played the reference motion, printed its tracking error
+  and exited with 0. It now exits with an error that names the cause; `--replay` (or
+  `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY=1`) plays the reference motion on request. The ONNX policy video of
+  `--backend mjlab --onnx --record` is written at the control rate (100 fps for 5 physics steps of 2 ms per frame);
+  it played 5x too fast.
+* **Hugging Face downloads are pinned to tested commits.** The reference clips of `myoFullBodyDirectional-v0` and
+  `myoChallengeChaseTagFBVs-v0`, the MuscleMimic teacher `amathislab/mm-10m-2` (`hf://` checkpoint paths, the steered
+  teacher), the demo motions, the Blender muscle meshes, the tracking dataset of `myoMimic-v0` and the clips of
+  tutorials 5.2 and 5.3 were downloaded from each repo's moving `main` branch, so the tracking targets, rewards and
+  teacher policy of a fixed MyoSuite version could change with an upload. They now come from the commit in
+  `myosuite.core.hf_io.HF_REVISIONS` (one table, TERRA-4B's pin included). `resolve_hf_snapshot` and
+  `download_hf_dataset_file` take a `revision`, `hf://owner/repo@<revision>/...` selects another commit, and
+  `$MYOSUITE_MIMIC_DATASET` accepts `owner/name@<revision>`; repos outside the table keep their default branch. The
+  baselines keep following the release tags, but a revision passed to `download_baseline_file` is no longer replaced
+  by `main` when it is missing (pass `fallback_to_main=True` for that), and the release-tag fallback to `main` now
+  warns, naming the missing tag.
+* `ActuatorGroupSpec.normalize_actions` defaulted to `True` and its docstring promised a sigmoid on the action, but
+  neither the CPU `ModularTaskEnv` nor the mjlab twin applies one: `myoElbowPoseTask*` and `myoLegDirectional*`
+  write actions in [0, 1] to `ctrl` as they are. The field now defaults to `False`, the two specs no longer set it,
+  and `ModularTaskEnv` raises for `True` instead of ignoring it. No env changes behaviour.
+* `ModularTaskEnv` raises `NotImplementedError` for a `TaskConfig.scene` it does not apply (a scene list or a named
+  scene other than `"flat_floor"`). Every entry of a scene list compiled to the same model, and the scene picked at
+  reset started its first episode from un-reset data; an unknown name was accepted and ignored. No registered id
+  sets either; callables that edit the spec work as before.
+* Uncertainty bands now reject failed/nonfinite nominal and sampled solves instead of
+  including them in quantiles. OSQP statuses, iterations and residuals are retained;
+  accepting `solved inaccurate` requires `UncertaintyConfig(allow_inaccurate=True)`.
+* **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
+  registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
+  target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip
+  task. Only the myoedits registration remains. Normal imports already got it, so observations, actions and the
+  published checkpoints are unchanged. A process that reloaded the basic suite (as one registry test did) no longer
+  switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
+  empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
+  with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 * Motion NPZ loading rejects empty clips, inconsistent frame counts and malformed site-position arrays before playback.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672

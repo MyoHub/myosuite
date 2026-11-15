@@ -246,8 +246,6 @@ jobs:
         run: |
           sudo apt-get update -y -qq
           sudo apt-get install -y xvfb x11-xserver-utils
-          sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
-
 
       - shell: bash
         env:
@@ -265,4 +263,8 @@ jobs:
             sleep 20
           done
           python -c "import myosuite; assert myosuite.__version__ == '$RELEASE_VERSION', myosuite.__version__"
-          python -m pytest -o addopts= -p no:cacheprovider --pyargs myosuite.tests.test_myo
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a python -m pytest -o addopts= -p no:cacheprovider --pyargs myosuite.tests.test_myo
+          else
+            python -m pytest -o addopts= -p no:cacheprovider --pyargs myosuite.tests.test_myo
+          fi
