@@ -111,6 +111,9 @@ visualiser of `MuSkeMo <https://github.com/PashavanBijlert/MuSkeMo>`_:
     cross-section needs it, as in pennate leg muscles. It covers 40-85% of the
     path, towards the origin, so finger muscles end in the forearm with long
     tendons. The peak radius is at most 16% of the belly length.
+  - When pulleys split a path into branches, as in the extensor of the finger
+    envs, the belly lies on the first branch, from the origin, and the other
+    branches are tendon.
   - MyoSuite's forces do not scale with anatomical size, so the large hip,
     thigh, calf and shoulder muscles take measured volumes instead
     (``muscle_tubes.REFERENCE_VOLUMES``; Handsfield et al. 2014 for the leg,

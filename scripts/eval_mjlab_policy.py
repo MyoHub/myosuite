@@ -927,6 +927,7 @@ def evaluate_cpu(
         action_map_applied=trained is not None,
     )
     _check_stochastic(cfg, policy)
+    policy.seed(cfg.seed)
     grid = (
         GridRenderer(
             envs[0].unwrapped.model,
