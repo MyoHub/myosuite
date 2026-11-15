@@ -35,6 +35,21 @@ Changes since **v3.1.0** (2026-11-11).
   neither the CPU `ModularTaskEnv` nor the mjlab twin applies one: `myoElbowPoseTask*` and `myoLegDirectional*`
   write actions in [0, 1] to `ctrl` as they are. The field now defaults to `False`, the two specs no longer set it,
   and `ModularTaskEnv` raises for `True` instead of ignoring it. No env changes behaviour.
+* `ModularTaskEnv` raises `NotImplementedError` for a `TaskConfig.scene` it does not apply (a scene list or a named
+  scene other than `"flat_floor"`). Every entry of a scene list compiled to the same model, and the scene picked at
+  reset started its first episode from un-reset data; an unknown name was accepted and ignored. No registered id
+  sets either; callables that edit the spec work as before.
+* Uncertainty bands now reject failed/nonfinite nominal and sampled solves instead of
+  including them in quantiles. OSQP statuses, iterations and residuals are retained;
+  accepting `solved inaccurate` requires `UncertaintyConfig(allow_inaccurate=True)`.
+* **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
+  registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
+  target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip
+  task. Only the myoedits registration remains. Normal imports already got it, so observations, actions and the
+  published checkpoints are unchanged. A process that reloaded the basic suite (as one registry test did) no longer
+  switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
+  empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
+  with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
