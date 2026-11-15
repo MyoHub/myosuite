@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
+import sys
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -26,10 +27,14 @@ from myosuite.core.multi_agent_config import MultiAgentTaskConfig
 from myosuite.envs.wrappers import normalize_features
 
 if TYPE_CHECKING:
+    from types import FrameType
+
     from myosuite.core.specs import EnvSpec
 
 # Internal store: env_id -> registration metadata
 _ENV_REGISTRY: dict[str, dict[str, Any]] = {}
+# env_id -> module that registered it; only that module may change its spec
+_REGISTERED_BY: dict[str, str] = {}
 # MJX twins of register_task(..., backends={"mjx"}): env_id -> (task_config, overrides)
 _MJX_TASKS: dict[str, tuple[TaskConfig, dict[str, Any]]] = {}
 _MJ_INSTABILITY_WRAPPER_ENTRY_POINT = (
@@ -84,6 +89,14 @@ def _deep_equal(a: Any, b: Any) -> bool:
     return bool(a == b)
 
 
+def _registering_module() -> str:
+    """Name of the module that called into this registry (first frame outside it)."""
+    frame: FrameType | None = sys._getframe(1)
+    while frame is not None and frame.f_globals.get("__name__") == __name__:
+        frame = frame.f_back
+    return frame.f_globals.get("__name__", "") if frame is not None else ""
+
+
 def register_env(
     env_id: str,
     entry_point: str,
@@ -99,7 +112,10 @@ def register_env(
 
     Registration is deterministic across import order. If *env_id* already
     exists with identical spec, this is a no-op. If the existing spec differs
-    (entry point / max steps / kwargs), the stale spec is replaced in-place.
+    (entry point / max steps / kwargs / wrappers), the module that first
+    registered *env_id* may replace it in place (e.g. on ``importlib.reload``);
+    any other module gets a ``ValueError``, since the winner would otherwise
+    depend on import order.
 
     Args:
         env_id: Gymnasium env id (e.g. "myoElbowPose1D6MRandom-v0").
@@ -119,6 +135,10 @@ def register_env(
             as its ``model`` kwarg); empty for a task with one fixed model.
         **kwargs: Additional keyword arguments forwarded to gym.register().
 
+    Raises:
+        ValueError: If *env_id* is already registered by another module with a
+            different spec.
+
     Example:
         >>> register_env(
         ...     "myoElbowPose1D6MRandom-v0",
@@ -131,6 +151,23 @@ def register_env(
         kwargs.get("additional_wrappers", ()),
         wrap_mj_instability_termination=wrap_mj_instability_termination,
     )
+    gym_max_episode_steps = max_episode_steps if time_limit else None
+    owner = _registering_module()
+    existing = _gym_registry.get(env_id)
+    same_spec = existing is not None and (
+        existing.entry_point == entry_point
+        and existing.max_episode_steps == gym_max_episode_steps
+        and _deep_equal(dict(existing.kwargs or {}), dict(kwargs.get("kwargs") or {}))
+        and tuple(existing.additional_wrappers or ())
+        == tuple(kwargs["additional_wrappers"] or ())
+    )
+    if existing is not None and not same_spec:
+        first_owner = _REGISTERED_BY.get(env_id, owner)
+        if first_owner != owner:
+            raise ValueError(
+                f"{env_id!r} is already registered by {first_owner} with a different "
+                f"spec; {owner} must register it under its own env id."
+            )
     _ENV_REGISTRY[env_id] = {
         "entry_point": entry_point,
         "max_episode_steps": max_episode_steps,
@@ -139,20 +176,14 @@ def register_env(
         "models": tuple(models),
         "additional_wrappers": kwargs["additional_wrappers"],
     }
-    gym_max_episode_steps = max_episode_steps if time_limit else None
-    if env_id in _gym_registry:
-        existing = _gym_registry[env_id]
-        new_kwargs = kwargs.get("kwargs", {})
-        same_spec = (
-            existing.entry_point == entry_point
-            and existing.max_episode_steps == gym_max_episode_steps
-            and _deep_equal(dict(existing.kwargs or {}), dict(new_kwargs or {}))
-            and tuple(existing.additional_wrappers or ())
-            == tuple(kwargs["additional_wrappers"] or ())
-        )
-        if same_spec:
-            return
-        # Replace stale registration deterministically (avoids import-order drift).
+    if existing is None:
+        _REGISTERED_BY[env_id] = owner
+    else:
+        _REGISTERED_BY.setdefault(env_id, owner)
+    if same_spec:
+        return
+    if existing is not None:
+        # The owning module re-registers with a new spec (e.g. on reload): replace it.
         del _gym_registry[env_id]
     gym.register(
         id=env_id,
