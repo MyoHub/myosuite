@@ -81,6 +81,7 @@ class WaypointCommand(CommandTerm):
         self.site = self._accessor.site_id(cfg.task.site_name)
         self.has_free_root = not env.scene[cfg.entity_name].is_fixed_base
         n, w, dev = self.num_envs, cfg.task.num_waypoints, self.device
+        self._site_ids = torch.tensor([self.site], dtype=torch.long, device=dev)
         self._start = torch.tensor(cfg.start, dtype=torch.float32, device=dev)
         self._start_yaw = torch.tensor(float(cfg.start_yaw), device=dev)
         fixed = cfg.task.waypoints
@@ -105,9 +106,11 @@ class WaypointCommand(CommandTerm):
 
     def site_pos(self) -> torch.Tensor:
         """Tracked site position ``(N, 3)`` in the CPU world frame."""
-        return self._accessor.site_xpos([self.site])[:, 0]
+        return self._accessor.site_xpos(self._site_ids)[:, 0]
 
     def _resample_command(self, env_ids: torch.Tensor) -> None:
+        for value in self.state.values():
+            value[env_ids] = 0
         k = len(env_ids)
         if self._fixed is not None:
             route = self._fixed.expand(k, -1, -1)
@@ -126,13 +129,13 @@ class WaypointCommand(CommandTerm):
         self.prev_distance[env_ids] = distance_to_next(
             torch, self._start.expand(k, 2), route, self.next_index[env_ids]
         )
-        for value in self.state.values():
-            value[env_ids] = 0
 
     def advance(self) -> torch.Tensor:
         """One control step of every route (after ``sync_forward``); returns ``solved``."""
         pos = self.site_pos()
-        failed = ~torch.isfinite(self._accessor.joint_pos()).all(-1)
+        failed = ~torch.isfinite(self._accessor.joint_pos()).all(-1) | ~torch.isfinite(
+            self._accessor.joint_vel()
+        ).all(-1)
         if self.task.min_site_height is not None:
             failed = failed | (pos[:, 2] < self.task.min_site_height)
         result = waypoint_progress(

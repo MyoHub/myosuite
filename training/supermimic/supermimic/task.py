@@ -19,7 +19,7 @@ from typing import Any
 
 import torch
 
-from myosuite.envs.myo.tasks.mimic.tracking.models import ModelInfo, model_cfg
+from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
 
 from .activation import MuscleActivation
 from .heads import MUSCLE_OBSERVATIONS, StepCtx, TrackingHeads
@@ -41,8 +41,8 @@ class TaskView:
         self.cmd = cmd = env.command_manager.get_term(command_name)
         dev = cmd.device
         self.robot = cmd.robot
-        m = self.robot.cfg.spec_fn().compile()
-        self.info = ModelInfo(m)
+        self.info = cmd.info
+        m = self.info.m
         self.kin = SkeletonKinematics(model_cfg(cmd.cfg.model).tracked_bodies, dev, m)
         self.muscle = MuscleActivation(m, env.cfg.decimation, env.physics_dt, dev)
         self.geo = MuscleGeometry(m, dev)

@@ -375,10 +375,13 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
     def _load_gait_clip(self) -> None:
         from huggingface_hub import hf_hub_download
 
+        from myosuite.core.hf_io import pinned_revision
+
         path = hf_hub_download(
             repo_id=self._gait_repo,
             filename=self._gait_file,
             repo_type="dataset",
+            revision=pinned_revision(self._gait_repo),
         )
         npz = np.load(path)
         qpos = np.asarray(npz["qpos"], dtype=np.float64)
@@ -393,6 +396,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
     def _load_circular_clips(self) -> None:
         """Load CW + CCW circular walking clips and precompute phase-matched frames."""
         from huggingface_hub import hf_hub_download
+        from myosuite.core.hf_io import pinned_revision
         from myosuite.core.trajectory_io import (
             expand_motion_clip_to_model,
             load_motion_clip,
@@ -409,7 +413,10 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         clips = []
         for fname in _CIRC_FILES:
             p = hf_hub_download(
-                repo_id=self._gait_repo, filename=fname, repo_type="dataset"
+                repo_id=self._gait_repo,
+                filename=fname,
+                repo_type="dataset",
+                revision=pinned_revision(self._gait_repo),
             )
             clip = load_motion_clip(
                 _Path(p), expected_nq=self.model.nq, expected_nv=self.model.nv

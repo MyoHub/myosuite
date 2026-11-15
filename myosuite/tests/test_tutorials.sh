@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Install packages required by tutorials.
-uv pip install scikit-learn jupyter ipykernel tabulate matplotlib pandas torch h5py tqdm osqp stable-baselines3
+uv pip install "mujoco<4" scikit-learn jupyter ipykernel tabulate matplotlib pandas torch h5py tqdm osqp stable-baselines3
 
 uv run python -m ipykernel install --user --name=myosuite_uv
 
@@ -29,7 +29,7 @@ SKIP_IN_CI_REL = frozenset(
         'tutorials/5.1_Fullbody_Load_Policy.ipynb',
         'tutorials/5.2_Fullbody_Train_Policy.ipynb',
         'tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb',
-        'tutorials/5.4_MuscleMimic_Directional_Locomotion.ipynb',
+        'tutorials/5.4_Directional_Locomotion.ipynb',
         'tutorials/5.5_MuscleMimic_SAR.ipynb',
     }
 )
@@ -43,6 +43,7 @@ RUN_IN_CI_REL = frozenset(
         'tutorials/3.3_Inverse_Dynamics.ipynb',
         'tutorials/3.4_Computed_Muscle_Control.ipynb',
         'tutorials/3.5_Playback_Mot_File.ipynb',
+        'tutorials/3.7_Marker_Retargeting.ipynb',
         'tutorials/4.1_Move_Hand_Fingers.ipynb',
         'tutorials/4.3_Modular_Task_Config.ipynb',
     }

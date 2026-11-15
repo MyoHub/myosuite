@@ -27,6 +27,20 @@ def test_k_medoids_recovers_blocks() -> None:
     assert len(set(labels)) == 3
 
 
+@pytest.mark.parametrize("seed", [0, 7])
+@pytest.mark.parametrize("profiles,k", [((0, 0, 0), 3), ((0, 0, 1, 1, 2, 2), 4)])
+def test_k_medoids_handles_repeated_profiles(
+    profiles: tuple[int, ...], k: int, seed: int
+) -> None:
+    """More groups than distinct profiles still have distinct, nonempty medoids."""
+    distance = np.abs(np.subtract.outer(profiles, profiles)).astype(float)
+    medoids, labels, inertia = k_medoids(distance, k, seed=seed)
+    assert len(set(medoids)) == k
+    assert set(labels) == set(range(k))
+    np.testing.assert_array_equal(labels[medoids], np.arange(k))
+    assert inertia == 0.0
+
+
 def test_similarity_measures_length_changes_not_slow_drift() -> None:
     """Muscles that only share a slow drift within segments must not look alike."""
     rng = np.random.default_rng(0)
