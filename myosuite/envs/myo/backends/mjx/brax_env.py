@@ -174,7 +174,18 @@ class AutoResetWrapper(Wrapper):
             return jp.where(done, x, y)
 
         data = jax.tree.map(where_done, reset_data, state.data)
-        obs = jax.tree.map(where_done, reset_obs, state.obs)
+        inner = getattr(getattr(self.env, "env", None), "env", None)
+        if inner is not None and hasattr(inner, "compute_obs"):
+            task_info = {
+                k: v
+                for k, v in state.info.items()
+                if not k.startswith(f"{_KEY}_")
+                and k not in ("steps", "truncation", "episode_done", "episode_metrics")
+            }
+            fresh_reset_obs = jax.vmap(inner.compute_obs)(reset_data, task_info)
+        else:
+            fresh_reset_obs = reset_obs
+        obs = jax.tree.map(where_done, fresh_reset_obs, state.obs)
         state.info[f"{_KEY}_done_count"] += state.done.astype(int)
         state.info[f"{_KEY}_rng"] = reset_rng
         return state.replace(data=data, obs=obs)
