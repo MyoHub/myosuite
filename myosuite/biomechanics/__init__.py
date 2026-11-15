@@ -9,6 +9,7 @@
 - :mod:`.static_optimization`: muscle activations that reproduce a motion's inverse dynamics.
 - :mod:`.opensim_motion`: OpenSim ``.mot`` / ``.sto`` motions on MyoSuite models.
 - :mod:`.retarget`: landmark IK of motion onto a body model, on its couplings.
+- :mod:`.observability`: local landmark geometry, rank and motion ambiguity.
 - :mod:`.smplh`: SMPL+H forward kinematics (AMASS motions) in NumPy.
 - :mod:`.retarget_smplh`: AMASS SMPL+H motions straight onto a body model (a refit source).
 - :mod:`.effort`: muscle effort metrics of recorded rollouts (NumPy or torch arrays).
