@@ -1,0 +1,100 @@
+myosuite-eden-rl (training/eden_rl/)
+Copyright (c) MyoSuite Authors. All rights reserved.
+Licensed under the Apache License, Version 2.0.
+
+This package adapts reinforcement learning architectures, optimizers, latent
+estimators, and adversarial motion priors from external open-source research
+and repositories for musculoskeletal control in MyoSuite, in accordance with
+docs/wiki/training-guidelines.md ("Attribution and licensing"):
+
+-------------------------------------------------------------------------------
+1. Eden (https://github.com/embodied-ai-nexus/Eden)
+   Copyright 2025-2026 Embodied AI Nexus (Eden Contributors).
+   Licensed under the Apache License, Version 2.0
+   (http://www.apache.org/licenses/LICENSE-2.0).
+
+   Adapted upstream modules:
+   - packages/eden/src/eden/learning/wrappers/rsl_rl/simba/{networks,model}.py
+   - packages/eden/src/eden/learning/wrappers/rsl_rl/muon_ppo/ppo.py
+   - packages/eden/src/eden/learning/wrappers/rsl_rl/him/{estimator,ppo}.py
+   - packages/eden/src/eden/learning/wrappers/rsl_rl/amp_ppo/{amp,ppo}.py
+
+-------------------------------------------------------------------------------
+2. SimBaV2 (https://github.com/DAVIAN-Robotics/SimbaV2) & Weave (https://github.com/xiaohu-art/Weave)
+   Official SimBaV2 repository licensed under the Apache License, Version 2.0
+   (http://www.apache.org/licenses/LICENSE-2.0).
+
+   Paper citation:
+   Lee, H., Hwang, D., Kim, D., Kim, H., Tai, J. J., Subramanian, K.,
+   Wurman, P. R., Choo, J., Stone, P., & Seno, T. (2025).
+   "Hyperspherical Normalization for Scalable Deep Reinforcement Learning."
+   arXiv:2502.15280 (https://arxiv.org/abs/2502.15280).
+
+   Adapted components in eden_rl/simba.py:
+   - Hyperspherical residual blocks (l2normalize, Scaler, HyperDense,
+     HyperEmbedder, HyperMLP, HyperLERPBlock, SimBa) and per-group observation
+     GroupEncoder / SimBaModel.
+
+-------------------------------------------------------------------------------
+3. Muon Optimizer (https://github.com/KellerJordan/Muon; PyTorch torch.optim.Muon)
+   Copyright (c) 2024 Keller Jordan and contributors (MIT License); PyTorch
+   implementation licensed under BSD-3-Clause.
+
+   Paper/technical report citation:
+   Jordan, K., Jin, Y., Boza, V., Jiacheng, Y., Cecista, F., Newhouse, L., &
+   Bernstein, J. (2024). "Muon: An optimizer for hidden layers in neural
+   networks." https://github.com/KellerJordan/Muon
+
+   Adapted components in eden_rl/muon_ppo.py:
+   - MuonAdamW parameter routing (2-D matrices to torch.optim.Muon with
+     adjust_lr_fn="match_rms_adamw", 1-D/scalar parameters to AdamW) and MuonPPO.
+
+-------------------------------------------------------------------------------
+4. HIMLoco (https://github.com/InternRobotics/HIMLoco) & OpenHomie (https://github.com/OpenRobotLab/HomieRL)
+   Copyright (c) 2024 InternRobotics / OpenRobotLab contributors.
+   Licensed under the MIT License:
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
+
+   Paper citation:
+   Long, J., Wang, Z., Li, Q., Cao, L., Gao, J., & Pang, J. (2024).
+   "Hybrid Internal Model: Learning Agile Legged Locomotion with Simulated
+   Robot Response." International Conference on Learning Representations
+   (ICLR 2024), arXiv:2312.11460 (https://arxiv.org/abs/2312.11460).
+
+   Adapted components in eden_rl/him.py:
+   - Sinkhorn-Knopp prototype assignment (sinkhorn), SwAV + target regression
+     proprioceptive history encoder (HIMEstimator), and bilateral mirror losses.
+
+-------------------------------------------------------------------------------
+5. Adversarial Motion Priors (AMP) & HUSKY (https://github.com/TeleHuman/humanoid_skateboarding)
+   Paper citation:
+   Peng, X. B., Ma, Z., Abbeel, P., Levine, S., & Kanazawa, A. (2021).
+   "AMP: Adversarial Motion Priors for Stylized Physics-Based Character Control."
+   ACM Transactions on Graphics (SIGGRAPH 2021), 40(4), Article 144,
+   arXiv:2104.02180 (https://arxiv.org/abs/2104.02180).
+
+   Adapted components in eden_rl/amp.py:
+   - Continuous-time motion window sampler (AmpMotionSampler), policy ring
+     buffer (AmpReplayBuffer), running FrameNormalizer, spectral-norm LSGAN +
+     WGAN-GP discriminator (AmpDiscriminator), and AmpPPO.
+
+-------------------------------------------------------------------------------
+MyoSuite-Specific Implementations (Copyright (c) MyoSuite Authors, Apache-2.0):
+- eden_rl/genesis_bridge.py: GenesisMuscleBridge coupling myo_sim/myosuite Hill
+  muscle dynamics and stripped joint-torque MjSpecs with Genesis RigidEntity.
+- eden_rl/simba.py: rebuild_simba_trunk, register_simba_rslrl_loader,
+  load_simba_policy, and export_simba_to_onnx integrating SimBa checkpoints with
+  myosuite.utils.rslrl_policy and myosuite.utils.export_onnx.
+- eden_rl/him.py: Generalized target_dim physiological state regression (e.g.
+  3CC-r muscle fatigue and sarcopenia force factors) and ONNX-exportable HIMActor.
+- eden_rl/amp.py: Direct ingestion of MyoSuite myoMimic-v0 refitted .npz clips
+  (qpos slices + fps/dt).
+- eden_rl/train.py: CLI and runner config overlay for MyoSuite make_env(..., backend="mjlab").
