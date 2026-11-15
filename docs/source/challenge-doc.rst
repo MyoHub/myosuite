@@ -396,7 +396,7 @@ Testing environment
 To increase the accessibility of the task, two set of testing environment is provided for participants to familiarise themselves with the tasks.
 Please note that the variation parameters are subject to change in the actual evaluation environment.
 
-The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = make_env(“myoChallengeOslRunRandom-v0”, normalize_act=False)`
+The two environments are :code:`myoChallengeOslRunRandom-v0` and :code:`myoChallengeOslRunFixed-v0` and can be accessed via :code:`env = make_env("myoChallengeOslRunRandom-v0", normalize_act=False)`
 
 The :code:`myoChallengeOslRunFixed-v0` environment is a simplified version of the :code:`myoChallengeOslRunRandom-v0` environment for participants to begin with, with a flat ground, but 100m track
 
