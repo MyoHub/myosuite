@@ -230,68 +230,77 @@ def render(rollout_path, render_format: str = "mp4", cam_names: list = ["left"])
     file_name = str(output_dir / (output_name + "_" + "-".join(cam_names)))
 
     # resolve data format
+    h5_handle = None
     if output_type == ".h5":
-        paths = h5py.File(rollout_path, "r")
+        h5_handle = h5py.File(rollout_path, "r")
+        paths = h5_handle
     elif output_type == ".pickle":
-        paths = pickle.load(open(rollout_path, "rb"))
+        with Path(rollout_path).open("rb") as f:
+            paths = pickle.load(f)
     else:
         raise TypeError("Unknown path format. Check file")
 
-    # Run through all trajs in the paths
-    for i_path, path in enumerate(paths):
-        if output_type == ".h5":
-            data = paths[path]["data"]
-            path_horizon = data["time"].shape[0]
-        else:
-            data = path["env_infos"]["obs_dict"]
-            path_horizon = path["env_infos"]["time"].shape[0]
+    try:
+        # Run through all trajs in the paths
+        for i_path, path in enumerate(paths):
+            if output_type == ".h5":
+                data = paths[path]["data"]
+                path_horizon = data["time"].shape[0]
+            else:
+                data = path["env_infos"]["obs_dict"]
+                path_horizon = path["env_infos"]["time"].shape[0]
 
-        # find full key name
-        data_keys = data.keys()
-        cam_keys = []
-        for cam_name in cam_names:
-            cam_key = None
-            for key in data_keys:
-                if cam_name in key and "rgb" in key:
-                    cam_key = key
-                    break
-            assert (
-                cam_key is not None
-            ), "Cam: {} not found in data. Available keys: [{}]".format(
-                cam_name, data_keys
-            )
-            cam_keys.append(key)
+            # find full key name
+            data_keys = data.keys()
+            cam_keys = []
+            for cam_name in cam_names:
+                cam_key = None
+                for key in data_keys:
+                    if cam_name in key and "rgb" in key:
+                        cam_key = key
+                        break
+                assert (
+                    cam_key is not None
+                ), "Cam: {} not found in data. Available keys: [{}]".format(
+                    cam_name, data_keys
+                )
+                cam_keys.append(cam_key)
 
-        # pre allocate buffer
-        if i_path == 0:
+            # pre allocate buffer per path
             height, width, _ = data[cam_keys[0]][0].shape
             frame_tile = np.zeros((height, width * len(cam_keys), 3), dtype=np.uint8)
+            frames = None
             if render_format == "mp4":
                 frames = np.zeros(
                     (path_horizon, height, width * len(cam_keys), 3), dtype=np.uint8
                 )
 
-        # Render
-        print(f"Recovering {render_format} frames:", end="")
-        for t in range(path_horizon):
-            # render single frame
-            for i_cam, cam_key in enumerate(cam_keys):
-                frame_tile[:, i_cam * width : (i_cam + 1) * width, :] = data[cam_key][t]
-            # process single frame
-            if render_format == "mp4":
-                frames[t, :, :, :] = frame_tile
-            elif render_format == "rgb":
-                image = Image.fromarray(frame_tile)
-                image.save(file_name + f"_{i_path}-{t}.png")
-            else:
-                raise TypeError("Unknown format")
-            print(t, end=",", flush=True)
+            # Render
+            print(f"Recovering {render_format} frames:", end="")
+            for t in range(path_horizon):
+                # render single frame
+                for i_cam, cam_key in enumerate(cam_keys):
+                    frame_tile[:, i_cam * width : (i_cam + 1) * width, :] = data[
+                        cam_key
+                    ][t]
+                # process single frame
+                if render_format == "mp4":
+                    frames[t, :, :, :] = frame_tile
+                elif render_format == "rgb":
+                    image = Image.fromarray(frame_tile)
+                    image.save(file_name + f"_{i_path}-{t}.png")
+                else:
+                    raise TypeError("Unknown format")
+                print(t, end=",", flush=True)
 
-        # Save video
-        if render_format == "mp4":
-            file_name_mp4 = file_name + f"_{i_path}.mp4"
-            write_video(file_name_mp4, np.asarray(frames))
-            print("\nSaving: " + file_name_mp4)
+            # Save video
+            if render_format == "mp4":
+                file_name_mp4 = file_name + f"_{i_path}.mp4"
+                write_video(file_name_mp4, np.asarray(frames))
+                print("\nSaving: " + file_name_mp4)
+    finally:
+        if h5_handle is not None:
+            h5_handle.close()
 
 
 # parse path from robohive format into robopen dataset format
@@ -341,7 +350,8 @@ def path2dataset(path: dict, config_path=None) -> dict:
 
     # Config =====
     if config_path:
-        config = json.load(open(config_path, "rb"))
+        with Path(config_path).open("rb") as f:
+            config = json.load(f)
         dataset["config"] = config
 
     if "user_cmt" in path.keys():
@@ -399,61 +409,63 @@ def pickle2h5(
         if n_rollouts >= max_paths:
             break
 
-        paths = pickle.load(open(rollout_path, "rb"))
+        with Path(rollout_path).open("rb") as f:
+            paths = pickle.load(f)
         output_name = Path(rollout_path).stem
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
         output_path = str(Path(output_dir) / (output_name + ".h5"))
 
-        paths_h5 = h5py.File(output_path, "w")
-
-        # Robohive path format
-        if h5_format == "robohive":
-            for i_path, path in enumerate(paths):
-                print("parsing rollout", i_path)
-                trial = paths_h5.create_group("Trial" + str(i_path))
-                # remove duplicate infos
-                if compress_path:
-                    if "observations" in path.keys():
-                        del path["observations"]
-                    if "state" in path["env_infos"].keys():
-                        del path["env_infos"]["state"]
-                # flatten dict and fix resolutions
-                path = flatten_dict(data=path)
-                path = dict_numpify(path, u_res=None, i_res=np.int8, f_res=np.float16)
-                # add trail
-                for k, v in path.items():
-                    trial.create_dataset(
-                        k, data=v, compression="gzip", compression_opts=4
+        with h5py.File(output_path, "w") as paths_h5:
+            # Robohive path format
+            if h5_format == "robohive":
+                for i_path, path in enumerate(paths):
+                    print("parsing rollout", i_path)
+                    trial = paths_h5.create_group("Trial" + str(i_path))
+                    # remove duplicate infos
+                    if compress_path:
+                        if "observations" in path.keys():
+                            del path["observations"]
+                        if "state" in path["env_infos"].keys():
+                            del path["env_infos"]["state"]
+                    # flatten dict and fix resolutions
+                    path = flatten_dict(data=path)
+                    path = dict_numpify(
+                        path, u_res=None, i_res=np.int8, f_res=np.float16
                     )
+                    # add trail
+                    for k, v in path.items():
+                        trial.create_dataset(
+                            k, data=v, compression="gzip", compression_opts=4
+                        )
 
-                n_rollouts += 1
-                if n_rollouts >= max_paths:
-                    break
+                    n_rollouts += 1
+                    if n_rollouts >= max_paths:
+                        break
 
-        # RoboPen dataset format
-        elif h5_format == "roboset":
-            for i_path, path in enumerate(paths):
-                print("parsing rollout", i_path)
-                trial = paths_h5.create_group("Trial" + str(i_path))
-                dataset = path2dataset(
-                    path, config_path
-                )  # convert to robopen dataset format
-                dataset = flatten_dict(data=dataset)
-                dataset = dict_numpify(
-                    dataset, u_res=None, i_res=np.int8, f_res=np.float16
-                )  # numpify + data resolutions
-                for k, v in dataset.items():
-                    trial.create_dataset(
-                        k, data=v, compression="gzip", compression_opts=4
-                    )
+            # RoboPen dataset format
+            elif h5_format == "roboset":
+                for i_path, path in enumerate(paths):
+                    print("parsing rollout", i_path)
+                    trial = paths_h5.create_group("Trial" + str(i_path))
+                    dataset = path2dataset(
+                        path, config_path
+                    )  # convert to robopen dataset format
+                    dataset = flatten_dict(data=dataset)
+                    dataset = dict_numpify(
+                        dataset, u_res=None, i_res=np.int8, f_res=np.float16
+                    )  # numpify + data resolutions
+                    for k, v in dataset.items():
+                        trial.create_dataset(
+                            k, data=v, compression="gzip", compression_opts=4
+                        )
 
-                n_rollouts += 1
-                if n_rollouts >= max_paths:
-                    break
+                    n_rollouts += 1
+                    if n_rollouts >= max_paths:
+                        break
 
-        else:
-            raise TypeError("Unsupported h5_format")
+            else:
+                raise TypeError("Unsupported h5_format")
 
-        # close the h5 writer for this path
         print("Saving:  ", output_path)
 
         # Read back and verify a few keys

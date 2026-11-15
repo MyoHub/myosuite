@@ -99,6 +99,30 @@ def sensor_vel3(data: mujoco.MjData, sensor_adr: int) -> np.ndarray:
     return data.sensordata[sensor_adr : sensor_adr + 3].copy()
 
 
+def com_linear_velocity(
+    xp: Any, body_mass: Any, cvel: Any, xipos: Any, root_com: Any
+) -> Any:
+    """Linear velocity of the whole-body centre of mass, in the world frame.
+
+    MuJoCo's ``cvel`` is ``[angular, linear]`` with the linear part taken at the
+    subtree centre of mass of the body's kinematic root, so each body's part is moved
+    to its own centre of mass before the mass-weighted mean. The result equals
+    ``subtree_linvel`` of the world body after ``mj_subtreeVel``.
+
+    Args:
+        xp: Array module (``numpy``, ``torch`` or ``jax.numpy``).
+        body_mass: ``model.body_mass``, shape ``(nbody,)``.
+        cvel: ``data.cvel``, shape ``(..., nbody, 6)``.
+        xipos: ``data.xipos``, shape ``(..., nbody, 3)``.
+        root_com: ``data.subtree_com`` at ``model.body_rootid``, shape ``(..., nbody, 3)``.
+
+    Returns:
+        The velocity, shape ``(..., 3)``.
+    """
+    linear = cvel[..., 3:] + xp.cross(cvel[..., :3], xipos - root_com, axis=-1)
+    return xp.sum(body_mass[..., None] * linear, axis=-2) / xp.sum(body_mass)
+
+
 def normalized_health_pair(
     health: dict[str, float], agent_id: str, health_scale: float
 ) -> np.ndarray:

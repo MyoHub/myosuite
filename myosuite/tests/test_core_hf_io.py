@@ -399,10 +399,31 @@ def test_download_baseline_file_falls_back_when_the_tag_lacks_the_file(
     )
     monkeypatch.setattr("myosuite.core.hf_io.baseline_revisions", lambda: ["v3.0"])
 
-    assert download_baseline_file("onnx/baseline.onnx") == target
+    with pytest.warns(UserWarning, match="not in tag 'v3.0'"):
+        assert download_baseline_file("onnx/baseline.onnx") == target
     assert asked[0] == ("onnx/baseline.onnx", "v3.0")
     assert ("onnx/baseline.onnx", "main") in asked
     assert "not in tag 'v3.0', using the latest" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("missing", ["revision", "file"])
+def test_an_explicit_revision_is_not_replaced_by_main(
+    monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    """A revision the caller names is a pin: without ``fallback_to_main`` it stays."""
+    from huggingface_hub.errors import EntryNotFoundError
+
+    asked = []
+
+    def fake_download(repo_id: str, filename: str, *, revision: str, **kwargs) -> str:
+        asked.append(revision)
+        if missing == "revision":
+            raise _missing_tag_error()
+        raise EntryNotFoundError("file absent at the pinned revision")
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_download)
+    assert download_baseline_file("onnx/x.onnx", revision="abc") is None
+    assert asked == ["abc"]
 
 
 @pytest.mark.parametrize("missing", ["revision", "file"])

@@ -144,6 +144,66 @@ def test_quaternion_sign_flips_do_not_change_the_kinematics(
     np.testing.assert_allclose(b.qacc, a.qacc, atol=1e-7)
 
 
+@pytest.mark.parametrize("address", [3, 8], ids=["free", "ball"])
+@pytest.mark.parametrize("scale", [0.0, 1e-30, 1e-200, 1e200])
+@pytest.mark.parametrize("lowpass_hz", [None, 6.0])
+def test_rejects_invalid_quaternions_before_filtering(
+    model: mujoco.MjModel,
+    address: int,
+    scale: float,
+    lowpass_hz: float | None,
+) -> None:
+    qpos = _analytic(model, np.arange(0.0, 0.5, 0.01))[0]
+    qpos[4, address : address + 4] = [0.0, scale, 0.0, 0.0]
+    before = qpos.copy()
+    with np.errstate(divide="raise", invalid="raise", over="raise"):
+        with pytest.raises(
+            ValueError, match=f"qpos quaternion at frame 4, qpos address {address}"
+        ):
+            clip_kinematics(model, qpos, 0.01, lowpass_hz=lowpass_hz)
+    np.testing.assert_array_equal(qpos, before)
+
+
+@pytest.mark.parametrize("scale", [mujoco.mjMINVAL, 1e-14, 3.0])
+@pytest.mark.parametrize("lowpass_hz", [None, 6.0])
+def test_valid_nonunit_quaternions_keep_native_normalization(
+    model: mujoco.MjModel,
+    scale: float,
+    lowpass_hz: float | None,
+) -> None:
+    qpos = np.tile(model.qpos0, (50, 1))
+    for address in (3, 8):
+        qpos[:, address : address + 4] = [0.0, scale, 0.0, 0.0]
+    before = qpos.copy()
+    kin = clip_kinematics(model, qpos, 0.01, lowpass_hz=lowpass_hz)
+    for address in (3, 8):
+        np.testing.assert_allclose(
+            kin.qpos[:, address : address + 4], np.tile([0.0, 1.0, 0.0, 0.0], (50, 1))
+        )
+    np.testing.assert_allclose(kin.qvel, 0.0, atol=1e-12)
+    np.testing.assert_allclose(kin.qacc, 0.0, atol=1e-12)
+    np.testing.assert_array_equal(qpos, before)
+
+
+@pytest.mark.parametrize("address", [3, 8], ids=["free", "ball"])
+def test_rejects_degenerate_filtered_rotation(
+    model: mujoco.MjModel, address: int
+) -> None:
+    # Four valid, scaled rotations whose component-wise lowpass nearly cancels at
+    # frame 1. Normalizing that numerical residue would invent an orientation.
+    qpos = np.tile(model.qpos0, (4, 1))
+    qpos[:, address : address + 4] = [
+        [0.001, 0.0, 0.0, 0.0],
+        [0.0, 0.001, 0.0, 0.0],
+        [0.020172752532642054, 0.0, 0.0, 0.0],
+        [0.0, 0.00006843184996677025, 0.0, 0.0],
+    ]
+    with pytest.raises(
+        ValueError, match=f"filtered qpos quaternion at frame 1, qpos address {address}"
+    ):
+        clip_kinematics(model, qpos, 0.01, lowpass_hz=6.0)
+
+
 def test_couplings_are_projected_before_differentiation(model: mujoco.MjModel) -> None:
     t = np.arange(0.0, 1.0, 0.005)
     qpos, qvel, _ = _analytic(model, t)
