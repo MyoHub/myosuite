@@ -116,3 +116,12 @@ def test_adapter_and_onnx(tmp_path) -> None:
         want = load_walker(pt)(x).numpy()
     assert got.shape == (32, 354)
     np.testing.assert_allclose(got, want, atol=1e-4)
+
+
+def test_reset_projects_joint_couplings(scene: DirectionalScene) -> None:
+    from myosuite.physics.joint_coupling import projected_joint_couplings
+
+    rng = np.random.default_rng(11)
+    scene.reset(0.5, rng, joint_noise=0.1)
+    expected = projected_joint_couplings(scene._couplings, scene.data.qpos)
+    np.testing.assert_allclose(scene.data.qpos, expected, atol=1e-12)
