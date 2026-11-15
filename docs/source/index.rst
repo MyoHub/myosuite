@@ -88,6 +88,7 @@ Choose your path
    fmpose3d
    backend_parity
    fatigue_validation
+   landmark_observability
 
 .. toctree::
    :maxdepth: 1
