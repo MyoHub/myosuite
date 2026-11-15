@@ -33,7 +33,11 @@ def main(sim_path, env_name):
     if sim_path is not None:
         model = MjModel.from_xml_path(sim_path)
     else:
-        model = make_env(env_name).model
+        env = make_env(env_name)
+        try:
+            model = env.unwrapped.model
+        finally:
+            env.close()
     data = MjData(model)
 
     viewer.launch(model, data)

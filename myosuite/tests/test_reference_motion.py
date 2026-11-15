@@ -188,3 +188,63 @@ def test_numpy_track_search_survives_time_moving_backwards_without_reset() -> No
         )
     with pytest.raises(ValueError, match="before the reference start"):
         ref.find_timeslot_in_reference(float(times[0]) - 1.0)
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+@pytest.mark.parametrize("frames", [1, 2, 3])
+@pytest.mark.parametrize(
+    "fields", [("robot",), ("robot", "robot_vel"), ("object",), ("robot", "object")]
+)
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_optional_channels_work_in_every_reference_mode(
+    backend: str, frames: int, fields: tuple[str, ...], explicit_none: bool
+) -> None:
+    cls = _reference_cls(backend)
+    values = np.arange(frames * 2, dtype=float).reshape(frames, 2) + 1
+    data = {"time": np.arange(frames, dtype=float)}
+    for field in ("robot", "robot_vel", "object"):
+        if field in fields:
+            data[field] = values.copy()
+        elif explicit_none:
+            data[field] = None
+    ref = cls(data)
+    queries = [0.0, 0.5, 2.0] if frames == 3 else [0.0, 0.0]
+    for time in queries:
+        result = ref.get_reference(time)
+        for field in ("robot", "robot_vel", "object"):
+            actual = getattr(result, field)
+            if field not in fields:
+                assert actual is None
+            elif frames == 2:
+                assert np.all(np.asarray(actual) >= values[0])
+                assert np.all(np.asarray(actual) <= values[1])
+            else:
+                expected = (
+                    values[0] if frames == 1 else _interp(data["time"], values, time)
+                )
+                np.testing.assert_allclose(actual, expected, atol=_atol(backend))
+        for field in ("robot", "object"):
+            initial = getattr(result, field + "_init")
+            if field in fields:
+                np.testing.assert_array_equal(initial, values[0])
+            else:
+                assert initial is None
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_random_reference_holds_single_frame_channels(backend: str) -> None:
+    cls = _reference_cls(backend)
+    ref = cls(
+        {
+            "time": np.array([0.0, 1.0]),
+            "robot": np.array([[1.0, 2.0]]),
+            "robot_vel": np.array([[0.3, 0.4]]),
+            "object": np.array([[2.0, 3.0], [4.0, 5.0]]),
+        }
+    )
+    for _ in range(3):
+        result = ref.get_reference(0.0)
+        np.testing.assert_allclose(result.robot, [1.0, 2.0])
+        np.testing.assert_allclose(result.robot_vel, [0.3, 0.4])
+        assert np.all(np.asarray(result.object) >= [2.0, 3.0])
+        assert np.all(np.asarray(result.object) <= [4.0, 5.0])

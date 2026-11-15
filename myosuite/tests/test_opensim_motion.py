@@ -66,6 +66,66 @@ def test_reads_opensim_and_simm_headers(tmp_path: Path) -> None:
         read_opensim_motion(_write(tmp_path / "c.mot", "", ["t", "a", "b"], rows))
 
 
+@pytest.mark.parametrize(
+    "extension, header, degrees",
+    [
+        (".sto", "", False),
+        (".STO", "", False),
+        (".mot", "", True),
+        (".MOT", "", True),
+        (".mot", "Angles are in radians.\n", True),
+        (".sto", "Angles are in degrees.\n", True),
+        (".sto", "Angles are in radians.\n", False),
+        (".sto", "version=1\n", False),
+        (".mot", "version=1\n", False),
+        (".sto", "inDegrees=yes\n", True),
+        (".sto", "inDegrees=y\n", True),
+        (".mot", "inDegrees=no\n", False),
+    ],
+)
+def test_units_follow_opensim_storage_conventions(
+    tmp_path: Path,
+    extension: str,
+    header: str,
+    degrees: bool,
+) -> None:
+    # OpenSim Storage defaults legacy STO to radians, legacy SIMM MOT to degrees;
+    # versioned storage uses its explicit angular metadata (radians if absent).
+    rows = np.array([[0.0, 1.0], [0.01, 1.0]])
+    path = _write(
+        tmp_path / f"motion{extension}",
+        "Coordinates\nnRows=2\nnColumns=2\n" + header,
+        ["time", "flex"],
+        rows,
+    )
+    assert read_opensim_motion(path).in_degrees is degrees
+    assert read_opensim_motion(path, in_degrees=True).in_degrees is True
+    assert read_opensim_motion(path, in_degrees=False).in_degrees is False
+
+
+def test_legacy_storage_radians_preserve_native_joint_motion(tmp_path: Path) -> None:
+    model = mujoco.MjModel.from_xml_string("""
+      <mujoco><worldbody><body><joint name="flex" axis="0 0 1"/>
+      <geom size=".1"/><site name="tip" pos="1 0 0"/></body></worldbody></mujoco>
+    """)
+    angles = np.array([0.2, 0.6, 1.0])
+    path = _write(
+        tmp_path / "legacy.sto",
+        "Coordinates\nnRows=3\nnColumns=2\n",
+        ["time", "flex"],
+        np.column_stack([0.01 * np.arange(3), angles]),
+    )
+    clip = opensim_motion_to_qpos(model, read_opensim_motion(path), root_body=None)
+    np.testing.assert_array_equal(clip.qpos[:, 0], angles)
+    data = mujoco.MjData(model)
+    for qpos, angle in zip(clip.qpos, angles):
+        data.qpos[:] = qpos
+        mujoco.mj_kinematics(model, data)
+        np.testing.assert_allclose(
+            data.site_xpos[0], [np.cos(angle), np.sin(angle), 0.0], atol=1e-14
+        )
+
+
 def test_pelvis_pose_follows_opensims_ground_pelvis_joint(
     myoleg: mujoco.MjModel, tmp_path: Path
 ) -> None:
