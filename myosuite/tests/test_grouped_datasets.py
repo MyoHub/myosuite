@@ -45,6 +45,25 @@ def test_nested_and_abandoned_loops_are_independent() -> None:
     assert len(list(trace)) == 3
 
 
+@pytest.mark.parametrize("suffix", ["h5", "pickle"])
+def test_save_keeps_the_recorded_values(tmp_path, suffix: str) -> None:
+    trace = Trace("lossless")
+    trace.create_group("Trial0")
+    for step in range(0, 400, 50):
+        trace.append_datums(
+            "Trial0", {"step": step, "x_mm": 7e4 + step, "action": 0.1234567 * step}
+        )
+    path = str(tmp_path / f"trace.{suffix}")
+    trace.save(trace_name=path)
+    loaded = Trace.load(path)
+    group = loaded.trace["Trial0"]
+    np.testing.assert_array_equal(np.ravel(group["step"]), np.arange(0, 400, 50))
+    np.testing.assert_array_equal(np.ravel(group["x_mm"]), 7e4 + np.arange(0, 400, 50))
+    np.testing.assert_array_equal(
+        np.ravel(group["action"]), 0.1234567 * np.arange(0, 400, 50)
+    )
+
+
 def test_get_selects_group_dataset_or_item() -> None:
     trace = _trace(1)
     trace.append_datum("Trial0", "x", np.array([2.0, 3.0]))

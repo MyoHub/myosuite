@@ -8,11 +8,22 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
+* **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink), now a core dependency: each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.core.retargeting.retarget(model, markers)` fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
+* **Computed muscle control** (`myosuite.biomechanics.computed_muscle_control`): `computed_muscle_control(model, qpos, qvel, qacc, dt)` (or `ComputedMuscleControl.reset` and `.step` per control step) finds the excitations that make a forward simulation track a motion (Thelen, Anderson & Delp 2003) with `StaticOptimizer` and its per-frame `min_activation`. Every step bounds each actuator by the activations its dynamics can reach, takes velocity-dependent forces (force-velocity, joint damping) at the velocity that delivers the desired acceleration over MuJoCo's Euler steps, inverts MuJoCo's own activation dynamics exactly (any `dyntype`, `tausmooth` included) and applies the reserves and residuals, as OpenSim does. For standing and walking the simulation has no contacts and the estimated ground reactions (`contact_forces=True`) are applied, as OpenSim applies measured ones. A 37-degree motion that the 2-dof elbow's muscles produced in simulation is tracked within 0.03 deg at 500 Hz control and 0.25 deg at 100 Hz; myoArm reaches at 100 Hz within 2.4 deg (RMS 0.19 deg); MyoLeg stands on its estimated ground reactions within 0.1 mm; retargeted KIT walks on MyoFullBody (354 muscles, 100 Hz, about 25 ms per step) within 1.5 mm at the root and 0.27 deg RMS at the joints (6-8 deg max), with the residuals that static optimization of the same clips already needs ([#644]).
+* Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
+* Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
 
+### Fixed
+
+* `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
+  per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
+  and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
+* `scripts/eval_mjlab_policy.py --stochastic` on the CPU backend draws the action noise from a generator seeded with
+  `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
 ### Changed
 
 * **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
@@ -31,6 +42,42 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* **`info["obs_dict"]` keeps the values of its own step.** Die Reorient, Bimanual and TableTennis (21 ids with the
+  `myoSarc` / `myoFati` variants) put views of `MjData` into their observation dict (object, fingertip, ball and
+  paddle positions, `sensordata` slices). The arrays in a step's `info` changed at the next step, so a logged
+  rollout (`examine_policy`, code that keeps `info`) showed the final state at every step for these keys.
+  `MyoGymnasiumEnv._finalize_step` now stores copies of such views, for every env. Observations and rewards are
+  unchanged.
+* `Trace.close()` and `Trace.save()` keep the recorded dtypes. They cast signed integers to int8 and floats to
+  float16 by default, so a step counter above 127 wrapped, values above 65504 became `inf` and actions kept three
+  significant digits (`examine_logs --save_paths`, `Trace.save(path)`). Pass `i_res` / `f_res` to down-cast.
+* `myoChallengeTableTennis*` keep the legacy 1280x1080 offscreen buffer on the CPU backend. `MjSpec.attach` dropped
+  the body spec's `visual` settings, so rendering above 640x480 raised `Image width 1280 > framebuffer width 640`.
+  Physics is unchanged; the recipe's docstring now says which bodies the legacy compiler bounds reach (six scaffold
+  bodies, not the hand bones or the ball, whose 7.2e-7 kg m^2 hollow-sphere inertia differs from the legacy model's
+  1e-4 floor).
+* **The walk tasks observe and reward the velocity of the centre of mass.** `myoLegWalk-v0`, the rough, hilly and stairs
+  walks and their `myoSarc`/`myoFati` variants computed `com_vel` as the mass-weighted mean of the linear part of
+  `data.cvel` (inherited from 2.x). MuJoCo takes that part at the subtree centre of mass of the kinematic root, not at
+  each body's own centre of mass, so the rotation of the segments was left out. On random-action rollouts (seed 0) the
+  value was 0.20 to 0.27 m/s off the true velocity (`mj_subtreeVel`) on average and up to 1.06 m/s along the walking
+  direction, and at the reset keyframe it read 1.30 m/s where the body moves at 1.76 m/s. The CPU env, the mjlab twin
+  and `MjxLegWalk-v0` now use one shared term, `terms.base_obs.com_linear_velocity`. This changes the `com_vel`
+  observation (2 of 403 values), `vel_reward` (by up to 0.68 of its range of 2; weight 5 in the dense reward) and
+  `solved` of these ids. Dynamics, terminations and the other observations are unchanged. The parity baselines of
+  `myoLegWalk-v0` and `myoLegRoughTerrainWalk-v0` are regenerated. Checkpoints trained before the fix still load but
+  read a different `com_vel`; see `docs/baseline_checkpoints.md`.
+* **A diverged step is no longer scored from MuJoCo's reset state.** When `mj_step` meets a bad `qpos` / `qvel` /
+  `qacc` it resets the data to `qpos0`, and the reward dict of that step was computed from the reset state. In the
+  ChaseTag envs the agent and the opponent are then both at the origin, so the step paid the tag (reward +1002.8,
+  `solved = 1`, score 0.9995) and `get_metrics` reported a win after 0.01 s; `myoTorsoPoseFixed-v0` reported `solved`
+  with reward +8.0. From the first diverged step until the next reset, `MyoGymnasiumEnv._finalize_step` now caps the
+  reward and the `sparse` score at 0 (a failure penalty of the env stays, e.g. -10 in `myoFullBodyWaypoint-v0`),
+  clears `solved` and sets `lose` where the env has one (ChaseTag and RunTrack `get_metrics` then report the full
+  `maxTime`). Every step's `info` has a boolean `mj_unstable`. This also covers rollouts of the unwrapped env
+  (`examine_policy`). `MjInstabilityTerminationWrapper` still ends the episode, and applies the same cap and flag to
+  envs whose `step` does not end in `_finalize_step`. `env.unwrapped.mj_instability_termination = False` switches
+  both off. Regular steps are unchanged.
 * **`myosuite-musclemimic-fullbody-eval --path` no longer replays the clip in place of a failed policy.** When the
   checkpoint's policy could not be loaded (for example without `orbax-checkpoint`, which installs on Linux only) or the
   checkpoint had no policy, native playback logged a warning, played the reference motion, printed its tracking error
@@ -77,6 +124,7 @@ Changes since **v3.1.0** (2026-11-11).
   origin, and takes its shape from that branch's length; the branches after the pulleys are tendon. Muscles without
   pulleys export exactly as before, and `--muscles paths` was already correct ([#810]).
 
+[#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
