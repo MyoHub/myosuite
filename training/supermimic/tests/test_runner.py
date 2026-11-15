@@ -90,13 +90,19 @@ _OBS_RTOL_OF_MAX = {"muscle_length": 0.011, "muscle_velocity": 0.1, "muscle_forc
 
 
 def _obs_violations(ours: Any, env_obs: Any, om: Any) -> dict[str, float]:
-    """``term -> largest gap`` of every policy observation term outside its tolerance."""
+    """``term -> largest gap`` outside tolerance; nonfinite observations have infinite gap."""
     out, start = {}, 0
     for name, dim in zip(
         om.active_terms["policy"], om.group_obs_term_dim["policy"], strict=True
     ):
         sl = slice(start, start + dim[0])
         start += dim[0]
+        if (
+            not torch.isfinite(ours[:, sl]).all()
+            or not torch.isfinite(env_obs[:, sl]).all()
+        ):
+            out[name] = float("inf")
+            continue
         gap = float((ours[:, sl] - env_obs[:, sl]).abs().max())
         rel = _OBS_RTOL_OF_MAX.get(name)
         bound = (
@@ -105,6 +111,37 @@ def _obs_violations(ours: Any, env_obs: Any, om: Any) -> dict[str, float]:
         if gap > bound:
             out[name] = gap
     return out
+
+
+@pytest.mark.parametrize("term", ["root_pos", "muscle_length"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("side", ["ours", "env", "both"])
+def test_obs_violations_rejects_nonfinite(term: str, bad: float, side: str) -> None:
+    from types import SimpleNamespace
+
+    om = SimpleNamespace(
+        active_terms={"policy": [term]}, group_obs_term_dim={"policy": [(1,)]}
+    )
+    ours, env_obs = torch.zeros(2, 1), torch.zeros(2, 1)
+    if side in ("ours", "both"):
+        ours[0, 0] = bad
+    if side in ("env", "both"):
+        env_obs[0, 0] = bad
+    assert _obs_violations(ours, env_obs, om) == {term: float("inf")}
+
+
+def test_obs_violations_keeps_finite_tolerances() -> None:
+    from types import SimpleNamespace
+
+    om = SimpleNamespace(
+        active_terms={"policy": ["root_pos", "muscle_length"]},
+        group_obs_term_dim={"policy": [(1,), (1,)]},
+    )
+    env_obs = torch.tensor([[0.0, 1.0]])
+    ours = torch.tensor([[5e-6, 1.01]])
+    assert _obs_violations(ours, env_obs, om) == {}
+    ours[0] = torch.tensor([2e-5, 1.02])
+    assert set(_obs_violations(ours, env_obs, om)) == {"root_pos", "muscle_length"}
 
 
 def _policy_slice(om: Any, term: str) -> slice:
