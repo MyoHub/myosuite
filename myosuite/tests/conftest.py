@@ -52,7 +52,8 @@ def _assign_default_tiers(items: list[Any]) -> None:
 _MJLAB_SOURCE = re.compile(
     r"^\s*(?:import mjlab|from mjlab|import warp|import mujoco_warp)"
     r"|importorskip\(\s*[\"'](?:mjlab|warp|mujoco_warp)[\"']"
-    r"|backends[./]mjlab",
+    r"|backends[./]mjlab"
+    r"|backend\s*=\s*[\"']mjlab[\"']",
     re.MULTILINE,
 )
 
