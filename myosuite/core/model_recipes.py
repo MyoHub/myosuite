@@ -722,6 +722,10 @@ def _add_sar_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     tgt_geom.size = [0.015, 0.015, 0.045]
     tgt_geom.condim = 4
     tgt_geom.rgba = [0.6, 0.6, 0.6, 0.6]
+    # Visual only. Set explicitly: after an empty-prefix attach, MuJoCo 4 gives
+    # API-added geoms the parent's main default (1/1), not the hand's (0/0).
+    tgt_geom.contype = 0
+    tgt_geom.conaffinity = 0
 
     for gname, gpos in [("t_top", [0, 0, -0.035]), ("t_bot", [0, 0, 0.035])]:
         tg = tgt_body.add_geom()
