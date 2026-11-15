@@ -39,7 +39,7 @@ The mjlab backend registers a twin under the same ``env_id`` for these CPU famil
      - ``myoLegWalk``, ``myoLegDirectional{Forward,Backward,Random}``,
        ``myoLegStandRandom``, ``myoLeg{Rough,Hilly,Stair}TerrainWalk``
    * - Full body
-     - ``myoFullBodyWaypoint``
+     - ``myoFullBodyWaypoint``, ``myoMimic``
    * - Challenge
      - ``myoChallengeChaseTagFBP2``, ``myoChallengeTableTennisP{0,1,2}``
 
@@ -459,6 +459,9 @@ Full body and MuscleMimic
    * - Environment ID
      - Task
      - mjlab
+   * - ``myoMimic-v0``
+     - Multi-clip full-body motion tracking
+     - yes
    * - ``myoMimicFullbody-v0`` (also ``myoMuscleMimicFullbody-v0``)
      - MuscleMimic full-body motion imitation
      - yes

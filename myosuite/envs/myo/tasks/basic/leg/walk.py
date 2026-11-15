@@ -23,6 +23,7 @@ from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.terms.base_reward import locomotion_solved, walk_env_reward
 from myosuite.physics.quat_math import quat2mat
+from myosuite.terms.base_obs import com_linear_velocity
 
 
 class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
@@ -181,9 +182,15 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         return np.sum(mass * self.data.xipos, 0) / np.sum(mass)
 
     def _get_com_velocity(self) -> np.ndarray:
-        mass = np.expand_dims(self.model.body_mass, -1)
-        cvel = -self.data.cvel
-        return (np.sum(mass * cvel, 0) / np.sum(mass))[3:5]
+        model, data = self.model, self.data
+        velocity = com_linear_velocity(
+            np,
+            model.body_mass,
+            data.cvel,
+            data.xipos,
+            data.subtree_com[model.body_rootid],
+        )
+        return -velocity[:2]  # the model faces -y
 
     def _get_height(self) -> float:
         return float(self._get_com()[2])
