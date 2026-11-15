@@ -413,7 +413,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         for s in spec.sensors:
             if "pingpong" not in s.name and "paddle" not in s.name:
                 spec.delete(s)
-        temp_model = spec.compile()
+        temp_model = spec.copy().compile()
         removed_ids = recursive_immobilize(
             spec, temp_model, spec.body("femur_l"), remove_eqs=True
         )
@@ -446,7 +446,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             ):
                 for item in list(col):
                     spec_copy.delete(item)
-            recursive_immobilize(spec_copy, temp_model, spec_copy.worldbody)
+            recursive_immobilize(spec_copy, None, spec_copy.worldbody)
             recursive_remove_contacts(spec_copy.worldbody, return_condition=None)
             meshes_to_mirror: set[str] = set()
             recursive_mirror(meshes_to_mirror, spec_copy, spec_copy.body("clavicle"))
