@@ -162,3 +162,11 @@ def test_reafferentation_reroutes_eip_to_epl() -> None:
     env.step(action)
     assert base.data.ctrl[eip] == 0.0
     assert base.data.ctrl[epl] > 0.9
+
+
+def test_offscreen_buffer_matches_the_legacy_model(
+    make_env: Callable[[str], gym.Env],
+) -> None:
+    """``<global offwidth="1280" offheight="1080"/>`` survives the attach."""
+    vis = make_env(P1).unwrapped.model.vis.global_
+    assert (vis.offwidth, vis.offheight) == (1280, 1080)

@@ -12,6 +12,7 @@ import torch
 from mjlab.managers.event_manager import EventTermCfg, requires_model_fields
 from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+from mjlab.utils.lab_api.math import quat_apply
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
@@ -110,14 +111,21 @@ def write_cpu_state(
             relative to the env origin.
         qvel: CPU-layout velocities, shape ``(k, nv)``.
     """
-    idx = env.scene[entity_name].indexing
-    q_adr = torch.sort(torch.cat([idx.free_joint_q_adr, idx.joint_q_adr]).long())[0]
-    v_adr = torch.sort(torch.cat([idx.free_joint_v_adr, idx.joint_v_adr]).long())[0]
-    qpos = qpos.clone()
-    if len(idx.free_joint_q_adr):
-        qpos[:, :3] += env.scene.env_origins[env_ids]
-    env.sim.data.qpos[env_ids[:, None], q_adr] = qpos
-    env.sim.data.qvel[env_ids[:, None], v_adr] = qvel
+    entity = env.scene[entity_name]
+    if entity.is_fixed_base:
+        entity.write_joint_state_to_sim(qpos, qvel, env_ids=env_ids)
+        return
+    root = torch.cat(
+        [
+            qpos[:, :3] + env.scene.env_origins[env_ids],
+            qpos[:, 3:7],
+            qvel[:, :3],
+            quat_apply(qpos[:, 3:7], qvel[:, 3:6]),
+        ],
+        dim=-1,
+    )
+    entity.write_root_state_to_sim(root, env_ids=env_ids)
+    entity.write_joint_state_to_sim(qpos[:, 7:], qvel[:, 6:], env_ids=env_ids)
 
 
 class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)
