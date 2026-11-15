@@ -1,6 +1,15 @@
 Participant model calibration
 =============================
 
+The strength, isometric MVC probing and mass transforms delegate lazily to
+``myo_sim`` APIs. They require a build containing ``MyoHub/myo_sim#186``,
+``#187`` and ``#195``; the pinned published 0.2.5 does not yet include them.
+Until that library release is available, this integration remains a draft:
+module imports, endurance-time fatigue fitting and legacy gain-only sarcopenia
+keep working, while using an unavailable transform or MVC probe raises an
+actionable ``ImportError``. No source-model installation is required for
+ordinary environments.
+
 The group fit estimates one common scale for selected muscles across signed,
 gravity-corrected MVC postures. It retains antagonist and joint passive torques;
 net joint torques cannot identify individual synergist strengths. This differs
