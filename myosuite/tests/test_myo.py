@@ -16,6 +16,9 @@ class TestMyo(TestEnvs):
     def test_myosuite_envs(self):
         self.check_envs("MyoBase Suite", myosuite.myosuite_myobase_suite)
 
+    def test_myoedits_envs(self):
+        self.check_envs("MyoEdits Suite", myosuite.myosuite_myoedits_suite)
+
     def test_myochal_envs(self):
         self.check_envs("MyoChallenge Suite", myosuite.myosuite_myochal_suite)
 

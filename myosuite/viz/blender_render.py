@@ -312,6 +312,8 @@ def export_rollout(
         option.tendongroup[:] = 1
         muscles = muscle_actuators(model)
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
+        if clip is not None and len(clip.qpos) < 2:
+            raise ValueError("The episode contains no motion samples.")
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         skin_frames = []
         previous = None  # muscle lengths of the last sample (motion activation)
@@ -608,12 +610,15 @@ def _resolve_muscle_mesh(spec: str) -> Path:
         return Path(spec)
     from huggingface_hub import hf_hub_download
 
+    from myosuite.core.hf_io import pinned_revision
+
     try:
         return Path(
             hf_hub_download(
                 repo_id=MUSCLE_MESH_REPO,
                 filename=MUSCLE_MESHES[spec],
                 repo_type="dataset",
+                revision=pinned_revision(MUSCLE_MESH_REPO),
             )
         )
     except Exception as err:
@@ -1559,7 +1564,14 @@ def render_rollout(
 
         from myosuite.utils.video_io import write_video
 
-        frames = sorted((config.output / "frames").glob("frame_*.png"))
+        frames = sorted(
+            (config.output / "frames").glob("frame_*.png"),
+            key=lambda p: (
+                0 if (s := p.stem.rsplit("_", 1)[-1]).isdigit() else 1,
+                int(s) if s.isdigit() else 0,
+                p.name,
+            ),
+        )
         write_video(
             config.output / "video.mp4",
             [iio.imread(f)[..., :3] for f in frames],
