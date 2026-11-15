@@ -13,12 +13,14 @@ from dataclasses import dataclass
 class ChaseTagVsConfig:
     """All hyperparameters for the 1v1 chase-tag scene/reward.
 
-    Rules (matching MyoChallenge)
-    -----------------------------
-    Roles are assigned each episode: the **chaser** must tag (come within
-    ``tag_radius_m`` of) the **runner** before ``maxTime`` seconds elapse.
-    A binary tag at distance ≤ ``tag_radius_m`` ends the episode immediately.
-    Roles can alternate each episode (``task_choice="random"``) or be fixed.
+    Rules
+    -----
+    Roles are assigned each episode. The **chaser** wins by tagging (planar
+    pelvis distance within ``tag_radius_m``, including a runner on the ground).
+    The **runner** wins if the clock hits ``maxTime`` with no tag, or if the
+    pursuer falls. A runner fall does not end the episode; the pursuer can
+    still tag. Roles can alternate each episode (``task_choice="random"``)
+    or be fixed.
 
     Score
     -----
@@ -29,8 +31,8 @@ class ChaseTagVsConfig:
     This matches the MyoChallenge ``chasetag_v0`` scoring function.
     """
 
-    # --- Episode length (MyoChallenge: 20 s) ---
-    maxTime: float = 20.0  # seconds
+    # --- Episode length ---
+    maxTime: float = 10.0  # seconds
     ctrl_dt: float = 0.01
     sim_dt: float = 0.002
 

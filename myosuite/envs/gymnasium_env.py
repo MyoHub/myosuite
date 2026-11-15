@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import types
 import warnings
-from collections.abc import Collection, Iterable
+from collections.abc import Callable, Collection, Iterable
 from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
@@ -51,6 +51,24 @@ def _validate_reward_dict(rwd_dict: dict) -> None:
             f"get_reward_dict() must return keys {_REQUIRED_RWD_KEYS}; "
             f"missing: {missing}"
         )
+
+
+def _void_unstable_step(rwd_dict: dict) -> None:
+    """Void the outcome of a step whose state MuJoCo auto-reset, in place.
+
+    The reward and the score are capped at 0, so a failure penalty of the env
+    stays; ``solved`` is cleared and ``lose`` (where the env has one) is set.
+
+    Args:
+        rwd_dict: Dict returned by ``get_reward_dict``.
+    """
+    for key in ("dense", "sparse"):
+        if key in rwd_dict:
+            rwd_dict[key] = np.minimum(rwd_dict[key], 0.0)
+    if "solved" in rwd_dict:
+        rwd_dict["solved"] = np.zeros_like(rwd_dict["solved"])[()]
+    if "lose" in rwd_dict:
+        rwd_dict["lose"] = np.ones_like(rwd_dict["lose"])[()]
 
 
 def check_obs_keys(
@@ -252,7 +270,8 @@ class MyoGymnasiumEnv(gym.Env):
         self.mujoco_render_frames: bool = False
         # Backward-compatible visual key container expected by examine_env.py.
         self.visual_keys: list[str] = []
-        # Read by MjInstabilityTerminationWrapper (appended by register_env).
+        # Read by _finalize_step and by MjInstabilityTerminationWrapper (appended
+        # by register_env).
         self.mj_instability_termination: bool = True
 
     # ------------------------------------------------------------------
@@ -412,12 +431,29 @@ class MyoGymnasiumEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(obs_dict)
         obs = self._ensure_obs_gymnasium_compliant(obs)
         return obs, {}
+
+    def _project_joint_couplings(self) -> None:
+        """Put the coupled joints (``mjEQ_JOINT``) of the current state on their polynomials.
+
+        ``qpos0``, keyframes, clip frames and reset noise can leave the dependent
+        joints (knee mechanism, patella, shoulder rhythm) off the couplings their
+        equality constraints enforce; :meth:`reset` calls this before ``mj_forward``.
+        """
+        from myosuite.physics.joint_coupling import (
+            JointCouplings,
+            project_joint_couplings,
+        )
+
+        project_joint_couplings(
+            JointCouplings.from_model(self.model), self.data.qpos, self.data.qvel
+        )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -478,6 +514,21 @@ class MyoGymnasiumEnv(gym.Env):
         """
         return gym.spaces.Box(-np.inf, np.inf, shape=(obs_dim,), dtype=np.float32)
 
+    def _set_success_indicator(self, site_id: int, solved: bool) -> None:
+        """Colour a success indicator site green while solved and red otherwise.
+
+        Tasks put the site on the target object and call this from their reward
+        code. Only the red and green channels change; blue, alpha and size keep
+        their values, so a task can still hide or resize its indicator.
+
+        Args:
+            site_id: Id of the indicator site; a negative id (no such site in
+                the model) does nothing.
+            solved: Whether the task is solved.
+        """
+        if site_id >= 0:
+            self.model.site_rgba[site_id, :2] = (0.0, 2.0) if solved else (2.0, 0.0)
+
     def _ensure_obs_gymnasium_compliant(self, obs: np.ndarray) -> np.ndarray:
         """Cast obs to float32, the dtype of the observation space; never clip.
 
@@ -519,7 +570,13 @@ class MyoGymnasiumEnv(gym.Env):
         override: validates the reward dict, renders when
         ``mujoco_render_frames`` is set, flattens the obs to float32 (no
         clipping) and returns the standard info (the reward components plus
-        ``obs_dict`` and ``rwd_dict``).
+        ``obs_dict``, ``rwd_dict`` and ``mj_unstable``).
+
+        Once the simulation diverged, MuJoCo has reset the data to ``qpos0``,
+        so the dicts describe that state and not the task: the reward and the
+        score are capped at 0, ``solved`` is cleared (in ``rwd_dict`` too) and
+        ``info["mj_unstable"]`` is ``True`` until the next reset. Ending the
+        episode is left to ``MjInstabilityTerminationWrapper``.
 
         Args:
             obs_dict: Observation dict of the current state.
@@ -530,12 +587,23 @@ class MyoGymnasiumEnv(gym.Env):
             always ``False`` (``TimeLimit`` handles it).
         """
         _validate_reward_dict(rwd_dict)
+        unstable = bool(
+            self.mj_instability_termination and self._check_mj_instability_termination()
+        )
+        if unstable:
+            _void_unstable_step(rwd_dict)
         if self.mujoco_render_frames:
             self.mj_render()
         obs = self._ensure_obs_gymnasium_compliant(self._obs_dict_to_vec(obs_dict))
+        # A view of MjData (a site_xpos row, a sensordata slice) would change in the
+        # returned info at the next mj_step: store a copy instead.
+        for key, value in obs_dict.items():
+            if isinstance(value, np.ndarray) and value.base is not None:
+                obs_dict[key] = value.copy()
         info = {k: v for k, v in rwd_dict.items() if k not in ("dense", "done")}
         info["obs_dict"] = obs_dict
         info["rwd_dict"] = rwd_dict
+        info["mj_unstable"] = unstable
         # .item(): scalar or 1-element array (float() rejects the latter).
         reward = float(np.asarray(rwd_dict["dense"]).item())
         terminated = bool(np.asarray(rwd_dict["done"]).item())
@@ -547,7 +615,8 @@ class MyoGymnasiumEnv(gym.Env):
         ``mj_step`` counts a bad qpos/qvel/qacc in ``data.warning`` and then
         auto-resets the data to ``qpos0``, so the state it leaves behind is
         finite. ``mj_resetData`` zeroes the counters, so a non-zero count means
-        the episode diverged. Called by ``MjInstabilityTerminationWrapper``.
+        the episode diverged. Called by :meth:`_finalize_step` and, for envs
+        whose step does not end there, by ``MjInstabilityTerminationWrapper``.
 
         Returns:
             True if the episode should terminate.
@@ -619,18 +688,36 @@ class MyoGymnasiumEnv(gym.Env):
         """
         import mujoco
 
+        self._upload_asset_to_renderers(mujoco.mjr_uploadMesh, "update_mesh", mesh_id)
+
+    def _upload_hfield_to_renderers(self, hfield_id: int) -> None:
+        """Show an in-place edit of ``model.hfield_data`` in the live renderers.
+
+        Same contract as :meth:`_upload_mesh_to_renderers`, for heightfields:
+        terrain resampled at reset is otherwise drawn as the first episode's.
+
+        Args:
+            hfield_id: Id of the edited heightfield.
+        """
+        import mujoco
+
+        self._upload_asset_to_renderers(
+            mujoco.mjr_uploadHField, "update_hfield", hfield_id
+        )
+
+    def _upload_asset_to_renderers(
+        self, upload: Callable[..., None], window_update: str, asset_id: int
+    ) -> None:
         renderer = getattr(self, "_mujoco_renderer", None)
         for viewer in getattr(renderer, "_viewers", {}).values():
             viewer.make_context_current()
-            mujoco.mjr_uploadMesh(self.model, viewer.con, mesh_id)
+            upload(self.model, viewer.con, asset_id)
         compat = getattr(self, "_mj_renderer_compat", None)
         if compat is None:
             return
         if compat._window is not None:
-            compat._window.update_mesh(mesh_id)
-        if compat._renderer is not None:
-            compat._renderer.close()
-            compat._renderer = None
+            getattr(compat._window, window_update)(asset_id)
+        compat.invalidate_offscreen()
 
     # ------------------------------------------------------------------
     # MujocoEnv-compatible utility helpers

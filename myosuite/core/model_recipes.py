@@ -54,18 +54,29 @@ Arm recipes
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from pathlib import Path
 
 import mujoco
 import numpy as np
 
-from myosuite.core.model_builder import ModelBuilder, build_from_recipe, model_recipe
+from myosuite.core.model_builder import (
+    ModelBuilder,
+    build_from_recipe,
+    model_recipe,
+    register_spec_recipe,
+)
 
 # Root of the myosuite package — used to locate asset files.
 _ASSETS = Path(__file__).parent.parent / "envs" / "myo" / "assets"
 
 
-def materialize_recipe_xml(name: str, dest: Path | None = None) -> Path:
+def materialize_recipe_xml(
+    name: str,
+    dest: Path | None = None,
+    *,
+    edit_fn: Callable[[mujoco.MjSpec], None] | None = None,
+) -> Path:
     """Write a recipe-built spec to a standalone MJCF file on disk.
 
     Some consumers (e.g. external packages like ``mjlab``, which read a
@@ -82,26 +93,41 @@ def materialize_recipe_xml(name: str, dest: Path | None = None) -> Path:
     Args:
         name: Recipe name registered via ``@model_recipe``.
         dest: Output path. Default: an OS temp directory
-            (``<tempdir>/myosuite_recipes/<name>.xml``).
+            (``<tempdir>/myosuite_recipes/<name>_<digest>.xml``, named by its
+            content); required with *edit_fn*.
+        edit_fn: In-place edit of the recipe spec, applied as an env applies
+            its ``edit_fn`` kwarg (see :func:`build_from_recipe`).
 
     Returns:
-        Absolute path to the written file.
+        Absolute path to the written file. The write is atomic, so processes
+        materializing the recipe at once all get a complete file.
+
+    Raises:
+        ValueError: If *edit_fn* is given without *dest* (default files hold
+            unedited recipes).
     """
+    if edit_fn is not None and dest is None:
+        raise ValueError("edit_fn needs an explicit dest.")
     import myo_sim  # type: ignore[import-untyped]
     from myo_sim.build.compose import sanitize_spec_xml  # type: ignore[import-untyped]
 
-    model, spec = build_from_recipe(name)
-    xml = sanitize_spec_xml(
+    from myosuite.utils.asset_path_resolver import write_atomic
+
+    model, spec = build_from_recipe(name, edit_fn=edit_fn)
+    data = sanitize_spec_xml(
         spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
-    )
+    ).encode("utf-8")
 
     out = dest
     if out is None:
+        import hashlib
         import tempfile
 
-        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}.xml"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(xml, encoding="utf-8")
+        # Named by content: processes share one file, and a different version's
+        # recipe never overwrites a file another process is loading.
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        out = Path(tempfile.gettempdir()) / "myosuite_recipes" / f"{name}_{digest}.xml"
+    write_atomic(out, data)
     return out.resolve()
 
 
@@ -117,26 +143,12 @@ def _elbow_sarcopenia(b: ModelBuilder) -> ModelBuilder:
     return b.attach_fragment("elbow").apply_sarcopenia(force_scale=0.5)
 
 
-# The shipped motor finger (20/5/5/10/10) is too weak to reach its target poses: trained
-# policies stay at 0% success with x1 and x2 and reach 100% with x4.
-_MOTOR_FINGER_GEAR_SCALE = 4.0
-
-
-def _scale_motor_gears(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-    """Scale the gear of every motor of the finger model."""
-    for actuator in spec.actuators:
-        actuator.gear = np.asarray(actuator.gear) * _MOTOR_FINGER_GEAR_SCALE
-    return spec
-
-
 @model_recipe("motor_finger")
 def _motor_finger(b: ModelBuilder) -> ModelBuilder:
-    """Tendon-motor finger (``motorfinger_v0.xml``) with the stronger motor gears."""
+    """Tendon-motor finger (``motorfinger_v0.xml``)."""
     from myosuite.envs.myo.assets._resolve import resolve_finger_xml
 
-    return ModelBuilder.from_xml_file(
-        resolve_finger_xml("motorfinger_v0.xml")
-    ).apply_transform(_scale_motor_gears)
+    return ModelBuilder.from_xml_file(resolve_finger_xml("motorfinger_v0.xml"))
 
 
 def _calibrate_compose_arm_root(spec: mujoco.MjSpec) -> mujoco.MjSpec:
@@ -455,14 +467,15 @@ def _hand_hold(b: ModelBuilder) -> ModelBuilder:
 
 def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Add pen object + target body + eps_ball site to a hand spec."""
-    # eps_ball site in worldbody
+    # eps_ball: the pen's position goal and drop radius. Hidden by default
+    # (group 4); target_ball on the target pen shows success instead.
     eps = spec.worldbody.add_site()
     eps.name = "eps_ball"
     eps.type = mujoco.mjtGeom.mjGEOM_SPHERE
     eps.pos = [-0.230, -0.530, 1.445]
     eps.size = [0.075, 0.075, 0.075]
     eps.rgba = [1.0, 1.0, 0.0, 0.5]
-    eps.group = 1
+    eps.group = 4
 
     # Object (pen) body
     pen_body = spec.worldbody.add_body()
@@ -601,6 +614,14 @@ def _add_pen_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     ts_bot.pos = [0.0, 0.0, -0.065]
     ts_bot.rgba = [0.2, 0.8, 0.2, 1.0]
 
+    # Success indicator on the target, as in the die reorientation task;
+    # the env colours it green while solved and red otherwise.
+    ts_ball = tgt_body.add_site()
+    ts_ball.name = "target_ball"
+    ts_ball.type = mujoco.mjtGeom.mjGEOM_SPHERE
+    ts_ball.size = [0.045, 0.045, 0.045]
+    ts_ball.rgba = [1.0, 0.0, 0.2, 0.1]
+
     return spec
 
 
@@ -701,6 +722,10 @@ def _add_sar_props(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     tgt_geom.size = [0.015, 0.015, 0.045]
     tgt_geom.condim = 4
     tgt_geom.rgba = [0.6, 0.6, 0.6, 0.6]
+    # Visual only. Set explicitly: after an empty-prefix attach, MuJoCo 4 gives
+    # API-added geoms the parent's main default (1/1), not the hand's (0/0).
+    tgt_geom.contype = 0
+    tgt_geom.conaffinity = 0
 
     for gname, gpos in [("t_top", [0, 0, -0.035]), ("t_bot", [0, 0, 0.035])]:
         tg = tgt_body.add_geom()
@@ -1266,18 +1291,19 @@ def _add_tabletennis_contacts(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 
 
 def _match_tabletennis_compiler(spec: mujoco.MjSpec) -> mujoco.MjSpec:
-    """Apply legacy ``myoarm_tabletennis.xml``'s compiler and visual globals.
+    """Apply legacy ``myoarm_tabletennis.xml``'s compiler bounds.
 
-    Without ``boundinertia`` the ping-pong ball keeps its authored 7.2e-7
-    rotational inertia instead of the 1e-4 floor the legacy model runs with,
-    which changes how much spin a paddle hit imparts. The offscreen buffer
-    matches legacy's ``<global offwidth="1280" offheight="1080"/>``.
+    MuJoCo compiles each element with the compiler of the spec that created it,
+    so the bounds reach only the bodies this spec creates (the scaffold bodies
+    ``Full Body``, ``neck``, ``head_attach``, ``cervical_spine``, ``chest_r``,
+    ``Arm_attachment``). Bones from myo_sim's fragments keep their own inertias
+    (hand bones down to 2e-8 kg m^2), and the ping-pong ball keeps its hollow-sphere
+    inertia of 7.2e-7 kg m^2 on both backends, where the legacy model floored it at
+    1e-4 (139x harder to spin).
     """
     spec.compiler.boundmass = 0.001
     spec.compiler.boundinertia = 0.0001
     spec.compiler.balanceinertia = True
-    spec.visual.global_.offwidth = 1280
-    spec.visual.global_.offheight = 1080
     return spec
 
 
@@ -1320,7 +1346,12 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     Mesh/texture ``file=`` paths are absolute: MuJoCo does not prepend
     ``spec.compiler.meshdir`` to them, so the spec compiles from any working
     directory and drive (relative paths depended on the working directory).
+
+    Also sets legacy's ``<global offwidth="1280" offheight="1080"/>`` on the spec
+    that gets compiled: ``MjSpec.attach`` does not carry ``visual`` over.
     """
+    spec.visual.global_.offwidth = 1280
+    spec.visual.global_.offheight = 1080
     wb = spec.worldbody
 
     def _abs(path: Path) -> str:
@@ -1793,3 +1824,16 @@ for _mm_name in _MUSCLEMIMIC_NAMES:
             )
 
     _make_mm_recipe(_name)
+
+
+# Each MuscleMimic spec sets its options on the spec before compilation, so
+# build_from_recipe and the mjlab twins can build every registered variant directly.
+def _make_mm_spec_builder(name: str) -> Callable[[], mujoco.MjSpec]:
+    def _build_spec() -> mujoco.MjSpec:
+        return _musclemimic_build(name)[1]
+
+    return _build_spec
+
+
+for _mm_spec_name in _MUSCLEMIMIC_NAMES:
+    register_spec_recipe(_mm_spec_name, _make_mm_spec_builder(_mm_spec_name))

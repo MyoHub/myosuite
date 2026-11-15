@@ -16,9 +16,11 @@ import copy
 import functools
 from typing import Any
 
+import mujoco
 import numpy as np
 import pytest
 
+from myosuite.tests.support.joint_couplings import joint_equality_residuals
 from myosuite.tests.support.optional_deps import (
     require_mjlab,
     require_mujoco_warp,
@@ -116,6 +118,37 @@ def test_one_step_parity_with_the_mjlab_twin(env_id: str) -> None:
         assert cpu_rew > 0.1
     mj.close()
     cpu.close()
+
+
+@pytest.mark.parametrize("env_id", sorted(_ENTITY))
+def test_both_halves_reset_to_one_state_on_the_joint_couplings(env_id: str) -> None:
+    """Both halves start from the projected keyframe (``qpos0`` on the CPU).
+
+    The full body's patella started 5 cm off its knee coupling on both.
+    """
+    require_mjlab()
+    require_mujoco_warp()
+    require_musclemimic_models()
+    from mjlab.envs import ManagerBasedRlEnv
+
+    cpu = make_env(env_id).unwrapped
+    cpu.reset(seed=0)
+    mj = ManagerBasedRlEnv(
+        cfg=copy.deepcopy(_registered_play_cfgs()[env_id]), device="cpu"
+    )
+    try:
+        mj.reset()
+        data = mj.scene[_ENTITY[env_id]].data
+        free_root = int(cpu.model.jnt_type[0]) == int(mujoco.mjtJoint.mjJNT_FREE)
+        root = 7 if free_root else 0
+        qpos = cpu.data.qpos.copy()
+        qpos[root:] = data.joint_pos[0].numpy()
+        np.testing.assert_allclose(qpos, cpu.data.qpos, rtol=0, atol=1e-6)
+        pos, _ = joint_equality_residuals(cpu.model, qpos)
+        assert np.abs(pos).max() < 1e-6
+    finally:
+        mj.close()
+        cpu.close()
 
 
 def test_random_target_steps_sync_only_to_detect_resets() -> None:

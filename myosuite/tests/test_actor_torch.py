@@ -14,7 +14,10 @@ import unittest
 from typing import Any
 
 import numpy as np
+import pytest
 import torch
+
+pytestmark = pytest.mark.tier2
 
 # ---------------------------------------------------------------------------
 # Helpers: synthetic param trees

@@ -4,9 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 """Reward, termination, and score functions for the two-agent chase-tag env.
 
-Rules match MyoChallenge ``chasetag_v0``:
-- Binary tag: distance ≤ tag_radius_m → chaser wins, episode ends.
-- Evade win: runner survives the full episode (maxTime seconds).
+1v1 rules:
+- Binary tag: planar pelvis distance ≤ tag_radius_m → chaser wins, episode ends.
+- Evade win: no tag before maxTime, or the pursuer falls.
+- Runner fall does not end the episode; the pursuer can still tag.
 - Score: 1 - t/maxTime for chase win; t/maxTime for evade win; 0 for loss.
 """
 
@@ -28,15 +29,18 @@ from myosuite.terms.mimic_reward import (
     mimic_joint_vel_reward,
     mimic_root_vel_reward,
 )
+from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
+from myosuite.terms.multiplayer.heading import role_heading_xy
 
 CHASER_ID = "agent_0"
 RUNNER_ID = "agent_1"
 
 
 def _pelvis_distance(data: mujoco.MjData, meta: ChaseTagVsModelMeta) -> float:
+    """Planar pelvis distance so a standing chaser can still tag a downed runner."""
     chaser_pos = data.site_xpos[meta.site_ids[CHASER_ID]["pelvis_site"]]
     runner_pos = data.site_xpos[meta.site_ids[RUNNER_ID]["pelvis_site"]]
-    return float(np.linalg.norm(chaser_pos - runner_pos))
+    return float(np.linalg.norm(chaser_pos[:2] - runner_pos[:2]))
 
 
 def is_tagged(
@@ -44,7 +48,7 @@ def is_tagged(
     meta: ChaseTagVsModelMeta,
     config: ChaseTagVsConfig,
 ) -> bool:
-    """Return True when chaser pelvis is within tag_radius_m of runner pelvis."""
+    """Return True when planar pelvis distance is within tag_radius_m."""
     return _pelvis_distance(data, meta) <= config.tag_radius_m
 
 
@@ -121,7 +125,7 @@ def compute_agent_reward(
     Returns:
         Scalar reward.
     """
-    is_chaser = agent_id == CHASER_ID if task == "CHASE" else agent_id == RUNNER_ID
+    is_chaser = agent_is_chaser(agent_id, task)
 
     r = config.r_survival_per_step
     r += config.r_act_reg * float(np.sum(actions**2))
@@ -212,11 +216,7 @@ def compute_gait_steering_reward(
 
     own_pos = data.site_xpos[meta.site_ids[agent_id]["pelvis_site"]]
     opp_pos = data.site_xpos[meta.site_ids[opponent_id]["pelvis_site"]]
-    rel_xy = (opp_pos - own_pos)[:2]
-    dist = float(np.linalg.norm(rel_xy))
-    direction = rel_xy / dist if dist > 1e-6 else np.zeros(2)
-    if not pursue:
-        direction = -direction
+    direction = role_heading_xy(own_pos[:2], opp_pos[:2], pursue=pursue)
     target_vel = np.array(
         [target_speed * direction[0], target_speed * direction[1], 0.0]
     )

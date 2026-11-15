@@ -49,10 +49,12 @@ class MultiAgentTaskConfig(ABC):
         agents: Ordered tuple of agent identifiers.  Fixed at
             ``("agent_0", "agent_1")`` for all current challenges.
         max_episode_steps: Episode length limit (triggers truncation).
+        render_scene: Default offscreen RGB preset, overridable per environment.
     """
 
     agents: tuple[str, ...] = ("agent_0", "agent_1")
     max_episode_steps: int = 1000
+    render_scene: str = "default"
 
     # ------------------------------------------------------------------
     # Model construction
@@ -206,6 +208,18 @@ class MultiAgentTaskConfig(ABC):
             ``True`` if the agent has fallen.
         """
         return False
+
+    def episode_is_over(
+        self,
+        fell: dict[str, bool],
+        ko: dict[str, bool],
+    ) -> bool:
+        """Return ``True`` when the competitive episode should terminate.
+
+        Default: any fall or any KO. Chase-tag overrides this so a runner
+        fall does not end the match.
+        """
+        return any(fell.values()) or any(ko.values())
 
     def opponent_id(self, agent_id: str) -> str:
         """Return the opponent id for a 2-agent task.

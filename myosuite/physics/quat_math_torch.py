@@ -36,7 +36,8 @@ def mul_quat(qa: torch.Tensor, qb: torch.Tensor) -> torch.Tensor:
 
 def neg_quat(quat: torch.Tensor) -> torch.Tensor:
     """Conjugate (inverse for unit quaternions)."""
-    return quat * quat.new_tensor([1.0, -1.0, -1.0, -1.0])
+    # no host constant: safe inside CUDA-graph capture
+    return torch.cat([quat[..., :1], -quat[..., 1:]], dim=-1)
 
 
 def quat2Vel(quat: torch.Tensor, dt: float = 1) -> tuple[torch.Tensor, torch.Tensor]:
@@ -135,11 +136,13 @@ def mat2euler(mat: torch.Tensor) -> torch.Tensor:
 
 
 def quat2mat(quat: torch.Tensor) -> torch.Tensor:
-    """Unit quaternion → rotation matrix."""
+    """Quaternion → rotation matrix (identity for a near-zero quaternion)."""
     quat = quat.to(torch.float32)
     w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
     Nq = torch.sum(quat * quat, dim=-1)
-    s = 2.0 / Nq
+    # Mask the denominator before division so fallback rows have finite gradients.
+    valid = Nq > _EPS
+    s = 2.0 / torch.where(valid, Nq, torch.ones_like(Nq))
     X, Y, Z = x * s, y * s, z * s
     wX, wY, wZ = w * X, w * Y, w * Z
     xX, xY, xZ = x * X, x * Y, x * Z
@@ -157,9 +160,7 @@ def quat2mat(quat: torch.Tensor) -> torch.Tensor:
     mat[..., 2, 2] = 1.0 - (xX + yY)
 
     eye = torch.eye(3, dtype=torch.float32, device=quat.device)
-    return torch.where(
-        (Nq > _EPS)[..., None, None].expand_as(mat), mat, eye.expand_as(mat)
-    )
+    return torch.where(valid[..., None, None].expand_as(mat), mat, eye.expand_as(mat))
 
 
 def mat2quat(mat: torch.Tensor) -> torch.Tensor:

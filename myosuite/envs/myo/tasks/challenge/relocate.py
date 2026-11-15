@@ -236,9 +236,7 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 ]
             )
         )
-        self.model.site_rgba[self.success_indicator_sid, :2] = (
-            np.array([0, 2]) if rwd_dict["solved"] else np.array([2, 0])
-        )
+        self._set_success_indicator(self.success_indicator_sid, rwd_dict["solved"])
         self.model.site_size[self.success_indicator_sid, :] = (
             np.array([0.25]) if rwd_dict["solved"] else np.array([0.1])
         )

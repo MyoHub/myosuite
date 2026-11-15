@@ -21,7 +21,7 @@ repos:
         files: ^myosuite/(core|terms|scenes|envs/gymnasium_env\.py)
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.2
+    rev: v3.19.1
     hooks:
       - id: pyupgrade
         args: [--py310-plus]
@@ -57,18 +57,32 @@ repos:
             myosuite/envs/myo/myoedits/.*
           )$
 
+      # Guard: model weights are hosted on Hugging Face (see CLAUDE.md), not in git.
+      # The exempt files are legacy tutorial checkpoints awaiting migration.
+      - id: no-model-weights
+        name: Block model weight files (host them on Hugging Face)
+        language: fail
+        entry: 'Model weights belong on Hugging Face at a pinned revision, not in git (see CLAUDE.md):'
+        files: \.(pt|pth|onnx|ckpt|safetensors)$
+        exclude: >-
+          (?x)^tutorials/files/(
+            5\.2/mimic_policy_demo\.pt|
+            5\.6/policy_bc_best\.pt|
+            5\.6/policy_heading_table\.pt
+          )$
+
       # Guard: AI Co-Authored-By trailers break the CLA check. Soft docs in
       # CLAUDE.md are not enough — Cursor/Codex/etc. inject trailers after the
       # message is composed. Strip on prepare-commit-msg; reject on commit-msg.
       - id: strip-ai-coauthor
         name: Strip AI Co-Authored-By / attribution trailers
-        language: script
-        entry: scripts/reject_ai_coauthor.py --strip
+        language: python
+        entry: python scripts/reject_ai_coauthor.py --strip
         stages: [prepare-commit-msg]
         always_run: true
       - id: no-ai-coauthor
         name: Reject AI Co-Authored-By / attribution trailers
-        language: script
-        entry: scripts/reject_ai_coauthor.py
+        language: python
+        entry: python scripts/reject_ai_coauthor.py
         stages: [commit-msg]
         always_run: true

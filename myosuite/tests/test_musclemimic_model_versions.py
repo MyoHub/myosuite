@@ -12,6 +12,9 @@ either release from the installed one; checkpoints trained on 1.0.5 get 1.0.5.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import textwrap
 
 import mujoco
 import numpy as np
@@ -209,10 +212,13 @@ def test_arm_and_torso_models_follow_the_release(installed: str, builder: str) -
     "env_id, uses",
     [
         ("myoMimicFullbody-v0", True),
+        ("myoMimic-v0", False),
         ("myoMuscleMimicBimanual-v0", True),
         ("myoFullBodyDirectional-v0", True),
-        ("myoChallengeChaseTagFBP2-v0", True),
-        ("myoFatiChallengeChaseTagFBP2-v0", True),
+        ("myoChallengeChaseTagFBP2-v0", False),
+        ("myoFatiChallengeChaseTagFBP2-v0", False),
+        ("myoChallengeChaseTagFBVs-v0", False),
+        ("myoFullBodyWaypoint-v0", True),
         ("myoChallengeBimanual-v0", False),
         ("myoTorsoPoseFixed-v0", False),
         ("myoHandReachFixed-v0", False),
@@ -220,6 +226,17 @@ def test_arm_and_torso_models_follow_the_release(installed: str, builder: str) -
 )
 def test_envs_built_from_musclemimic_models(env_id: str, uses: bool) -> None:
     assert mv.uses_musclemimic_models(env_id) is uses
+
+
+def test_directional_env_records_the_default_release(installed: str) -> None:
+    assert (
+        mv.env_models_version("myoFullBodyDirectional-v0") == mv.DEFAULT_MODELS_VERSION
+    )
+    assert mv.env_models_version("myoMimicFullbody-v0") == mv.DEFAULT_MODELS_VERSION
+    assert mv.env_models_version("myoFullBodyWaypoint-v0") == mv.DEFAULT_MODELS_VERSION
+    # Full-body ChaseTag builds myo_sim's myofullbody, so it records no release.
+    assert mv.env_models_version("myoChallengeChaseTagFBVs-v0") is None
+    assert mv.env_models_version("myoChallengeChaseTagFBP2-v0") is None
 
 
 def test_checkpoint_manifest_records_the_release_the_loaders_use(
@@ -258,3 +275,90 @@ def test_manifest_refuses_the_myo_sim_fallback(monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(RuntimeError, match="not installed"):
         mv.env_models_version("myoMimicFullbody-v0")
     assert mv.env_models_version("myoHandReachFixed-v0") is None
+
+
+@pytest.mark.parametrize(
+    "entry_point, kwargs, uses",
+    [
+        ("myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv", {}, True),
+        ("myosuite.envs.myo.tasks.mimic.tracking.env:MimicEnv", {}, False),
+        ("myosuite.envs.waypoint:WaypointEnv", {}, True),
+        ("myosuite.envs.waypoint:WaypointEnv", {"model_recipe": None}, True),
+        ("myosuite.envs.waypoint:WaypointEnv", {"model_recipe": "myofullbody"}, False),
+        ("myosuite.envs.waypoint:WaypointEnv", {"model_path": "custom.xml"}, False),
+    ],
+)
+@pytest.mark.parametrize("alias", ["customAlias-v0", "customMimicAlias-v0"])
+def test_provider_follows_the_registration_not_the_alias(
+    entry_point: str,
+    kwargs: dict,
+    uses: bool,
+    alias: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gymnasium.envs.registration import EnvSpec, registry
+
+    monkeypatch.setitem(
+        registry, alias, EnvSpec(alias, entry_point=entry_point, kwargs=kwargs)
+    )
+    assert mv.uses_musclemimic_models(alias) is uses
+
+
+def test_native_mimic_manifest_without_legacy_extra_in_a_fresh_process(
+    tmp_path,
+) -> None:
+    script = textwrap.dedent(
+        """
+        import importlib.abc
+        import importlib.metadata
+        import sys
+        from pathlib import Path
+
+        original_version = importlib.metadata.version
+        def version(name):
+            if name.replace('_', '-').lower() == 'musclemimic-models':
+                raise importlib.metadata.PackageNotFoundError(name)
+            return original_version(name)
+        importlib.metadata.version = version
+
+        class NoLegacyModels(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname.split('.')[0] == 'musclemimic_models':
+                    raise ModuleNotFoundError(fullname)
+        sys.meta_path.insert(0, NoLegacyModels())
+
+        from myosuite.utils.checkpoint_manifest import read_manifest, write_manifest
+        from myosuite.integrations.musclemimic import model_versions as mv
+        folder = Path(sys.argv[1])
+        write_manifest(folder, 'myoMimic-v0', contract={})
+        assert mv.MANIFEST_FIELD not in read_manifest(folder)
+        assert mv.env_models_version('myoMimic-v0') is None
+        try:
+            mv.env_models_version('myoMimicFullbody-v0')
+        except RuntimeError as error:
+            assert 'not installed' in str(error)
+        else:
+            raise AssertionError('legacy provider must still require its models')
+        assert 'musclemimic_models' not in sys.modules
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_unhashable_callable_registration_does_not_require_legacy_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gymnasium.envs.registration import EnvSpec, registry
+
+    class Factory:
+        __hash__ = None
+
+        def __call__(self) -> None:
+            raise AssertionError("Provider lookup must not instantiate an environment")
+
+    alias = "customMimicCallable-v0"
+    monkeypatch.setitem(registry, alias, EnvSpec(alias, entry_point=Factory()))
+    assert not mv.uses_musclemimic_models(alias)

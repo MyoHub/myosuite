@@ -384,13 +384,14 @@ _reg(
 
 # MyoChallenge full-body ChaseTag vs. scripted opponent (opponent-aware obs).
 # CPU half of the mjlab task with the same id (register_mjlab_tasks.py): the
-# 537-dim chasetag_obs layout, 0.01 s control step (frame_skip 5), 2000 steps
-# = 20 s, flat ground and the same reward terms and weights.
+# 537-dim chasetag_obs layout, 0.01 s control step (frame_skip 5), 1000 steps
+# = 10 s, flat ground and the same reward terms and weights.
 _reg(
     env_id="myoChallengeChaseTagFBP2-v0",
     entry_point="myosuite.envs.myo.tasks.challenge.chasetag:ChaseTagEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,
     kwargs={
+        "max_time": 10.0,
         "model_path": None,
         "model_spec_fn": _build_default_fullbody_chasetag_spec,
         "pelvis_body_name": "pelvis",

@@ -242,6 +242,8 @@ class LegReachEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         else:
             self.data.qpos[:] = self._init_qpos
         self.data.qvel[:] = self._init_qvel
+        # Before the targets: they are placed relative to the reset pose.
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._generate_targets()
         return {}

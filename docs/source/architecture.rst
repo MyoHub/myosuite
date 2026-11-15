@@ -21,7 +21,7 @@ on it.
            ┌──────────────────┼──────────────────┐
            ▼                  ▼                  ▼
         CPU Gymnasium      mjlab (Warp)      MJX (experimental)
-        MyoGymnasiumEnv    ManagerBasedRlEnv  mujoco_playground
+        MyoGymnasiumEnv    ManagerBasedRlEnv  MyoMjxEnvBase (brax)
         make_env(env_id)   same env_id        Mjx*-v0 / mjx.make()
 
 

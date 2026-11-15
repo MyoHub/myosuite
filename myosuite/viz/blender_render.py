@@ -22,11 +22,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 
 # Anatomical muscle meshes (BodyParts3D, CC BY 4.0) on the Hugging Face Hub, posed
 # on myoMimicFullbody-v0's rest pose; see viz/assets/CREDITS.md.
 MUSCLE_MESH_REPO = "myohub/myosuite-assets"
+MUSCLE_MESH_ENV = "myoMimicFullbody-v0"  # the body the atlas is modelled on
 MUSCLE_MESHES = {
     "atlas": "muscles/fullbody_atlas_light.glb",
     "atlas-hd": "muscles/fullbody_atlas.glb",
@@ -42,6 +44,12 @@ class RenderConfig:
         output: New output directory.
         checkpoint: SB3 ``.zip`` or RSL-RL ``.pt``/run directory; ``None`` drives
             the env with random actions.
+        motion: ``.npz`` motion clip with ``qpos`` (e.g. MuscleMimic's retargeted
+            clips; columns matched by joint name when it has ``joint_names``),
+            replayed kinematically instead of a policy; muscles stay at rest.
+        motion_activation: With ``motion``, tint the muscles by a visual proxy
+            of activation that rises while a muscle shortens (not a muscle
+            model estimate).
         seed: Episode seed.
         seconds: Clip length; recording also stops when the episode ends.
         fps: Video frame rate.
@@ -52,8 +60,10 @@ class RenderConfig:
             paths with MuJoCo's dark-to-red viewer colours), ``"uniform"``
             keeps one anatomical red, e.g. for still renders.
         muscle_scale: Multiplier of all muscle radii.
-        scene: ``"studio"`` backdrop, or ``"mujoco"`` to keep the task's floor.
-        skin: ``.skn`` body skin, or ``"fullbody"`` for the bundled one; ``None``
+        scene: ``"studio"`` backdrop, ``"mujoco"`` task floor, or ``"sport"``
+            Breakaway lighting, navy court graphics and a low 45 mm camera.
+        skin: ``.skn`` body skin, a rigged ``.glb`` skin in the model's rest pose
+            (:mod:`myosuite.viz.skin_glb`), or ``"fullbody"`` for the bundled one; ``None``
             renders no skin.
         skin_style: ``"translucent"`` skin over muscles and bones, or ``"opaque"``
             skin that hides them.
@@ -64,9 +74,12 @@ class RenderConfig:
         muscle_mesh: Anatomical muscle meshes drawn in place of the tubes and
             deformed by the bones: ``"atlas"`` (light) or ``"atlas-hd"``
             (BodyParts3D, one mesh per muscle weighted to its own bones,
-            downloaded from Hugging Face on first use, full body only), or a
-            skinned ``.glb`` in the model's rest pose, its bones matched to the
-            model's bone geoms by rest position; ``None`` keeps the tubes.
+            downloaded from Hugging Face on first use), or a skinned ``.glb``,
+            its bones matched to bone geoms by rest position; ``None`` keeps
+            the tubes. Every body in the scene that shares bone meshes with
+            ``muscle_mesh_env`` gets the muscles whose bones it has.
+        muscle_mesh_env: Env in whose rest pose the muscle meshes are modelled;
+            ``None``: the full body for the atlas, the rendered env for a file.
         samples: Cycles samples per frame.
         blender: Blender executable.
     """
@@ -74,6 +87,8 @@ class RenderConfig:
     env: str
     output: Path
     checkpoint: Path | None = None
+    motion: Path | None = None
+    motion_activation: bool = False
     seed: int = 0
     seconds: float = 3.0
     fps: int = 30
@@ -89,6 +104,7 @@ class RenderConfig:
     skin_texture: Path | None = None
     skin_inflate: float = 0.0
     muscle_mesh: str | None = None
+    muscle_mesh_env: str | None = None
     samples: int = 64
     blender: str = "blender"
 
@@ -104,11 +120,16 @@ class RenderConfig:
             raise ValueError(
                 "Seconds, FPS, resolution, samples and scale must be positive."
             )
+        if self.motion is not None:
+            if self.checkpoint is not None:
+                raise ValueError("Pass a checkpoint or a motion clip, not both.")
+            if not Path(self.motion).is_file():
+                raise ValueError(f"Motion clip not found: {self.motion}")
         if self.muscles not in ("volumetric", "paths"):
             raise ValueError(f"Unknown muscles mode: {self.muscles}")
         if self.muscle_color not in ("activation", "uniform"):
             raise ValueError(f"Unknown muscle colour: {self.muscle_color}")
-        if self.scene not in ("studio", "mujoco"):
+        if self.scene not in ("studio", "mujoco", "sport"):
             raise ValueError(f"Unknown scene: {self.scene}")
         if self.skin_style not in ("translucent", "opaque"):
             raise ValueError(f"Unknown skin style: {self.skin_style}")
@@ -119,20 +140,28 @@ class RenderConfig:
                 raise ValueError("A skin texture needs a skin.")
             if not Path(self.skin_texture).is_file():
                 raise ValueError(f"Skin texture not found: {self.skin_texture}")
-        if self.muscle_mesh in MUSCLE_MESHES:
-            if not self.env.startswith("myoMimicFullbody"):
-                raise ValueError(
-                    f"--muscle-mesh {self.muscle_mesh} fits myoMimicFullbody envs only."
-                )
-        elif self.muscle_mesh is not None and not Path(self.muscle_mesh).is_file():
+        if (
+            self.muscle_mesh is not None
+            and self.muscle_mesh not in MUSCLE_MESHES
+            and not Path(self.muscle_mesh).is_file()
+        ):
             raise ValueError(f"Muscle mesh not found: {self.muscle_mesh}")
 
 
-def export_rollout(config: RenderConfig) -> dict[str, Any]:
+def export_rollout(
+    config: RenderConfig,
+    *,
+    env: Any | None = None,
+    policy: Callable | None = None,
+    viz_fn: Callable | None = None,
+) -> dict[str, Any]:
     """Export one episode to animated USD, keeping its control-step timing.
 
     Args:
         config: Render settings.
+        env: Optional configured environment, reset but left open for its owner.
+        policy: Optional observation-to-action callback, overriding the checkpoint.
+        viz_fn: Optional ``(step, model, data, scene)`` visualization callback.
 
     Returns:
         The metadata also written to ``render.json`` for the Blender stage.
@@ -150,7 +179,7 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
     from myosuite import make_env
     from myosuite.utils.checkpoint_utils import load_policy
     from myosuite.viz.muscle_tubes import muscle_actuators
-    from myosuite.viz.skin import SkinPose, load_skn
+    from myosuite.viz.skin import SkinPose, load_skin
 
     class LightTendon(objects.USDTendon):
         def generate_primitive_mesh(self) -> dict[str, Any]:
@@ -162,10 +191,59 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             return parts
 
     class NamedUSDExporter(USDExporter):
+        def _update_scene(self, data: Any, **kwargs: Any) -> None:
+            super()._update_scene(data, **kwargs)
+            start = self.scene.ngeom
+            if config.scene == "sport":
+                from myosuite.viz.mj_renderer import _sport_court
+
+                _sport_court(self.scene, self.model, data)
+            self.sport_overlay_count = self.scene.ngeom - start
+            if viz_fn is not None:
+                viz_fn(self.frame_count - 1, self.model, data, self.scene)
+            for index in range(start, self.scene.ngeom):
+                self.scene.geoms[index].objtype = mujoco.mjtObj.mjOBJ_UNKNOWN
+                self.scene.geoms[index].objid = index - start
+
         def _get_geom_name(self, geom: Any) -> str:
+            if geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN:
+                if geom.objid < getattr(self, "sport_overlay_count", 0):
+                    return f"Sport_{geom.objid}"
+                return f"Overlay_{geom.objid}"
             return Tf.MakeValidIdentifier(super()._get_geom_name(geom))
 
         def _load_geom(self, geom: Any) -> None:
+            if (
+                geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                and geom.objid < self.sport_overlay_count
+            ):
+                name = self._get_geom_name(geom)
+                # Court paint needs a thin box, not a tessellated capsule.
+                mesh_config = shapes.mesh_config_generator(
+                    name,
+                    mujoco.mjtGeom.mjGEOM_BOX,
+                    np.array([geom.size[0], geom.size[0], geom.size[2]]),
+                )
+                self.geom_refs[name] = objects.USDPrimitiveMesh(
+                    mesh_config, self.stage, self.model, geom, name, rgba=geom.rgba
+                )
+                self.geom_names.add(name)
+                return
+            if (
+                geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                and geom.type == mujoco.mjtGeom.mjGEOM_MESH
+            ):
+                name = self._get_geom_name(geom)
+                self.geom_refs[name] = objects.USDMesh(
+                    stage=self.stage,
+                    model=self.model,
+                    geom=geom,
+                    obj_name=name,
+                    dataid=geom.dataid // 2,
+                    rgba=geom.rgba,
+                )
+                self.geom_names.add(name)
+                return
             if geom.objtype != mujoco.mjtObj.mjOBJ_TENDON:
                 super()._load_geom(geom)
                 return
@@ -178,7 +256,9 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             )
             self.geom_names.add(name)
 
-    env = make_env(config.env)
+    owns_env = env is None
+    supplied_policy = policy is not None
+    env = make_env(config.env) if owns_env else env
     try:
         obs, _ = env.reset(seed=config.seed)
         env.action_space.seed(config.seed)
@@ -187,16 +267,31 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             raise ValueError(
                 "Skin/flex export is outside this minimal renderer's scope."
             )
-        if config.checkpoint:
-            # Strict: an unusable checkpoint raises instead of rendering random motion.
-            policy = load_policy(env, config.checkpoint.absolute(), strict=True)
-        else:
+        clip = None
+        if config.motion is not None:
+            from myosuite.core.trajectory_io import (
+                expand_motion_clip_to_model,
+                load_motion_clip,
+            )
 
-            def policy(observation: np.ndarray) -> np.ndarray:
-                return env.action_space.sample()
+            clip = expand_motion_clip_to_model(
+                load_motion_clip(Path(config.motion), model.nq, model.nv), model
+            )
+            if not clip.frequency_hz:
+                raise ValueError(f"Motion clip has no frequency: {config.motion}")
+            data.qpos[:] = clip.qpos[0]
+            data.qvel[:] = 0
+        if policy is None:
+            if config.checkpoint:
+                # Strict: an unusable checkpoint raises instead of rendering random motion.
+                policy = load_policy(env, config.checkpoint.absolute(), strict=True)
+            else:
+
+                def policy(observation: np.ndarray) -> np.ndarray:
+                    return env.action_space.sample()
 
         skin = (
-            SkinPose.bind(load_skn(config.skin), model, config.skin_inflate)
+            SkinPose.bind(load_skin(config.skin, model), model, config.skin_inflate)
             if config.skin is not None
             else None
         )
@@ -217,13 +312,30 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         option.tendongroup[:] = 1
         muscles = muscle_actuators(model)
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
+        if clip is not None and len(clip.qpos) < 2:
+            raise ValueError("The episode contains no motion samples.")
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         skin_frames = []
+        previous = None  # muscle lengths of the last sample (motion activation)
         low, high = np.full(3, np.inf), np.full(3, -np.inf)
         start = float(data.time)
         done = False
         while True:
             mujoco.mj_forward(model, data)
+            if clip is not None and config.motion_activation and len(muscles):
+                # Proxy: activation follows the shortening speed (lengths/s).
+                length = data.ten_length[muscle_tendons].copy()
+                adr = model.actuator_actadr[muscles]
+                if times:
+                    speed = (
+                        (previous - length)
+                        * clip.frequency_hz
+                        / np.maximum(length, 1e-3)
+                    )
+                    data.act[adr] += (np.clip(speed / 1.5, 0, 1) - data.act[adr]) * 0.35
+                else:
+                    data.act[adr] = 0
+                previous = length
             exporter.update_scene(data, scene_option=option)
             times.append(float(data.time) - start)
             positions.append(data.geom_xpos.copy())
@@ -249,6 +361,11 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                 low = np.minimum(low, skin_frames[-1].min(0))
                 high = np.maximum(high, skin_frames[-1].max(0))
             for geom in exporter.scene.geoms[: exporter.scene.ngeom]:
+                if (
+                    geom.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                    and geom.objid < exporter.sport_overlay_count
+                ):
+                    continue
                 if geom.type != mujoco.mjtGeom.mjGEOM_PLANE and not (
                     geom.objtype == mujoco.mjtObj.mjOBJ_GEOM
                     and model.geom_bodyid[geom.objid] == 0
@@ -258,6 +375,13 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
                     high = np.maximum(high, geom.pos + radius)
             if done or times[-1] >= config.seconds - 1e-9:
                 break
+            if clip is not None:
+                # Kinematic replay at the clip's own frame rate.
+                frame = len(times)
+                data.time = start + frame / clip.frequency_hz
+                data.qpos[:] = clip.qpos[frame]
+                done = frame == len(clip.qpos) - 1
+                continue
             obs, _, terminated, truncated, _ = env.step(policy(obs))
             done = terminated or truncated
         if len(times) < 2:
@@ -265,9 +389,16 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         scene_geoms = exporter.scene.geoms[: exporter.scene.ngeom]
 
         def _is_static(g: Any) -> bool:
-            return g.type == mujoco.mjtGeom.mjGEOM_PLANE or (
-                g.objtype == mujoco.mjtObj.mjOBJ_GEOM
-                and model.geom_bodyid[g.objid] == 0
+            return (
+                (
+                    g.objtype == mujoco.mjtObj.mjOBJ_UNKNOWN
+                    and g.objid < exporter.sport_overlay_count
+                )
+                or g.type == mujoco.mjtGeom.mjGEOM_PLANE
+                or (
+                    g.objtype == mujoco.mjtObj.mjOBJ_GEOM
+                    and model.geom_bodyid[g.objid] == 0
+                )
             )
 
         dt = float(np.median(np.diff(times)))
@@ -314,7 +445,15 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             "env": config.env,
             "seed": config.seed,
             "checkpoint": str(config.checkpoint) if config.checkpoint else None,
-            "motion_source": "checkpoint" if config.checkpoint else "random",
+            "motion_source": (
+                "motion"
+                if clip
+                else "callable"
+                if supplied_policy
+                else "checkpoint"
+                if config.checkpoint
+                else "random"
+            ),
             "usd": str(usd),
             "dt": dt,
             "duration": times[-1],
@@ -344,8 +483,8 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
             else [],
             "bone_objects": list(bone_geoms),
             "muscle_mesh": _copy_muscle_mesh(config, out),
-            # Bone poses at qpos0, the rest pose the muscle meshes are modelled in.
-            "bone_rest": _rest_poses(model, bone_geoms) if config.muscle_mesh else {},
+            # Per body in the scene: its bones' poses in the muscle meshes' rest pose.
+            "muscle_rigs": _muscle_rigs(config, model, bone_geoms),
             "plane_objects": [
                 exporter._get_geom_name(g)
                 for g in scene_geoms
@@ -392,7 +531,8 @@ def export_rollout(config: RenderConfig) -> dict[str, Any]:
         (out / "render.json").write_text(json.dumps(meta, indent=2) + "\n")
         return meta
     finally:
-        env.close()
+        if owns_env:
+            env.close()
 
 
 def _anatomy_bodies(model: Any) -> set[int]:
@@ -470,12 +610,15 @@ def _resolve_muscle_mesh(spec: str) -> Path:
         return Path(spec)
     from huggingface_hub import hf_hub_download
 
+    from myosuite.core.hf_io import pinned_revision
+
     try:
         return Path(
             hf_hub_download(
                 repo_id=MUSCLE_MESH_REPO,
                 filename=MUSCLE_MESHES[spec],
                 repo_type="dataset",
+                revision=pinned_revision(MUSCLE_MESH_REPO),
             )
         )
     except Exception as err:
@@ -509,6 +652,67 @@ def _rest_poses(model: Any, geoms: dict[str, int]) -> dict[str, list[float]]:
     return poses
 
 
+def _muscle_mesh_reference(env_id: str) -> Any:
+    """Model of the env whose rest pose the muscle meshes are modelled in."""
+    import myosuite
+
+    env = myosuite.make_env(env_id)
+    try:
+        return env.unwrapped.model
+    finally:
+        env.close()
+
+
+def _muscle_rigs(
+    config: RenderConfig, model: Any, bone_geoms: dict[str, int]
+) -> list[dict[str, list[float]]]:
+    """Per body in the scene, the muscle-mesh rest pose of each of its bones.
+
+    The meshes are modelled on one body at ``qpos0``. A bone of the scene is
+    that body's bone when it draws the same mesh, also under a name prefix
+    (copies of a body in one model) and in a model with only part of the bones
+    (an arm). Its pose in the reference is its rest pose, wherever the scene
+    puts it.
+
+    Args:
+        config: Render configuration (``muscle_mesh``, ``muscle_mesh_env``).
+        model: Scene model.
+        bone_geoms: Exported name and geom ID of each bone geom in the scene.
+
+    Returns:
+        One ``{bone name: row-major 4x4 rest pose}`` per body; empty without a
+        muscle mesh.
+
+    Raises:
+        ValueError: No bone of the scene matches the reference body.
+    """
+    if config.muscle_mesh is None:
+        return []
+    bundled = config.muscle_mesh in MUSCLE_MESHES
+    env_id = config.muscle_mesh_env or (MUSCLE_MESH_ENV if bundled else None)
+    if env_id is None or env_id == config.env:
+        return [_rest_poses(model, bone_geoms)]
+    reference = _muscle_mesh_reference(env_id)
+    rest = _rest_poses(
+        reference,
+        {
+            reference.mesh(reference.geom_dataid[g]).name: g
+            for g in range(reference.ngeom)
+            if reference.geom_dataid[g] >= 0
+        },
+    )
+    by_length = sorted(rest, key=len, reverse=True)
+    rigs: dict[str, dict[str, list[float]]] = {}
+    for name, g in bone_geoms.items():
+        mesh = model.mesh(model.geom_dataid[g]).name
+        match = next((r for r in by_length if mesh.endswith(r)), None)
+        if match is not None:
+            rigs.setdefault(mesh[: len(mesh) - len(match)], {})[name] = rest[match]
+    if not rigs:
+        raise ValueError(f"No bone of {config.env} draws a bone mesh of {env_id}.")
+    return list(rigs.values())
+
+
 def _binding_targets(
     joints: dict[str, Any], bones: dict[str, Any], tolerance: float = 0.005
 ) -> dict[str, str]:
@@ -516,6 +720,7 @@ def _binding_targets(
 
     Geom names and IDs differ between model builds (``l_femur`` / ``femur_l``,
     renumbered phalanges), so each joint takes the scene bone at its bind position.
+    A joint without a bone there is left out: the scene's body lacks that bone.
 
     Args:
         joints: Rest position of each authored joint (vertex group).
@@ -523,10 +728,10 @@ def _binding_targets(
         tolerance: Largest allowed distance in metres.
 
     Returns:
-        Scene bone name per joint name.
+        Scene bone name per joint name, for the joints that have one.
 
     Raises:
-        ValueError: A joint has no bone within *tolerance*, or two share one.
+        ValueError: No joint has a bone within *tolerance*, or two share one.
     """
     import numpy as np
 
@@ -534,45 +739,38 @@ def _binding_targets(
     rest = np.array([bones[n] for n in names], float).reshape(-1, 3)
     result: dict[str, str] = {}
     for joint, position in joints.items():
+        if not names:
+            break
         distance = np.linalg.norm(rest - np.asarray(position, float), axis=1)
-        nearest = int(distance.argmin()) if len(names) else -1
-        if nearest < 0 or distance[nearest] > tolerance:
-            raise ValueError(f"No scene bone at authored muscle bone: {joint}")
-        result[joint] = names[nearest]
+        nearest = int(distance.argmin())
+        if distance[nearest] <= tolerance:
+            result[joint] = names[nearest]
+    if not result:
+        raise ValueError("No scene bone at any authored muscle bone")
     if len(set(result.values())) < len(result):
         raise ValueError("Authored muscle bones match the same scene bone")
     return result
 
 
 def _add_muscle_mesh(
-    output: Path, meta: dict[str, Any], scene: Any, material: Any
+    output: Path,
+    meta: dict[str, Any],
+    scene: Any,
+    material: Any,
+    color: tuple[float, ...] | None = None,
 ) -> None:
     """Import the skinned muscle meshes and drive their bones by the bone objects.
 
     Runs in Blender. Each authored bone is matched by rest position to a bone
     geom, whose animated object it then copies, so each muscle keeps its own
-    weights.
+    weights. Every body in the scene gets its own rig and its own muscles (the
+    mesh data is shared); a muscle with a bone the body lacks is left out.
+    ``color`` tints the muscles (default ``MUSCLE_UNIFORM``).
     """
     import bpy
     import numpy as np
     from mathutils import Matrix
 
-    bones = []
-    for name, pose in meta["bone_rest"].items():
-        obj = bpy.data.objects.get(f"Mesh_{name}")
-        if obj is not None:
-            bones.append((name, obj, Matrix(np.asarray(pose).reshape(4, 4).tolist())))
-    rig = bpy.data.objects.new("MuscleRig", bpy.data.armatures.new("MuscleRig"))
-    scene.collection.objects.link(rig)
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.mode_set(mode="EDIT")
-    for name, _, rest in bones:
-        edit = rig.data.edit_bones.new(name)
-        edit.tail = (0, 0.02, 0)
-        edit.matrix = rest
-    bpy.ops.object.mode_set(mode="OBJECT")
-    for name, obj, _ in bones:
-        rig.pose.bones[name].constraints.new("COPY_TRANSFORMS").target = obj
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(output / meta["muscle_mesh"]))
     imported = [o for o in bpy.data.objects if o not in before]
@@ -582,35 +780,64 @@ def _add_muscle_mesh(
         if o.type == "ARMATURE"
         for bone in o.data.bones
     }
-    targets = _binding_targets(
-        joints, {name: np.array(rest.translation) for name, _, rest in bones}
-    )
     # The glTF importer adds a mesh as the display shape of its bones.
     shapes = {
         b.custom_shape for o in imported if o.type == "ARMATURE" for b in o.pose.bones
     }
-    meshes = [o for o in imported if o.type == "MESH" and o not in shapes]
-    for obj in imported:
-        if obj not in meshes:
-            bpy.data.objects.remove(obj)
-    for obj in meshes:
+    authored = [o for o in imported if o.type == "MESH" and o not in shapes]
+    for obj in authored:
         mesh = obj.data
         if not obj.vertex_groups or any(not v.groups for v in mesh.vertices):
             raise ValueError(f"Muscle mesh {obj.name} is not skinned to the bones")
-        # Two passes, so a new name never collides with a group not yet renamed.
-        for group in obj.vertex_groups:
-            group.name = "_" + group.name
-        for group in obj.vertex_groups:
-            group.name = targets[group.name[1:]]
-        for modifier in list(obj.modifiers):
-            if modifier.type == "ARMATURE":
-                obj.modifiers.remove(modifier)
-        obj.modifiers.new("Bones", "ARMATURE").object = rig
         mesh.materials.clear()
         mesh.materials.append(material)
-        obj.color = MUSCLE_UNIFORM
         for polygon in mesh.polygons:
             polygon.use_smooth = True
+    used = {
+        obj: {
+            obj.vertex_groups[g.group].name
+            for v in obj.data.vertices
+            for g in v.groups
+            if g.weight > 0
+        }
+        for obj in authored
+    }
+    for rest_poses in meta["muscle_rigs"]:
+        bones = {}
+        for name, pose in rest_poses.items():
+            obj = bpy.data.objects.get(f"Mesh_{name}")
+            if obj is not None:
+                bones[name] = (obj, Matrix(np.asarray(pose).reshape(4, 4).tolist()))
+        targets = _binding_targets(
+            joints,
+            {name: np.array(rest.translation) for name, (_, rest) in bones.items()},
+        )
+        # The rig's bones carry the authored joint names: vertex group names live
+        # in the mesh data, which the muscles of all bodies share.
+        rig = bpy.data.objects.new("MuscleRig", bpy.data.armatures.new("MuscleRig"))
+        scene.collection.objects.link(rig)
+        bpy.context.view_layer.objects.active = rig
+        bpy.ops.object.mode_set(mode="EDIT")
+        for joint, name in targets.items():
+            edit = rig.data.edit_bones.new(joint)
+            edit.tail = (0, 0.02, 0)
+            edit.matrix = bones[name][1]
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for joint, name in targets.items():
+            constraint = rig.pose.bones[joint].constraints.new("COPY_TRANSFORMS")
+            constraint.target = bones[name][0]
+        for source in authored:
+            if not used[source] <= set(targets):
+                continue
+            obj = source.copy()  # the copies of all bodies share the mesh data
+            scene.collection.objects.link(obj)
+            for modifier in list(obj.modifiers):
+                if modifier.type == "ARMATURE":
+                    obj.modifiers.remove(modifier)
+            obj.modifiers.new("Bones", "ARMATURE").object = rig
+            obj.color = color or MUSCLE_UNIFORM
+    for obj in imported:
+        bpy.data.objects.remove(obj)
 
 
 def _copy_skin_texture(config: RenderConfig, out: Path) -> str | None:
@@ -656,6 +883,13 @@ STUDIO_LIGHTS = [
     ("Fill", (1.4, -1.2, 0.3), 14, (0.82, 0.9, 1.0)),
     ("Rim", (0.5, 1.4, 1.2), 70, (1.0, 1.0, 1.0)),
 ]
+SPORT_LIGHTS = [
+    ("Key", (-1.08, -1.74, 1.75), 185, (1.0, 0.93, 0.82)),
+    ("Fill", (0.73, -1.32, 0.92), 40, (0.8, 0.9, 1.0)),
+    ("Orange rim", (-1.03, 0.83, 0.86), 200, (1.0, 0.2, 0.025)),
+    ("Cyan rim", (0.75, 0.10, 1.08), 262, (0.015, 0.5, 1.0)),
+    ("Top softbox", (0.0, 0.0, 2.3), 77, (0.85, 0.9, 1.0)),
+]
 EXPOSURE = 0.0
 BACKDROP = (0.16, 0.16, 0.17, 1.0)
 # Darker studio behind a pale skin, so its silhouette and the anatomy stand out.
@@ -663,6 +897,7 @@ SKIN_BACKDROP = (0.006, 0.0065, 0.008, 1.0)
 MUSCLE_RELAXED = (0.50, 0.16, 0.15, 1.0)
 MUSCLE_ACTIVE = (0.62, 0.012, 0.02, 1.0)
 MUSCLE_UNIFORM = (0.42, 0.11, 0.10, 1.0)
+SPORT_MUSCLE = (0.45, 0.012, 0.008, 1.0)  # brighter red under the sport lights
 # MyoSuite's MuJoCo viewer colouring: activation ** 0.25 from near black to red.
 PATH_RELAXED = (0.05, 0.05, 0.05, 1.0)
 PATH_ACTIVE = (0.95, 0.3, 0.3, 1.0)
@@ -700,6 +935,225 @@ def _animate_activation(output: Path, meta: dict[str, Any], scene: Any) -> None:
                 obj.color = _muscle_colour(a, paths)
                 obj.keyframe_insert("color", frame=frame)
             keyed = a
+
+
+def _circle_centre(points: Any) -> tuple[float, float]:
+    """Least-squares centre of points on one circle in the xy plane (Kasa fit)."""
+    import numpy as np
+
+    xy = np.asarray(points, float)[:, :2]
+    lhs = np.column_stack((2 * xy, np.ones(len(xy))))
+    (cx, cy, _), *_ = np.linalg.lstsq(lhs, (xy**2).sum(1), rcond=None)
+    return float(cx), float(cy)
+
+
+def _add_sport_arena(
+    scene: Any, camera: Any, forward: Any, floor_z: float, stand: Any
+) -> None:
+    """Game-like sport dressing: team glows, arena lights, haze, lens and bloom.
+
+    Runs in Blender. Scene-only decoration: a soft glow under each agent that
+    follows its identity arc, out-of-focus LED bars behind the court, a stage
+    spot through thin haze, shallow depth of field, then bloom and a vignette.
+    """
+    import bpy
+    from mathutils import Vector
+
+    def node_material(name: str) -> Any:
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        mat.node_tree.nodes.clear()
+        return mat
+
+    def emission(name: str, color: tuple[float, ...], strength: float) -> Any:
+        mat = node_material(name)
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        shader = nodes.new("ShaderNodeEmission")
+        shader.inputs[0].default_value = color
+        shader.inputs[1].default_value = strength
+        links.new(shader.outputs[0], nodes.new("ShaderNodeOutputMaterial").inputs[0])
+        return mat
+
+    # Identity arcs by team colour; the thicker (inner) arc gives the agent centre.
+    arcs: dict[str, list[Any]] = {}
+    for obj in scene.objects:
+        if "_Sport_" not in obj.name or not obj.data.materials:
+            continue
+        shader = obj.data.materials[0].node_tree.nodes.get("Principled BSDF")
+        color = shader.inputs["Base Color"].default_value if shader else (0, 0, 0)
+        if max(color[:3]) - min(color[:3]) >= 0.15:
+            arcs.setdefault("orange" if color[0] > color[2] else "cyan", []).append(obj)
+    centres, glows = [], []
+    for team, objects in arcs.items():
+        thickness = {o: o.dimensions.z for o in objects}
+        inner = [o for o in objects if thickness[o] >= max(thickness.values()) * 0.8]
+        x, y = _circle_centre([o.matrix_world.translation for o in inner])
+        centres.append(Vector((x, y, floor_z)))
+        bpy.ops.mesh.primitive_circle_add(
+            vertices=64, radius=0.75, fill_type="NGON", location=(x, y, floor_z + 0.004)
+        )
+        glow = bpy.context.object
+        glow.name = f"Team glow {team}"
+        glows.append(glow)
+        # Follow the arc: it only translates with its agent.
+        follow = glow.constraints.new("COPY_LOCATION")
+        follow.target, follow.use_offset = inner[0], True
+        follow.use_z = False
+        glow.location -= Vector((*inner[0].matrix_world.translation[:2], 0))
+        mat = node_material(glow.name)
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        coords = nodes.new("ShaderNodeTexCoord")
+        scale = nodes.new("ShaderNodeMapping")
+        scale.inputs["Scale"].default_value = (1.33, 1.33, 1.33)
+        falloff = nodes.new("ShaderNodeTexGradient")
+        falloff.gradient_type = "SPHERICAL"
+        soft = nodes.new("ShaderNodeMath")
+        soft.operation, soft.inputs[1].default_value = "POWER", 2.2
+        gain = nodes.new("ShaderNodeMath")
+        gain.operation, gain.inputs[1].default_value = "MULTIPLY", 4.0
+        light = nodes.new("ShaderNodeEmission")
+        light.inputs[0].default_value = (
+            (1.0, 0.25, 0.02, 1) if team == "orange" else (0.02, 0.55, 1.0, 1)
+        )
+        clear = nodes.new("ShaderNodeBsdfTransparent")
+        mix = nodes.new("ShaderNodeMixShader")
+        links.new(coords.outputs["Object"], scale.inputs["Vector"])
+        links.new(scale.outputs[0], falloff.inputs[0])
+        links.new(falloff.outputs["Fac"], soft.inputs[0])
+        links.new(soft.outputs[0], gain.inputs[0])
+        links.new(gain.outputs[0], light.inputs[1])
+        links.new(soft.outputs[0], mix.inputs[0])
+        links.new(clear.outputs[0], mix.inputs[1])
+        links.new(light.outputs[0], mix.inputs[2])
+        links.new(mix.outputs[0], nodes.new("ShaderNodeOutputMaterial").inputs[0])
+        glow.data.materials.append(mat)
+    if not centres:
+        return
+    middle = sum(centres, Vector()) / len(centres)
+    focus = middle + Vector((0, 0, 0.95))
+    focus_target = bpy.data.objects.new("Arena focus", None)
+    scene.collection.objects.link(focus_target)
+    focus_target.location.z = focus.z
+    for index, glow in enumerate(glows):
+        follow = focus_target.constraints.new("COPY_LOCATION")
+        follow.target = glow
+        follow.influence = 1.0 / (index + 1)
+        follow.use_z = False
+
+    # Arena: LED ribbon and light bars far behind the court, dark stands behind them.
+    ahead = Vector((forward.x, forward.y, 0)).normalized()
+    side = ahead.cross(Vector((0, 0, 1))).normalized()
+    heading = math.atan2(ahead.y, ahead.x) + math.pi / 2
+    far = middle + ahead * 12
+    cyan = emission("LED cyan", (0.05, 0.35, 1.0, 1), 3)
+    amber = emission("LED amber", (1.0, 0.35, 0.05, 1), 4)
+    bpy.ops.mesh.primitive_cube_add(location=(far.x, far.y, floor_z + 0.55))
+    ribbon = bpy.context.object
+    ribbon.name, ribbon.scale = "LED ribbon", (9, 0.02, 0.025)
+    ribbon.rotation_euler.z = heading
+    ribbon.data.materials.append(cyan)
+    for i in range(-8, 9):
+        spot = far + side * i * 2.2
+        bpy.ops.mesh.primitive_cube_add(location=(spot.x, spot.y, floor_z + 2.6))
+        bar = bpy.context.object
+        bar.name, bar.scale = f"LED bar {i + 8}", (0.025, 0.025, 1.4)
+        bar.data.materials.append(amber if i % 3 == 0 else cyan)
+    back = far + ahead * 0.6
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(back.x, back.y, floor_z + 3))
+    stands = bpy.context.object
+    stands.name, stands.scale = "Stands", (30, 8, 1)
+    stands.rotation_euler = (math.pi / 2, 0, heading)
+    stands.data.materials.append(stand)
+
+    # Stage spot from above through a thin haze.
+    bpy.ops.object.light_add(type="SPOT", location=(focus.x, focus.y, floor_z + 5.5))
+    stage = bpy.context.object
+    stage.name = "Stage spot"
+    stage.data.energy, stage.data.color = 2500, (0.85, 0.92, 1.0)
+    stage.data.spot_size, stage.data.spot_blend = math.radians(38), 0.6
+    bpy.ops.mesh.primitive_cube_add(location=(focus.x, focus.y, floor_z + 3))
+    haze = bpy.context.object
+    haze.name, haze.scale = "Haze", (14, 14, 3.1)
+    haze.visible_shadow = False
+    mat = node_material("Haze")
+    volume = mat.node_tree.nodes.new("ShaderNodeVolumePrincipled")
+    volume.inputs["Density"].default_value = 0.004
+    volume.inputs["Anisotropy"].default_value = 0.55
+    output = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
+    mat.node_tree.links.new(volume.outputs[0], output.inputs["Volume"])
+    haze.data.materials.append(mat)
+
+    # Lens: shallow depth of field on the agents.
+    camera.data.dof.use_dof = True
+    camera.data.dof.focus_object = focus_target
+    camera.data.dof.aperture_fstop = 2.0
+    _add_bloom(scene)
+
+
+def _add_bloom(scene: Any) -> None:
+    """Bloom on bright lights and a soft vignette, in Blender's compositor.
+
+    Blender 5 builds the compositor as a node group; Blender 4 uses the
+    scene's node tree. Without a supported compositor the render keeps no bloom.
+    """
+    import bpy
+
+    if hasattr(scene, "compositing_node_group"):  # Blender 5
+        tree = bpy.data.node_groups.new("Sport look", "CompositorNodeTree")
+        scene.compositing_node_group = tree
+        tree.interface.new_socket(
+            "Image", in_out="OUTPUT", socket_type="NodeSocketColor"
+        )
+        output = tree.nodes.new("NodeGroupOutput").inputs[0]
+    else:  # Blender 4
+        scene.use_nodes = True
+        tree = scene.node_tree
+        tree.nodes.clear()
+        output = tree.nodes.new("CompositorNodeComposite").inputs["Image"]
+    if hasattr(scene.render, "compositor_device"):
+        scene.render.compositor_device = "CPU"  # runs headless without a GPU
+    nodes, links = tree.nodes, tree.links
+    layers = nodes.new("CompositorNodeRLayers")
+    glare = nodes.new("CompositorNodeGlare")
+    settings = {"Threshold": 0.6, "Strength": 0.6, "Size": 0.7}
+    if "Type" in glare.inputs:
+        glare.inputs["Type"].default_value = "Bloom"
+        for name, value in settings.items():
+            glare.inputs[name].default_value = value
+    else:
+        glare.glare_type = (
+            "BLOOM"
+            if "BLOOM"
+            in {
+                item.identifier
+                for item in glare.bl_rna.properties["glare_type"].enum_items
+            }
+            else "FOG_GLOW"
+        )
+        glare.threshold = 0.6
+    mask = nodes.new("CompositorNodeEllipseMask")
+    blur = nodes.new("CompositorNodeBlur")
+    if "Size" in mask.inputs:
+        mask.inputs["Size"].default_value = (0.95, 0.9)
+        blur.inputs["Size"].default_value = (250, 250)
+    else:
+        mask.width, mask.height = 0.95, 0.9
+        blur.size_x = blur.size_y = 250
+    if hasattr(scene, "compositing_node_group"):
+        darken = nodes.new("ShaderNodeMix")
+        darken.data_type, darken.blend_type = "RGBA", "MULTIPLY"
+        darken.inputs["Factor"].default_value = 0.6
+        image_a, image_b, result = darken.inputs[6], darken.inputs[7], darken.outputs[2]
+    else:
+        darken = nodes.new("CompositorNodeMixRGB")
+        darken.blend_type = "MULTIPLY"
+        darken.inputs[0].default_value = 0.6
+        image_a, image_b, result = darken.inputs[1], darken.inputs[2], darken.outputs[0]
+    links.new(layers.outputs["Image"], glare.inputs["Image"])
+    links.new(mask.outputs["Mask"], blur.inputs["Image"])
+    links.new(glare.outputs["Image"], image_a)
+    links.new(blur.outputs["Image"], image_b)
+    links.new(result, output)
 
 
 def _add_cyclorama(
@@ -753,6 +1207,7 @@ def build_blender_scene(output: Path) -> None:
     from mathutils import Vector
 
     meta = json.loads((output / "render.json").read_text())
+    sport = meta.get("scene") == "sport"
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     scene.render.fps = meta["fps"]
@@ -788,7 +1243,7 @@ def build_blender_scene(output: Path) -> None:
     bpy.context.preferences.filepaths.save_version = 0
     scene.render.image_settings.file_format = "PNG"
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.exposure = EXPOSURE
+    scene.view_settings.exposure = -0.6 if sport else EXPOSURE
     # High contrast makes the plain skin's silhouette read; it would oversaturate a texture.
     plain_skin = meta.get("skin_objects") and not meta.get("skin_texture")
     contrast = "High" if plain_skin else "Medium High"
@@ -801,8 +1256,10 @@ def build_blender_scene(output: Path) -> None:
     scene.world = bpy.data.worlds.new("Studio")
     scene.world.use_nodes = True
     background = scene.world.node_tree.nodes["Background"]
-    background.inputs[0].default_value = (0.42, 0.43, 0.45, 1)
-    background.inputs[1].default_value = 0.25
+    background.inputs[0].default_value = (
+        (0.008, 0.015, 0.025, 1) if sport else (0.42, 0.43, 0.45, 1)
+    )
+    background.inputs[1].default_value = 0.15 if sport else 0.25
 
     def material(
         name: str, color: tuple[float, ...], roughness: float, **inputs: Any
@@ -819,12 +1276,25 @@ def build_blender_scene(output: Path) -> None:
                 socket.default_value = value
         return mat
 
+    sport_floor = (
+        material(
+            "Sport floor",
+            (0.009, 0.022, 0.04, 1),
+            0.16,
+            Coat_Weight=0.5,
+            Coat_Roughness=0.05,
+        )
+        if sport
+        else None
+    )
+    perimeter = material("Perimeter", (0.012, 0.018, 0.024, 1), 0.75) if sport else None
+
     # Waxy ivory bone and glossy, translucent muscle, as in anatomical renders.
     bone = material(
         "Bone",
-        (0.80, 0.73, 0.60, 1),
-        0.45,
-        Subsurface_Weight=0.2,
+        (0.50, 0.46, 0.38, 1) if sport else (0.80, 0.73, 0.60, 1),
+        0.4 if sport else 0.45,
+        Subsurface_Weight=0.07 if sport else 0.2,
         Subsurface_Radius=(1.0, 0.7, 0.45),
         Subsurface_Scale=0.004,
         Coat_Weight=0.15,
@@ -833,7 +1303,7 @@ def build_blender_scene(output: Path) -> None:
         "Muscle",
         MUSCLE_RELAXED,
         0.32,
-        Subsurface_Weight=0.3,
+        Subsurface_Weight=0.08 if sport else 0.3,
         Subsurface_Radius=(1.0, 0.25, 0.15),
         Subsurface_Scale=0.006,
         Coat_Weight=0.4,
@@ -900,16 +1370,37 @@ def build_blender_scene(output: Path) -> None:
             obj.data.materials.clear()
             obj.data.materials.append(muscle)
             obj.color = (
-                MUSCLE_UNIFORM
+                (SPORT_MUSCLE if sport else MUSCLE_UNIFORM)
                 if meta.get("muscle_color") == "uniform"
                 else _muscle_colour(0.0, meta.get("muscles") == "paths")
             )
         elif any(name in obj.name for name in bones):
             obj.data.materials.clear()
             obj.data.materials.append(bone)
+        elif sport and any(name in obj.name for name in meta.get("plane_objects", [])):
+            obj.data.materials.clear()
+            obj.data.materials.append(sport_floor)
+        elif sport and "_Sport_" in obj.name:
+            for mat in obj.data.materials:
+                mat.cycles.emission_sampling = "NONE"
+                if mat.use_nodes:
+                    for shader in mat.node_tree.nodes:
+                        if shader.type == "BSDF_PRINCIPLED":
+                            color = shader.inputs["Base Color"].default_value
+                            shader.inputs["Emission Color"].default_value = color
+                            # Neutral court lines stay dim: depth of field smears them.
+                            neutral = max(color[:3]) - min(color[:3]) < 0.15
+                            shader.inputs["Emission Strength"].default_value = (
+                                0.25 if neutral else 2.0
+                            )
+        elif sport and any(name in obj.name for name in ("fence", "corner")):
+            obj.data.materials.clear()
+            obj.data.materials.append(perimeter)
     _animate_activation(output, meta, scene)
     if meta.get("muscle_mesh"):
-        _add_muscle_mesh(output, meta, scene, muscle)
+        _add_muscle_mesh(
+            output, meta, scene, muscle, SPORT_MUSCLE if sport else MUSCLE_UNIFORM
+        )
 
     low, high = (Vector(v) for v in meta["bounds"])
     center = (low + high) / 2
@@ -918,13 +1409,15 @@ def build_blender_scene(output: Path) -> None:
     bpy.ops.object.camera_add()
     camera = bpy.context.object
     camera.name = "Studio camera"
-    camera.data.lens = 85
+    camera.data.lens = 45 if sport else 85
     camera.data.sensor_width = 36
-    view = Vector((1.3, -1.7, 0.75)).normalized()
+    view = Vector((1.05, -4.3, 0.16) if sport else (1.3, -1.7, 0.75)).normalized()
     camera.location = center + view * span * 3
     camera.rotation_euler = (
         (center - camera.location).to_track_quat("-Z", "Y").to_euler()
     )
+    if sport:
+        camera.rotation_euler.rotate_axis("Z", math.radians(-3))
     camera.data.clip_end = max(100, span * 40)
     scene.camera = camera
     anatomy = [
@@ -957,27 +1450,30 @@ def build_blender_scene(output: Path) -> None:
                 half_tan,
             )
         )
-        distance = (
-            1.18 * max((vhigh.x - vlow.x) / 2 / tan_x, (vhigh.y - vlow.y) / 2 / tan_y)
-            + (vhigh.z - vlow.z) / 2
-        )
+        distance = (1.06 if sport else 1.18) * max(
+            (vhigh.x - vlow.x) / 2 / tan_x, (vhigh.y - vlow.y) / 2 / tan_y
+        ) + (vhigh.z - vlow.z) / 2
         camera.location = target + view * distance
         center = target
     forward = (center - camera.location).normalized()
     right = forward.cross(Vector((0, 0, 1))).normalized()
-    for name, offset, power, color in STUDIO_LIGHTS:
+    light_span = span
+    if sport and view_points:
+        heights = [(rotation @ p).z for p in view_points]
+        light_span = max(max(heights) - min(heights), 0.3)
+    for name, offset, power, color in SPORT_LIGHTS if sport else STUDIO_LIGHTS:
         location = (
             center
             + (right * offset[0] + forward * offset[1] + Vector((0, 0, offset[2])))
-            * span
+            * light_span
         )
         bpy.ops.object.light_add(type="AREA", location=location)
         light = bpy.context.object
         light.name = name
-        light.data.energy = power * span**2
+        light.data.energy = power * light_span**2
         light.data.color = color
         light.data.shape = "DISK"
-        light.data.size = span * 1.1
+        light.data.size = light_span * (1.67 if sport and name == "Key" else 1.1)
         light.rotation_euler = (
             (center - light.location).to_track_quat("-Z", "Y").to_euler()
         )
@@ -998,8 +1494,10 @@ def build_blender_scene(output: Path) -> None:
         )
         bpy.context.object.name = "Studio floor"
         bpy.context.object.data.materials.append(
-            material("Floor", (0.12, 0.14, 0.17, 1), 0.85)
+            sport_floor if sport else material("Floor", (0.12, 0.14, 0.17, 1), 0.85)
         )
+    if sport:
+        _add_sport_arena(scene, camera, forward, floor_z, perimeter)
     scene.frame_set(scene.frame_start)
     scene.render.filepath = str(output / "frames" / "frame_")
     bpy.ops.file.pack_all()
@@ -1015,7 +1513,13 @@ def build_blender_scene(output: Path) -> None:
 
 
 def render_rollout(
-    config: RenderConfig, export_only: bool = False, blender_log: Path | None = None
+    config: RenderConfig,
+    export_only: bool = False,
+    blender_log: Path | None = None,
+    *,
+    env: Any | None = None,
+    policy: Callable | None = None,
+    viz_fn: Callable | None = None,
 ) -> dict[str, Any]:
     """Export a rollout, render it in a separate Blender process and write the video.
 
@@ -1023,13 +1527,16 @@ def render_rollout(
         config: Render settings.
         export_only: Stop after the USD export.
         blender_log: File for Blender's console output (default: this process's).
+        env: Optional configured environment (see ``export_rollout``).
+        policy: Optional observation-to-action callback.
+        viz_fn: Optional visualization callback, also exported to Blender.
 
     Returns:
         The export metadata (see :func:`export_rollout`).
     """
     if (config.output / "render.json").exists():
         raise FileExistsError("Choose a new output directory to avoid mixing runs.")
-    meta = export_rollout(config)
+    meta = export_rollout(config, env=env, policy=policy, viz_fn=viz_fn)
     print(
         f"Exported {meta['samples']} samples, {meta['duration']:.3f}s to {meta['usd']}",
         flush=True,
@@ -1057,7 +1564,14 @@ def render_rollout(
 
         from myosuite.utils.video_io import write_video
 
-        frames = sorted((config.output / "frames").glob("frame_*.png"))
+        frames = sorted(
+            (config.output / "frames").glob("frame_*.png"),
+            key=lambda p: (
+                0 if (s := p.stem.rsplit("_", 1)[-1]).isdigit() else 1,
+                int(s) if s.isdigit() else 0,
+                p.name,
+            ),
+        )
         write_video(
             config.output / "video.mp4",
             [iio.imread(f)[..., :3] for f in frames],
@@ -1091,6 +1605,16 @@ def main(argv: list[str] | None = None) -> None:
     source.add_argument(
         "--random", action="store_true", help="Explicit random-action demo."
     )
+    source.add_argument(
+        "--motion",
+        type=Path,
+        help="Motion clip .npz with qpos (e.g. MuscleMimic), replayed kinematically.",
+    )
+    parser.add_argument(
+        "--motion-activation",
+        action="store_true",
+        help="With --motion, tint muscles by a shortening-speed proxy of activation.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seconds", type=float, default=3)
     parser.add_argument("--fps", type=int, default=30)
@@ -1115,12 +1639,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--scene",
-        choices=["studio", "mujoco"],
+        choices=["studio", "mujoco", "sport"],
         default="studio",
-        help="Studio backdrop, or keep the task's own floor (e.g. a soccer pitch).",
+        help="Studio backdrop, original task floor, or the Breakaway sport court.",
     )
     parser.add_argument(
-        "--skin", help='Body skin: a MuJoCo .skn file, or "fullbody" (bundled).'
+        "--skin",
+        help='Body skin: a MuJoCo .skn file, a rigged .glb skin, or "fullbody" (bundled).',
     )
     parser.add_argument(
         "--skin-style", choices=["translucent", "opaque"], default="translucent"
@@ -1137,13 +1662,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--muscle-mesh",
         help='Anatomical muscle meshes instead of tubes: "atlas", "atlas-hd" '
-        "(downloaded from Hugging Face, full body only) or a skinned rest-pose .glb.",
+        "(downloaded from Hugging Face) or a skinned rest-pose .glb.",
+    )
+    parser.add_argument(
+        "--muscle-mesh-env",
+        help="Env in whose rest pose the muscle meshes are modelled (default: "
+        f"{MUSCLE_MESH_ENV} for the atlas, the rendered env for a .glb).",
     )
     parser.add_argument("--samples", type=int, default=64, help="Cycles samples.")
     parser.add_argument("--export-only", action="store_true")
     args = parser.parse_args(argv)
     checkpoint = args.checkpoint
-    if checkpoint is None and not args.random:
+    if checkpoint is None and not args.random and args.motion is None:
         from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
 
         checkpoint = find_checkpoint(args.env)
@@ -1157,6 +1687,8 @@ def main(argv: list[str] | None = None) -> None:
             env=args.env,
             output=args.output,
             checkpoint=checkpoint,
+            motion=args.motion,
+            motion_activation=args.motion_activation,
             seed=args.seed,
             seconds=args.seconds,
             fps=args.fps,
@@ -1172,6 +1704,7 @@ def main(argv: list[str] | None = None) -> None:
             skin_texture=args.skin_texture,
             skin_inflate=args.skin_inflate,
             muscle_mesh=args.muscle_mesh,
+            muscle_mesh_env=args.muscle_mesh_env,
             samples=args.samples,
             blender=args.blender,
         )

@@ -20,6 +20,8 @@ import torch
 import yaml
 from rsl_rl.modules import MLP, EmpiricalNormalization
 
+from myosuite.utils.checkpoint_manifest import CfgLoader, action_map_kind
+
 
 class RslRlPolicy(torch.nn.Module):
     """RSL-RL actor: ``mlp(normalizer(obs))`` -> action mean (deterministic).
@@ -48,9 +50,12 @@ class RslRlPolicy(torch.nn.Module):
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
-        self.obs_dim = next(
-            m.in_features for m in mlp.modules() if isinstance(m, torch.nn.Linear)
+        first_linear = next(
+            (m for m in mlp.modules() if isinstance(m, torch.nn.Linear)), None
         )
+        if first_linear is None:
+            raise ValueError("Actor MLP must contain at least one Linear layer.")
+        self.obs_dim = first_linear.in_features
         self.register_buffer("std", None if std is None else std.flatten().clone())
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
@@ -75,23 +80,15 @@ class RslRlPolicy(torch.nn.Module):
     @torch.no_grad()
     def act(self, obs: np.ndarray, stochastic: bool = False) -> np.ndarray:
         """Numpy convenience wrapper (single or batched observations)."""
-        x = torch.as_tensor(np.asarray(obs), dtype=torch.float32)
-        return (self.sample(x) if stochastic else self(x)).numpy()
-
-
-class _CfgLoader(yaml.SafeLoader):
-    """SafeLoader that reads ``!!python/*`` tags (e.g. tuples) as plain data."""
-
-
-def _construct_plain(loader: yaml.SafeLoader, _suffix: str, node: yaml.Node) -> Any:
-    if isinstance(node, yaml.SequenceNode):
-        return tuple(loader.construct_sequence(node, deep=True))
-    if isinstance(node, yaml.MappingNode):
-        return loader.construct_mapping(node, deep=True)
-    return loader.construct_scalar(node)
-
-
-_CfgLoader.add_multi_constructor("tag:yaml.org,2002:python/", _construct_plain)
+        param = next(self.parameters(), None)
+        buf = next(self.buffers(), None)
+        device = (
+            param.device
+            if param is not None
+            else (buf.device if buf is not None else torch.device("cpu"))
+        )
+        x = torch.as_tensor(np.asarray(obs), dtype=torch.float32, device=device)
+        return (self.sample(x) if stochastic else self(x)).cpu().numpy()
 
 
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
@@ -100,31 +97,57 @@ def _agent_params(checkpoint: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     with path.open() as f:
-        return yaml.load(f, Loader=_CfgLoader) or {}
+        return yaml.load(f, Loader=CfgLoader) or {}
 
 
-def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
+def load_rslrl_policy(
+    checkpoint: str | Path, action_dim: int, action_map_applied: bool = False
+) -> RslRlPolicy:
     """Rebuild the deterministic actor of an RSL-RL checkpoint.
 
     Layer sizes are read from the weights; the activation comes from the run's
-    ``params/agent.yaml`` (default ``elu``).
+    ``params/agent.yaml`` (default ``elu``). If that file gives the actor's
+    ``distribution_cfg.std_range``, the std used by :meth:`RslRlPolicy.sample` is
+    clamped to it, as in training (the saved parameter can lie just outside the
+    range); without one the checkpoint's std is used as is.
 
     Args:
         checkpoint: ``model_*.pt`` from an mjlab training run.
         action_dim: Action dimension of the env the policy will drive.
+        action_map_applied: The env applies the action map the run was trained
+            through (see :mod:`myosuite.utils.action_map`).
 
     Returns:
         The policy in eval mode on CPU.
+
+    Raises:
+        ValueError: The checkpoint records an action map and ``action_map_applied``
+            is not set: its actions are not one action per muscle.
     """
     checkpoint = Path(checkpoint)
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    kind = action_map_kind(state.get("infos") or {}, checkpoint)
+    if kind is not None and not action_map_applied:
+        raise ValueError(
+            f"{checkpoint} was trained through the {kind!r} action map: its actions are "
+            "not one action per muscle. Load it with myosuite.utils.action_map.load_policy, "
+            "or evaluate it with scripts/eval_mjlab_policy.py."
+        )
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})
 
     linear = sorted(
-        (k for k in actor_state if k.startswith("mlp.") and k.endswith(".weight")),
+        (
+            k
+            for k in actor_state
+            if k.startswith("mlp.")
+            and k.endswith(".weight")
+            and k.split(".")[1].isdigit()
+        ),
         key=lambda k: int(k.split(".")[1]),
     )
+    if not linear:
+        raise ValueError(f"No mlp.<index>.weight layers found in {checkpoint}.")
     shapes = [tuple(actor_state[k].shape) for k in linear]
     obs_dim, out_dim = shapes[0][1], shapes[-1][0]
     hidden = [s[0] for s in shapes[:-1]]
@@ -153,4 +176,8 @@ def load_rslrl_policy(checkpoint: str | Path, action_dim: int) -> RslRlPolicy:
         std = actor_state["distribution.std_param"]
     elif "distribution.log_std_param" in actor_state:
         std = actor_state["distribution.log_std_param"].exp()
+    std_range = (actor_cfg.get("distribution_cfg") or {}).get("std_range")
+    if std is not None and std_range is not None:
+        # Same bounds as rsl_rl's GaussianDistribution (lower limit 1e-6).
+        std = std.clamp(max(float(std_range[0]), 1e-6), float(std_range[1]))
     return RslRlPolicy(mlp, normalizer, action_dim, std).eval()

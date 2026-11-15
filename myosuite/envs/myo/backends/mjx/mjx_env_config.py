@@ -6,7 +6,7 @@
 
 These are the source-of-truth configs. ``make()`` in ``mjx/__init__.py``
 converts them to ``ml_collections.ConfigDict`` at the boundary where
-``mujoco_playground.MjxEnv`` requires it.  All user-facing code creates
+``MyoMjxEnvBase`` requires it.  All user-facing code creates
 and manipulates these dataclasses; never raw dicts or ConfigDict.
 """
 

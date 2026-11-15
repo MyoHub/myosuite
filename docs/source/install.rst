@@ -1,7 +1,19 @@
 Installation
 ============
 
-Python 3.10–3.14 is supported (the GPU ``[mjlab]`` extra needs Python ≤3.13).
+Python 3.11+ is recommended (Python 3.10–3.14 is supported; the GPU ``[mjlab]`` extra needs Python ≤3.13).
+
+Security updates
+~~~~~~~~~~~~~~~~
+
+Use Python 3.11 or newer for patched Pillow (>=13.0.0) and filelock (>=4.2.5).
+Python 3.10 remains supported, but their fixed releases no longer support it;
+its compatible versions retain known security advisories. Upgrade Python to
+receive these fixes.
+
+Use an isolated environment: Gradio 6.31.0 requires Pillow <13 and cannot be
+installed together with these patched MyoSuite image dependencies. MyoSuite
+does not require Gradio.
 
 From PyPI
 ~~~~~~~~~
@@ -9,6 +21,24 @@ From PyPI
 .. code-block:: bash
 
    pip install -U myosuite
+
+Python 3.15 CPU environments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Native CPU environment construction and stepping do not require ONNX Runtime.
+On Python 3.15 it is therefore an optional dependency, installed explicitly with
+``pip install 'myosuite[onnx]'`` when using ONNX policy inference or verification.
+The default dependencies on Python 3.10–3.14 are unchanged.
+
+As of October 19, 2026, ONNX Runtime publishes no Python 3.15 wheels, including
+in its official nightly feed. Use Python 3.14 for ONNX features until compatible
+builds are available; the CPU environment path remains usable independently.
+Other native packages still need compatible builds: h5py provides Python 3.15
+wheels through its maintainer-supported
+`nightly index <https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/h5py/>`_,
+and PyTorch CPU wheels are available from its
+`official CPU index <https://download.pytorch.org/whl/cpu/>`_. Pin any nightly
+artifacts used for reproducible environments.
 
 From source
 ~~~~~~~~~~~
@@ -18,7 +48,7 @@ From source
    git clone https://github.com/MyoHub/myosuite.git
    cd myosuite
    pip install -e ".[rl]"        # CPU training (Stable-Baselines3)
-   # or with uv: uv sync -p 3.10 --extra rl
+   # or with uv: uv sync -p 3.11 --extra rl
 
 GPU training (mjlab)
 ~~~~~~~~~~~~~~~~~~~~

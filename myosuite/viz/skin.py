@@ -125,6 +125,60 @@ def load_skn(path: Path | str) -> Skin:
     )
 
 
+def save_skn(skin: Skin, path: Path | str) -> None:
+    """Write *skin* as a MuJoCo binary skin file (the inverse of :func:`load_skn`).
+
+    Args:
+        skin: Skin to write.
+        path: Output ``.skn`` file.
+    """
+    out = [
+        np.array(
+            [len(skin.vert), len(skin.texcoord), len(skin.face), len(skin.bone_names)],
+            np.int32,
+        ).tobytes(),
+        skin.vert.astype(np.float32).tobytes(),
+        skin.texcoord.astype(np.float32).tobytes(),
+        skin.face.astype(np.int32).tobytes(),
+    ]
+    for name, pos, quat, ids, weights in zip(
+        skin.bone_names, skin.bindpos, skin.bindquat, skin.vertid, skin.vertweight
+    ):
+        if len(name.encode()) >= _NAME_BYTES:
+            raise ValueError(f"Bone name longer than {_NAME_BYTES - 1} bytes: {name}")
+        out += [
+            name.encode().ljust(_NAME_BYTES, b"\0"),
+            np.asarray(pos, np.float32).tobytes(),
+            np.asarray(quat, np.float32).tobytes(),
+            np.array([len(ids)], np.int32).tobytes(),
+            np.asarray(ids, np.int32).tobytes(),
+            np.asarray(weights, np.float32).tobytes(),
+        ]
+    Path(path).write_bytes(b"".join(out))
+
+
+def load_skin(path: Path | str, model: mujoco.MjModel | None = None) -> Skin:
+    """Read a ``.skn`` skin, or a rigged ``.glb`` skin (see :mod:`myosuite.viz.skin_glb`).
+
+    Args:
+        path: ``.skn`` or ``.glb`` file, or ``"fullbody"`` for the bundled skin.
+        model: Model a ``.glb`` skin binds to (its joints are body names at ``qpos0``).
+
+    Returns:
+        The parsed skin.
+
+    Raises:
+        ValueError: A ``.glb`` skin without a model.
+    """
+    if str(path).lower().endswith(".glb"):
+        if model is None:
+            raise ValueError("A .glb skin needs the model it binds to.")
+        from myosuite.viz.skin_glb import read_skin_glb  # noqa: PLC0415
+
+        return read_skin_glb(path, model)
+    return load_skn(path)
+
+
 def _quat_to_mat(q: np.ndarray) -> np.ndarray:
     w, x, y, z = np.moveaxis(q / np.linalg.norm(q, axis=-1, keepdims=True), -1, 0)
     return np.stack(

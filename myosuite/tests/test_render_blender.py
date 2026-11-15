@@ -119,6 +119,52 @@ def test_export_preserves_metres_timing_motion_and_valid_names(
     assert np.load(tmp_path / "muscles.npz")["activation"].shape == (5, 1)
 
 
+def test_sport_graphics_export_animation_without_affecting_camera_bounds(
+    tmp_path: Path,
+) -> None:
+    """The same court strokes follow the agents in USD and stay out of framing."""
+    pytest.importorskip("pxr")
+    from dataclasses import replace
+    from pxr import Usd, UsdGeom
+
+    env = _Env()
+    env.model = mujoco.MjModel.from_xml_string("""<mujoco><worldbody>
+      <geom type="plane" size="6 6 .1"/>
+      <body name="a0_pelvis" pos="-.6 0 .5"><freejoint/><geom size=".1"/></body>
+      <body name="a1_pelvis" pos=".6 0 .5"><freejoint/><geom size=".1"/></body>
+    </worldbody></mujoco>""")
+    env.data = mujoco.MjData(env.model)
+    poses = np.stack([env.model.qpos0.copy()] * 2)
+    poses[1, 0] += 0.25
+    clip = tmp_path / "motion.npz"
+    np.savez(clip, qpos=poses, frequency=25.0)
+    meta = blender_render.export_rollout(
+        replace(_config(tmp_path / "export"), motion=clip, scene="sport"), env=env
+    )
+    stage = Usd.Stage.Open(meta["usd"])
+    prim = stage.GetPrimAtPath("/World/Mesh_Xform_Sport_0")
+    transform = UsdGeom.Xformable(prim)
+    first = np.array(transform.ComputeLocalToWorldTransform(0).ExtractTranslation())
+    last = np.array(transform.ComputeLocalToWorldTransform(1).ExtractTranslation())
+    np.testing.assert_allclose(last - first, [0.25, 0, 0], atol=1e-6)
+    assert "Sport_0" in meta["static_objects"]
+    court_meshes = [
+        UsdGeom.Mesh(prim)
+        for prim in stage.Traverse()
+        if prim.GetTypeName() == "Mesh" and prim.GetName().startswith("Mesh_Sport_")
+    ]
+    assert len(court_meshes) == 194
+    assert (
+        sum(len(mesh.GetFaceVertexIndicesAttr().Get()) // 3 for mesh in court_meshes)
+        <= 2_500
+    )
+    assert all(len(mesh.GetPointsAttr().Get()) <= 8 for mesh in court_meshes)
+    assert max(abs(np.array(meta["bounds"])).ravel()) < 2
+    np.testing.assert_array_equal(
+        np.load(tmp_path / "export/reference.npz")["qpos"], poses
+    )
+
+
 def test_path_mode_colours_mujoco_segments_by_activation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -331,11 +377,12 @@ def test_checkpoint_symlink_keeps_format_and_rejects_mismatch(
 def test_muscle_mesh_option_checks_env_and_downloads_on_use(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Atlas meshes fit the full body only and come from the Hugging Face dataset."""
+    """Atlas meshes come from the Hugging Face dataset; any env may ask for them."""
     import huggingface_hub
 
-    with pytest.raises(ValueError, match="myoMimicFullbody"):
-        RenderConfig(env="myoLegWalk-v0", output=tmp_path, muscle_mesh="atlas")
+    from myosuite.core.hf_io import HF_REVISIONS
+
+    RenderConfig(env="myoArmReachRandom-v0", output=tmp_path, muscle_mesh="atlas")
     with pytest.raises(ValueError, match="not found"):
         RenderConfig(env="test", output=tmp_path, muscle_mesh=str(tmp_path / "x.glb"))
     RenderConfig(env="myoMimicFullbody-v0", output=tmp_path, muscle_mesh="atlas-hd")
@@ -352,6 +399,7 @@ def test_muscle_mesh_option_checks_env_and_downloads_on_use(
             "repo_id": "myohub/myosuite-assets",
             "filename": "muscles/fullbody_atlas.glb",
             "repo_type": "dataset",
+            "revision": HF_REVISIONS["myohub/myosuite-assets"],
         }
     ]
     assert blender_render._resolve_muscle_mesh("own.glb") == Path("own.glb")
@@ -383,7 +431,8 @@ def test_export_records_bone_rest_poses_for_a_muscle_mesh(
     data = mujoco.MjData(env.model)
     mujoco.mj_forward(env.model, data)
     bone = env.model.geom("bone").id
-    rest = np.asarray(meta["bone_rest"][f"bone_id{bone}_geom"]).reshape(4, 4)
+    (rig,) = meta["muscle_rigs"]
+    rest = np.asarray(rig[f"bone_id{bone}_geom"]).reshape(4, 4)
     np.testing.assert_allclose(rest[:3, 3], data.geom_xpos[bone])
     np.testing.assert_allclose(rest[:3, :3], data.geom_xmat[bone].reshape(3, 3))
 
@@ -476,7 +525,7 @@ def test_render_rollout_ends_with_the_result_path(
     import myosuite.utils.video_io as video_io
 
     meta = {"samples": 3, "duration": 0.1, "usd": "x.usdc"}
-    monkeypatch.setattr(blender_render, "export_rollout", lambda config: meta)
+    monkeypatch.setattr(blender_render, "export_rollout", lambda config, **kwargs: meta)
     monkeypatch.setattr(blender_render.subprocess, "run", lambda *a, **kw: None)
     monkeypatch.setattr(video_io, "write_video", lambda *a, **kw: None)
     out = tmp_path / "render"
@@ -511,8 +560,258 @@ def test_authored_binding_matches_bones_by_rest_position() -> None:
     "joints",
     [{"a": [0.0, 0.0, 0.1]}, {"a": [0.0, 0.0, 0.0], "b": [0.001, 0.0, 0.0]}],
 )
-def test_authored_binding_rejects_unmatched_or_shared_bones(
+def test_authored_binding_rejects_no_match_or_shared_bones(
     joints: dict[str, list[float]],
 ) -> None:
     with pytest.raises(ValueError, match="scene bone"):
         blender_render._binding_targets(joints, {"femur_r_id1_geom": [0.0, 0.0, 0.0]})
+
+
+def test_authored_binding_leaves_out_joints_of_missing_bones() -> None:
+    """An arm has no femur: its joint is left out, the others bind."""
+    joints = {"humerus": [0.0, 0.0, 1.4], "femur": [0.0, 0.0, 0.8]}
+    bones = {"humerus_id3_geom": [0.0, 0.0, 1.4]}
+    assert blender_render._binding_targets(joints, bones) == {
+        "humerus": "humerus_id3_geom"
+    }
+
+
+_BODY = """
+<mujoco><asset><mesh name="{p}femur" vertex="0 0 0 .1 0 0 0 .1 0 0 0 .1"/>
+  <mesh name="{p}tibia" vertex="0 0 0 .2 0 0 0 .1 0 0 0 .1"/></asset>
+  <worldbody><body name="{p}thigh" pos="{x} 0 1">
+    <joint name="{p}hip" type="hinge" axis="0 1 0" ref="{ref}"/>
+    <geom name="{p}femur" type="mesh" mesh="{p}femur"/>{shank}
+  </body></worldbody></mujoco>"""
+_SHANK = """<body name="{p}shank" pos="0 0 -.4">
+      <geom name="{p}tibia" type="mesh" mesh="{p}tibia"/></body>"""
+
+
+def _bones(model: mujoco.MjModel) -> dict[str, int]:
+    return {
+        model.geom(g).name: g for g in range(model.ngeom) if model.geom_dataid[g] >= 0
+    }
+
+
+def test_muscle_rigs_follow_the_reference_body_by_bone_mesh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Copies and partial bodies bind in the reference's rest pose, not their own."""
+    body = lambda p, x, ref, shank=True: mujoco.MjModel.from_xml_string(  # noqa: E731
+        _BODY.format(p=p, x=x, ref=ref, shank=_SHANK.format(p=p) if shank else "")
+    )
+    reference = body("", 0, 0)
+    monkeypatch.setattr(blender_render, "_muscle_mesh_reference", lambda _: reference)
+    expected = blender_render._rest_poses(reference, _bones(reference))
+    config = RenderConfig(env="other", output=tmp_path, muscle_mesh="atlas")
+
+    partial = body("", 3, 0.5, shank=False)  # elsewhere, another rest angle, no shank
+    assert blender_render._muscle_rigs(config, partial, _bones(partial)) == [
+        {"femur": expected["femur"]}
+    ]
+
+    spec = mujoco.MjSpec()
+    for i in range(2):
+        copy = mujoco.MjSpec.from_string(
+            _BODY.format(p="", x=i, ref=0, shank=_SHANK.format(p=""))
+        )
+        spec.attach(copy, frame=spec.worldbody.add_frame(), prefix=f"w{i}_")
+    two = spec.compile()
+    assert blender_render._muscle_rigs(config, two, _bones(two)) == [
+        {f"w{i}_femur": expected["femur"], f"w{i}_tibia": expected["tibia"]}
+        for i in range(2)
+    ]
+
+    with pytest.raises(ValueError, match="No bone"):
+        blender_render._muscle_rigs(config, _Env().model, {"bone": 4})
+
+
+def test_muscle_rigs_of_a_file_are_the_rendered_models_own_rest_pose(
+    tmp_path: Path,
+) -> None:
+    glb = tmp_path / "own.glb"
+    glb.write_bytes(b"glTF")
+    model = _Env().model
+    bones = {"bone": model.geom("bone").id}
+    config = RenderConfig(env="test", output=tmp_path, muscle_mesh=str(glb))
+    assert blender_render._muscle_rigs(config, model, bones) == [
+        blender_render._rest_poses(model, bones)
+    ]
+    assert blender_render._muscle_rigs(_config(tmp_path), model, bones) == []
+
+
+def test_motion_clip_is_replayed_frame_by_frame_at_its_own_rate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A named qpos clip drives the export instead of a policy, at the clip's rate."""
+    pytest.importorskip("pxr")
+    import myosuite
+
+    clip = tmp_path / "clip.npz"
+    np.savez(
+        clip,
+        qpos=np.linspace(0, 0.3, 6)[:, None],
+        joint_names=np.array(["slide"]),
+        frequency=50.0,
+    )
+    monkeypatch.setattr(myosuite, "make_env", lambda _id: _Env())
+    config = RenderConfig(
+        env="test",
+        output=tmp_path / "out",
+        motion=clip,
+        seconds=1,
+        fps=50,
+        preview=True,
+    )
+    meta = blender_render.export_rollout(config)
+    reference = np.load(tmp_path / "out" / "reference.npz")
+    assert meta["motion_source"] == "motion"
+    assert not np.load(tmp_path / "out" / "muscles.npz")["activation"].any()
+    assert meta["dt"] == pytest.approx(0.02)
+    np.testing.assert_allclose(reference["qpos"][:, 0], np.linspace(0, 0.3, 6))
+    back = tmp_path / "back.npz"  # sliding back to 0 shortens the muscle path
+    np.savez(
+        back,
+        qpos=np.linspace(0.3, 0, 6)[:, None],
+        joint_names=np.array(["slide"]),
+        frequency=50.0,
+    )
+    blender_render.export_rollout(
+        RenderConfig(
+            env="test",
+            output=tmp_path / "proxy",
+            motion=back,
+            motion_activation=True,
+            seconds=1,
+            fps=50,
+            preview=True,
+        )
+    )
+    proxy = np.load(tmp_path / "proxy" / "muscles.npz")["activation"][:, 0]
+    assert proxy[0] == 0 and proxy[1:].min() > 0
+    with pytest.raises(ValueError, match="not both"):
+        RenderConfig(env="test", output=tmp_path, motion=clip, checkpoint=clip)
+
+
+def test_reference_overlay_exports_separately_without_changing_physics(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+
+    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.viz.ghost_body_viz import CombinedViz, GhostBodyViz
+
+    env = _Env()
+    poses = np.arange(5, dtype=float).reshape(-1, 1) * 0.1 + 1
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(qvel=None, site_xpos=None, site_names=None, qpos=poses),
+        env.model,
+        joint_rgba=(0.1, 0.5, 1, 0.8),
+    )
+
+    shifted = GhostBodyViz.from_motion_clip(
+        MotionClip(qpos=poses, qvel=None, site_xpos=None, site_names=None),
+        env.model,
+        position_offset=np.array([0, 1, 0]),
+    )
+
+    def action(observation: np.ndarray) -> np.ndarray:
+        return np.zeros(2)
+
+    meta = blender_render.export_rollout(
+        _config(tmp_path / "ghost"),
+        env=env,
+        policy=action,
+        viz_fn=CombinedViz([ghost.as_viz_fn(), shifted.as_viz_fn()]),
+    )
+    assert not env.closed
+    assert meta["motion_source"] == "callable"
+    stage = Usd.Stage.Open(meta["usd"])
+    prim = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_0")
+    assert prim.IsValid()
+    for index in [0, 2, 4]:
+        transform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(index)
+        np.testing.assert_allclose(transform.ExtractTranslation(), ghost.xpos[index, 1])
+    second = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_1")
+    assert second.IsValid()
+    np.testing.assert_allclose(
+        UsdGeom.Xformable(second).ComputeLocalToWorldTransform(4).ExtractTranslation(),
+        ghost.xpos[4, 1] + [0, 1, 0],
+    )
+    shader = stage.GetPrimAtPath("/World/_materials/Material_Overlay_0/Principled_BSDF")
+    np.testing.assert_allclose(
+        shader.GetAttribute("inputs:diffuseColor").Get(), [0.1, 0.5, 1], atol=5e-4
+    )
+    assert shader.GetAttribute("inputs:opacity").Get() == pytest.approx(0.8, abs=5e-4)
+    blender_render.export_rollout(_config(tmp_path / "plain"), env=env, policy=action)
+    with (
+        np.load(tmp_path / "ghost/reference.npz") as overlay,
+        np.load(tmp_path / "plain/reference.npz") as plain,
+    ):
+        np.testing.assert_array_equal(overlay["qpos"], plain["qpos"])
+
+
+def test_bone_overlay_exports_original_mesh_not_another_geometry(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("pxr")
+    from pxr import Usd, UsdGeom
+    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.viz.ghost_body_viz import GhostBodyViz
+
+    env = _Env()
+    env.model = mujoco.MjModel.from_xml_string("""
+        <mujoco><option timestep=".002" gravity="0 0 0"/>
+          <asset>
+            <mesh name="decoy" vertex="0 0 0 .1 0 0 0 .1 0 0 0 .1"/>
+            <mesh name="anatomy" vertex="0 0 0 .2 0 0 0 .3 0 0 0 .4"/>
+          </asset>
+          <worldbody><geom type="mesh" mesh="decoy" pos="0 2 0"/>
+            <body><joint name="slide" type="slide" axis="1 0 0"/>
+              <geom name="bone" type="mesh" mesh="anatomy"/>
+            </body>
+          </worldbody>
+          <actuator><motor joint="slide"/><motor joint="slide"/></actuator>
+        </mujoco>
+    """)
+    env.data = mujoco.MjData(env.model)
+    ghost = GhostBodyViz.from_motion_clip(
+        MotionClip(qpos=np.ones((5, 1)), qvel=None, site_xpos=None, site_names=None),
+        env.model,
+        bone_meshes=True,
+    )
+    meta = blender_render.export_rollout(
+        _config(tmp_path),
+        env=env,
+        policy=lambda obs: np.zeros(2),
+        viz_fn=ghost.as_viz_fn(),
+    )
+    stage = Usd.Stage.Open(meta["usd"])
+    original = next(
+        p
+        for p in stage.Traverse()
+        if p.GetTypeName() == "Mesh" and p.GetName().startswith("Mesh_bone_id")
+    )
+    overlay = stage.GetPrimAtPath("/World/Mesh_Xform_Overlay_0/Mesh_Overlay_0")
+    assert overlay.IsValid()
+    np.testing.assert_array_equal(
+        UsdGeom.Mesh(original).GetPointsAttr().Get(),
+        UsdGeom.Mesh(overlay).GetPointsAttr().Get(),
+    )
+    pose = UsdGeom.Xformable(overlay).ComputeLocalToWorldTransform(0)
+    expected = mujoco.MjData(env.model)
+    expected.qpos[:] = 1
+    mujoco.mj_forward(env.model, expected)
+    np.testing.assert_allclose(
+        pose.ExtractTranslation(), expected.geom_xpos[env.model.geom("bone").id]
+    )
+
+
+def test_circle_centre_finds_an_arcs_agent_position() -> None:
+    """The team glow is centred on the identity arc, which spans under a full turn."""
+    angles = np.linspace(0.08, 0.85, 20) * 2 * np.pi
+    points = np.column_stack(
+        (1.2 + 0.46 * np.cos(angles), -0.3 + 0.46 * np.sin(angles), np.zeros(20))
+    )
+    np.testing.assert_allclose(blender_render._circle_centre(points), (1.2, -0.3))
