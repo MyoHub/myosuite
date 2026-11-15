@@ -115,10 +115,19 @@ Changes since **v3.1.0** (2026-11-11).
   switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
   empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
   with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
+* **Volumetric muscles with pulleys follow their tendon path in Blender renders.** MuJoCo starts each branch of a
+  tendon path after a `<pulley>` with a `(0, 0, 0)` marker point (`wrap_obj = -2`), and `--muscles volumetric` drew
+  the whole path as one tube, so a muscle with pulleys ran to the world origin and back once per pulley. The finger
+  extensor (`extn`, two pulleys) of `myoFingerPose*` and `myoFingerReach*` and their `myoSarc` / `myoFati` variants
+  became a 1.63 m tube for its 0.19 m tendon, with its belly on the detour. Each branch is now a tube of its own
+  (`muscle_tubes.split_branches`), joined into one mesh per muscle: the belly lies on the first branch, from the
+  origin, and takes its shape from that branch's length; the branches after the pulleys are tendon. Muscles without
+  pulleys export exactly as before, and `--muscles paths` was already correct ([#810]).
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
+[#810]: https://github.com/MyoHub/myosuite/pull/810
 
 ## [3.1.0] - 2026-11-11
 
