@@ -833,3 +833,55 @@ def test_materialize_recipe_xml_default_file_is_named_by_content(
     assert list(first.parent.iterdir()) == [first]
     assert first.parent == (tmp_path / "myosuite_recipes").resolve()
     mujoco.MjModel.from_xml_path(str(first))
+
+
+# Visual-only target geoms added through the MjSpec API after an empty-prefix
+# attach: MuJoCo 3 gave them the attached body's main default (contype 0),
+# MuJoCo 4 gives them the parent's (1/1), so they must set 0/0 explicitly.
+_TARGET_GEOM_RECIPES = (
+    "hand_sar",
+    "hand_pen",
+    "hand_hold",
+    "hand_keyturn",
+    "arm_reach",
+)
+# hand_pen's target cylinder collides on MuJoCo 3 and 4 alike; kept as it is.
+_COLLIDING_TARGETS = {("hand_pen", "target")}
+
+
+@_REQUIRES_MYO_SIM
+@pytest.mark.parametrize("recipe", _TARGET_GEOM_RECIPES)
+def test_recipe_target_geoms_do_not_collide(recipe: str) -> None:
+    """Translucent target/goal/marker geoms of a recipe have contype=conaffinity=0."""
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import build_from_recipe
+
+    model, _ = build_from_recipe(recipe)
+    colliding = [
+        model.geom(i).name
+        for i in range(model.ngeom)
+        if any(k in model.geom(i).name.lower() for k in ("target", "goal", "marker"))
+        and model.geom_rgba[i][3] < 1.0
+        and (recipe, model.geom(i).name) not in _COLLIDING_TARGETS
+        and (model.geom_contype[i] or model.geom_conaffinity[i])
+    ]
+    assert not colliding, f"{recipe}: visual target geoms collide: {colliding}"
+
+
+@_REQUIRES_MYO_SIM
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        f"myo{v}HandReorient{s}-v0"
+        for v in ("", "Fati", "Sarc", "Reaf")
+        for s in ("8", "100", "ID", "OOD")
+    ],
+)
+def test_hand_reorient_target_does_not_collide(env_id: str) -> None:
+    """The HandReorient goal ellipsoid is visual only in every registered variant."""
+    env = make_env(env_id)
+    model = env.unwrapped.model
+    for name in ("target", "t_top", "t_bot"):
+        geom = model.geom(name)
+        assert (int(geom.contype[0]), int(geom.conaffinity[0])) == (0, 0), name
+    env.close()
