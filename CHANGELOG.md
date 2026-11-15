@@ -13,6 +13,13 @@ Changes since **v3.1.0** (2026-11-11).
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 
+### Changed
+
+* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
+  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
+  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
+  Python 3.15 on Linux for the ONNX-free native CPU path.
+
 ### Fixed
 
 * **ChaseTag EVADE episodes can be won again.** Since 3.1.0 `ChaseTagEnv` compared the summed `data.time` with
@@ -35,8 +42,46 @@ Changes since **v3.1.0** (2026-11-11).
   (`examine_policy`). `MjInstabilityTerminationWrapper` still ends the episode, and applies the same cap and flag to
   envs whose `step` does not end in `_finalize_step`. `env.unwrapped.mj_instability_termination = False` switches
   both off. Regular steps are unchanged.
+* **`myosuite-musclemimic-fullbody-eval --path` no longer replays the clip in place of a failed policy.** When the
+  checkpoint's policy could not be loaded (for example without `orbax-checkpoint`, which installs on Linux only) or the
+  checkpoint had no policy, native playback logged a warning, played the reference motion, printed its tracking error
+  and exited with 0. It now exits with an error that names the cause; `--replay` (or
+  `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY=1`) plays the reference motion on request. The ONNX policy video of
+  `--backend mjlab --onnx --record` is written at the control rate (100 fps for 5 physics steps of 2 ms per frame);
+  it played 5x too fast.
+* **Hugging Face downloads are pinned to tested commits.** The reference clips of `myoFullBodyDirectional-v0` and
+  `myoChallengeChaseTagFBVs-v0`, the MuscleMimic teacher `amathislab/mm-10m-2` (`hf://` checkpoint paths, the steered
+  teacher), the demo motions, the Blender muscle meshes, the tracking dataset of `myoMimic-v0` and the clips of
+  tutorials 5.2 and 5.3 were downloaded from each repo's moving `main` branch, so the tracking targets, rewards and
+  teacher policy of a fixed MyoSuite version could change with an upload. They now come from the commit in
+  `myosuite.core.hf_io.HF_REVISIONS` (one table, TERRA-4B's pin included). `resolve_hf_snapshot` and
+  `download_hf_dataset_file` take a `revision`, `hf://owner/repo@<revision>/...` selects another commit, and
+  `$MYOSUITE_MIMIC_DATASET` accepts `owner/name@<revision>`; repos outside the table keep their default branch. The
+  baselines keep following the release tags, but a revision passed to `download_baseline_file` is no longer replaced
+  by `main` when it is missing (pass `fallback_to_main=True` for that), and the release-tag fallback to `main` now
+  warns, naming the missing tag.
+* `ActuatorGroupSpec.normalize_actions` defaulted to `True` and its docstring promised a sigmoid on the action, but
+  neither the CPU `ModularTaskEnv` nor the mjlab twin applies one: `myoElbowPoseTask*` and `myoLegDirectional*`
+  write actions in [0, 1] to `ctrl` as they are. The field now defaults to `False`, the two specs no longer set it,
+  and `ModularTaskEnv` raises for `True` instead of ignoring it. No env changes behaviour.
+* `ModularTaskEnv` raises `NotImplementedError` for a `TaskConfig.scene` it does not apply (a scene list or a named
+  scene other than `"flat_floor"`). Every entry of a scene list compiled to the same model, and the scene picked at
+  reset started its first episode from un-reset data; an unknown name was accepted and ignored. No registered id
+  sets either; callables that edit the spec work as before.
+* Uncertainty bands now reject failed/nonfinite nominal and sampled solves instead of
+  including them in quantiles. OSQP statuses, iterations and residuals are retained;
+  accepting `solved inaccurate` requires `UncertaintyConfig(allow_inaccurate=True)`.
+* **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
+  registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
+  target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip
+  task. Only the myoedits registration remains. Normal imports already got it, so observations, actions and the
+  published checkpoints are unchanged. A process that reloaded the basic suite (as one registry test did) no longer
+  switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
+  empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
+  with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#808]: https://github.com/MyoHub/myosuite/pull/808
 
 ## [3.1.0] - 2026-11-11
 
