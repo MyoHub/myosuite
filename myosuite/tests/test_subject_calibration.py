@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Participant group-strength calibration and steady MVC regression tests."""
+"""Participant model preparation and steady MVC regression tests."""
 
 from __future__ import annotations
 
@@ -13,6 +13,9 @@ import numpy as np
 import pytest
 
 from myosuite.biomechanics.calibration import (
+    SegmentLengthMeasurement,
+    check_segment_lengths,
+    scale_body_mass,
     fit_strength_from_mvcs,
     max_joint_torque,
     posture_at,
@@ -249,3 +252,49 @@ def test_selected_scaling_preserves_other_parameters_and_nonmuscle_bias() -> Non
     model.actuator_biastype[0] = mujoco.mjtBias.mjBIAS_NONE
     scaled = scale_strength(model, 2.0, ["flexor"])
     np.testing.assert_array_equal(scaled.actuator_biasprm[0], original_bias[0])
+
+
+def test_partial_mass_scaling_refreshes_constants_and_preserves_auto_strength() -> None:
+    model = _arm(auto=True)
+    original_mass = model.body_mass.copy()
+    original_subtree = model.body_subtreemass.copy()
+    q = posture_at(model, {"elbow": 1.5})
+    torque = max_joint_torque(model, q, "elbow")[0]
+    scaled = scale_body_mass(
+        model, participant_mass=90, reference_mass=60, bodies=["arm"]
+    )
+    assert scaled.body_mass[model.body("arm").id] == pytest.approx(4.5)
+    assert scaled.body_mass[model.body("torso").id] == 20
+    assert scaled.body_subtreemass[model.body("torso").id] == pytest.approx(24.5)
+    assert max_joint_torque(scaled, q, "elbow")[0] == pytest.approx(torque)
+    assert scaled.actuator_gainprm[0, 2] > 0
+    np.testing.assert_array_equal(model.body_mass, original_mass)
+    np.testing.assert_array_equal(model.body_subtreemass, original_subtree)
+    represented = scale_body_mass(model, represented_mass=6, bodies=["arm"])
+    assert represented.body_mass[model.body("arm").id] == pytest.approx(6)
+    assert max_joint_torque(scale_strength(model, 2, ["flexor"]), q, "elbow")[
+        0
+    ] == pytest.approx(2 * (torque + 3) - 3)
+    with pytest.raises(ValueError, match="reference_mass"):
+        scale_body_mass(model, participant_mass=90)
+
+
+def test_geometry_verification_reports_segment_mismatch() -> None:
+    checks = check_segment_lengths(
+        _arm(),
+        np.array([0.7]),
+        [
+            SegmentLengthMeasurement("elbow_landmark", "hand", 1.01),
+            SegmentLengthMeasurement("elbow_landmark", "hand", 0.9),
+        ],
+    )
+    assert checks[0].model_length == pytest.approx(1)
+    assert checks[0].within_tolerance and not checks[1].within_tolerance
+    assert checks[1].error == pytest.approx(0.1)
+    json.dumps([check.record() for check in checks], allow_nan=False)
+
+
+@pytest.mark.parametrize("bad", [0, -1, float("nan"), float("inf")])
+def test_invalid_represented_mass_fails_early(bad: float) -> None:
+    with pytest.raises(ValueError):
+        scale_body_mass(_arm(), represented_mass=bad)
