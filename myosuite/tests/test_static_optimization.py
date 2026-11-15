@@ -27,6 +27,39 @@ from myosuite.biomechanics.static_optimization import (
 pytestmark = pytest.mark.tier1
 
 
+def test_native_solver_diagnostics_are_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        optimizer = StaticOptimizer(env.unwrapped.model)
+        qpos, zero = np.array([1.0]), np.zeros(1)
+        optimizer.solve(qpos, zero, zero)
+        native = []
+        solve = optimizer._solver.solve
+
+        def capture(*args, **kwargs):
+            result = solve(*args, **kwargs)
+            native.append(result.info)
+            return result
+
+        monkeypatch.setattr(optimizer._solver, "solve", capture)
+        result = optimizer.solve(qpos, zero, zero)
+        assert result.iterations == native[0].iter
+        assert result.primal_residual == native[0].prim_res
+        assert result.dual_residual == native[0].dual_res
+        assert result.status == native[0].status == "solved"
+        clip = static_optimization(
+            env.unwrapped.model,
+            np.tile(qpos, (2, 1)),
+            np.zeros((2, 1)),
+            np.zeros((2, 1)),
+        )
+        assert clip.iterations.shape == clip.primal_residual.shape == (2,)
+    finally:
+        env.close()
+
+
 def _qfrc_actuator(model: mujoco.MjModel, qpos, qvel, activation) -> np.ndarray:
     """Generalized actuator force MuJoCo computes for these activations."""
     data = mujoco.MjData(model)
