@@ -23,6 +23,7 @@ def build_python_command(
     """Build ``python`` command line for a target working directory.
 
     Resolution order:
+
     1. ``override_env_var`` executable if provided and set.
     2. ``uv run --directory`` when ``uv`` exists and ``pyproject.toml`` exists.
     3. the ``exec_cwd/.venv`` interpreter when present

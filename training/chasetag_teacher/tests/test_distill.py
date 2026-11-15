@@ -139,6 +139,23 @@ def test_load_data(tmp_path: Path) -> None:
     assert float(o[-1, 0]) == 1.0
 
 
+def test_train_small_dataset_and_zero_epochs(fbvs_obs: torch.Tensor) -> None:
+    rng = np.random.default_rng(7)
+    o = fbvs_obs[:8].numpy().astype(np.float16)
+    y = rng.uniform(0, 1, (len(o), ACT_DIM)).astype(np.float16)
+    res_small = train(o, y, epochs=1, batch=4096, log=lambda s: None)
+    assert np.isfinite(res_small["val_mse"])
+    assert all(torch.isfinite(t).all() for t in res_small["state"].values())
+    res_zero = train(o, y, epochs=0, batch=4096, log=lambda s: None)
+    assert np.isfinite(res_zero["val_mse"])
+    assert all(torch.isfinite(t).all() for t in res_zero["state"].values())
+    res_one = train(o[:1], y[:1], epochs=1, batch=4096, log=lambda s: None)
+    assert np.isfinite(res_one["val_mse"])
+    assert all(torch.isfinite(t).all() for t in res_one["state"].values())
+    with pytest.raises(ValueError, match="non-empty"):
+        train(o[:0], y[:0], epochs=1, batch=4096, log=lambda s: None)
+
+
 def _bouts(rng: np.random.Generator, n: int, steps: int = 400, dim: int = 32) -> list:
     """Bouts whose labels depend on bout context: a slowly drifting state and a constant target."""
     out = []

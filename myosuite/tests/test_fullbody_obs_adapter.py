@@ -403,3 +403,100 @@ def test_egocentric_state_preserves_world_heading_invariance() -> None:
     mujoco.mj_forward(model, data)
     np.testing.assert_allclose(adapter.build_state(data), expected, atol=1e-7)
     assert adapter.build_state(data).dtype == np.float32
+
+
+def _native_step_runner(kind: str, obs_dim: int, frame_skip: int, path: Path) -> Any:
+    weight = np.zeros((obs_dim, 3), dtype=np.float32)
+    bias = np.full(3, 0.4, dtype=np.float32)
+    if kind == "local":
+        artifacts = fbl.LocalPolicyArtifacts(
+            params={"actor": {"Dense_0": {"kernel": weight, "bias": bias}}},
+            obs_mean=np.zeros(obs_dim, dtype=np.float32),
+            obs_var=np.ones(obs_dim, dtype=np.float32),
+            obs_count=np.asarray(1.0, dtype=np.float32),
+            obs_dim=obs_dim,
+            action_dim=3,
+        )
+        return fbl.LocalPolicyRunner(artifacts, False, 0, frame_skip=frame_skip)
+    onnx = pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    helper = onnx.helper
+    graph = helper.make_graph(
+        [helper.make_node("Gemm", ["obs", "weight", "bias"], ["actions"])],
+        "native_step_actor",
+        [helper.make_tensor_value_info("obs", onnx.TensorProto.FLOAT, [1, obs_dim])],
+        [helper.make_tensor_value_info("actions", onnx.TensorProto.FLOAT, [1, 3])],
+        initializer=[
+            onnx.numpy_helper.from_array(weight, "weight"),
+            onnx.numpy_helper.from_array(bias, "bias"),
+        ],
+    )
+    onnx.save(
+        helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8
+        ),
+        path,
+    )
+    return fbl.OnnxPolicyRunner(path, obs_dim, 3, frame_skip=frame_skip)
+
+
+@pytest.mark.parametrize("kind", ["local", "onnx"])
+@pytest.mark.parametrize("frame_skip", [1, 5])
+@pytest.mark.parametrize(
+    "integrator",
+    [mujoco.mjtIntegrator.mjINT_EULER, mujoco.mjtIntegrator.mjINT_IMPLICITFAST],
+)
+def test_policy_step_returns_fresh_derived_state(
+    tmp_path: Path, kind: str, frame_skip: int, integrator: int
+) -> None:
+    model = _toy_model(3)
+    model.opt.integrator = integrator
+    clip = _write_clip(model, tmp_path / "clip.npz")
+    adapter = FullbodyObsAdapter(model, clip, {"sites_for_mimic": _SITES})
+    data = mujoco.MjData(model)
+    data.qpos[2] = 2.0
+    data.qvel[:] = np.linspace(0.1, 1.0, model.nv)
+    data.act[:] = [0.2, 0.4, 0.6]
+    mujoco.mj_forward(model, data)
+    expected = mujoco.MjData(model)
+    mujoco.mj_copyData(expected, model, data)
+    runner = _native_step_runner(
+        kind, adapter.build(data, 0).size, frame_skip, tmp_path / "actor.onnx"
+    )
+    runner.obs_adapter = adapter
+    action = runner.action_for(data, clip, 0)
+    expected.ctrl[:] = action
+    for _ in range(frame_skip):
+        mujoco.mj_step(model, expected)
+    mujoco.mj_forward(model, expected)
+
+    runner.step(model, data, action)
+    for field in ("qpos", "qvel", "act", "ctrl"):
+        np.testing.assert_array_equal(getattr(data, field), getattr(expected, field))
+    assert data.time == expected.time == frame_skip * model.opt.timestep
+    for field in (
+        "site_xpos",
+        "site_xmat",
+        "cvel",
+        "subtree_com",
+        "actuator_length",
+        "actuator_velocity",
+        "actuator_force",
+        "sensordata",
+    ):
+        np.testing.assert_allclose(
+            getattr(data, field),
+            getattr(expected, field),
+            rtol=0,
+            atol=1e-12,
+            err_msg=field,
+        )
+    np.testing.assert_array_equal(adapter.build(data, 1), adapter.build(expected, 1))
+
+    from myosuite.integrations.musclemimic.fullbody_native_playback import (
+        _compute_site_tracking_error,
+    )
+
+    assert _compute_site_tracking_error(
+        model, data, clip, 1
+    ) == _compute_site_tracking_error(model, expected, clip, 1)
