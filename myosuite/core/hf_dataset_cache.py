@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import tempfile
 from pathlib import Path
 
 from myosuite.core.hf_io import pinned_revision
@@ -23,18 +24,23 @@ def download_hf_dataset_file(
     local_path: Path,
     revision: str | None = None,
 ) -> Path | None:
-    """Download one dataset file from Hugging Face."""
+    """Download a dataset file, publishing it atomically after a complete copy."""
     from huggingface_hub import hf_hub_download
 
-    local_path.parent.mkdir(parents=True, exist_ok=True)
     try:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
         downloaded = hf_hub_download(
             repo_id=repo_id,
             filename=remote_path,
             repo_type="dataset",
             revision=pinned_revision(repo_id, revision),
         )
-        shutil.copy2(downloaded, local_path)
+        with tempfile.TemporaryDirectory(
+            dir=local_path.parent, prefix=".myosuite-download-"
+        ) as directory:
+            staged = Path(directory) / local_path.name
+            shutil.copy2(downloaded, staged)
+            staged.replace(local_path)
         return local_path
     except Exception as err:
         logger.warning(

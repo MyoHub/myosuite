@@ -235,6 +235,7 @@ class WalkDone(_WalkTerm):
         self._asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
         self._target_rot = torch.tensor(self._walk.target_rot, device=env.device)
         self._target_vel = torch.tensor(self._walk.target_vel, device=env.device)
+        MjlabEntityAccessor(env, self._asset_cfg.name).warm_cache()
         self._components: dict[str, Any] = {}
         self._step = -1  # common_step_counter of _components
 
