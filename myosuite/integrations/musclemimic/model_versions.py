@@ -33,6 +33,7 @@ MODELS_VERSION_ENV_VAR = "MYOSUITE_MUSCLEMIMIC_MODELS_VERSION"
 # The release each published checkpoint was trained on; unlisted ones get the
 # default. MyoSuite's myoMimicFullbody-v0 walking_medium06 baseline was trained on
 # 1.0.6. List new checkpoints too, so they keep their release if the default moves.
+# Each holds for the commit pinned in myosuite.core.hf_io.HF_REVISIONS.
 PUBLISHED_CHECKPOINT_MODELS_VERSIONS: dict[str, str] = {"amathislab/mm-10m-2": "1.0.5"}
 
 _EQ_POLYCOEF = "eq_polycoef"
@@ -108,9 +109,11 @@ _MODELS_VALUES: dict[str, dict[str, dict[str, Any]]] = {
 
 SUPPORTED_MODELS_VERSIONS = tuple(_MODELS_VALUES)
 
-# Env ids whose body is built from the musclemimic_models MJCF (MuscleMimic full body and bimanual,
-# directional locomotion); other envs use MyoSuite's own models.
-_MODELS_ENV_ID = re.compile(r"Mimic|FullBodyDirectional|FullBodyWaypoint")
+_MODELS_ENTRY_POINTS = {
+    "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicBimanualEnv",
+    "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv",
+    "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyDirectionalEnv",
+}
 
 # Field of a checkpoint folder's manifest.json that records the release (see env_models_version).
 MANIFEST_FIELD = "musclemimic_models_version"
@@ -151,8 +154,22 @@ def resolve_models_version(config: Any = None) -> str:
 
 
 def uses_musclemimic_models(env_id: str) -> bool:
-    """Whether the env builds its body from the ``musclemimic_models`` MJCF."""
-    return bool(_MODELS_ENV_ID.search(env_id))
+    """Whether the registered task builds the legacy ``musclemimic_models`` body."""
+    from gymnasium.envs.registration import registry  # noqa: PLC0415
+
+    spec = registry.get(env_id)
+    if spec is None:
+        return False
+    if isinstance(spec.entry_point, str) and spec.entry_point in _MODELS_ENTRY_POINTS:
+        return True
+    if spec.entry_point == "myosuite.envs.waypoint:WaypointEnv":
+        return (
+            spec.kwargs.get("model") is None
+            and spec.kwargs.get("model_path") is None
+            and (spec.kwargs.get("model_recipe") or "musclemimic_fullbody")
+            == "musclemimic_fullbody"
+        )
+    return False
 
 
 def env_models_version(env_id: str) -> str | None:

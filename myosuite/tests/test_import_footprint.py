@@ -74,6 +74,11 @@ def test_import_action_map_skips_torch() -> None:
     assert _loaded_after("import myosuite.utils.action_map", heavy) == []
 
 
+def test_import_performance_card_skips_training_frameworks() -> None:
+    heavy = ("torch", "mjlab", "stable_baselines3", "rsl_rl")
+    assert _loaded_after("import myosuite.utils.performance_card", heavy) == []
+
+
 @pytest.mark.parametrize(
     "env_id", ["myoChallengeSoccerP1-v0", "myoChallengeChaseTagP1-v0"]
 )
