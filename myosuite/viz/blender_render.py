@@ -178,7 +178,7 @@ def export_rollout(
 
     from myosuite import make_env
     from myosuite.utils.checkpoint_utils import load_policy
-    from myosuite.viz.muscle_tubes import muscle_actuators
+    from myosuite.viz.muscle_tubes import muscle_actuators, split_branches
     from myosuite.viz.skin import SkinPose, load_skin
 
     class LightTendon(objects.USDTendon):
@@ -312,6 +312,8 @@ def export_rollout(
         option.tendongroup[:] = 1
         muscles = muscle_actuators(model)
         muscle_tendons = model.actuator_trnid[muscles, 0] if len(muscles) else []
+        if clip is not None and len(clip.qpos) < 2:
+            raise ValueError("The episode contains no motion samples.")
         times, positions, rotations, qposes, paths, activations = [], [], [], [], [], []
         skin_frames = []
         previous = None  # muscle lengths of the last sample (motion activation)
@@ -339,12 +341,14 @@ def export_rollout(
             positions.append(data.geom_xpos.copy())
             rotations.append(data.geom_xmat.copy())
             qposes.append(data.qpos.copy())
-            # wrap_xpos holds two points per row; ten_wrapadr indexes the points.
+            # wrap_xpos holds two points per row; ten_wrapadr indexes the points
+            # and wrap_obj, one per point, marks the pulleys between branches.
             if config.muscles == "volumetric":
                 wrap_points = data.wrap_xpos.reshape(-1, 3)
+                wrap_obj = data.wrap_obj.reshape(-1)
                 paths.append(
                     [
-                        wrap_points[a : a + n].copy()
+                        split_branches(wrap_points[a : a + n], wrap_obj[a : a + n])
                         for a, n in zip(
                             data.ten_wrapadr[muscle_tendons],
                             data.ten_wrapnum[muscle_tendons],
@@ -557,11 +561,16 @@ def _anatomy_bodies(model: Any) -> set[int]:
 def _write_muscle_tubes(
     stage: Any, model: Any, muscles: Any, paths: list, scale: float
 ) -> list[str]:
-    """Add one animated, volume-preserving tube mesh per muscle to *stage*."""
+    """Add one animated, volume-preserving tube mesh per muscle to *stage*.
+
+    *paths* holds each muscle's pulley branches per frame. The first branch,
+    from the origin, carries the belly; the others are tendon.
+    """
     import numpy as np
     from pxr import Gf, Tf, UsdGeom, Vt
 
     from myosuite.viz.muscle_tubes import (
+        TENDON_RADIUS_RATIO,
         belly_radius,
         belly_volume,
         muscle_shape,
@@ -570,29 +579,46 @@ def _write_muscle_tubes(
         tube_mesh,
     )
 
-    resampled = [[resample_path(p) for p in frame] for frame in paths]
-    centres = np.array([[c for c, _ in frame] for frame in resampled])  # (T, M, N, 3)
-    lengths = np.array([[n for _, n in frame] for frame in resampled])  # (T, M)
+    # One tube per branch, muscle by muscle; the model fixes the branch counts.
+    owner = np.repeat(np.arange(len(muscles)), [len(m) for m in paths[0]])
+    first = np.r_[True, np.diff(owner) > 0]
+    resampled = [[resample_path(b) for m in frame for b in m] for frame in paths]
+    centres = np.array([[c for c, _ in frame] for frame in resampled])  # (T, B, N, 3)
+    lengths = np.array([[n for _, n in frame] for frame in resampled])  # (T, B)
     # Shape at the first frame; the volume then stays constant, so a shortening
     # muscle thickens.
-    peak, fraction = muscle_shape(model, lengths[0])
+    peak, fraction = muscle_shape(model, lengths[0, first])
     profile = radius_profile(fraction)  # (M, N)
-    volume = belly_volume(peak, lengths[0], profile)
-    peak = belly_radius(volume, lengths, profile) * scale  # (T, M)
-    points, counts, indices = tube_mesh(centres, peak[..., None] * profile)
+    volume = belly_volume(peak, lengths[0, first], profile)
+    peak = belly_radius(volume, lengths[:, first], profile) * scale  # (T, M)
+    # Later branches are as thick as the first branch's tendon ends.
+    radii = peak[:, owner, None] * np.where(
+        first[:, None], profile[owner], TENDON_RADIUS_RATIO
+    )
+    points, counts, indices = tube_mesh(centres, radii)
     UsdGeom.Xform.Define(stage, "/World/Muscles")
     names = []
     for m, actuator in enumerate(muscles):
+        tubes = np.flatnonzero(owner == m)
+        # The branch tubes of a muscle form one mesh: offset each tube's indices.
+        offsets = np.arange(len(tubes))[:, None] * points.shape[2]
         name = Tf.MakeValidIdentifier(f"Muscle_{model.actuator(actuator).name}")
         mesh = UsdGeom.Mesh.Define(stage, f"/World/Muscles/{name}")
-        mesh.CreateFaceVertexCountsAttr(Vt.IntArray(counts.tolist()))
-        mesh.CreateFaceVertexIndicesAttr(Vt.IntArray(indices.tolist()))
+        mesh.CreateFaceVertexCountsAttr(
+            Vt.IntArray(np.tile(counts, len(tubes)).tolist())
+        )
+        mesh.CreateFaceVertexIndicesAttr(
+            Vt.IntArray((indices + offsets).ravel().tolist())
+        )
         mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
         mesh.CreateDisplayColorAttr([Gf.Vec3f(0.6, 0.08, 0.08)])
         attr = mesh.CreatePointsAttr()
         for frame in range(points.shape[0]):
             attr.Set(
-                Vt.Vec3fArray.FromNumpy(points[frame, m].astype(np.float32)), frame
+                Vt.Vec3fArray.FromNumpy(
+                    points[frame, tubes].reshape(-1, 3).astype(np.float32)
+                ),
+                frame,
             )
         names.append(name)
     return names
@@ -608,12 +634,15 @@ def _resolve_muscle_mesh(spec: str) -> Path:
         return Path(spec)
     from huggingface_hub import hf_hub_download
 
+    from myosuite.core.hf_io import pinned_revision
+
     try:
         return Path(
             hf_hub_download(
                 repo_id=MUSCLE_MESH_REPO,
                 filename=MUSCLE_MESHES[spec],
                 repo_type="dataset",
+                revision=pinned_revision(MUSCLE_MESH_REPO),
             )
         )
     except Exception as err:
@@ -1559,7 +1588,14 @@ def render_rollout(
 
         from myosuite.utils.video_io import write_video
 
-        frames = sorted((config.output / "frames").glob("frame_*.png"))
+        frames = sorted(
+            (config.output / "frames").glob("frame_*.png"),
+            key=lambda p: (
+                0 if (s := p.stem.rsplit("_", 1)[-1]).isdigit() else 1,
+                int(s) if s.isdigit() else 0,
+                p.name,
+            ),
+        )
         write_video(
             config.output / "video.mp4",
             [iio.imread(f)[..., :3] for f in frames],
