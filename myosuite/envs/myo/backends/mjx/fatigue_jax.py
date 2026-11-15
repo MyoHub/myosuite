@@ -331,6 +331,10 @@ class FatigueWrapper(Wrapper):
         )
         return next_state
 
+    def compute_obs(self, data: mjx.Data, info: Any) -> dict[str, Any]:
+        """Compute observation dict including fatigue state for *data* and *info*."""
+        return self._add_fatigue_to_obs(self.env.compute_obs(data, info), data)
+
     def _add_fatigue_to_obs(
         self, obs: dict[str, Any], data: mjx.Data
     ) -> dict[str, Any]:
