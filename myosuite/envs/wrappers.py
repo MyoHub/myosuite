@@ -96,7 +96,11 @@ class AttributeForwardingWrapper(
 class MjInstabilityTerminationWrapper(
     _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
 ):
-    """Upgrade MuJoCo instability checks into termination after each step."""
+    """Upgrade MuJoCo instability checks into termination after each step.
+
+    The diverged step is flagged with ``info["mj_unstable"]`` and never pays a
+    positive reward: MuJoCo has reset the data, so the step scores ``qpos0``.
+    """
 
     def __init__(self, env: gym.Env):
         RecordConstructorArgs.__init__(self)
@@ -108,10 +112,20 @@ class MjInstabilityTerminationWrapper(
         else:
             obs, reward, terminated, truncated, info = super().step(action)
 
-        env = self.unwrapped
-        check = getattr(env, "_check_mj_instability_termination", None)
-        enabled = bool(getattr(env, "mj_instability_termination", False))
-        if not enabled or not callable(check) or not bool(check()):
+        unstable = info.get("mj_unstable")  # set by MyoGymnasiumEnv._finalize_step
+        if unstable is None:
+            env = self.unwrapped
+            check = getattr(env, "_check_mj_instability_termination", None)
+            enabled = bool(getattr(env, "mj_instability_termination", False))
+            unstable = enabled and callable(check) and bool(check())
+            if unstable:
+                info["mj_unstable"] = True
+                reward = (
+                    {key: min(value, 0.0) for key, value in reward.items()}
+                    if isinstance(reward, dict)
+                    else np.minimum(reward, 0.0)
+                )
+        if not unstable:
             return obs, reward, terminated, truncated, info
 
         if isinstance(terminated, dict):
@@ -498,6 +512,19 @@ class SarcopeniaWrapper(
         self.force_scale = force_scale
         apply_sarcopenia_to_model(host.model, force_scale=force_scale)
         host._sarcopenia_applied = True
+
+    def _pickle_kwargs(self) -> dict[str, Any]:
+        return {"force_scale": self.force_scale}
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        env = state["env"]
+        if getattr(env.unwrapped, "_sarcopenia_applied", False):
+            kwargs = state["kwargs"]
+            RecordConstructorArgs.__init__(self, **kwargs)
+            gym.Wrapper.__init__(self, env)
+            self.force_scale = kwargs.get("force_scale", 0.5)
+            return
+        super().__setstate__(state)
 
 
 _CONDITION_WRAPPERS = {

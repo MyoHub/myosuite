@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import time as timer
 from pathlib import Path
 from sys import platform
@@ -26,7 +27,7 @@ def examine_policy(
     render: str | None = None,
     camera_name: str | None = None,
     frame_size: tuple[int, int] = (640, 480),
-    output_dir: str = "/tmp/",
+    output_dir: str | Path | None = None,
     filename: str = "newvid",
     device_id: int = 0,
 ) -> Any:
@@ -60,20 +61,34 @@ def examine_policy(
     from myosuite.logger.grouped_datasets import Trace
     from myosuite.utils.video_io import write_video
 
-    trace = Trace(env.id + "_rollouts")
+    base_env = getattr(env, "unwrapped", env)
+    env_spec = getattr(env, "spec", None) or getattr(base_env, "spec", None)
+    env_id = (
+        getattr(env, "id", None)
+        or getattr(base_env, "id", None)
+        or (env_spec.id if env_spec is not None else "env")
+    )
+    out_dir = Path(tempfile.gettempdir()) if output_dir is None else Path(output_dir)
+
+    trace = Trace(f"{env_id}_rollouts")
     exp_t0 = timer.time()
 
     frames: np.ndarray | None = None
     renderer = None
     if render == "onscreen":
-        env.render_mode = "human"
+        base_env.render_mode = "human"
+        try:
+            env.render_mode = "human"
+        except AttributeError:
+            pass
     elif render == "offscreen":
         from myosuite.viz.mj_renderer import MJRenderer
 
         # env.render() returns None without a render_mode: render offscreen here.
-        renderer = MJRenderer(env.model, env.data)
+        renderer = MJRenderer(base_env.model, base_env.data)
         frames = np.zeros((horizon, frame_size[1], frame_size[0], 3), dtype=np.uint8)
 
+    dt = getattr(base_env, "dt", None)
     try:
         for ep in range(num_episodes):
             ep_t0 = timer.time()
@@ -83,7 +98,7 @@ def examine_policy(
 
             obs, _ = env.reset()
             # reset() returns no info; forward() evaluates the reset state s_0.
-            _, rwd, _, _, env_info = env.forward()
+            _, rwd, _, _, env_info = base_env.forward()
             done = False
             t = 0
             ep_rwd = 0.0
@@ -109,7 +124,7 @@ def examine_policy(
                 trace.append_datums(
                     group_key=group_key,
                     dataset_key_val=dict(
-                        time=t * env.dt if hasattr(env, "dt") else t,
+                        time=t * dt if dt is not None else t,
                         observations=obs,
                         actions=act.copy(),
                         rewards=rwd,
@@ -127,7 +142,7 @@ def examine_policy(
             trace.append_datums(
                 group_key=group_key,
                 dataset_key_val=dict(
-                    time=t * env.dt if hasattr(env, "dt") else t,
+                    time=t * dt if dt is not None else t,
                     observations=obs,
                     actions=np.full(env.action_space.shape, np.nan),
                     rewards=rwd,
@@ -143,7 +158,8 @@ def examine_policy(
             )
 
             if frames is not None:
-                file_name = str(Path(output_dir) / (filename + str(ep) + ".mp4"))
+                out_dir.mkdir(parents=True, exist_ok=True)
+                file_name = str(out_dir / (filename + str(ep) + ".mp4"))
                 if platform == "darwin":
                     write_video(
                         file_name,

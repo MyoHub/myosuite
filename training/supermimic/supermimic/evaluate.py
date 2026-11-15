@@ -90,7 +90,7 @@ def build(
 
 def checkpoint_settings(path: str) -> dict:
     """The env settings stored in a checkpoint (empty for checkpoints without them)."""
-    return torch.load(path, map_location="cpu", weights_only=False).get("env") or {}
+    return torch.load(path, map_location="cpu", weights_only=True).get("env") or {}
 
 
 def _yaw(R: torch.Tensor) -> torch.Tensor:
