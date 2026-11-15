@@ -298,6 +298,29 @@ def test_one_step_parity(env_id: str) -> None:
         assert bool(values["success"][0]) == bool(cpu_info["solved"])
 
 
+@pytest.mark.parametrize("env_id", ["myoLegWalk-v0", "myoLegRoughTerrainWalk-v0"])
+def test_walk_twin_com_vel_is_the_com_velocity(env_id: str) -> None:
+    """The twin's ``com_vel`` is the whole-body COM velocity of the synced CPU state.
+
+    The oracle is ``mj_subtreeVel`` on the CPU model, not the CPU env's observation.
+    """
+    cpu, mj = _make_pair(env_id)
+    om = mj.observation_manager
+    terms, dims = om.active_terms["actor"], om.group_obs_term_dim["actor"]
+    start = sum(int(np.prod(d)) for d in dims[: terms.index("com_vel")])
+    rng = np.random.default_rng(0)
+    for _ in range(10):
+        action = rng.uniform(0.0, 1.0, cpu.action_space.shape).astype(np.float32)
+        cpu.step(action)
+        _sync(cpu, mj)
+        mujoco.mj_subtreeVel(cpu.model, cpu.data)
+        np.testing.assert_allclose(
+            om.compute_group("actor")[0].numpy()[start : start + 2],
+            -cpu.data.subtree_linvel[0, :2],
+            atol=1e-4,
+        )
+
+
 def _move_target_near(
     cpu: gym.Env, multiple: float, rng: np.random.Generator
 ) -> np.ndarray:

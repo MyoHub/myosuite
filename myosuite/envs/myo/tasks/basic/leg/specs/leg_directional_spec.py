@@ -82,9 +82,7 @@ class LegDirectionalForwardTask(TaskConfig):
         )
     )
     actuators: list[ActuatorGroupSpec] = field(
-        default_factory=lambda: [
-            ActuatorGroupSpec(name="leg_muscles", normalize_actions=True)
-        ]
+        default_factory=lambda: [ActuatorGroupSpec(name="leg_muscles")]
     )
 
 
