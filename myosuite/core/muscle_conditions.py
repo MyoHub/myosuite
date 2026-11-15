@@ -40,6 +40,16 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+def _muscle_mask(model: mujoco.MjModel) -> np.ndarray:
+    """Boolean mask of muscle actuators; defaults to all rows on mock models."""
+    import mujoco as _mujoco  # noqa: PLC0415
+
+    gaintype = getattr(model, "actuator_gaintype", None)
+    if isinstance(gaintype, np.ndarray):
+        return gaintype == _mujoco.mjtGain.mjGAIN_MUSCLE
+    return np.ones(len(model.actuator_gainprm), dtype=bool)
+
+
 def _peak_force(model: mujoco.MjModel) -> np.ndarray:
     """Per-actuator peak force ``gainprm[:, 2]`` as MuJoCo applies it.
 
@@ -50,7 +60,7 @@ def _peak_force(model: mujoco.MjModel) -> np.ndarray:
     import mujoco as _mujoco  # noqa: PLC0415
 
     force = np.array(model.actuator_gainprm[:, 2], dtype=np.float64)
-    auto = (force < 0) & (model.actuator_gaintype == _mujoco.mjtGain.mjGAIN_MUSCLE)
+    auto = (force < 0) & _muscle_mask(model)
     if np.any(auto):
         force[auto] = model.actuator_gainprm[auto, 3] / np.maximum(
             model.actuator_acc0[auto], _mujoco.mjMINVAL
@@ -82,9 +92,14 @@ def apply_sarcopenia_to_spec(
         >>> spec = mujoco.MjSpec.from_file("elbow.xml")
         >>> apply_sarcopenia_to_spec(spec, force_scale=0.5)
     """
-    peak_force = _peak_force(spec.compile())
-    for actuator, force in zip(spec.actuators, peak_force, strict=True):
-        actuator.gainprm[2] = float(force) * force_scale
+    compiled = spec.compile()
+    peak_force = _peak_force(compiled)
+    is_muscle = _muscle_mask(compiled)
+    for actuator, force, muscle in zip(
+        spec.actuators, peak_force, is_muscle, strict=True
+    ):
+        if muscle:
+            actuator.gainprm[2] = float(force) * force_scale
     return spec
 
 
@@ -92,12 +107,12 @@ def apply_sarcopenia_to_model(model: mujoco.MjModel, force_scale: float = 0.5) -
     """Scale muscle peak forces on a compiled MjModel in-place.
 
     Multiplies ``actuator_gainprm[:, 2]`` (the maximum isometric force Fmax)
-    by *force_scale* for every actuator, as the original
-    ``BaseV0.initializeConditions`` does. Muscles declared with
+    by *force_scale* for every muscle actuator. Muscles declared with
     ``force="-1"`` are first resolved to their peak force ``scale / acc0``.
 
     Args:
         model: Compiled MuJoCo model to modify.
         force_scale: Fraction of original peak force to retain (0–1).
     """
-    model.actuator_gainprm[:, 2] = _peak_force(model) * force_scale
+    mask = _muscle_mask(model)
+    model.actuator_gainprm[mask, 2] = _peak_force(model)[mask] * force_scale
