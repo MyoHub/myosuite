@@ -35,7 +35,8 @@ def resolve_checkpoint_ref(path: str) -> CheckpointRef:
 
     Supports:
     - local directories (absolute or relative)
-    - Hugging Face snapshot references, e.g. ``hf://owner/repo[/subpath]``
+    - Hugging Face snapshot references, e.g. ``hf://owner/repo[@revision][/subpath]``
+      (default revision: :func:`myosuite.core.hf_io.pinned_revision`)
     """
     source = str(path)
     if source.startswith("hf://"):
