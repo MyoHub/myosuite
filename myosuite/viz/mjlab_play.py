@@ -198,138 +198,141 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
             "[WARN] Video recording with dummy agents is disabled (no checkpoint/log_dir)."
         )
     env = ManagerBasedRlEnv(cfg=env_cfg, device=device, render_mode=render_mode)
-
-    if TRAINED_MODE and cfg.video:
-        print("[INFO] Recording videos during play")
-        assert log_dir is not None  # log_dir is set in TRAINED_MODE block
-        env = VideoRecorder(
-            env,
-            video_folder=log_dir / "videos" / "play",
-            step_trigger=lambda step: step == 0,
-            video_length=cfg.video_length,
-            disable_logger=True,
-        )
-
-    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
-    if DUMMY_MODE:
-        action_shape: tuple[int, ...] = env.unwrapped.action_space.shape
-        if cfg.agent == "zero":
-
-            class PolicyZero:
-                def __call__(self, obs) -> torch.Tensor:
-                    del obs
-                    return torch.zeros(action_shape, device=env.unwrapped.device)
-
-            policy = PolicyZero()
-        else:
-
-            class PolicyRandom:
-                def __call__(self, obs) -> torch.Tensor:
-                    del obs
-                    return 2 * torch.rand(action_shape, device=env.unwrapped.device) - 1
-
-            policy = PolicyRandom()
-    else:
-        from dataclasses import asdict
-
-        from myosuite.integrations.musclemimic.mjlab_policy_runner import (
-            OnnxCheckpointingMjlabRunner,
-        )
-
-        runner = OnnxCheckpointingMjlabRunner(
-            env,
-            asdict(agent_cfg),
-            str(resume_path.parent),  # type: ignore[union-attr]
-            device,
-            task_id=task_id,
-        )
-        runner.load_onnx(resume_path)  # type: ignore[arg-type]
-        policy = runner.get_inference_policy(device=device)
-
-    # Build checkpoint manager for hot-swapping checkpoints in the viewer.
-    ckpt_manager: CheckpointManager | None = None
-    if TRAINED_MODE and resume_path is not None:
-
-        def _reload_policy(path: str):
-            runner.load_onnx(Path(path))  # type: ignore[union-attr]
-            return runner.get_inference_policy(device=device)  # type: ignore[union-attr]
-
-        if cfg.wandb_run_path is None:
-            ckpt_dir = resume_path.parent
-
-            def fetch_available_local() -> list[tuple[str, str]]:
-                now = _time.time()
-                entries: list[tuple[str, str]] = []
-                for f in ckpt_dir.glob("*.onnx"):
-                    if not is_onnx_checkpoint_name(f.name):
-                        continue
-                    ago = format_time_ago(int(now - f.stat().st_mtime))
-                    entries.append((f.name, ago))
-                entries.sort(key=lambda x: onnx_checkpoint_sort_key(x[0]))
-                return entries
-
-            ckpt_manager = CheckpointManager(
-                current_name=resume_path.name,
-                fetch_available=fetch_available_local,
-                load_checkpoint=lambda name: _reload_policy(str(ckpt_dir / name)),
-            )
-        else:
-            import wandb
-
-            api = wandb.Api()
-            run_path = str(cfg.wandb_run_path)
-            wandb_run = api.run(run_path)
-            _log_root = log_root_path  # pyright: ignore[reportPossiblyUnboundVariable]
-
-            def fetch_available_wandb() -> list[tuple[str, str]]:
-                wandb_run.load()
-                now = datetime.now(tz=timezone.utc)
-                entries: list[tuple[str, str]] = []
-                for f in wandb_run.files():
-                    if not is_onnx_checkpoint_name(f.name):
-                        continue
-                    ago = format_time_ago(
-                        int((now - _parse_wandb_dt(f.updated_at)).total_seconds())
-                    )
-                    entries.append((f.name, ago))
-                entries.sort(key=lambda x: onnx_checkpoint_sort_key(x[0]))
-                return entries
-
-            ckpt_manager = CheckpointManager(
-                current_name=resume_path.name,
-                fetch_available=fetch_available_wandb,
-                load_checkpoint=lambda name: _reload_policy(
-                    str(
-                        get_wandb_onnx_checkpoint_path(_log_root, Path(run_path), name)[
-                            0
-                        ]
-                    )
-                ),
-                run_name=_parse_wandb_dt(wandb_run.created_at).strftime(
-                    "%Y-%m-%d_%H-%M-%S"
-                ),
-                run_url=wandb_run.url,
-                run_status=wandb_run.state,
+    try:
+        if TRAINED_MODE and cfg.video:
+            print("[INFO] Recording videos during play")
+            assert log_dir is not None  # log_dir is set in TRAINED_MODE block
+            env = VideoRecorder(
+                env,
+                video_folder=log_dir / "videos" / "play",
+                step_trigger=lambda step: step == 0,
+                video_length=cfg.video_length,
+                disable_logger=True,
             )
 
-    # Handle "auto" viewer selection.
-    if cfg.viewer == "auto":
-        has_display = bool(
-            os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-        )
-        resolved_viewer = "native" if has_display else "viser"
-        del has_display
-    else:
-        resolved_viewer = cfg.viewer
+        env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+        if DUMMY_MODE:
+            action_shape: tuple[int, ...] = env.unwrapped.action_space.shape
+            if cfg.agent == "zero":
 
-    if resolved_viewer == "native":
-        NativeMujocoViewer(env, policy).run()
-    elif resolved_viewer == "viser":
-        ViserPlayViewer(env, policy, checkpoint_manager=ckpt_manager).run()
-    else:
-        raise RuntimeError(f"Unsupported viewer backend: {resolved_viewer}")
+                class PolicyZero:
+                    def __call__(self, obs) -> torch.Tensor:
+                        del obs
+                        return torch.zeros(action_shape, device=env.unwrapped.device)
 
-    env.close()
+                policy = PolicyZero()
+            else:
+
+                class PolicyRandom:
+                    def __call__(self, obs) -> torch.Tensor:
+                        del obs
+                        return (
+                            2 * torch.rand(action_shape, device=env.unwrapped.device)
+                            - 1
+                        )
+
+                policy = PolicyRandom()
+        else:
+            from dataclasses import asdict
+
+            from myosuite.integrations.musclemimic.mjlab_policy_runner import (
+                OnnxCheckpointingMjlabRunner,
+            )
+
+            runner = OnnxCheckpointingMjlabRunner(
+                env,
+                asdict(agent_cfg),
+                str(resume_path.parent),  # type: ignore[union-attr]
+                device,
+                task_id=task_id,
+            )
+            runner.load_onnx(resume_path)  # type: ignore[arg-type]
+            policy = runner.get_inference_policy(device=device)
+
+        # Build checkpoint manager for hot-swapping checkpoints in the viewer.
+        ckpt_manager: CheckpointManager | None = None
+        if TRAINED_MODE and resume_path is not None:
+
+            def _reload_policy(path: str):
+                runner.load_onnx(Path(path))  # type: ignore[union-attr]
+                return runner.get_inference_policy(device=device)  # type: ignore[union-attr]
+
+            if cfg.wandb_run_path is None:
+                ckpt_dir = resume_path.parent
+
+                def fetch_available_local() -> list[tuple[str, str]]:
+                    now = _time.time()
+                    entries: list[tuple[str, str]] = []
+                    for f in ckpt_dir.glob("*.onnx"):
+                        if not is_onnx_checkpoint_name(f.name):
+                            continue
+                        ago = format_time_ago(int(now - f.stat().st_mtime))
+                        entries.append((f.name, ago))
+                    entries.sort(key=lambda x: onnx_checkpoint_sort_key(x[0]))
+                    return entries
+
+                ckpt_manager = CheckpointManager(
+                    current_name=resume_path.name,
+                    fetch_available=fetch_available_local,
+                    load_checkpoint=lambda name: _reload_policy(str(ckpt_dir / name)),
+                )
+            else:
+                import wandb
+
+                api = wandb.Api()
+                run_path = str(cfg.wandb_run_path)
+                wandb_run = api.run(run_path)
+                _log_root = log_root_path  # pyright: ignore[reportPossiblyUnboundVariable]
+
+                def fetch_available_wandb() -> list[tuple[str, str]]:
+                    wandb_run.load()
+                    now = datetime.now(tz=timezone.utc)
+                    entries: list[tuple[str, str]] = []
+                    for f in wandb_run.files():
+                        if not is_onnx_checkpoint_name(f.name):
+                            continue
+                        ago = format_time_ago(
+                            int((now - _parse_wandb_dt(f.updated_at)).total_seconds())
+                        )
+                        entries.append((f.name, ago))
+                    entries.sort(key=lambda x: onnx_checkpoint_sort_key(x[0]))
+                    return entries
+
+                ckpt_manager = CheckpointManager(
+                    current_name=resume_path.name,
+                    fetch_available=fetch_available_wandb,
+                    load_checkpoint=lambda name: _reload_policy(
+                        str(
+                            get_wandb_onnx_checkpoint_path(
+                                _log_root, Path(run_path), name
+                            )[0]
+                        )
+                    ),
+                    run_name=_parse_wandb_dt(wandb_run.created_at).strftime(
+                        "%Y-%m-%d_%H-%M-%S"
+                    ),
+                    run_url=wandb_run.url,
+                    run_status=wandb_run.state,
+                )
+
+        # Handle "auto" viewer selection.
+        if cfg.viewer == "auto":
+            has_display = sys.platform in ("win32", "darwin") or bool(
+                os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+            )
+            resolved_viewer = "native" if has_display else "viser"
+            del has_display
+        else:
+            resolved_viewer = cfg.viewer
+
+        if resolved_viewer == "native":
+            NativeMujocoViewer(env, policy).run()
+        elif resolved_viewer == "viser":
+            ViserPlayViewer(env, policy, checkpoint_manager=ckpt_manager).run()
+        else:
+            raise RuntimeError(f"Unsupported viewer backend: {resolved_viewer}")
+    finally:
+        env.close()
 
 
 def main(argv: list[str] | None = None) -> int:

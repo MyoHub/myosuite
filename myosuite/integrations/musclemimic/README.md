@@ -63,9 +63,10 @@ This integration **does not** read or require anything under the MyoSuite
   `--mujoco_viewer` or `--record`): MyoSuite-native playback — resolves
   the checkpoint reference (`hf://…` or local), loads the motion NPZ from cache
   or disk, steps MuJoCo and shows the viewer. Does **not** import upstream
-  `fullbody` / `musclemimic`. If local Orbax policy artifacts are present
-  (`train_state` + `config/metadata`), a minimal local policy runner is used;
-  otherwise it replays reference trajectory states.
+  `fullbody` / `musclemimic`. It plays the checkpoint's policy: `--onnx` for an
+  exported policy, otherwise the local Orbax artifacts (`train_state` +
+  `config/metadata`; `orbax-checkpoint` is Linux-only). If no policy loads, it exits
+  with an error; `--replay` plays the reference trajectory states instead.
 - **Without `--path`** but with `--use_mujoco --mujoco_viewer`:** physics-only
   preview on the MyoFullBody MJCF (random muscle activity). `--path` /
   `--motion_path` are ignored.
@@ -549,6 +550,12 @@ for i in range(len(clip.qpos)):
     runner.step(model, data, action)
 ```
 
+Both CPU runners refresh MuJoCo's derived quantities after their final physics
+substep. The next observation, tracking score and rendered frame therefore use
+the returned state. This corrects standalone playback that previously mixed the
+new joint state with site, muscle and sensor quantities from the previous substep;
+old CPU rollout observations and scores may differ even with the same checkpoint.
+
 > **Why not use the ONNX model directly with mjlab's env?**
 > mjlab's `myoMimicFullbody-v0` env produces ~684-dim observations
 > (qpos + qvel + act + site positions), while the mm-10m-2 ONNX model expects
@@ -560,7 +567,7 @@ for i in range(len(clip.qpos)):
 | Variable | Purpose |
 |----------|---------|
 | `MYOSUITE_PREVIEW_REEXEC_MJPYTHON` | Internal guard for one-time preview relaunch under `mjpython` on macOS |
-| `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY` | Set to `1` to force trajectory replay even when local Orbax artifacts are present |
+| `MYOSUITE_MUSCLEMIMIC_DISABLE_LOCAL_POLICY` | Set to `1` to replay the reference trajectory instead of a policy (as `--replay`) |
 | `MYOSUITE_MUSCLEMIMIC_USE_UPSTREAM` | Set to `1` to delegate `--path --mujoco_viewer` to upstream `fullbody.eval` instead of the native runner |
 | `MYOSUITE_MUSCLEMIMIC_MODELS_VERSION` | `musclemimic_models` release the models are built as when the config sets no `model_version` (default `1.0.6`; `1.0.5` for checkpoints trained on it) |
 
