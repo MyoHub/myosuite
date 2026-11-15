@@ -71,7 +71,8 @@ def download_retargeted_clips(
     dataset. Downloaded files are reused.
 
     Args:
-        repo_id: The dataset.
+        repo_id: The dataset, ``owner/name[@revision]`` (default revision:
+            :func:`~myosuite.core.hf_io.pinned_revision`).
         model: Task model name (e.g. ``"myofullbody"``).
         version: Its version (the myo_sim version).
         local_dir: Download into this directory instead of the Hugging Face cache.
@@ -81,8 +82,11 @@ def download_retargeted_clips(
     """
     from huggingface_hub import snapshot_download  # noqa: PLC0415
 
+    from myosuite.core.hf_io import pinned_revision  # noqa: PLC0415
+
+    repo_id, _, revision = repo_id.partition("@")
     base = snapshot_download(
-        repo_id, repo_type="dataset",
+        repo_id, repo_type="dataset", revision=pinned_revision(repo_id, revision),
         allow_patterns=f"{model}/{version}/*", local_dir=local_dir,
     )  # fmt: skip
     return Path(base) / model / version
