@@ -6,7 +6,7 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 ### Adapted from: https://github.com/kevinzakka/mink/examples
 # REQUIRES:
 # Python 3.9
-# MINK -- pip install "myosuite[examples]"
+# mink (installed with myosuite)
 
 
 import h5py
@@ -163,7 +163,7 @@ tasks = [
 ## =================== ##
 
 # IK settings.
-solver = "quadprog"
+solver = "daqp"
 pos_threshold = 3e-4
 ori_threshold = 1e-4
 max_iters = 20
