@@ -21,7 +21,7 @@ repos:
         files: ^myosuite/(core|terms|scenes|envs/gymnasium_env\.py)
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.2
+    rev: v3.19.1
     hooks:
       - id: pyupgrade
         args: [--py310-plus]
@@ -76,13 +76,13 @@ repos:
       # message is composed. Strip on prepare-commit-msg; reject on commit-msg.
       - id: strip-ai-coauthor
         name: Strip AI Co-Authored-By / attribution trailers
-        language: script
-        entry: scripts/reject_ai_coauthor.py --strip
+        language: python
+        entry: python scripts/reject_ai_coauthor.py --strip
         stages: [prepare-commit-msg]
         always_run: true
       - id: no-ai-coauthor
         name: Reject AI Co-Authored-By / attribution trailers
-        language: script
-        entry: scripts/reject_ai_coauthor.py
+        language: python
+        entry: python scripts/reject_ai_coauthor.py
         stages: [commit-msg]
         always_run: true
