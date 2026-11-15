@@ -308,6 +308,7 @@ def test_cache_lookup_finds_a_sibling_version(
     from myosuite.envs.myo.tasks.mimic import tracking as tr
 
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.delenv(tr.KIT_ROOT_ENV, raising=False)
     monkeypatch.delenv(tr.DATASET_ENV, raising=False)
     rel = next(ln for ln in tr.kit_split("train").read_text().splitlines()

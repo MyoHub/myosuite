@@ -5,6 +5,7 @@
 
 import ast
 import os
+from pathlib import Path
 import pickle
 import time
 
@@ -142,78 +143,80 @@ def main(
         if env_args is None
         else make_env(env_name, **ast.literal_eval(env_args))
     )
-    env = envw.unwrapped
-    env.seed(seed)
+    try:
+        env = envw.unwrapped
+        env.seed(seed)
 
-    # resolve policy and outputs
-    if policy_path is not None:
-        policy_tokens = policy_path.split(".")
-        pi = load_class_from_str(".".join(policy_tokens[:-1]), policy_tokens[-1])
+        # resolve policy and outputs
+        if policy_path is not None:
+            policy_tokens = policy_path.split(".")
+            pi = load_class_from_str(".".join(policy_tokens[:-1]), policy_tokens[-1])
 
-        if pi is not None:
-            pi = pi(env, seed)
+            if pi is not None:
+                pi = pi(env, seed)
+            else:
+                with Path(policy_path).open("rb") as f:
+                    pi = pickle.load(f)
+                if output_dir == "./":  # overide the default
+                    output_dir, pol_name = os.path.split(policy_path)
+                    if not output_dir:
+                        output_dir = "."
+                    output_name = os.path.splitext(pol_name)[0]
+                if output_name is None:
+                    pol_name = os.path.split(policy_path)[1]
+                    output_name = os.path.splitext(pol_name)[0]
         else:
-            pi = pickle.load(open(policy_path, "rb"))
-            if output_dir == "./":  # overide the default
-                output_dir, pol_name = os.path.split(policy_path)
-                output_name = os.path.splitext(pol_name)[0]
-            if output_name is None:
-                pol_name = os.path.split(policy_path)[1]
-                output_name = os.path.splitext(pol_name)[0]
-    else:
-        pi = RandPolicy(env, seed)
-        mode = "exploration"
-        output_name = "random_policy" if output_name is None else output_name
+            pi = RandPolicy(env, seed)
+            mode = "exploration"
+            output_name = "random_policy" if output_name is None else output_name
 
-    # resolve directory
-    if (os.path.isdir(output_dir) is False) and (
-        render == "offscreen" or save_paths or plot_paths is not None
-    ):
-        os.mkdir(output_dir)
+        # resolve directory
+        if render == "offscreen" or save_paths or bool(plot_paths):
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # examine policy's behavior to recover paths
-    paths = env.examine_policy(
-        policy=pi,
-        horizon=envw.spec.max_episode_steps,
-        num_episodes=num_episodes,
-        frame_size=(640, 480),
-        mode=mode,
-        output_dir=output_dir + "/",
-        filename=output_name,
-        camera_name=camera_name,
-        render=render,
-    )
-
-    # evaluate paths
-    success_percentage = env.evaluate_success(paths)
-    print(f"Average success over rollouts: {success_percentage}%")
-
-    # plot paths (before saving: save() closes the trace, flattening its keys)
-    time_stamp = time.strftime("%Y%m%d-%H%M%S")
-    if plot_paths:
-        file_name = output_dir + "/" + output_name + f"{time_stamp}"
-        plotnsave_paths(paths, env=env, fileName_prefix=file_name)
-
-    # save paths
-    if save_paths:
-        file_name = output_dir + "/" + output_name + f"{time_stamp}_trace.h5"
-        paths.save(trace_name=file_name, verify_length=True, f_res=np.float64)
-
-    # render visuals keys
-    if env.visual_keys and render_visuals:
-        paths.close()
-        render_keys = ["env_infos/visual_dict/" + key for key in env.visual_keys]
-        paths.render(
-            output_dir=output_dir,
-            output_format="mp4",
-            groups=[
-                "Trial0",
-            ],
-            datasets=render_keys,
-            input_fps=1 / env.dt,
+        # examine policy's behavior to recover paths
+        paths = env.examine_policy(
+            policy=pi,
+            horizon=envw.spec.max_episode_steps,
+            num_episodes=num_episodes,
+            frame_size=(640, 480),
+            mode=mode,
+            output_dir=str(Path(output_dir)),
+            filename=output_name,
+            camera_name=camera_name,
+            render=render,
         )
 
-    envw.close()
+        # evaluate paths
+        success_percentage = env.evaluate_success(paths)
+        print(f"Average success over rollouts: {success_percentage}%")
+
+        # plot paths (before saving: save() closes the trace, flattening its keys)
+        time_stamp = time.strftime("%Y%m%d-%H%M%S")
+        if plot_paths:
+            file_name = str(Path(output_dir) / f"{output_name}{time_stamp}")
+            plotnsave_paths(paths, env=env, fileName_prefix=file_name)
+
+        # save paths
+        if save_paths:
+            file_name = str(Path(output_dir) / f"{output_name}{time_stamp}_trace.h5")
+            paths.save(trace_name=file_name, verify_length=True, f_res=np.float64)
+
+        # render visuals keys
+        if env.visual_keys and render_visuals:
+            paths.close()
+            render_keys = ["env_infos/visual_dict/" + key for key in env.visual_keys]
+            paths.render(
+                output_dir=output_dir,
+                output_format="mp4",
+                groups=[
+                    "Trial0",
+                ],
+                datasets=render_keys,
+                input_fps=1 / env.dt,
+            )
+    finally:
+        envw.close()
 
 
 def _reexec_if_mjpython_module_on_macos() -> None:

@@ -13,6 +13,7 @@ from typing import Any
 import gymnasium as gym
 import mujoco
 import numpy as np
+from gymnasium.utils import EzPickle
 
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.muscle_stages import CtrlStageHost
@@ -40,7 +41,7 @@ def observation_dims(
     return dims
 
 
-class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
+class MimicEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
     """Track reference motion clips with a full-body muscle model.
 
     Args:
@@ -72,6 +73,15 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv):
         self.model_name = model
         self._model_cfg = model_cfg(model)
         super().__init__(frame_skip=int(frame_skip), render_mode=render_mode)
+        EzPickle.__init__(
+            self,
+            frame_skip=frame_skip,
+            preset=preset,
+            overrides=overrides,
+            model=model,
+            render_mode=render_mode,
+            seed=seed,
+        )
         self.seed(seed)
         self.model = copy.deepcopy(compiled_scene(model, self.task.self_collisions))
         self.data = mujoco.MjData(self.model)
