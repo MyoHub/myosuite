@@ -31,6 +31,9 @@ Changes since **v3.1.0** (2026-11-11).
   `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
   time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
   on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `Trace.close()` and `Trace.save()` keep the recorded dtypes. They cast signed integers to int8 and floats to
+  float16 by default, so a step counter above 127 wrapped, values above 65504 became `inf` and actions kept three
+  significant digits (`examine_logs --save_paths`, `Trace.save(path)`). Pass `i_res` / `f_res` to down-cast.
 * `myoChallengeTableTennis*` keep the legacy 1280x1080 offscreen buffer on the CPU backend. `MjSpec.attach` dropped
   the body spec's `visual` settings, so rendering above 640x480 raised `Image width 1280 > framebuffer width 640`.
   Physics is unchanged; the recipe's docstring now says which bodies the legacy compiler bounds reach (six scaffold
