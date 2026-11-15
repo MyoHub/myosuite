@@ -350,6 +350,103 @@ def test_resample_path_is_even_in_arc_length() -> None:
     np.testing.assert_allclose(np.linalg.norm(np.diff(points, axis=0), axis=1), 0.05)
 
 
+# An extensor whose two pulleys (divisor 2) split its path into three branches:
+# origin -> knuckle, then knuckle -> middle and knuckle -> tip on the finger.
+_PULLEY_XML = """
+<mujoco><option timestep="0.002" gravity="0 0 0"/>
+  <worldbody><site name="origin" pos="1.2 0 1.25"/>
+    <body name="finger" pos="1 0 1.25"><joint name="hinge" axis="0 1 0"/>
+      <geom type="capsule" size=".01" fromto="0 0 0 0 0 .3"/>
+      <site name="knuckle" pos="0 0 .1"/><site name="middle" pos=".02 0 .2"/>
+      <site name="tip" pos=".02 0 .3"/></body></worldbody>
+  <tendon><spatial name="split"><site site="origin"/><site site="knuckle"/>
+    <pulley divisor="2"/><site site="knuckle"/><site site="middle"/>
+    <pulley divisor="2"/><site site="knuckle"/><site site="tip"/></spatial></tendon>
+  <actuator><muscle name="extensor" tendon="split" lengthrange=".3 .4"/></actuator>
+</mujoco>"""
+
+
+def test_pulley_branches_drop_markers_and_add_up_to_the_tendon_length() -> None:
+    """Branches hold no ``(0, 0, 0)`` pulley marker; L0 + sum(Li) / 2 is ten_length.
+
+    The finger extensor (two pulleys of divisor 2) used to run through the world
+    origin, 8.5 times its length. Its wrapped arcs are chords here, hence ``rel``.
+    """
+    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+
+    finger = str(resolve_finger_xml("myofinger_v0.xml"))
+    for model, tendon, rel in [
+        (mujoco.MjModel.from_xml_string(_PULLEY_XML), "split", 1e-12),
+        (mujoco.MjModel.from_xml_path(finger), "extn", 1e-3),
+    ]:
+        data = mujoco.MjData(model)
+        mujoco.mj_forward(model, data)
+        t = model.tendon(tendon).id
+        a, n = data.ten_wrapadr[t], data.ten_wrapnum[t]
+        branches = muscle_tubes.split_branches(
+            data.wrap_xpos.reshape(-1, 3)[a : a + n],
+            data.wrap_obj.reshape(-1)[a : a + n],
+        )
+        assert len(branches) == 3
+        # Both paths stay over 0.2 m from the origin, where the markers sit.
+        assert np.linalg.norm(np.concatenate(branches), axis=1).min() > 0.2
+        lengths = [muscle_tubes.resample_path(b)[1] for b in branches]
+        assert lengths[0] + sum(lengths[1:]) / 2 == pytest.approx(
+            data.ten_length[t], rel=rel
+        )
+    path = np.arange(12.0).reshape(4, 3)
+    (branch,) = muscle_tubes.split_branches(path, np.full(4, -1))
+    np.testing.assert_array_equal(branch, path)
+
+
+def test_pulley_muscle_exports_one_tube_mesh_along_its_branches(
+    tmp_path: Path,
+) -> None:
+    """The branch tubes form one mesh of fixed topology that never visits the origin.
+
+    The first branch takes the belly, shaped by its own length; the others are
+    tendon, as thick as the belly's ends in every frame.
+    """
+    pytest.importorskip("pxr")
+    from dataclasses import replace
+
+    from pxr import Usd, UsdGeom
+
+    env = _Env()
+    env.model = mujoco.MjModel.from_xml_string(_PULLEY_XML)
+    env.data = mujoco.MjData(env.model)
+    clip = tmp_path / "motion.npz"
+    np.savez(clip, qpos=[[0.0], [0.6]], frequency=25.0)  # the first branch shortens
+    meta = blender_render.export_rollout(
+        replace(_config(tmp_path / "out"), motion=clip), env=env
+    )
+    assert meta["muscle_objects"] == ["Muscle_extensor"]
+    stage = Usd.Stage.Open(meta["usd"])
+    mesh = UsdGeom.Mesh(stage.GetPrimAtPath("/World/Muscles/Muscle_extensor"))
+    n, k = muscle_tubes.PATH_POINTS, muscle_tubes.RING_POINTS
+    indices = np.array(mesh.GetFaceVertexIndicesAttr().Get())
+    assert indices.max() == 3 * (n * k + 2) - 1
+    assert sum(mesh.GetFaceVertexCountsAttr().Get()) == len(indices)
+    peak, fraction = muscle_tubes.muscle_shape(
+        env.model, np.array([np.hypot(0.2, 0.1)])
+    )
+    ends = []
+    for frame in range(2):
+        tubes = np.array(mesh.GetPointsAttr().Get(frame)).reshape(3, n * k + 2, 3)
+        assert np.linalg.norm(tubes, axis=-1).min() > 1
+        # Ring radii about each straight branch, from its two end caps.
+        start, end = tubes[:, -2:-1], tubes[:, -1:]
+        axis = (end - start) / np.linalg.norm(end - start, axis=-1, keepdims=True)
+        radius = np.linalg.norm(np.cross(tubes[:, :-2] - start, axis), axis=-1)
+        rings = radius.reshape(3, n, k).mean(-1)
+        np.testing.assert_allclose(rings[1:], rings[0, 0], atol=1e-6)
+        ends.append(rings[0, 0])
+        if frame == 0:
+            belly = peak * muscle_tubes.radius_profile(fraction)
+            np.testing.assert_allclose(rings[0], belly[0], atol=1e-6)
+    assert ends[1] > 1.1 * ends[0]  # a shortening belly thickens its tendons too
+
+
 def test_checkpoint_symlink_keeps_format_and_rejects_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
