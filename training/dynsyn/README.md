@@ -42,7 +42,7 @@ there.
 
 ```bash
 pip install "myosuite[mjlab]"   # or, from a checkout: pip install -e ".[mjlab]"
-pip install "git+https://github.com/MyoHub/myosuite.git@dev#subdirectory=training/dynsyn"
+pip install "git+https://github.com/MyoHub/myosuite.git@v3.1.0#subdirectory=training/dynsyn"
 ```
 
 The project needs a MyoSuite that has `myosuite.utils.action_map`, so install MyoSuite from the

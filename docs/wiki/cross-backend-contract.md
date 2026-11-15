@@ -186,6 +186,41 @@ Each entry of `features` is a wrapper class (`FatigueWrapper`), a `(class, kwarg
 - Harness wrappers (`PerturbationWrapper`, recording, a delay on the raw action) are not features. They are plain
   gymnasium wrappers on the CPU env and not part of the config.
 
+### Motion preprocessing
+
+`myoMimic-v0` accepts `motion.workers` and `motion.cache_dir` through the task's
+dotted overrides on both CPU and mjlab:
+
+```python
+cfg = EnvConfig("myoMimic-v0", task_kwargs={"overrides": {
+    "motion.clips": "motions.txt",
+    "motion.workers": 2,
+    "motion.cache_dir": "/path/to/local/motion-cache",
+}})
+```
+
+One worker is the conservative default; larger values use threads, one `MjData`
+per clip, and preserve clip order and numerical results. Benchmark worker counts
+on your clips and machine: more threads can cost more than they save. These two
+execution options do not change the task fingerprint.
+
+The disk cache is opt-in (empty `cache_dir` disables it). It stores only NumPy
+arrays and JSON metadata, loaded with `allow_pickle=False`. Its key covers the
+ordered, resolved source paths and their complete contents, the compiled model
+(including scene variants), tracked-body order, control step, reset bins,
+preprocessing implementation/schema and NumPy/MuJoCo versions. Source bytes are
+hashed on every library lookup, including in-process hits; hashing and validated
+archive reads still cost I/O. Cache hits skip resampling and per-frame MuJoCo
+kinematics. This cache does not replace clip/model compatibility checks.
+
+Shapes, dtypes, finite values, clip metadata and array checksums are checked on
+disk reads. Invalid archives warn and are rebuilt. Writers use unique temporary
+files and atomic replacement; concurrent processes can redundantly build the
+same library but readers never consume a partially written archive. An unwritable
+cache warns and falls back to preprocessing. Cache directories are disposable;
+old entries are retained until you remove them. Each process also retains up to
+two loaded libraries in memory, keyed by current input content.
+
 ## Which features run where
 
 Table 1: **which backend can run each feature** (a feature is a wrapper in `EnvConfig.features` or in an id's

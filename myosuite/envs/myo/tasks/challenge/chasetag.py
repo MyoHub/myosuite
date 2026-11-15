@@ -27,10 +27,6 @@ from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils.colored_noise import ColoredNoiseProcess
 
 
-# Rounding of the summed timestep: the 1000th step at 10 s ends at 10.000000000000009 s.
-_TIME_EPS = 1e-9
-
-
 class Task(Enum):
     CHASE = 0
     EVADE = 1
@@ -836,9 +832,14 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             return self._evade_lose_condition(obs_dict)
         raise NotImplementedError
 
+    def _horizon_steps(self) -> int:
+        """Control steps in ``maxTime``; the summed ``data.time`` is not exact."""
+        return round(self.maxTime / self.dt)
+
     def _chase_lose_condition(self, obs_dict: dict) -> int:
         root_pos = self.data.body(self._pelvis_body_name).xpos[:2]
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime + _TIME_EPS:
+        # Past the horizon only: at the horizon ``TimeLimit`` truncates a CHASE.
+        if self.steps > self._horizon_steps():
             return 1
         if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
             return 1
@@ -861,9 +862,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return 0
 
     def _evade_win_condition(self, obs_dict: dict) -> int:
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime + _TIME_EPS:
-            return 1
-        return 0
+        return 1 if self.steps >= self._horizon_steps() else 0
 
     def _get_fallen_condition(self) -> int:
         if self.terrain == "FLAT":

@@ -54,15 +54,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      # PRs into dev run Ubuntu 3.10 only; macOS, Windows and Python 3.14 run
-      # after the merge (push to dev), on release PRs into main and nightly.
-      # 3.10 is the floor and still resolves NumPy 2.2.x; 3.14 is the ceiling and
-      # runs on Linux only, since dependency resolution and Python-level
-      # incompatibilities (NumPy >=2.3) are OS-independent. mjlab caps itself at <3.14.
+      # PRs into dev run Ubuntu 3.11 only; macOS, Windows and Python 3.10 / 3.14 /
+      # 3.15 run after the merge (push to dev), on release PRs into main and nightly.
+      # 3.11 is the recommended default; 3.10 stays tested while requires-python >=3.10
+      # holds (until MuJoCo 4); 3.14 and 3.15 (ONNX-free native CPU path) run on Linux
+      # only, since dependency resolution and Python-level incompatibilities are
+      # OS-independent. mjlab caps itself at <3.14.
       matrix:
-        # On Linux 3.10 the suite runs as two parallel jobs: `mjlab` (tests marked
+        # On Linux 3.11 the suite runs as two parallel jobs: `mjlab` (tests marked
         # by conftest.py as using mjlab / MuJoCo Warp) and `cpu` (everything else).
-        include: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref == 'dev' && '[{"os":"ubuntu-latest","python-version":"3.10","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.10","group":"mjlab"}]' || '[{"os":"ubuntu-latest","python-version":"3.10","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.10","group":"mjlab"},{"os":"macos-latest","python-version":"3.10","group":"all"},{"os":"windows-latest","python-version":"3.10","group":"all"},{"os":"ubuntu-latest","python-version":"3.14","group":"all"}]') }}
+        include: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref == 'dev' && '[{"os":"ubuntu-latest","python-version":"3.11","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.11","group":"mjlab"}]' || '[{"os":"ubuntu-latest","python-version":"3.11","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.11","group":"mjlab"},{"os":"macos-latest","python-version":"3.11","group":"all"},{"os":"windows-latest","python-version":"3.11","group":"all"},{"os":"ubuntu-latest","python-version":"3.10","group":"all"},{"os":"ubuntu-latest","python-version":"3.14","group":"all"},{"os":"ubuntu-latest","python-version":"3.15","group":"all"}]') }}
 
     steps:
       - name: Set environment variable for macOS
@@ -130,10 +131,22 @@ jobs:
 
       # [rl] (Stable-Baselines3) so the SB3 tests run instead of skipping, among
       # them the tier-1 SB3 -> ONNX export check (test_export_onnx.py).
+      # On Python 3.15, h5py has no stable cp315 wheel on PyPI yet, usd-core
+      # ships neither cp315 wheels nor an sdist, and uv.lock does not cover 3.15
+      # so mujoco is pinned to the locked >=3.14 baseline version (3.14.0).
       - name: Install project and pytest
         run: |
-          uv pip install -e ".[mjlab,rl]"
-          uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch ipython "musclemimic_models==1.0.6" usd-core
+          if [ "${{ matrix.python-version }}" = "3.15" ]; then
+            uv pip install \
+              --find-links https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/h5py/ \
+              --only-binary h5py \
+              --prerelease=allow \
+              h5py
+            uv pip install -e ".[mjlab,rl]" "mujoco==3.14.0"
+          else
+            uv pip install -e ".[mjlab,rl]"
+          fi
+          uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch ipython "musclemimic_models==1.0.6" "usd-core; python_version < '3.15'"
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
         if: ${{ runner.os != 'Linux' }}
@@ -145,16 +158,16 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         env:
           SELECT: ${{ matrix.group == 'cpu' && 'not slow and not mjlab' || matrix.group == 'mjlab' && 'not slow and mjlab' || 'not slow' }}
-        run: uv run python -m pytest -o addopts= myosuite/tests -v -m "$SELECT"
+        run: uv run ${{ matrix.python-version == '3.15' && '--no-sync' || '' }} python -m pytest -o addopts= myosuite/tests -v -m "$SELECT"
 
       # @slow tests (benchmarks, long rollouts) only on the nightly run.
       - name: Pytest — slow tests (nightly)
         if: ${{ runner.os == 'Linux' && matrix.group == 'cpu' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
         run: uv run python -m pytest -o addopts= myosuite/tests -v -m slow
 
-      # Pinned to 3.10: several tutorials depend on packages with tighter ceilings
+      # Pinned to 3.11: several tutorials depend on packages with tighter ceilings
       # than the library itself. On a PR into dev, only when it touches tutorials;
       # every push, release PR and nightly run executes them.
       - name: Execute tutorials (discovered; HF-heavy notebooks skipped in CI)
-        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.10' && matrix.group == 'cpu' && (github.base_ref != 'dev' || steps.changes.outputs.tutorials == 'true') }}
+        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.11' && matrix.group == 'cpu' && (github.base_ref != 'dev' || steps.changes.outputs.tutorials == 'true') }}
         run: source myosuite/tests/test_tutorials.sh

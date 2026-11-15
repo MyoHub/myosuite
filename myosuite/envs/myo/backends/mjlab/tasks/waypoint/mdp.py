@@ -108,6 +108,8 @@ class WaypointCommand(CommandTerm):
         return self._accessor.site_xpos([self.site])[:, 0]
 
     def _resample_command(self, env_ids: torch.Tensor) -> None:
+        for value in self.state.values():
+            value[env_ids] = 0
         k = len(env_ids)
         if self._fixed is not None:
             route = self._fixed.expand(k, -1, -1)
@@ -126,8 +128,6 @@ class WaypointCommand(CommandTerm):
         self.prev_distance[env_ids] = distance_to_next(
             torch, self._start.expand(k, 2), route, self.next_index[env_ids]
         )
-        for value in self.state.values():
-            value[env_ids] = 0
 
     def advance(self) -> torch.Tensor:
         """One control step of every route (after ``sync_forward``); returns ``solved``."""

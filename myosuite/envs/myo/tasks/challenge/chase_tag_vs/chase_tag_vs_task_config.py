@@ -353,6 +353,10 @@ class ChaseTagVsFullbodySteeredTaskConfig(ChaseTagVsFullbodyTaskConfig):
         base = super().compute_reward(
             data, meta, agent_id, damage_delivered, health, actions, fell, ko
         )
+        # The shaping term is linear in its weights: with all of them 0 it adds nothing,
+        # so the gait clip (a gated download) is not needed.
+        if not (self.w_gait_jpos or self.w_gait_jvel or self.w_steering):
+            return base
         self._ensure_gait_clip()
         from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
         from myosuite.terms.multiplayer.chase_tag_vs_reward import (

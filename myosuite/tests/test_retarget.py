@@ -84,6 +84,26 @@ def test_round_trip_on_the_model(model, walk) -> None:
     assert met["landmark_rmse_mm"] < 2.0
 
 
+def test_independent_joint_limits() -> None:
+    model = mujoco.MjModel.from_xml_string("""
+    <mujoco><worldbody><body><freejoint/><geom size="0.1"/>
+      <body><joint name="hinge" range="-30 60"/><geom size="0.1"/>
+        <body><joint name="slide" type="slide" range="-0.2 0.3"/>
+          <geom size="0.1"/>
+          <body><joint name="dependent"/><geom size="0.1"/></body>
+        </body>
+      </body>
+    </body></worldbody><equality>
+      <joint joint1="dependent" joint2="hinge"/>
+    </equality></mujoco>
+    """)
+    ik = rt.LandmarkIK(model, rt.LandmarkMap("test", "0", ()))
+    joints = [model.joint(name).id for name in ("hinge", "slide")]
+    np.testing.assert_array_equal(ik.indep_qadr, model.jnt_qposadr[joints])
+    np.testing.assert_allclose(ik.lo[ik.bounded], model.jnt_range[joints, 0])
+    np.testing.assert_allclose(ik.hi[ik.bounded], model.jnt_range[joints, 1])
+
+
 def test_posture_prior_holds_an_open_joint(model, walk) -> None:
     # without hand targets the wrist deviation is left to the prior
     lmap = rt.LandmarkMap(

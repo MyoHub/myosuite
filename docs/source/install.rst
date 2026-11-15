@@ -1,7 +1,19 @@
 Installation
 ============
 
-Python 3.10–3.14 is supported (the GPU ``[mjlab]`` extra needs Python ≤3.13).
+Python 3.11+ is recommended (Python 3.10–3.14 is supported; the GPU ``[mjlab]`` extra needs Python ≤3.13).
+
+Security updates
+~~~~~~~~~~~~~~~~
+
+Use Python 3.11 or newer for patched Pillow (>=13.0.0) and filelock (>=4.2.5).
+Python 3.10 remains supported, but their fixed releases no longer support it;
+its compatible versions retain known security advisories. Upgrade Python to
+receive these fixes.
+
+Use an isolated environment: Gradio 6.31.0 requires Pillow <13 and cannot be
+installed together with these patched MyoSuite image dependencies. MyoSuite
+does not require Gradio.
 
 From PyPI
 ~~~~~~~~~
@@ -36,7 +48,7 @@ From source
    git clone https://github.com/MyoHub/myosuite.git
    cd myosuite
    pip install -e ".[rl]"        # CPU training (Stable-Baselines3)
-   # or with uv: uv sync -p 3.10 --extra rl
+   # or with uv: uv sync -p 3.11 --extra rl
 
 GPU training (mjlab)
 ~~~~~~~~~~~~~~~~~~~~

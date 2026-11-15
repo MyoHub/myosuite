@@ -52,7 +52,7 @@ jobs:
       - name: setup-python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
       - name: resolve current version and tag
         id: get-next-version-and-tag
         run: |
@@ -81,10 +81,10 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - name: Set up Python 3.10
+    - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10"
+        python-version: "3.11"
 
     - name: Install build tooling
       run: pip install build setuptools wheel
@@ -236,10 +236,10 @@ jobs:
           - macos-latest
           - windows-latest
     steps:
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Prepare Linux
         if: ${{ runner.os == 'Linux' }}

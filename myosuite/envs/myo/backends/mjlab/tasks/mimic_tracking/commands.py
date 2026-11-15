@@ -63,6 +63,7 @@ class MotionCommand(CommandTerm):
         lib = load_motion_lib(
             task.motion.clips, task.motion.root, cfg.model, task.self_collisions,
             round(env.step_dt, 9), task.motion.bin_s,
+            workers=task.motion.workers, cache_dir=task.motion.cache_dir,
         )  # fmt: skip
         self.motion: MotionLib = lib.map(lambda x: torch.as_tensor(x, device=dev))
         self.touch_sensor = env.scene[cfg.touch_sensor_name]
