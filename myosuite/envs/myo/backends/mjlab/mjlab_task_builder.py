@@ -13,23 +13,45 @@ Exports:
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
 from typing import TYPE_CHECKING, Any
 
+import mujoco
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import terminations as mdp_terminations
+from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
 
 from myosuite.core.config import TaskConfig
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.terms.base_action import sigmoid_muscle_activation
 
 if TYPE_CHECKING:  # pragma: no cover
     import torch
 
 
-class MyoMuscleActivationActionCfg:
+def _anchor_exact(name: str) -> str:
+    if name.startswith("^") and name.endswith("$"):
+        return name
+    return f"^{re.escape(name)}$"
+
+
+def _matches_exact_order(
+    resolved_names: tuple[str, ...] | list[str],
+    requested_names: tuple[str, ...] | list[str],
+) -> bool:
+    if len(resolved_names) != len(requested_names):
+        return False
+    return all(
+        resolved == req or resolved == _anchor_exact(req)
+        for resolved, req in zip(resolved_names, requested_names, strict=True)
+    )
+
+
+class MyoMuscleActivationActionCfg(ActionTermCfg):
     """Action term config that writes directly to muscle actuator ctrl slots.
 
     Standalone (does not inherit BaseActionCfg) so mjlab's BaseAction._find_targets
@@ -70,7 +92,7 @@ class MyoMuscleActivationActionCfg:
                 "MyoMuscleActivationActionCfg.action_mode must be "
                 f"'sigmoid', 'direct', or 'excitation', got {action_mode!r}."
             )
-        self.entity_name = entity_name
+        super().__init__(entity_name=entity_name)
         self.actuator_names = actuator_names
         self.tendon_names = tendon_names
         self.action_mode = action_mode
@@ -82,7 +104,7 @@ class MyoMuscleActivationActionCfg:
         return MyoMuscleActivationAction(self, env)
 
 
-class MyoMuscleActivationAction:
+class MyoMuscleActivationAction(ActionTerm):
     """Map policy actions to muscle control targets.
 
     The default ``sigmoid`` mode uses the normalisation of the pose and reach envs
@@ -93,38 +115,88 @@ class MyoMuscleActivationAction:
     actuator-to-tendon mapping from the entity.
     """
 
+    cfg: MyoMuscleActivationActionCfg
+
     def __init__(self, cfg: MyoMuscleActivationActionCfg, env: ManagerBasedRlEnv):
         import torch  # noqa: PLC0415
 
-        self.cfg = cfg
-        self._env = env
-        self.num_envs = env.num_envs
-        self.device = env.device
+        super().__init__(cfg=cfg, env=env)
+        mj_model = getattr(getattr(env, "sim", None), "mj_model", None)
+        indexing = getattr(self._entity, "indexing", None)
+        scene_act_ids: list[int] | None = None
 
-        self._entity = env.scene[cfg.entity_name]
         if cfg.tendon_names is not None:
             if len(cfg.tendon_names) != len(cfg.actuator_names):
                 raise ValueError(
                     "MyoMuscleActivationActionCfg.tendon_names must have the "
                     "same length as actuator_names."
                 )
+            patterns = tuple(_anchor_exact(n) for n in cfg.tendon_names)
             target_ids, resolved_names = self._entity.find_tendons(
-                cfg.tendon_names,
+                patterns,
                 preserve_order=True,
             )
-            if tuple(resolved_names) != tuple(cfg.tendon_names):
+            if len(target_ids) != len(cfg.tendon_names) or (
+                all(
+                    not (n.startswith("^") and n.endswith("$"))
+                    for n in cfg.tendon_names
+                )
+                and not _matches_exact_order(resolved_names, cfg.tendon_names)
+            ):
                 raise ValueError(
                     "Resolved tendon order does not match requested tendon order."
                 )
+            if (
+                cfg.muscle_fatigue
+                and indexing is not None
+                and hasattr(indexing, "ctrl_ids")
+            ):
+                act_patterns = tuple(_anchor_exact(n) for n in cfg.actuator_names)
+                act_ids, _ = self._entity.find_actuators(
+                    act_patterns, preserve_order=True
+                )
+                if len(act_ids) == len(cfg.actuator_names):
+                    scene_act_ids = indexing.ctrl_ids[act_ids].tolist()
         else:
-            target_ids, resolved_names = self._entity.find_actuators(
-                cfg.actuator_names,
+            patterns = tuple(_anchor_exact(n) for n in cfg.actuator_names)
+            actuator_ids, resolved_names = self._entity.find_actuators(
+                patterns,
                 preserve_order=True,
             )
-            if tuple(resolved_names) != tuple(cfg.actuator_names):
+            if len(actuator_ids) != len(cfg.actuator_names) or (
+                all(
+                    not (n.startswith("^") and n.endswith("$"))
+                    for n in cfg.actuator_names
+                )
+                and not _matches_exact_order(resolved_names, cfg.actuator_names)
+            ):
                 raise ValueError(
                     f"Resolved actuator order does not match requested action order: {resolved_names} vs {cfg.actuator_names}."
                 )
+            if (
+                mj_model is not None
+                and indexing is not None
+                and hasattr(indexing, "tendon_ids")
+                and hasattr(indexing, "ctrl_ids")
+            ):
+                entity_tendons = indexing.tendon_ids.tolist()
+                scene_act_ids = indexing.ctrl_ids[actuator_ids].tolist()
+                target_ids = []
+                for act_id in scene_act_ids:
+                    if (
+                        int(mj_model.actuator_trntype[act_id])
+                        != mujoco.mjtTrn.mjTRN_TENDON
+                    ):
+                        raise ValueError(
+                            f"MyoMuscleActivationAction: actuator "
+                            f"{mj_model.actuator(act_id).name!r} has no tendon transmission"
+                        )
+                    target_ids.append(
+                        entity_tendons.index(int(mj_model.actuator_trnid[act_id, 0]))
+                    )
+            else:
+                target_ids = list(actuator_ids)
+
         self._target_ids = torch.tensor(
             target_ids, device=self.device, dtype=torch.long
         )
@@ -138,10 +210,12 @@ class MyoMuscleActivationAction:
         if cfg.muscle_fatigue:
             from myosuite.core.muscle_conditions import TorchFatigueState  # noqa: PLC0415
 
-            mj_model = getattr(getattr(env, "sim", None), "mj_model", None)
             if mj_model is not None:
                 self._fatigue = TorchFatigueState.from_mj_model(
-                    mj_model, num_envs=self.num_envs, device=str(self.device)
+                    mj_model,
+                    num_envs=self.num_envs,
+                    device=str(self.device),
+                    muscles=scene_act_ids,
                 )
             else:
                 self._fatigue = TorchFatigueState(
@@ -171,8 +245,9 @@ class MyoMuscleActivationAction:
                 self._raw_actions, torch
             )
         if self._fatigue is not None:
+            step_dt = float(getattr(self._env, "step_dt", self.cfg.ctrl_dt))
             self._processed_actions[:] = self._fatigue.step(
-                self._processed_actions, self.cfg.ctrl_dt
+                self._processed_actions, step_dt
             )
         if self.cfg.pre_physics_fn is not None:
             self.cfg.pre_physics_fn(self._env)
@@ -186,11 +261,13 @@ class MyoMuscleActivationAction:
         if env_ids is None:
             self._raw_actions.zero_()
             self._processed_actions.zero_()
+            fatigue_ids = None
         else:
-            self._raw_actions[env_ids] = 0.0
-            self._processed_actions[env_ids] = 0.0
+            fatigue_ids = normalize_mjlab_env_ids(self._env, env_ids)
+            self._raw_actions[fatigue_ids] = 0.0
+            self._processed_actions[fatigue_ids] = 0.0
         if self._fatigue is not None:
-            self._fatigue.reset(env_ids)
+            self._fatigue.reset(fatigue_ids)
 
 
 def mjlab_env_cfg_from_task_config(
@@ -251,7 +328,13 @@ def mjlab_env_cfg_from_task_config(
         }
 
     if episode_length_s is None:
-        episode_length_s = cfg.max_episode_steps * decimation * sim_cfg.mujoco.timestep
+        from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: PLC0415
+            episode_length_s as _episode_length_s,
+        )
+
+        episode_length_s = _episode_length_s(
+            cfg.max_episode_steps, decimation * sim_cfg.mujoco.timestep
+        )
 
     articulation = EntityArticulationInfoCfg(actuators=actuators)
     entity_kwargs: dict[str, Any] = dict(spec_fn=spec_fn, articulation=articulation)
