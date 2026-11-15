@@ -20,8 +20,42 @@ Changes since **v3.1.0** (2026-11-11).
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
 * `scripts/eval_mjlab_policy.py --stochastic` on the CPU backend draws the action noise from a generator seeded with
   `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
+### Changed
+
+* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
+  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
+  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
+  Python 3.15 on Linux for the ONNX-free native CPU path.
+
+### Fixed
+
+* **ChaseTag EVADE episodes can be won again.** Since 3.1.0 `ChaseTagEnv` compared the summed `data.time` with
+  `maxTime + 1e-9`. After the last step the time limit allows, that sum is 20.00000000000146 s (20 s envs) or
+  10.000000000000009 s (10 s envs), so the win never fired: an evader that survived the whole episode ended with
+  `solved = 0` and score 0, while one tagged at 19.9 s scored 0.995. The time limit is now counted in control steps
+  (`round(maxTime / dt)`), and the last step of a survived EVADE episode terminates with `solved = 1` (reward weight
+  +1000) and score 1.0, as in 3.0. This changes the returns of the ids that sample EVADE:
+  `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants. A CHASE
+  time-out is unchanged: the episode is truncated without the `lose` penalty and scores 0 with the full `maxTime`,
+  on the CPU and on the mjlab twin of `myoChallengeChaseTagFBP2-v0`.
+* `ModularTaskEnv` raises `NotImplementedError` for a `TaskConfig.scene` it does not apply (a scene list or a named
+  scene other than `"flat_floor"`). Every entry of a scene list compiled to the same model, and the scene picked at
+  reset started its first episode from un-reset data; an unknown name was accepted and ignored. No registered id
+  sets either; callables that edit the spec work as before.
+* Uncertainty bands now reject failed/nonfinite nominal and sampled solves instead of
+  including them in quantiles. OSQP statuses, iterations and residuals are retained;
+  accepting `solved inaccurate` requires `UncertaintyConfig(allow_inaccurate=True)`.
+* **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
+  registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
+  target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip
+  task. Only the myoedits registration remains. Normal imports already got it, so observations, actions and the
+  published checkpoints are unchanged. A process that reloaded the basic suite (as one registry test did) no longer
+  switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
+  empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
+  with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#808]: https://github.com/MyoHub/myosuite/pull/808
 
 ## [3.1.0] - 2026-11-11
 
