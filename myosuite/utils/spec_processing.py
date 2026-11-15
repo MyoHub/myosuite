@@ -3,6 +3,10 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
+from typing import Any
+
 import mujoco
 
 
@@ -81,19 +85,20 @@ def delete_joint(spec: mujoco.MjSpec, joint: mujoco.MjsJoint) -> None:
 
 
 def recursive_immobilize(
-    spec,
-    temp_model,
-    parent,
-    remove_eqs=False,
-    remove_actuators=False,
-    remove_sites=True,
-    remove_dependents=False,
-):
+    spec: mujoco.MjSpec,
+    temp_model: mujoco.MjModel | None,
+    parent: Any,
+    remove_eqs: bool = False,
+    remove_actuators: bool = False,
+    remove_sites: bool = True,
+    remove_dependents: bool = False,
+) -> list[int]:
     """Delete every joint in the subtree of *parent*.
 
     Args:
         spec: Spec to edit.
-        temp_model: Model compiled from *spec* before the edit (for qpos addresses).
+        temp_model: Model compiled from *spec* before the edit (for qpos addresses),
+            or ``None`` when ``removed_joint_ids`` is not needed.
         parent: Root body of the subtree.
         remove_eqs: Also delete joint equalities on the removed joints.
         remove_actuators: Also delete joint actuators on the removed joints.
@@ -102,14 +107,15 @@ def recursive_immobilize(
             all fixed tendons, equalities, actuators and sensors that use it.
 
     Returns:
-        qpos addresses of the removed joints.
+        qpos addresses of the removed joints (empty when *temp_model* is ``None``).
     """
-    removed_joint_ids = []
+    removed_joint_ids: list[int] = []
     if remove_sites:
         for s in parent.sites:
             spec.delete(s)
     for j in parent.joints:
-        removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
+        if temp_model is not None:
+            removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
         if remove_dependents:
             delete_joint(spec, j)
             continue

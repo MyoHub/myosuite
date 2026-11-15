@@ -1151,10 +1151,9 @@ def _immobilize_tabletennis_legs_and_left_arm(spec: mujoco.MjSpec) -> mujoco.MjS
     from myosuite.utils.spec_processing import recursive_immobilize
 
     # remove_dependents: also the fixed tendons on the joints (passive limits, tied nodes).
-    temp_model = spec.compile()
     for root in ("femur_l", "femur_r", "myoarm_l_root"):
         recursive_immobilize(
-            spec, temp_model, spec.body(root), remove_eqs=True, remove_dependents=True
+            spec, None, spec.body(root), remove_eqs=True, remove_dependents=True
         )
     return spec
 
