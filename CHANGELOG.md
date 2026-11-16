@@ -299,6 +299,10 @@ Changes since **v3.1.0** (2026-11-11).
   keeps the solution and warns (`StaticOptimizationWarning`), once per clip with the number of failed frames and
   their statuses; `"raise"` raises `StaticOptimizationError` naming the frame; `"nan"` returns NaN activations and
   forces for those frames. Converged results are unchanged.
+* **`ChaseTagSteeredPair` teacher sees its previous action.** The 354 muscle-excitation entries of the `mm-10m-2`
+  teacher's observation read the shadow body's `ctrl`, which was never written, so they were always 0. In training
+  they hold the previous action. `SteeredTeacher.action` now keeps the raw action (`[-1, 1]`) in the shadow's `ctrl`
+  and clears it on `reset`; the excitations sent to the FBVs agent are unchanged (`clip(action, 0, 1)`).
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
