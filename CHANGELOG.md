@@ -16,6 +16,14 @@ Changes since **v3.1.0** (2026-11-11).
 * **Computed muscle control** (`myosuite.biomechanics.computed_muscle_control`): `computed_muscle_control(model, qpos, qvel, qacc, dt)` (or `ComputedMuscleControl.reset` and `.step` per control step) finds the excitations that make a forward simulation track a motion (Thelen, Anderson & Delp 2003) with `StaticOptimizer` and its per-frame `min_activation`. Every step bounds each actuator by the activations its dynamics can reach, takes velocity-dependent forces (force-velocity, joint damping) at the velocity that delivers the desired acceleration over MuJoCo's Euler steps, inverts MuJoCo's own activation dynamics exactly (any `dyntype`, `tausmooth` included) and applies the reserves and residuals, as OpenSim does. For standing and walking the simulation has no contacts and the estimated ground reactions (`contact_forces=True`) are applied, as OpenSim applies measured ones. A 37-degree motion that the 2-dof elbow's muscles produced in simulation is tracked within 0.03 deg at 500 Hz control and 0.25 deg at 100 Hz; myoArm reaches at 100 Hz within 2.4 deg (RMS 0.19 deg); MyoLeg stands on its estimated ground reactions within 0.1 mm; retargeted KIT walks on MyoFullBody (354 muscles, 100 Hz, about 25 ms per step) within 1.5 mm at the root and 0.27 deg RMS at the joints (6-8 deg max), with the residuals that static optimization of the same clips already needs ([#644]).
 * Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 * Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+* Native InstantHMR (`MHR70` 70-keypoint, metric camera-space) biomechanical pipeline
+  (`myosuite.biomechanics.retarget_instanthmr`, `myosuite.viz.muscle_meshes`) for
+  `myofullbody` and `myolegs`: subject anthropometric scaling
+  (`estimate_instanthmr_scales`, `scale_model_from_instanthmr`), metric/nominal
+  `LandmarkIK` (`InstantHMRSource`, `solve_instanthmr_ik`), 3D deformed muscle mesh and
+  activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
+  glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
+  monocular video extractor `tools/instanthmr` ([#749]).
 
 ### Fixed
 
@@ -133,6 +141,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#749]: https://github.com/MyoHub/myosuite/pull/749
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
 ## [3.1.0] - 2026-11-11
