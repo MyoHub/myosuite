@@ -54,9 +54,27 @@ Warp/driver allocations. Setup and evaluation are substantial in the shorter run
 
 [Run measurements](../validation/training-speed-pilot.json) retain model identity,
 versions, protocol and all six curves. [Performance cards](performance-cards.md)
-preserve censoring and explicit clock/memory scopes. The one-off driver and full
-logs are in the working checkout under `tasks/implement-scaling-walk-20261112/`.
-It wraps the existing runner logger and reuses
-`scripts/train_mjlab.py:deterministic_success` with the settings above, offline.
+preserve censoring and explicit clock/memory scopes. Reproduce the 256-env and 1,024-env runs across seeds `0, 1, 2` at commit
+`3d118ee3` with the upstream training and evaluation entry points:
+
+```bash
+for seed in 0 1 2; do
+  WANDB_MODE=offline OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+    python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 \
+      --env.scene.num-envs 256 --agent.max-iterations 200 \
+      --agent.seed "${seed}" --no-stop-on-success
+  WANDB_MODE=offline OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+    python scripts/train_mjlab.py myoElbowPose1D6MRandom-v0 \
+      --env.scene.num-envs 1024 --agent.max-iterations 50 \
+      --agent.seed "${seed}" --no-stop-on-success
+done
+# Deterministic 128-episode (64 envs x 2 episodes) evaluation per checkpoint:
+python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 \
+  --checkpoint <run_dir>/model_<iter>.pt --backend mjlab \
+  --num-envs 64 --episodes 128 --seed $((100000 + seed))
+```
+
+Mid-run checkpoints at 0/25/50/75/100% of the 1,228,800-transition budget use
+`scripts/train_mjlab.py:deterministic_success` with `64` envs and `2` episodes per env.
 Repeat on the target body and held-out motions before adopting these settings
 for locomotion or SuperMimic.
