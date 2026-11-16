@@ -18,12 +18,17 @@ import scipy.io as sio
 from scripts.validation.emg_sources import CAMARGO_CHANNELS, Camargo2021Source
 from scripts.validation.emg_upper_limb import (
     EMG2POSE_JOINT_NAMES,
+    Maurice2020Source,
     GrabMyoSource,
+    UltraMoCap2025Source,
+    _axis_rot,
     map_cyberglove_to_hand_qpos,
     map_emg2pose_to_hand_qpos,
     map_upper_limb_to_qpos,
     map_upper_limb_torques_to_qfrc,
     read_wfdb_record,
+    thoracohumeral_to_upper_limb_coords,
+    xsens_urdf_to_upper_limb_coords,
 )
 from scripts.validation.validate_emg import main as cli_main
 
@@ -283,6 +288,8 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
         "emg2pose",
         "ninapro-db5",
         "grabmyo",
+        "ultramocap2025",
+        "maurice2020",
         "custom-emg",
     }
     for ep_key in expected_plugins:
@@ -564,3 +571,178 @@ def test_grabmyo_wfdb_and_source_synthetic(tmp_path: Path) -> None:
                 == 0
             )
             assert (grab_out / "emg_validation_summary.json").exists()
+
+
+def test_thoracohumeral_decomposition_round_trip() -> None:
+    m_hand = mujoco.MjModel.from_xml_string(_MINI_HAND_XML)
+    e_x, e_y, _ = np.eye(3)
+    truth = np.array([[0.4, 0.9, -0.3], [1.2, 1.6, 0.5], [-0.8, 0.3, 0.2]])
+    r_ht = np.stack(
+        [
+            _axis_rot(e_y, p)
+            @ _axis_rot(-e_x, e)
+            @ _axis_rot(e_y, -p)
+            @ _axis_rot(e_y, r)
+            for p, e, r in truth
+        ]
+    )
+    coords = thoracohumeral_to_upper_limb_coords(m_hand, r_ht)
+    got = np.column_stack(
+        [coords["elv_angle"], coords["shoulder_elv"], coords["shoulder_rot"]]
+    )
+    assert np.allclose(got, truth, atol=1e-6)
+
+    zeros = np.zeros(2)
+    tpose = {
+        f"angle_{j}": zeros.copy()
+        for j in (
+            "jT9T8_x",
+            "jT9T8_y",
+            "jT9T8_z",
+            "jRightC7Shoulder_x",
+            "jRightShoulder_x",
+            "jRightShoulder_y",
+            "jRightShoulder_z",
+            "jRightElbow_y",
+            "jRightElbow_z",
+            "jL5S1_x",
+            "jL5S1_y",
+            "jL4L3_x",
+            "jL4L3_y",
+            "jL1T12_x",
+            "jL1T12_y",
+        )
+    }
+    tpose["angle_jL5S1_y"] = np.full(2, 0.2)
+    xs = xsens_urdf_to_upper_limb_coords(m_hand, tpose)
+    assert np.allclose(xs["shoulder_elv"], 0.5 * np.pi, atol=1e-6)
+    assert np.allclose(xs["elv_angle"], 0.0, atol=1e-6)
+    assert np.allclose(xs["flex_extension"], -0.2)
+    tpose["angle_jRightShoulder_x"] = np.full(2, 0.5 * np.pi)
+    hanging = xsens_urdf_to_upper_limb_coords(m_hand, tpose)
+    assert np.allclose(hanging["shoulder_elv"], 0.0, atol=1e-5)
+
+
+def test_ultramocap2025_source_synthetic(tmp_path: Path) -> None:
+    task_dir = tmp_path / "P01" / "Elbow Flexion"
+    (task_dir / "EMG").mkdir(parents=True)
+    (task_dir / "Processed IK").mkdir()
+    n_frames = 300
+    rng = np.random.default_rng(3)
+    emg_rows = ["Frame,Sub Frame,IM EMG4,IM EMG5,IM EMG6"] + [
+        f"{f},{s},{rng.normal(0, 1e-4):.3e},{rng.normal(0, 1e-4):.3e},{rng.normal(0, 1e-4):.3e}"
+        for f in range(1, n_frames + 1)
+        for s in range(20)
+    ]
+    (task_dir / "EMG" / "P01_ElbowFlexion_Normal.csv").write_text(
+        "\n".join(emg_rows) + "\n", encoding="utf-8"
+    )
+    t = np.arange(n_frames) / 100.0
+    ik_cols = {
+        "time": t,
+        "SC_y": np.zeros(n_frames),
+        "SC_x": np.zeros(n_frames),
+        "SC_z": np.zeros(n_frames),
+        "arm_flex_r": 20.0 * np.sin(np.pi * t),
+        "arm_add_r": np.full(n_frames, -10.0),
+        "arm_rot_r": np.zeros(n_frames),
+        "elbow_flex_r": 60.0 + 40.0 * np.sin(2.0 * np.pi * t),
+        "pro_sup_r": np.full(n_frames, 90.0),
+    }
+    ik_rows = [",".join(ik_cols)] + [
+        ",".join(f"{v[i]:.5f}" for v in ik_cols.values()) for i in range(n_frames)
+    ]
+    (task_dir / "Processed IK" / "P01_ElbowFlexion_Normal.csv").write_text(
+        "\n".join(ik_rows) + "\n", encoding="utf-8"
+    )
+
+    model = mujoco.MjModel.from_xml_string(_MINI_SCAPULOTHORACIC_XML)
+    src = UltraMoCap2025Source(tmp_path, window_duration_s=2.0)
+    assert list(src.trial_ids()) == ["P01/ElbowFlexion/Normal"]
+    trial = src.get_trial("P01/ElbowFlexion/Normal", model=model)
+    assert trial.channel_names == ("biceps_brachii", "triceps_long", "deltoid_middle")
+    assert trial.signals.shape[1] == 3
+    assert 1.9 <= float(trial.time[-1]) <= 2.0
+    assert trial.qpos is not None and trial.kinematics_time is not None
+    assert trial.qpos.shape == (len(trial.kinematics_time), model.nq)
+    elbow = int(model.jnt_qposadr[model.joint("elbow_flexion_r").id])
+    t_win = trial.kinematics_time + trial.meta["window_start_s"]
+    expected = np.radians(60.0 + 40.0 * np.sin(2.0 * np.pi * t_win))
+    assert np.allclose(trial.qpos[:, elbow], np.clip(expected, 0.0, 2.3), atol=1e-3)
+    cmap = src.default_channel_map(model)
+    assert [b.channel for b in cmap.bindings] == list(trial.channel_names)
+
+
+def test_maurice2020_source_synthetic(tmp_path: Path) -> None:
+    rel = Path("Participant_1") / "NE1"
+    stem = "Participant_1_Group_A_Session_NE1_Block_1"
+    root = tmp_path / "AndyData-lab-onePersonWithExoskeleton"
+    for sub in ("emg/emg_csv", "jointangles/jointangles_csv", "info/info_csv"):
+        (root / sub / rel).mkdir(parents=True)
+
+    t_emg = 100.0 + np.arange(6000) / 1000.0
+    rng = np.random.default_rng(5)
+    emg_lines = ["timestamp,anterior_deltoid,erector_spinae_longissimus", "[s],[V],[V]"]
+    emg_lines += [
+        f"{t:.4f},{rng.normal(0, 0.05):.5f},{rng.normal(0, 0.01):.5f}" for t in t_emg
+    ]
+    (root / "emg/emg_csv" / rel / f"{stem}.emg.csv").write_text(
+        "\n".join(emg_lines) + "\n", encoding="utf-8"
+    )
+
+    t_ja = 100.0 + np.arange(360) / 60.0
+    joints = (
+        "jL5S1_x",
+        "jL5S1_y",
+        "jL4L3_x",
+        "jL4L3_y",
+        "jL1T12_x",
+        "jL1T12_y",
+        "jT9T8_x",
+        "jT9T8_y",
+        "jT9T8_z",
+        "jRightC7Shoulder_x",
+        "jRightShoulder_x",
+        "jRightShoulder_y",
+        "jRightShoulder_z",
+        "jRightElbow_y",
+        "jRightElbow_z",
+    )
+    ja = {f"angle_{j}": np.zeros_like(t_ja) for j in joints}
+    ja["angle_jRightShoulder_x"] = np.linspace(1.4, 0.2, len(t_ja))
+    ja["angle_jRightElbow_z"] = np.full_like(t_ja, 1.0)
+    ja_lines = [",".join(["timestamp", *ja]), ",".join(["[s]"] + ["[rad]"] * len(ja))]
+    ja_lines += [
+        ",".join([f"{t:.4f}"] + [f"{v[i]:.5f}" for v in ja.values()])
+        for i, t in enumerate(t_ja)
+    ]
+    ja_lines.append(ja_lines[3])  # stale trailing row from an earlier block
+    (root / "jointangles/jointangles_csv" / rel / f"{stem}.jointangles.csv").write_text(
+        "\n".join(ja_lines) + "\n", encoding="utf-8"
+    )
+
+    # Two trials: new start (7), in start (1), target (2), moving (3), hold (4).
+    info = [(100.5, 7, 1), (101.0, 1, 1), (101.5, 2, 1), (101.8, 3, 1), (102.2, 4, 1)]
+    info += [(103.0, 7, 2), (103.5, 1, 2), (104.0, 2, 2), (104.3, 3, 2), (104.7, 4, 2)]
+    # Trial 3 runs past the joint-angle recording and is skipped.
+    info += [(105.0, 7, 3), (105.5, 1, 3), (106.0, 2, 3), (106.3, 3, 3), (106.7, 4, 3)]
+    info_lines = ["timestamp,state,trial", "[s],[N/A],[N/A]"] + [
+        f"{t},{s}.0,{k}.0" for t, s, k in info
+    ]
+    (root / "info/info_csv" / rel / f"{stem}.info.csv").write_text(
+        "\n".join(info_lines) + "\n", encoding="utf-8"
+    )
+
+    model = mujoco.MjModel.from_xml_string(_MINI_SCAPULOTHORACIC_XML)
+    src = Maurice2020Source(tmp_path)
+    assert list(src.trial_ids()) == ["P01/NE1/block1/trial01", "P01/NE1/block1/trial02"]
+    trial = src.get_trial("P01/NE1/block1/trial01", model=model)
+    assert trial.channel_names == ("anterior_deltoid", "erector_spinae_longissimus")
+    assert trial.meta["window_s"] == [100.5, 103.0]
+    assert src._load_block((1, "NE1", 1))["ja"][-1, 0] > 105.9
+    assert np.allclose(np.diff(trial.time), 1e-3)
+    assert trial.qpos is not None and np.isfinite(trial.qpos).all()
+    elbow = int(model.jnt_qposadr[model.joint("elbow_flexion_r").id])
+    assert np.allclose(trial.qpos[:, elbow], 1.0, atol=1e-6)
+    cmap = src.default_channel_map(model)
+    assert [b.channel for b in cmap.bindings] == ["anterior_deltoid"]

@@ -376,6 +376,73 @@ def map_upper_limb_torques_to_qfrc(
     return ext
 
 
+def thoracohumeral_to_upper_limb_coords(
+    model: mujoco.MjModel, r_ht: np.ndarray
+) -> dict[str, np.ndarray]:
+    """Decompose humerus-in-thorax rotations into MoBL-ARMS shoulder coordinates.
+
+    Args:
+        model: Target model; its ``elv_angle``, ``shoulder_elv`` and
+            ``shoulder_rot`` joint axes define the Y-X-Y sequence (ideal OpenSim
+            axes are used when a joint is missing).
+        r_ht: ``(T, 3, 3)`` humerus rotations in OpenSim thorax axes (X anterior,
+            Y up, Z right), identity with the arm hanging at the side.
+
+    Returns:
+        ``elv_angle``, ``shoulder_elv`` and ``shoulder_rot`` [rad] for
+        :func:`map_upper_limb_to_qpos`.
+    """
+    jnt_lookup = {model.joint(j).name: j for j in range(model.njnt)}
+
+    def _axis(base: str, default: tuple[float, float, float]) -> np.ndarray:
+        jid = next(
+            (jnt_lookup[c] for c in (f"{base}_r", base) if c in jnt_lookup), None
+        )
+        return (
+            np.asarray(default, dtype=np.float64)
+            if jid is None
+            else model.jnt_axis[jid].copy()
+        )
+
+    ay = _axis("elv_angle", (0.0, 1.0, 0.0))
+    ax = _axis("shoulder_elv", (-1.0, 0.0, 0.0))
+    ar = _axis("shoulder_rot", (0.0, 1.0, 0.0))
+
+    def _residual(x: np.ndarray, tgt: np.ndarray) -> np.ndarray:
+        r_fit = (
+            _axis_rot(ay, x[0])
+            @ _axis_rot(ax, x[1])
+            @ _axis_rot(ay, -x[0])
+            @ _axis_rot(ar, x[2])
+        )
+        return Rotation.from_matrix(r_fit.T @ tgt).as_rotvec()
+
+    out = np.zeros((len(r_ht), 3), dtype=np.float64)
+    starts = [np.array([p, 0.5, 0.0]) for p in (-0.5, 0.5, 1.5)]
+    prev = min(
+        (least_squares(_residual, s, args=(r_ht[0],)) for s in starts),
+        key=lambda s: s.cost,
+    ).x
+    for t in range(len(r_ht)):
+        prev = least_squares(_residual, prev, args=(r_ht[t],), xtol=1e-10, ftol=1e-10).x
+        if prev[1] < 0.0:
+            # (p + pi, -e, r) is the same rotation; keep elevation non-negative.
+            prev = least_squares(
+                _residual,
+                np.array([prev[0] + np.pi, -prev[1], prev[2]]),
+                args=(r_ht[t],),
+                xtol=1e-10,
+                ftol=1e-10,
+            ).x
+        prev[0] = (prev[0] + np.pi) % (2.0 * np.pi) - np.pi
+        out[t] = prev
+    return {
+        "elv_angle": out[:, 0],
+        "shoulder_elv": out[:, 1],
+        "shoulder_rot": out[:, 2],
+    }
+
+
 class Quesada2024UpperLimbSource(EMGSource):
     """Quesada et al. (2024) 12-ch MVC-normalized shoulder and elbow EMG adapter."""
 
@@ -1342,6 +1409,496 @@ class GrabMyoSource(EMGSource):
                 "repetition": rep,
                 "sequence": seq_name,
                 "gestures": [g for g, _, _ in active_segments],
+                "controlled_qpos_adr": ctrl_qadr,
+            },
+        )
+
+
+# Delsys Trigno sensors S4-S6 on the right arm (Fritsche et al., 2026, Table 2).
+ULTRAMOCAP_CHANNELS: dict[str, str] = {
+    "IM EMG4": "biceps_brachii",
+    "IM EMG5": "triceps_long",
+    "IM EMG6": "deltoid_middle",
+}
+
+# Bilateral upper-extremity and trunk model (Chen et al.): oblique right SC_z axis.
+_BUET_SC_Z_AXIS = np.array([0.0873, 0.0, 0.57446378]) / np.linalg.norm(
+    [0.0873, 0.0, 0.57446378]
+)
+
+
+def _mean_speed_window(
+    angles: np.ndarray, rate_hz: float, duration_s: float
+) -> tuple[int, int]:
+    """Start and length [frames] of the window with the fastest joint motion."""
+    n = len(angles)
+    win = min(n, max(8, round(duration_s * rate_hz)))
+    if win >= n:
+        return 0, n
+    speed = np.linalg.norm(np.diff(angles, axis=0), axis=1)
+    start = int(np.argmax(np.convolve(speed, np.ones(win) / win, mode="valid")))
+    return min(start, n - win), win
+
+
+def buet_arm_to_upper_limb_coords(
+    model: mujoco.MjModel, ik_deg: dict[str, np.ndarray]
+) -> dict[str, np.ndarray]:
+    """Map right-arm coordinates of the bilateral upper-extremity/trunk model [deg].
+
+    The thoracohumeral rotation is rebuilt from the sternoclavicular
+    (``SC_y``, ``SC_x``, ``SC_z``) and glenohumeral (``arm_flex_r``,
+    ``arm_add_r``, ``arm_rot_r``) chain and decomposed into MoBL-ARMS angles.
+    ``pro_sup_r`` is zero in full supination there, so it is shifted by -90 deg
+    onto the MyoSuite neutral-zero, pronation-positive convention.
+    """
+    rad = {k: np.radians(np.asarray(v, dtype=np.float64)) for k, v in ik_deg.items()}
+    n = len(rad["arm_flex_r"])
+    r_ht = np.empty((n, 3, 3), dtype=np.float64)
+    e_x, e_y, e_z = np.eye(3)
+    for t in range(n):
+        r_ht[t] = (
+            _axis_rot(e_y, rad["SC_y"][t])
+            @ _axis_rot(e_x, rad["SC_x"][t])
+            @ _axis_rot(_BUET_SC_Z_AXIS, rad["SC_z"][t])
+            @ _axis_rot(e_z, rad["arm_flex_r"][t])
+            @ _axis_rot(e_x, rad["arm_add_r"][t])
+            @ _axis_rot(e_y, rad["arm_rot_r"][t])
+        )
+    coords = thoracohumeral_to_upper_limb_coords(model, r_ht)
+    coords["elbow_flexion"] = rad["elbow_flex_r"]
+    coords["pro_sup"] = rad["pro_sup_r"] - 0.5 * np.pi
+    return coords
+
+
+class UltraMoCap2025Source(EMGSource):
+    """ULTRA-MoCap right-arm biceps, triceps and middle deltoid sEMG with IK.
+
+    Fritsche, O., Camacho, S., Hossain, M. S. B., Halfpenny, T., Arciniegas, C.,
+    Dranetz, J., Hadley, D., Guo, Z. & Choi, H. (2026). ULTRA-MoCap: A
+    multimodal IMU and sEMG dataset for upper body joint kinematics analysis.
+    Scientific Data 13, 622. https://doi.org/10.1038/s41597-026-06687-5.
+    Data: https://doi.org/10.6084/m9.figshare.28741943 (CC BY 4.0).
+
+    13 participants, five arm tasks at several speeds, 2 kHz Delsys Trigno sEMG
+    synchronised with 100 Hz Vicon OpenSim IK (``Processed IK/*.csv``).
+    """
+
+    name = "ultramocap2025"
+
+    def __init__(
+        self,
+        data_root: str | Path = "downloads/emg/ultramocap2025",
+        *,
+        subjects: Sequence[str] | None = None,
+        pattern: str | None = None,
+        window_duration_s: float = 8.0,
+        kinematics_rate_hz: float = 100.0,
+    ) -> None:
+        self.data_root = Path(data_root)
+        if not self.data_root.exists():
+            raise FileNotFoundError(
+                f"ULTRA-MoCap data_root not found: {self.data_root}"
+            )
+        self.window_duration_s = window_duration_s
+        self.kinematics_rate_hz = kinematics_rate_hz
+        self.pattern = re.compile(pattern) if pattern else None
+        wanted = {s.upper() for s in subjects} if subjects is not None else None
+        stem_re = re.compile(r"^(P\d+)_([A-Za-z]+)_([A-Za-z0-9]+)$")
+        self._files: dict[str, tuple[Path, Path]] = {}
+        for emg in sorted(self.data_root.glob("P*/*/EMG/*.csv")):
+            m = stem_re.match(emg.stem)
+            ik = emg.parent.parent / "Processed IK" / emg.name
+            if m is None or not ik.exists():
+                continue
+            if wanted is not None and m.group(1).upper() not in wanted:
+                continue
+            self._files["/".join(m.groups())] = (emg, ik)
+        if not self._files:
+            raise FileNotFoundError(
+                f"no P*/<task>/EMG/*.csv with Processed IK under {self.data_root}"
+            )
+        self._ids_cache: tuple[str, ...] | None = None
+
+    def trial_ids(self) -> Sequence[str]:
+        if self._ids_cache is not None:
+            return self._ids_cache
+
+        def _key(tid: str) -> tuple[int, int, str]:
+            subj, _, cond = tid.split("/")
+            return (0 if cond == "Normal" else 1, int(subj[1:]), tid)
+
+        ids = sorted(self._files, key=_key)
+        if self.pattern is not None:
+            ids = [t for t in ids if self.pattern.search(t)]
+        self._ids_cache = tuple(ids)
+        return self._ids_cache
+
+    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
+        del model
+        return EMGChannelMap(
+            name="ultramocap2025_right_arm_3ch",
+            version=1,
+            bindings=(
+                ChannelBinding("biceps_brachii", ("BIClong_r", "BICshort_r")),
+                ChannelBinding("triceps_long", ("TRIlong_r",)),
+                ChannelBinding("deltoid_middle", ("DELT2_r",)),
+            ),
+        )
+
+    def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
+        if trial_id not in self._files:
+            raise KeyError(f"unknown ULTRA-MoCap trial {trial_id!r}")
+        emg_path, ik_path = self._files[trial_id]
+        with emg_path.open(encoding="utf-8") as fh:
+            hdr = [h.strip() for h in fh.readline().split(",")]
+            emg = np.loadtxt(fh, delimiter=",", ndmin=2)
+        keep = [i for i, h in enumerate(hdr) if h in ULTRAMOCAP_CHANNELS]
+        # Frame numbers count 100 Hz mocap frames from 1; sub-frames are 2 kHz samples.
+        emg_time = (emg[:, 0] - 1.0) / 100.0 + emg[:, 1] / 2000.0
+        with ik_path.open(encoding="utf-8") as fh:
+            ik_hdr = [h.strip() for h in fh.readline().split(",")]
+            ik = np.loadtxt(fh, delimiter=",", ndmin=2)
+        ik_time = ik[:, 0]
+
+        t_lo = max(float(emg_time[0]), float(ik_time[0]))
+        t_hi = min(float(emg_time[-1]), float(ik_time[-1]))
+        in_ik = (ik_time >= t_lo) & (ik_time <= t_hi)
+        ik, ik_time = ik[in_ik], ik_time[in_ik]
+        arm_cols = [
+            ik_hdr.index(c)
+            for c in ("arm_flex_r", "arm_add_r", "arm_rot_r", "elbow_flex_r")
+        ]
+        ik_rate = 1.0 / float(np.median(np.diff(ik_time)))
+        start, win = (
+            _mean_speed_window(ik[:, arm_cols], ik_rate, self.window_duration_s)
+            if self.window_duration_s > 0
+            else (0, len(ik))
+        )
+        ik, ik_time = ik[start : start + win], ik_time[start : start + win]
+        t0, t1 = float(ik_time[0]), float(ik_time[-1])
+        in_emg = (emg_time >= t0 - 1e-9) & (emg_time <= t1 + 1e-9)
+
+        qpos = None
+        kin_time = None
+        ctrl_qadr: list[int] = []
+        if model is not None:
+            kin_time = np.arange(0.0, t1 - t0 + 1e-9, 1.0 / self.kinematics_rate_hz)
+            ik_deg = {
+                c: np.interp(kin_time, ik_time - t0, ik[:, ik_hdr.index(c)])
+                for c in (
+                    "SC_y",
+                    "SC_x",
+                    "SC_z",
+                    "arm_flex_r",
+                    "arm_add_r",
+                    "arm_rot_r",
+                    "elbow_flex_r",
+                    "pro_sup_r",
+                )
+            }
+            qpos, ctrl_qadr, _ = map_upper_limb_to_qpos(
+                model, buet_arm_to_upper_limb_coords(model, ik_deg)
+            )
+
+        subj, task, cond = trial_id.split("/")
+        return EMGTrial(
+            trial_id=trial_id,
+            time=emg_time[in_emg] - t0,
+            signals=emg[in_emg][:, keep],
+            channel_names=tuple(ULTRAMOCAP_CHANNELS[hdr[i]] for i in keep),
+            signal_kind="raw",
+            qpos=qpos,
+            kinematics_time=kin_time,
+            filter_config=EMGFilterConfig(
+                bandpass_hz=(20.0, 450.0),
+                notch_hz=60.0,
+                lowpass_hz=6.0,
+                normalize="peak",
+            ),
+            meta={
+                "dataset": self.name,
+                "subject": subj,
+                "task": task,
+                "condition": cond,
+                "window_start_s": t0,
+                "controlled_qpos_adr": ctrl_qadr,
+            },
+        )
+
+
+# Xsens-style 48-DoF URDF (Latella et al.): every segment frame is the T8 frame
+# in the T-pose (x anterior, y left, z up); OpenSim thorax axes are x, z, -y.
+_XSENS_TO_OPENSIM = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
+_XSENS_LUMBAR_JOINTS: tuple[str, ...] = ("jL5S1", "jL4L3", "jL1T12")
+
+
+def xsens_urdf_to_upper_limb_coords(
+    model: mujoco.MjModel, angles: dict[str, np.ndarray]
+) -> dict[str, np.ndarray]:
+    """Map right-arm and lumbar angles of the Xsens-style 48-DoF URDF [rad].
+
+    ``angles`` holds ``angle_<joint>_<axis>`` columns. Lumbar rotations sum into
+    ``flex_extension`` (extension positive) and ``lat_bending``; ``jT9T8``
+    joins the rigid thorax, so the shoulder chain is rebuilt from T12 and
+    referenced to the arm-hanging pose. The URDF turns the forearm about the
+    upper-arm axis before elbow flexion, so ``jRightElbow_y`` is folded into
+    humeral rotation; this keeps both forearm direction and hand orientation,
+    with ``pro_sup`` left neutral.
+    """
+    n = len(angles["angle_jRightShoulder_x"])
+    e_x, e_y, e_z = np.eye(3)
+    seq = (
+        ("jT9T8_x", e_x),
+        ("jT9T8_y", e_y),
+        ("jT9T8_z", e_z),
+        ("jRightC7Shoulder_x", e_x),
+        ("jRightShoulder_x", e_x),
+        ("jRightShoulder_y", e_y),
+        ("jRightShoulder_z", e_z),
+        ("jRightElbow_y", e_y),
+    )
+    # The URDF's T-pose arm hangs after a 90 deg rotation about the anterior axis.
+    n_pose_t = _axis_rot(e_x, 0.5 * np.pi).T
+    r_ht = np.empty((n, 3, 3), dtype=np.float64)
+    for t in range(n):
+        r_xs = np.eye(3)
+        for col, axis in seq:
+            r_xs = r_xs @ _axis_rot(axis, angles[f"angle_{col}"][t])
+        r_ht[t] = _XSENS_TO_OPENSIM @ (r_xs @ n_pose_t) @ _XSENS_TO_OPENSIM.T
+    coords = thoracohumeral_to_upper_limb_coords(model, r_ht)
+    coords["elbow_flexion"] = np.asarray(angles["angle_jRightElbow_z"])
+    coords["flex_extension"] = -sum(
+        np.asarray(angles[f"angle_{j}_y"]) for j in _XSENS_LUMBAR_JOINTS
+    )
+    coords["lat_bending"] = sum(
+        np.asarray(angles[f"angle_{j}_x"]) for j in _XSENS_LUMBAR_JOINTS
+    )
+    return coords
+
+
+class Maurice2020Source(EMGSource):
+    """AndyData-lab overhead pointing: right anterior deltoid and erector spinae sEMG.
+
+    Maurice, P., Camernik, J., Gorjan, D., Schirrmeister, B., Bornmann, J.,
+    Tagliapietra, L., Latella, C., Pucci, D., Fritzsche, L., Ivaldi, S. & Babic, J.
+    (2020). Objective and subjective effects of a passive exoskeleton on overhead
+    work. IEEE Trans. Neural Syst. Rehabil. Eng. 28(1), 152-164.
+    https://doi.org/10.1109/TNSRE.2019.2945368.
+    Data: https://doi.org/10.5281/zenodo.1472214 (CC BY 4.0).
+
+    12 participants point at overhead targets with (``WE``) and without
+    (``NE1``/``NE2``) a passive arm-support exoskeleton; 1 kHz sEMG and 60 Hz
+    Xsens joint angles share one clock. One trial spans the move to a new start
+    position, the reach to the target and the 2 s hold. The joint-angle files
+    carry no global pelvis pose, so the pelvis stays upright.
+    """
+
+    name = "maurice2020"
+
+    def __init__(
+        self,
+        data_root: str | Path = "downloads/emg/maurice2020",
+        *,
+        subjects: Sequence[str] | None = None,
+        pattern: str | None = None,
+        sessions: Sequence[str] = ("NE1", "NE2", "WE"),
+        kinematics_rate_hz: float = 100.0,
+    ) -> None:
+        root = Path(data_root)
+        nested = root / "AndyData-lab-onePersonWithExoskeleton"
+        self.data_root = nested if nested.exists() else root
+        if not (self.data_root / "emg").exists():
+            raise FileNotFoundError(f"AndyData emg/ folder not found under {root}")
+        self.kinematics_rate_hz = kinematics_rate_hz
+        self.pattern = re.compile(pattern) if pattern else None
+        wanted = (
+            {int(re.sub(r"\D", "", s) or "0") for s in subjects}
+            if subjects is not None
+            else None
+        )
+        stem_re = re.compile(
+            r"^Participant_(\d+)_Group_[AB]_Session_(\w+?)_Block_(\d+)\.emg$"
+        )
+        self._blocks: dict[tuple[int, str, int], tuple[Path, Path, Path]] = {}
+        for emg in sorted(self.data_root.glob("emg/emg_csv/Participant_*/*/*.emg.csv")):
+            m = stem_re.match(emg.stem)
+            if m is None or m.group(2) not in sessions:
+                continue
+            subj, sess, block = int(m.group(1)), m.group(2), int(m.group(3))
+            if wanted is not None and subj not in wanted:
+                continue
+            rel = emg.relative_to(self.data_root / "emg" / "emg_csv").parent
+            base = emg.name[: -len(".emg.csv")]
+            ja = (
+                self.data_root
+                / "jointangles"
+                / "jointangles_csv"
+                / rel
+                / f"{base}.jointangles.csv"
+            )
+            info = self.data_root / "info" / "info_csv" / rel / f"{base}.info.csv"
+            if ja.exists() and info.exists():
+                self._blocks[(subj, sess, block)] = (emg, ja, info)
+        if not self._blocks:
+            raise FileNotFoundError(
+                f"no blocks with emg, jointangles and info CSVs under {self.data_root}"
+            )
+        self._cache: dict[tuple[int, str, int], dict[str, Any]] = {}
+        self._ids_cache: tuple[str, ...] | None = None
+
+    @staticmethod
+    def _read_csv(path: Path) -> tuple[list[str], np.ndarray]:
+        with path.open(encoding="utf-8") as fh:
+            hdr = [h.strip() for h in fh.readline().split(",")]
+            fh.readline()
+            return hdr, np.loadtxt(fh, delimiter=",", ndmin=2)
+
+    def _load_block(self, key: tuple[int, str, int]) -> dict[str, Any]:
+        if key not in self._cache:
+            if len(self._cache) >= 2:
+                self._cache.clear()
+            emg_p, ja_p, info_p = self._blocks[key]
+            emg_hdr, emg = self._read_csv(emg_p)
+            ja_hdr, ja = self._read_csv(ja_p)
+            _, info = self._read_csv(info_p)
+            # Some joint-angle files end with stale rows from earlier blocks.
+            stale = np.flatnonzero(np.diff(ja[:, 0]) <= 0)
+            if len(stale):
+                ja = ja[: stale[0] + 1]
+            self._cache[key] = {
+                "emg_hdr": emg_hdr,
+                "emg": emg,
+                "ja_hdr": ja_hdr,
+                "ja": ja,
+                "info": info,
+            }
+        return self._cache[key]
+
+    def _trial_windows(
+        self, key: tuple[int, str, int]
+    ) -> dict[int, tuple[float, float]]:
+        blk = self._load_block(key)
+        info = blk["info"]
+        t, state, trial = info[:, 0], info[:, 1], info[:, 2].astype(int)
+        t_lo = max(float(blk["ja"][0, 0]), float(blk["emg"][0, 0]))
+        t_hi = min(float(blk["ja"][-1, 0]), float(blk["emg"][-1, 0]))
+        out: dict[int, tuple[float, float]] = {}
+        for k in np.unique(trial):
+            rows = np.flatnonzero(trial == k)
+            onset = rows[state[rows] == 2]
+            hold = rows[state[rows] == 4]
+            if len(onset) == 0 or len(hold) == 0:
+                continue
+            # From the move to the new start position (after any break) to the hold's end.
+            new_start = rows[(state[rows] == 7) & (rows < onset[0])]
+            t_begin = (
+                float(t[new_start[-1]]) if len(new_start) else float(t[onset[0]]) - 0.5
+            )
+            nxt = rows[-1] + 1
+            t_end = float(t[nxt]) if nxt < len(t) else float(t[rows[-1]])
+            if t_begin >= t_lo and t_end <= t_hi:
+                out[int(k)] = (t_begin, t_end)
+        return out
+
+    def trial_ids(self) -> Sequence[str]:
+        if self._ids_cache is not None:
+            return self._ids_cache
+        prio: list[str] = []
+        rest: list[str] = []
+        for key in sorted(self._blocks):
+            subj, sess, block = key
+            for i, k in enumerate(sorted(self._trial_windows(key))):
+                tid = f"P{subj:02d}/{sess}/block{block}/trial{k:02d}"
+                (prio if i == 0 else rest).append(tid)
+        all_ids = prio + rest
+        if self.pattern is not None:
+            all_ids = [t for t in all_ids if self.pattern.search(t)]
+        self._ids_cache = tuple(all_ids)
+        return self._ids_cache
+
+    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
+        longissimus = tuple(
+            model.actuator(i).name
+            for i in range(model.nu)
+            if model.actuator(i).name.startswith(("LTpL_", "LTpT_"))
+            and model.actuator(i).name.endswith("_r")
+        )
+        bindings = [ChannelBinding("anterior_deltoid", ("DELT1_r",))]
+        if longissimus:
+            bindings.append(ChannelBinding("erector_spinae_longissimus", longissimus))
+        return EMGChannelMap(
+            name="maurice2020_right_shoulder_back",
+            version=1,
+            bindings=tuple(bindings),
+        )
+
+    def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
+        m = re.match(r"^P(\d+)/(\w+)/block(\d+)/trial(\d+)$", trial_id)
+        key = (int(m.group(1)), m.group(2), int(m.group(3))) if m is not None else None
+        if m is None or key not in self._blocks:
+            raise KeyError(f"unknown AndyData trial {trial_id!r}")
+        window = self._trial_windows(key).get(int(m.group(4)))
+        if window is None:
+            raise KeyError(f"trial {trial_id!r} has no target onset and hold")
+        t0, t1 = window
+        blk = self._load_block(key)
+        emg, ja = blk["emg"], blk["ja"]
+        in_emg = (emg[:, 0] >= t0) & (emg[:, 0] <= t1)
+        # Stored timestamps are float32-rounded; samples are uniform at 1 kHz.
+        emg_time = float(emg[in_emg, 0][0]) - t0 + np.arange(int(in_emg.sum())) / 1000.0
+        ch_names = tuple(blk["emg_hdr"][1:])
+
+        qpos = None
+        kin_time = None
+        ctrl_qadr: list[int] = []
+        if model is not None:
+            ja_hdr = blk["ja_hdr"]
+            kin_time = np.arange(0.0, t1 - t0 + 1e-9, 1.0 / self.kinematics_rate_hz)
+            angles = {
+                c: np.interp(kin_time + t0, ja[:, 0], ja[:, i])
+                for i, c in enumerate(ja_hdr)
+                if c.startswith("angle_")
+            }
+            coords = xsens_urdf_to_upper_limb_coords(model, angles)
+            qpos, ctrl_qadr, _ = map_upper_limb_to_qpos(model, coords)
+            jnt_lookup = {model.joint(j).name: j for j in range(model.njnt)}
+            for name in ("flex_extension", "lat_bending"):
+                jid = jnt_lookup.get(name)
+                if jid is None:
+                    continue
+                qadr = int(model.jnt_qposadr[jid])
+                vals = coords[name]
+                if model.jnt_limited[jid]:
+                    vals = np.clip(vals, *model.jnt_range[jid])
+                qpos[:, qadr] = vals
+                ctrl_qadr.append(qadr)
+            project_joint_couplings(JointCouplings.from_model(model), qpos)
+            qpos = project_tendon_nodes(model, qpos)
+            ctrl_qadr = sorted(set(ctrl_qadr))
+
+        subj, sess, block, trial = trial_id.split("/")
+        return EMGTrial(
+            trial_id=trial_id,
+            time=emg_time,
+            signals=emg[in_emg, 1:],
+            channel_names=ch_names,
+            signal_kind="raw",
+            qpos=qpos,
+            kinematics_time=kin_time,
+            filter_config=EMGFilterConfig(
+                bandpass_hz=(20.0, 450.0),
+                notch_hz=50.0,
+                lowpass_hz=6.0,
+                normalize="peak",
+            ),
+            meta={
+                "dataset": self.name,
+                "subject": subj,
+                "session": sess,
+                "exoskeleton": sess == "WE",
+                "block": block,
+                "trial": trial,
+                "window_s": [t0, t1],
                 "controlled_qpos_adr": ctrl_qadr,
             },
         )

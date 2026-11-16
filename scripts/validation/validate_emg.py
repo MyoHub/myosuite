@@ -48,6 +48,8 @@ DATASET_CHOICES: tuple[str, ...] = (
     "emg2pose",
     "ninapro_db5",
     "grabmyo",
+    "ultramocap2025",
+    "maurice2020",
     "custom",
 )
 
@@ -183,10 +185,12 @@ def build_source(args: argparse.Namespace) -> EMGSource:
         RajagopalWalkingSource,
     )
     from scripts.validation.emg_upper_limb import (
+        Maurice2020Source,
         Emg2PoseHandSource,
         GrabMyoSource,
         NinaProDB5Source,
         Quesada2024UpperLimbSource,
+        UltraMoCap2025Source,
     )
 
     subjects = [s.strip() for s in args.subjects.split(",")] if args.subjects else None
@@ -246,6 +250,24 @@ def build_source(args: argparse.Namespace) -> EMGSource:
     if args.dataset == "grabmyo":
         root = args.data_root or "downloads/emg/grabmyo"
         return GrabMyoSource(
+            root,
+            subjects=subjects,
+            pattern=args.filter,
+            kinematics_rate_hz=args.kinematics_rate,
+        )
+    if args.dataset == "ultramocap2025":
+        root = args.data_root or "downloads/emg/ultramocap2025"
+        win_s = args.window_s if args.window_s is not None else 8.0
+        return UltraMoCap2025Source(
+            root,
+            subjects=subjects,
+            pattern=args.filter,
+            window_duration_s=win_s,
+            kinematics_rate_hz=args.kinematics_rate,
+        )
+    if args.dataset == "maurice2020":
+        root = args.data_root or "downloads/emg/maurice2020"
+        return Maurice2020Source(
             root,
             subjects=subjects,
             pattern=args.filter,
