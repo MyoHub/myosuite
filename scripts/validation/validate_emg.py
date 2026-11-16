@@ -342,6 +342,7 @@ def _evaluate_model_on_source(
         opt_cfg = StaticOptimizationConfig(
             contact_forces=use_contacts,
             contact_distance=0.03 if use_contacts else 0.01,
+            supported_dofs=tuple(int(d) for d in trial.meta.get("supported_dofs", ())),
         )
         ctrl_qadr = trial.meta.get("controlled_qpos_adr")
         rep = validate_trial(

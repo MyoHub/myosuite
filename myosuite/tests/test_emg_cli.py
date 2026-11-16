@@ -986,6 +986,13 @@ def test_diaz2026_source_synthetic(tmp_path: Path) -> None:
     elbow_dof = int(model.jnt_dofadr[model.joint("elbow_flexion_r").id])
     assert np.allclose(trial.external_qfrc[30:220, flex_dof], -6.0, atol=1e-3)
     assert np.allclose(trial.external_qfrc[:, elbow_dof], 0.0, atol=1e-3)
+    # The straps carry the elbow, forearm rotation, deviation and shoulder dofs.
+    held = {
+        int(model.jnt_dofadr[model.joint(n).id])
+        for n in ("elv_angle_r", "elbow_flexion_r", "pro_sup_r", "deviation_r")
+    }
+    assert held <= set(trial.meta["supported_dofs"])
+    assert flex_dof not in trial.meta["supported_dofs"]
 
     rom_trial = src.get_trial("B002/RoM_Th_FE/rep02", model=model)
     assert rom_trial.channel_names == tuple(wire_ch)

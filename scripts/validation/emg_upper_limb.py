@@ -2035,8 +2035,9 @@ DIAZ2026_CHANNELS: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
 
 # Biodex posture per task (Diaz et al. 2026, text and Fig. 7) [deg]: tested
 # coordinate, elv_angle, shoulder_elv, pro_sup. The elbow sits at 90 deg unless
-# tested; in the elbow range of motion the arm is horizontal, about halfway
-# between abduction and flexion (estimated from Fig. 7).
+# tested. In the elbow range of motion the arm is horizontal; its 45 deg plane
+# of elevation, halfway between abduction and flexion, is an estimate from
+# Fig. 7 (the text gives no angle).
 _DIAZ2026_BIODEX: dict[str, tuple[str, float, float, float]] = {
     "WF": ("flexion", 0.0, 0.0, -90.0),
     "WE": ("flexion", 0.0, 0.0, -90.0),
@@ -2052,6 +2053,12 @@ _WRIST_NEUTRAL_FROM_MID_DEG = -5.0
 # Participants the collection notes advise against analysing (no true effort,
 # not following instructions).
 _DIAZ2026_NOT_RECOMMENDED: tuple[str, ...] = ("B001", "B017")
+_JOINT_NDOF = {
+    int(mujoco.mjtJoint.mjJNT_FREE): 6,
+    int(mujoco.mjtJoint.mjJNT_BALL): 3,
+    int(mujoco.mjtJoint.mjJNT_SLIDE): 1,
+    int(mujoco.mjtJoint.mjJNT_HINGE): 1,
+}
 _ARM_COORDS: tuple[str, ...] = (
     "elv_angle",
     "shoulder_elv",
@@ -2123,10 +2130,14 @@ class Diaz2026HandSource(EMGSource):
       100 % MVC) and isokinetic range of motion. The posture follows the
       protocol; the isokinetic angle and the torque come from the dynamometer
       (flexion positive). The dynamometer's wrist zero is not anatomical, so
-      the wrist angle is centred on the subject's range of motion. Muscles must supply the measured torque at the tested
-      joint and zero net torque at the other, strapped arm coordinates, so a
-      muscle crossing both is balanced by antagonists. The grip on the handle
-      is not modelled either: FDS/FDP must balance their own finger torques.
+      the wrist angle is centred on the subject's range of motion. Muscles
+      must supply the measured torque at the tested joint. The other arm
+      coordinates are strapped, and in elbow tasks the hand's grip on the
+      handle holds the wrist: trials list these in ``meta["supported_dofs"]``
+      so that the support, not antagonists, carries their torques. The grip
+      force itself is not modelled: FDS/FDP must balance their own finger
+      torques. The elbow range-of-motion arm posture (45 deg plane of
+      elevation) is an estimate from the paper's Fig. 7.
     - Hand session: fine-wire EMG of FPL, EPL, EPB, APL, OPP, FPB, ADD and FDI
       in seven thumb/index range-of-motion tasks, with OpenSim IK of the
       MoBL-ARMS arm and ARMS hand (left hands mirrored to the right).
@@ -2298,10 +2309,11 @@ class Diaz2026HandSource(EMGSource):
         kin_time = None
         ext_qfrc = None
         ctrl_qadr: list[int] = []
+        supported: list[int] = []
         if model is not None:
             kin_time = np.arange(0.0, t1 - t0 + 1e-9, 1.0 / self.kinematics_rate_hz)
             if is_biodex:
-                qpos, ctrl_qadr, ext_qfrc = _bham_biodex_state(
+                qpos, ctrl_qadr, ext_qfrc, supported = _bham_biodex_state(
                     model, rec, task, kin_time + t0, self._bands[key]
                 )
             else:
@@ -2332,6 +2344,7 @@ class Diaz2026HandSource(EMGSource):
                 "repetition": rep,
                 "window_s": [t0, t1],
                 "controlled_qpos_adr": ctrl_qadr,
+                "supported_dofs": supported,
             },
         )
 
@@ -2342,8 +2355,8 @@ def _bham_biodex_state(
     task: str,
     t_abs: np.ndarray,
     bands: np.ndarray,
-) -> tuple[np.ndarray, list[int], np.ndarray]:
-    """Protocol posture, isokinetic dynamometer angle and measured joint torque.
+) -> tuple[np.ndarray, list[int], np.ndarray, list[int]]:
+    """Protocol posture, dynamometer angle and torque, and the strapped dofs.
 
     The dynamometer torque is not gravity corrected: isometric torques are
     referenced to their median between the trial bands (the relaxed rest).
@@ -2385,7 +2398,19 @@ def _bham_biodex_state(
     torques[tested] = np.interp(t_abs, t_dyn, trq)
     dt = float(np.median(np.diff(t_abs))) if n > 1 else 0.01
     ext_qfrc = map_upper_limb_torques_to_qfrc(model, qpos, dt, coords, torques)
-    return qpos, ctrl_qadr, ext_qfrc
+    # Straps and supports hold the shoulder girdle and forearm rotation; the
+    # handle holds the wrist in elbow tasks, the forearm support the elbow and
+    # wrist deviation in wrist tasks.
+    held = ("sternoclavicular", "unrotscap", "acromioclavicular", "unrothum")
+    held += ("elv_angle", "shoulder_elv", "shoulder1_r2", "shoulder_rot", "pro_sup")
+    held += ("deviation", "elbow_flexion" if tested == "flexion" else "flexion")
+    supported = [
+        int(model.jnt_dofadr[j]) + k
+        for j in range(model.njnt)
+        if model.joint(j).name.startswith(held)
+        for k in range(_JOINT_NDOF[int(model.jnt_type[j])])
+    ]
+    return qpos, ctrl_qadr, ext_qfrc, supported
 
 
 __all__ = [
