@@ -349,6 +349,18 @@ Changes since **v3.1.0** (2026-11-11).
   `sqrt(2 fc / fs)`, so the same motion gave narrower bands at a higher frame rate (torque band 0.52 N m at 100 Hz,
   0.28 N m at 400 Hz for 0.5 deg at 6 Hz on the elbow). Bands for a given `joint_noise_deg` are now wider and do not
   depend on the frame rate. New `joint_offset_deg` adds a constant error per sample and joint.
+* **SAR synergy actions span the fitted synergies.** `extract_synergies` scaled the synergy activations to `[0, 1]`,
+  while the mjlab SAR action term (`SARTorchTransform`) takes policy actions in `[-1, 1]`, as the SAR paper's
+  pipeline and tutorial 2.3 do (`MinMaxScaler((-1, 1))`). Action 0, the mean of an untrained policy, decoded to the
+  lower edge of every synergy, and every negative action lay below the data: with actions uniform in `[-1, 1]`, 50 %
+  of the synergy coordinates were outside the fitted range and 62 % of the muscle activations were clamped at 0 or 1
+  on a synthetic six-synergy set (now 0 % and 18 %). There is one range now, `SYNERGY_RANGE = (-1, 1)`:
+  `extract_synergies` fits onto it, `encode_activations` returns it, and `decode_synergies` and `SARTorchTransform`
+  take it; `SARTorchTransform` rejects a scaler fitted onto another range. `load_synergy_model` rescales a folder
+  saved on `[0, 1]` (same data span, with a warning), so saved synergy models keep working. This changes the action
+  semantics of the SAR tasks (`myoMimicFullbody-SAR-v0`, `myoMimicBimanual-SAR-v0`, their `myoMuscleMimic*` aliases
+  and `myoFullBodyWalkSAR-v0`): policies trained on them before decode to other activations and must be retrained.
+  Callers that passed `[0, 1]` values to `decode_synergies` (tutorial 5.5's random-synergy rollouts) pass `[-1, 1]`.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
