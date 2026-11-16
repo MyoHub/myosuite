@@ -8,13 +8,23 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
-* **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files (`myosuite.integrations.opensim_interop`), or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
 * **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink), now a core dependency: each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.core.retargeting.retarget(model, markers)` fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
   versions; execution settings leave task fingerprints unchanged ([#672]).
 * **Computed muscle control** (`myosuite.biomechanics.computed_muscle_control`): `computed_muscle_control(model, qpos, qvel, qacc, dt)` (or `ComputedMuscleControl.reset` and `.step` per control step) finds the excitations that make a forward simulation track a motion (Thelen, Anderson & Delp 2003) with `StaticOptimizer` and its per-frame `min_activation`. Every step bounds each actuator by the activations its dynamics can reach, takes velocity-dependent forces (force-velocity, joint damping) at the velocity that delivers the desired acceleration over MuJoCo's Euler steps, inverts MuJoCo's own activation dynamics exactly (any `dyntype`, `tausmooth` included) and applies the reserves and residuals, as OpenSim does. For standing and walking the simulation has no contacts and the estimated ground reactions (`contact_forces=True`) are applied, as OpenSim applies measured ones. A 37-degree motion that the 2-dof elbow's muscles produced in simulation is tracked within 0.03 deg at 500 Hz control and 0.25 deg at 100 Hz; myoArm reaches at 100 Hz within 2.4 deg (RMS 0.19 deg); MyoLeg stands on its estimated ground reactions within 0.1 mm; retargeted KIT walks on MyoFullBody (354 muscles, 100 Hz, about 25 ms per step) within 1.5 mm at the root and 0.27 deg RMS at the joints (6-8 deg max), with the residuals that static optimization of the same clips already needs ([#644]).
+* Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
+* Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+* Native InstantHMR (`MHR70` 70-keypoint, metric camera-space) biomechanical pipeline
+  (`myosuite.biomechanics.retarget_instanthmr`, `myosuite.viz.muscle_meshes`) for
+  `myofullbody` and `myolegs`: subject anthropometric scaling
+  (`estimate_instanthmr_scales`, `scale_model_from_instanthmr`), metric/nominal
+  `LandmarkIK` (`InstantHMRSource`, `solve_instanthmr_ik`), 3D deformed muscle mesh and
+  activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
+  glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
+  monocular video extractor `tools/instanthmr` ([#749]).
+* **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files (`myosuite.integrations.opensim_interop`), or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
 
 ### Fixed
 
@@ -23,6 +33,7 @@ Changes since **v3.1.0** (2026-11-11).
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
 * `scripts/eval_mjlab_policy.py --stochastic` on the CPU backend draws the action noise from a generator seeded with
   `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
+
 ### Changed
 
 * **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
@@ -114,15 +125,260 @@ Changes since **v3.1.0** (2026-11-11).
   switches these ids to the 63-muscle arm, and `myosuite_myoedits_suite` now lists the six ids instead of being
   empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
   with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
+* **Volumetric muscles with pulleys follow their tendon path in Blender renders.** MuJoCo starts each branch of a
+  tendon path after a `<pulley>` with a `(0, 0, 0)` marker point (`wrap_obj = -2`), and `--muscles volumetric` drew
+  the whole path as one tube, so a muscle with pulleys ran to the world origin and back once per pulley. The finger
+  extensor (`extn`, two pulleys) of `myoFingerPose*` and `myoFingerReach*` and their `myoSarc` / `myoFati` variants
+  became a 1.63 m tube for its 0.19 m tendon, with its belly on the detour. Each branch is now a tube of its own
+  (`muscle_tubes.split_branches`), joined into one mesh per muscle: the belly lies on the first branch, from the
+  origin, and takes its shape from that branch's length; the branches after the pulleys are tendon. Muscles without
+  pulleys export exactly as before, and `--muscles paths` was already correct ([#810]).
+* Partial named motion clips preserve the model's reference pose for omitted joints when no keyframe exists, including nonzero joint references and free-root positions and quaternions. Models with keyframes still use keyframe zero.
+* Re-registering a model's spec recipe takes effect on the next build even after its previous spec has been cached; other recipes retain their caches.
+* Incomplete packaged KIT motion sets raise `MissingMotionData` with missing-file counts and setup guidance even when the cache's first clip exists. Explicit user clip lists retain their normal missing-file errors.
+* **Mimic resets always leave a reference transition.** CPU and mjlab `myoMimic-v0` sample only bins with a frame before the clip end. A one-second clip at a 10 ms control step previously created a bin containing only its final frame; resetting there made the first step index past the clip or enter the next clip. Terminal frames remain available for final-step scoring and failure statistics. Clips shorter than one control transition now fail with a clear error.
+* **CPU clip-following rewards and termination use the post-step pose.** `MuscleMimicClipEnvV0` refreshes derived MuJoCo state after its control-step integration, so tracked sites and muscle geometry agree with the returned qpos/qvel. Site-based rewards and early termination can differ from earlier evaluations; action/observation layouts and integration trajectories are preserved.
+* Motion NPZ loading rejects empty clips, inconsistent frame counts and malformed site-position arrays before playback.
+* **`solved` of the walk tasks means sustained walking.** `myoLegWalk-v0`, the rough, hilly and stairs walks and their
+  `myoSarc`/`myoFati` variants set `solved` on every step on which the body was upright and within 0.5 m/s of the target
+  velocity. The reset keyframe already moves at about the target speed, so a zero-action episode that falls after
+  about 0.2 s had 7 to 10 solved steps and `evaluate_success` (more than 5 solved steps) reported 100 % on all four
+  ids, as did random actions. `solved` is now true only once that condition has held on every control step of the last
+  second of the episode (`LOCOMOTION_SOLVED_WINDOW_S`, 100 control steps; shared terms `locomotion_streak` and
+  `locomotion_sustained` in `terms.base_reward`), so the earliest solved step is step 100 and a fall or a step off
+  target starts the count again. The per-step flag stays available as `on_target` in
+  `info` and the reward dict. The mjlab twins follow: `Episode_Metrics/success` is the new flag on the last step of an
+  episode and the new `Episode_Metrics/on_target` is the share of an episode's steps on target. `solved` has no reward
+  weight in any registered walk config, so rewards, observations and dynamics are unchanged; what changes is every
+  success rate of these ids (`evaluate_success`, `scripts/eval_mjlab_policy.py`, `scripts/train_sb3.py`,
+  `--stop-on-success`, the success curves of tutorial 2.3). See `docs/baseline_checkpoints.md`.
+* **`myoChallengeBimanual-v0`: the first `reset()` draws the box size, and `get_metrics` can report a success** (also
+  the `myoSarc` / `myoFati` variants).
+  - The first reset of every env instance skipped the box-size draw and kept the nominal box
+    (`[0.036, 0.044, 0.014]`). `reset(seed=0)` therefore gave another box on a fresh instance than on a reused one
+    (`[0.0383, 0.0418, 0.0150]`), with other observations once the box moves, and an evaluation that builds one env
+    per episode never saw the size randomisation. The first reset now draws like every later one. This changes the
+    first episode of each instance; later episodes are unchanged.
+  - `get_metrics` counted a path as solved when it had more than 5 solved steps, but the env ends the episode on the
+    step after the first solved one, so the score was 0 for every rollout. A path now succeeds with at least one
+    solved step and a clean contact history, as in TableTennis. `rwd_dict["solved"]` is a `bool` on every step (it
+    was a 1x1 array until the box came near the goal), so the per-step reward dicts of a rollout stack into a path.
+* **MyoChallenge resets start with the coupled joints on their joint couplings.** The `reset` overrides of the
+  ChaseTag, Soccer, OslRun, Relocate and Bimanual envs wrote keyframes and reset noise into `qpos` without the
+  projection of `MyoGymnasiumEnv.reset` ([#630] had left the MyoChallenge envs as expected failures, pending
+  maintainer sign-off), so MuJoCo pulled the dependent joints of the `mjEQ_JOINT` couplings back during the first
+  steps. Offsets right after `reset`, and what the projection changes:
+  * `myoChallengeChaseTagP1/P2/P2eval-v0`: patella rotation 0.74 rad and 3.6 rad/s off (walk keyframes 2 and 3, as in
+    `myoLegWalk-v0`); largest `|qacc|` at t=0 1355 -> 391 rad/s^2 (P1). The patella moves 3.6 cm and the feet up to
+    1.6 cm (tibial rotation; under 3 mm in height). P2 also drew its N(0, 0.02) reset noise on the coupled joints.
+  * `myoChallengeRelocateP1/P2/P2eval-v0`: shoulder rhythm up to 0.16 rad off; largest coupling force 602 -> 5.5 and
+    `|qacc|` 410 -> 115 rad/s^2 (P1). The palm starts 4.3 cm (P1) and 3.0 cm (P2, mean) from its former place, and
+    the reset noise of P2 no longer moves the coupled shoulder joints (largest palm std 6 -> 2 mm).
+  * `myoChallengeOslRunFixed/Random-v0`: 0.16 rad (keyframes 0-2; the patella of keyframe 0 is 5.2 cm off); the
+    biological foot moves up to 1.4 cm.
+  * `myoChallengeBimanual-v0` 0.034 rad (ring abduction of the prosthesis, 2.5 mm), `myoChallengeSoccerP2-v0`
+    0.025 rad (reset noise on the coupled lumbar and knee joints), `myoChallengeSoccerP1-v0` 3.5e-5,
+    `myoChallengeChaseTagFBP2-v0` 4.2e-4 (0.054 in velocity, 0.4 mm).
+
+  These resets now call `MyoGymnasiumEnv._project_joint_couplings` before `mj_forward` (a no-op for the die-reorient
+  and Baoding models, which have no couplings), the mjlab twin of `myoChallengeChaseTagFBP2-v0` projects in
+  `reset_to_cpu_state`, and the couplings are read once per model instead of at every reset. This changes the start
+  state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
+  unchanged, and the parity baseline of `myoChallengeRelocateP1-v0` is regenerated. Two families are **not** changed
+  and stay expected failures of `test_joint_coupling.py`: `myoChallengeTableTennisP{0,1,2}-v0`, whose keyframe holds
+  the paddle with the shoulder rhythm 0.59 rad off its couplings (projected, the grasp site is 6.9 cm from the
+  paddle handle instead of 1.7 cm, so it first needs a keyframe on the couplings), and
+  `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off). See `docs/baseline_checkpoints.md`.
+* **`myoFullBodyWalkSAR-v0` rewards walking forwards.** The forward-velocity term tracked the root's world `+y`
+  velocity, but the MuscleMimic full body faces `-y` (heel to toe is `(0, -1, 0)` at the keyframe), so the reward
+  peaked for walking backwards: at the 1.2 m/s target it paid 5 x 0.003 forwards and 5 x 1.0 backwards. It now tracks
+  the root velocity along the body's heading (the pelvis' anterior axis, read from the model, turned by the root
+  yaw) instead of a fixed world axis. Observations and actions are unchanged; policies trained on the old reward walk
+  backwards and score low on the new one. Tutorial 5.5's random-action comparison reports displacement along the
+  same direction.
+* **`myoMimic-v0` mjlab twin: the last step of an episode counts in the reset statistics.** With `reset.auto_reset`
+  (the default) mjlab resets an ended env inside `step()`, before the motion command's update of that step, so the
+  episode was folded into its start bin without its last reward and one frame early. A one-step time-out got return
+  0 where the CPU env records 100 x the step reward (bin estimate 0 instead of 3.74 on a test clip), a three-step one
+  68 % of it, and a failure was booked in the bin of the frame before it. Bins with short episodes, such as starts
+  near a clip end, looked like failures and were over-sampled by the return-based resets (`reset.mode="return"`, the
+  `supermimic` preset). The reset now folds that step first: bin returns and failure bins match the CPU
+  `ResetSampler`, and the logged `task_reward` metric includes the last step. Runs that reset the env themselves
+  (`reset.auto_reset=False`, as `training/supermimic` does) are unchanged. This changes the twin's reset distribution
+  during training, not its observations, actions or rewards.
+* `MuscleMimicClipEnvV0` returns raw observations by default (`use_obs_normalizer=False`). Its in-env running
+  normaliser made the first observation of every new env all zeros, gave each env of a vector env its own drifting
+  statistics, was never saved and clipped to +-10, so `reset(seed)` did not determine the observation and tutorial
+  5.2 rendered a policy on inputs it was not trained on. Tutorial 5.2's policy now holds the normaliser as buffers:
+  shared by all envs, updated after each PPO update and saved in the checkpoint. Checkpoints trained with the old
+  tutorial do not load into the new `ActorCritic`.
+* The site-tracking error of the MuscleMimic full-body playback (`myosuite-musclemimic-fullbody-eval`,
+  `PlaybackResult.mean_tracking_error`) and the SAR activation collector's episode filter match clip columns to
+  the model's mimic sites by name. They paired them by position, so a body posed exactly on the reference
+  reported 0.25 to 0.45 m. Activation sets collected with the old filter were selected by that number.
+* The SAR activation collector (`collect_activations`, tutorial 5.5) ranks fixed-length episodes. Every episode
+  starts on the reference, so its tracking error grows from zero; with random starts running to the clip end the
+  shortest episodes, near the clip end, had the best mean and were the ones kept. Each step is now scored on
+  forwarded data against the clip frame it reached, fallen episodes (free root below `min_root_height`) are
+  rejected, and the first `warmup_steps` activations after the `act = 0` reset are left out.
+  `max_steps_per_episode` is now the length of every episode (default: half the clip). Activation caches built
+  before this change hold the biased selection: delete them.
+* **`myoChallengeChaseTagFBVs-v0` training reward.** The chaser earned `0.5 exp(-d) + 0.01` on every step and a
+  one-shot +1 for the tag, which also ends the episode: staying 0.6 m from the runner paid 0.28 per step, a
+  discounted return of 28 (gamma 0.99) against 1.33 for tagging now, so the dense reward's optimum was never to tag.
+  The proximity terms now pay the change of `exp(-d)` since the previous step (potential-based shaping, bounded
+  by the weight over an episode), and the per-step survival reward goes to the runner only. Observations, actions,
+  terminations and `info["score"]` are unchanged; policies trained on the old reward should be retrained.
+* Tutorial 3.3 (inverse dynamics) fixes the swapped `cmc_abduction` / `cmc_flexion` header labels in
+  `tutorials/files/3.3/trajectory.csv` (left over from the older MyoHand joint naming) and selects trajectory
+  columns by joint name.
+* DynSyn grouping (`training/dynsyn`, `python -m myosuite_dynsyn.groups`) puts the dependents of joint equalities on
+  their couplings after every random velocity draw. They had their own random velocities, so on `myoLegWalk-v0`
+  the knee translations left their range by up to 121 ranges and every knee-crossing muscle changed length
+  together: `bfsh_r` was grouped with `bflh_r`, `semimem_r` and `grac_r`, `sart_r` with `tfl_r`. Groups of models
+  with joint couplings change; DynSyn checkpoints keep the groups they recorded.
+* **ChaseTag observes the velocity the opponent moves with.** `opponent_vel` held the opponent policy's raw
+  `[speed, turn rate]` command, while the opponent moves with that command capped at 2 m/s and 2 rad/s. In EVADE
+  episodes the chasing opponent turns towards the agent at a rate proportional to the distance and, in
+  `myoChallengeChaseTagP2eval-v0`, draws its speed from 1-5 m/s, so the observation showed e.g. `[2.83, 2.88]` while
+  the opponent moved at `[2.0, 2.0]`. The observation is now the applied velocity. The cap itself stays: it was in
+  place before the P2eval speed range was added and is what the MyoChallenge 2023 evaluation ran, so 75 % of the
+  P2eval EVADE episodes chase at 2 m/s; the registration now says so. Observations change in the EVADE episodes of
+  `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants; dynamics
+  and rewards are unchanged.
+* **`myoChallengeChaseTagFBP2-v0`: the `rel_vel` slots of `opponent_relative` hold a velocity.** On both backends
+  the block subtracted the agent's world-frame root velocity (m/s) from the opponent's `[speed, turn rate, 0]`
+  command, so the slots mixed m/s with rad/s and could not tell the opponent's direction of motion (e.g. `rel_vel`
+  plus the agent velocity gave the command `[0.92, -1.82, 0]` for an opponent moving at `[0.44, -0.81, 0]` m/s). The
+  opponent's velocity is now its world-frame displacement over the last step divided by the control step (zero after
+  a reset), on the CPU env and on its mjlab twin. Observation contract change of the 537-dim FBP2 observation (3 of 537 values); no FBP2
+  checkpoint is published. `rel_pos` and `dist` are unchanged (the opponent stays at its mocap height, z = 0).
+* **Soccer and Bimanual report their time limit as `truncated`.** Both ended a time-out as a task end: Soccer with
+  `terminated=True` at step 1001 (its 10 s rule compared the summed `data.time`, 9.99999999999989 s after 1000 steps;
+  the registered limit of 2000 steps never applied), Bimanual with `terminated=True` and `truncated=True` together at
+  step 1000 (summed time 10.000000000000009 s > 10 s). Learners that bootstrap on truncation treated the time-out as
+  a real end. Soccer now truncates after `max_time_sec / dt` control steps (1000), and its registered
+  `max_episode_steps` is 1000; Bimanual leaves the limit to `TimeLimit`. On the time-out step `rwd_dict["done"]` is
+  now false, so Soccer pays `alive` and no longer counts the time-out in `sparse` (the `points` metric) and reports
+  10.0 s instead of 10.01 s. Affects `myoChallengeSoccerP1/P2-v0`, `myoChallengeBimanual-v0` and their `myoSarc` /
+  `myoFati` variants; goal, fall and drop endings are unchanged.
+* **The MuscleMimic clip lookahead holds the last frame at the clip end.** The 5-slot, 20-frame lookahead of the
+  clip-mode mjlab tasks (`myoMimicFullbody-v0`, `myoMimicBimanual-v0`, the `myoMuscleMimic*` aliases and the SAR
+  tasks) and of the CPU `MuscleMimicClipEnvV0` indexed future frames modulo the clip length, while the episode holds
+  the last frame and truncates there. In the last 100 frames of every clip the policy was shown targets from the clip
+  start: on a 300-frame walk at 1.2 m/s the root delta of a slot jumped from +0.48 m to -2.88 m. Both now hold the last
+  frame (`terms.mimic_obs.mimic_lookahead_obs` and the mjlab lookahead term), as MuscleMimic's own lookahead
+  (`FullbodyObsAdapter`), `MimicEnv` and the episode itself do. Observation sizes, rewards and dynamics are
+  unchanged; only lookahead values within 100 frames of a clip end change. See `docs/baseline_checkpoints.md`.
+* **Sarcopenia scales the passive muscle force too.** `apply_sarcopenia_to_model` and `apply_sarcopenia_to_spec`
+  halved the active peak force `gainprm[2]` but left the passive peak force `biasprm[2]` at full strength (inherited
+  from 2.x), so every `myoSarc*` id kept the passive stiffness of a healthy muscle: at a stretched pose the passive
+  force ratio Sarc / base was 1.000 on every id, against 0.5 for the active part. MuJoCo's passive muscle force is
+  `biasprm[2]` times the passive force-length curve, and a smaller cross-section lowers both. Both helpers now scale
+  `biasprm[2]` of every muscle bias by the same factor, resolving automatic peak forces (`force="-1"`, the finger
+  model) first; position servos and other non-muscle biases are unchanged. This changes the dynamics of every
+  `myoSarc*` id on the CPU and of their mjlab twins (and of the `elbow_sarcopenia` recipe and MJX tasks with
+  sarcopenia). No parity baseline covers these ids. See `docs/baseline_checkpoints.md`.
+* **Random-target MuscleMimic tasks can be solved: the targets are the sites of one posture.**
+  `myoMimicFullbody-v0`, `myoMimicBimanual-v0` and their aliases `myoMuscleMimic{Fullbody,Bimanual}-v0` drew every
+  tracked site's target independently in one box, so a target set broke the skeleton's segment lengths (pelvis to hip
+  0.72 m off on average) and, on the fixed-base bimanual model, moved the immovable torso site; the best attainable
+  mean site error (0.18 m full body, 0.42 m bimanual) was above the 0.04 m `solved` threshold, so the success rate was
+  0 for any policy. Each episode now tracks the sites of one random posture from a fixed table
+  (`myosuite.utils.reach_workspace.reachable_postures`, 10,000 postures): joint angles uniform within their limits,
+  coupled joints on their couplings (postures that push a coupled joint past its range are drawn again), and the
+  full body's root lowered or raised so that its lowest tracked site is as high as when standing. The posture puts
+  every site on its target, so `solved` is reachable; the threshold is unchanged. The CPU envs draw the posture with
+  `np_random`, the mjlab twins (random mode) from the same table on the device. The `mimic_target_low` /
+  `mimic_target_high` constructor kwargs are removed (`TypeError`), and so is
+  `myosuite.terms.mimic_obs.sample_mimic_target_sites`. This changes the target distribution of these ids; see
+  `docs/baseline_checkpoints.md`.
+* **Static optimization flags the frames OSQP did not solve.** `StaticOptimizer.solve` and `static_optimization`
+  stored OSQP's status but returned frames that stopped at `max_iter` (or with any other status than `"solved"`) as
+  ordinary results, without a warning: with `max_iter=1` every frame of a myoArm clip came back unconverged, with
+  activations up to 0.7 off the solved ones. `StaticOptimizationConfig.on_failure` now decides: `"warn"` (default)
+  keeps the solution and warns (`StaticOptimizationWarning`), once per clip with the number of failed frames and
+  their statuses; `"raise"` raises `StaticOptimizationError` naming the frame; `"nan"` returns NaN activations and
+  forces for those frames. Converged results are unchanged.
+* **`ChaseTagSteeredPair` teacher sees its previous action.** The 354 muscle-excitation entries of the `mm-10m-2`
+  teacher's observation read the shadow body's `ctrl`, which was never written, so they were always 0. In training
+  they hold the previous action. `SteeredTeacher.action` now keeps the raw action (`[-1, 1]`) in the shadow's `ctrl`
+  and clears it on `reset`; the excitations sent to the FBVs agent are unchanged (`clip(action, 0, 1)`).
+* **`training/chasetag_teacher`: the steering library follows its clips and is no longer unpickled.** `load_library`
+  cached a pickled `ClipLibrary` keyed by the clip folder's path, the myo_sim version, `limit` and `ctrl_dt`, and
+  loaded it with `torch.load(..., weights_only=False)` before looking at the clips. Clips re-retargeted into the same
+  folder, another training split or filter, or a changed library class kept the old library (and every DAgger label
+  and evaluation made with it), and loading the cache file ran whatever it contained. The motion data now goes
+  through the task's motion cache (`build_motion_lib(..., cache_dir=...)`: NumPy arrays read with
+  `allow_pickle=False`, keyed by the bytes of every clip, the compiled body, the tracked bodies, the control step and
+  the preprocessing code), and the library's features are recomputed on each load. Old `lib_*.pt` files are no longer
+  read.
+* **`training/chasetag_teacher`: DAgger `val_mse` is measured on held-out bouts.** `distill.train` held out 2 % of
+  the steps at random. Consecutive steps of a bout are near-duplicates and the half-turn copy of a validation step was
+  in the training set, so the `val_mse` that `scripts/dagger.py`, `dagger_directional.py` and `retrain.py` log equalled
+  the training error: on synthetic bouts it reported 0.00011 against 0.087 on unseen bouts. `load_data` now also
+  returns a mask of the validation bouts (about 5 % of the bout files, chosen by a seeded hash of the file name, so a
+  bout keeps its side in every round and run), `train(..., held_out=mask)` validates on them only and normalises the
+  inputs on the training samples, and `augment_half_turn` adds the half-turn copies after the split, of training
+  samples only. The same synthetic bouts now report 0.092 against 0.087. The fit uses 5 % fewer bouts; `train`
+  without `held_out` keeps the step split.
+* **`myoMimic-v0` envs reuse the in-memory motion library without re-reading the clips.** Every env checked the
+  metadata of and hashed every clip file (and five source modules) before it could find the library already in
+  memory: 167 ms for 48 clips of 369 kB here, several seconds for a 972-clip list, paid again by each env of a vector
+  env. The content key is now memoised on each file's size, modification time and inode, so a repeated load reads no
+  clip (14 ms for the same 48 clips); an edited clip gets a new stamp and is checked and hashed again. The library
+  and the disk cache are unchanged.
+* `myosuite.biomechanics.uncertainty.perturbed_model` scales the passive peak force only where the bias is a
+  muscle bias. For `gaintype="muscle"` with an affine bias it had replaced the velocity coefficient
+  (`biasprm="0 0 -10"` became 0), also with `strength_cv=0`, so every sample dropped that damping term.
+* `opensim_motion_to_qpos` warns when a mapped coordinate leaves its joint range by more than 5 % of the range,
+  naming the joints and the share of frames. Its default `signs` are gait2392's (knee flexion negative), so a
+  Rajagopal-family file (OpenCap, AddBiomechanics) mapped with the defaults had its knees mirrored into
+  hyperextension without a message; such files need `signs={}`.
+* **Die Reorient and Relocate measure the rotation error as the angle between the object and the goal.** They used
+  the norm of the difference of Euler angles, which jumps by up to 2 pi at the +-pi wrap and near gimbal lock and
+  does not equal the rotation angle elsewhere. In `myoChallengeDieReorientP2-v0` a die 0.05 rad (3 deg) from its goal
+  missed the 0.262 rad (15 deg) tolerance for 9 % of the goals, and one 0.25 rad away for 68 %; the `rot_dist` reward
+  reached 8.3 for a 0.25 rad error. The `rot_dist` reward, the `sparse` score and `solved` now use the geodesic angle
+  (`myosuite.terms.mimic_track.rotation_angle`, also in `obs_dict["rot_angle"]`). This changes success and rewards of
+  `myoChallengeDieReorientDemo/P1/P2-v0` and the rewards of `myoChallengeRelocateP1/P2/P2eval-v0` (their `rot_th`
+  is infinite), with the `myoSarc` / `myoFati` variants. The observations, including the Euler `obj_rot`,
+  `goal_rot` and `rot_err`, are unchanged. The `myoChallengeRelocateP1-v0` parity baseline is regenerated (its
+  observations are identical, its rewards differ by up to 0.64).
+* `static_optimization_bands`: `joint_noise_deg` is the standard deviation of the joint-angle error that remains
+  after the analysis' low-pass filter. It was white per-frame noise, of which the filter keeps about
+  `sqrt(2 fc / fs)`, so the same motion gave narrower bands at a higher frame rate (torque band 0.52 N m at 100 Hz,
+  0.28 N m at 400 Hz for 0.5 deg at 6 Hz on the elbow). Bands for a given `joint_noise_deg` are now wider and do not
+  depend on the frame rate. New `joint_offset_deg` adds a constant error per sample and joint.
+* **SAR synergy actions span the fitted synergies.** `extract_synergies` scaled the synergy activations to `[0, 1]`,
+  while the mjlab SAR action term (`SARTorchTransform`) takes policy actions in `[-1, 1]`, as the SAR paper's
+  pipeline and tutorial 2.3 do (`MinMaxScaler((-1, 1))`). Action 0, the mean of an untrained policy, decoded to the
+  lower edge of every synergy, and every negative action lay below the data: with actions uniform in `[-1, 1]`, 50 %
+  of the synergy coordinates were outside the fitted range and 62 % of the muscle activations were clamped at 0 or 1
+  on a synthetic six-synergy set (now 0 % and 18 %). There is one range now, `SYNERGY_RANGE = (-1, 1)`:
+  `extract_synergies` fits onto it, `encode_activations` returns it, and `decode_synergies` and `SARTorchTransform`
+  take it; `SARTorchTransform` rejects a scaler fitted onto another range. `load_synergy_model` rescales a folder
+  saved on `[0, 1]` (same data span, with a warning), so saved synergy models keep working. This changes the action
+  semantics of the SAR tasks (`myoMimicFullbody-SAR-v0`, `myoMimicBimanual-SAR-v0`, their `myoMuscleMimic*` aliases
+  and `myoFullBodyWalkSAR-v0`): policies trained on them before decode to other activations and must be retrained.
+  Callers that passed `[0, 1]` values to `decode_synergies` (tutorial 5.5's random-synergy rollouts) pass `[-1, 1]`.
+* **`myoChallengeDieReorientP2-v0`: `reset(seed)` no longer depends on the previous episode** (also the `myoSarc` /
+  `myoFati` variants). The die's geom positions took their sign from the current `model.geom_pos`, which holds the
+  previous episode's resized die, as a ratio that is not exactly +-1. The same seed then gave geom positions that
+  differed by up to 4.5e-17 between a fresh and a reused env, and the contacts grew this into different rewards from
+  the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
+  instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
+  at their compiled positions, up to 1e-16 away before).
 
 [#166]: https://github.com/MyoHub/myosuite/issues/166
 [#525]: https://github.com/MyoHub/myosuite/pull/525
+[#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#749]: https://github.com/MyoHub/myosuite/pull/749
 [#808]: https://github.com/MyoHub/myosuite/pull/808
+[#810]: https://github.com/MyoHub/myosuite/pull/810
 ## [3.1.0] - 2026-11-11
-
-* Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
 
