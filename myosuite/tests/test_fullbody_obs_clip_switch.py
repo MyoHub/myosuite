@@ -108,7 +108,10 @@ def test_actual_multi_clip_collection_keeps_filtered_policy_layout(scene_clips) 
         model,
         clips,
         CollectionConfig(
-            n_episodes_per_clip=1, max_steps_per_episode=2, use_random_start=False
+            n_episodes_per_clip=1,
+            max_steps_per_episode=2,
+            warmup_steps=0,
+            use_random_start=False,
         ),
     )
     assert acts.shape == (4, model.na)
