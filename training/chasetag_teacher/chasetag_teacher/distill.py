@@ -18,6 +18,7 @@ in front of the network, so its ONNX still takes the raw 546-d observation.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -170,7 +171,8 @@ def yaw_rotate(obs: torch.Tensor, theta: torch.Tensor) -> torch.Tensor:
 
 def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096, lr: float = 1e-3,
           device: str = "cpu", init: dict | None = None, log: Callable[[str], None] = print,
-          yaw_aug: bool = False, obs_dim: int = OBS_DIM) -> dict:  # fmt: skip
+          yaw_aug: bool = False, obs_dim: int = OBS_DIM,
+          held_out: np.ndarray | None = None) -> dict:  # fmt: skip
     """Fit an ``ActorCritic`` student; returns ``{"state": plain state dict, "val_mse": ...}``.
 
     Args:
@@ -180,6 +182,8 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
         yaw_aug: Rotate every training sample about the world z axis by a random angle (:func:`yaw_rotate`); the
             normalisation then uses rotated samples too.
         obs_dim: Observation size (546 for FBVs players, 528 for the directional walker).
+        held_out: (N,) mask of the validation samples, whole bouts (:func:`load_data`); ``None``: 2 % of the
+            steps at random, which near-duplicates of the training steps make about the training error.
     """
     obs_arr = np.asarray(obs)
     act_arr = np.asarray(act)
@@ -196,10 +200,28 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
     host = obs_arr.nbytes + act_arr.nbytes > 4 * 2**30
     X = torch.as_tensor(obs_arr) if host else torch.as_tensor(obs_arr).to(device)
     Y = torch.as_tensor(act_arr) if host else torch.as_tensor(act_arr).to(device)
+    if held_out is None:
+        perm = torch.randperm(n, device=X.device)
+        n_val = min(max(1, n // 50), n - 1) if n > 1 else 1
+        val = perm[:n_val]
+        tr = perm[n_val:] if n > 1 else perm
+    else:
+        mask = torch.as_tensor(np.asarray(held_out, bool), device=X.device)
+        if mask.ndim != 1 or len(mask) != n:
+            raise ValueError(
+                f"held_out must have shape ({n},), got {tuple(mask.shape)}."
+            )
+        val, tr = mask.nonzero().squeeze(1), (~mask).nonzero().squeeze(1)
+        if len(tr) == 0 or len(val) == 0:
+            raise ValueError(
+                "train() requires non-empty training and validation partitions "
+                f"(got {len(tr)} training and {len(val)} validation samples; "
+                "collect more bouts or adjust holdout)."
+            )
     if init is not None:
         mean, std = init["mean"].to(device), init["std"].to(device)
     else:
-        sub = X[::17].to(device).float()
+        sub = X[tr[::17]].to(device).float()
         if yaw_aug:
             sub = yaw_rotate(sub, torch.rand(len(sub), device=device) * 2 * np.pi)
         mean = sub.mean(0)
@@ -207,10 +229,6 @@ def train(obs: np.ndarray, act: np.ndarray, epochs: int = 20, batch: int = 4096,
     net = ActorCritic(obs_dim, ACT_DIM).to(device)
     if init is not None:
         net.load_state_dict(init["raw_state"])
-    perm = torch.randperm(n, device=X.device)
-    n_val = min(max(1, n // 50), n - 1) if n > 1 else 1
-    val = perm[:n_val]
-    tr = perm[n_val:] if n > 1 else perm
     params = list(net.trunk.parameters()) + list(net.actor_mean.parameters())
     opt = torch.optim.AdamW(params, lr=lr, weight_decay=1e-5)
     step_batch = min(batch, len(tr))
@@ -324,11 +342,22 @@ def canonicalise_inplace(obs: np.ndarray, chunk: int = 262144) -> np.ndarray:
     return obs
 
 
+def held_out_bout(name: str, frac: float, seed: int = 0) -> bool:
+    """Whether the bout file *name* is a validation bout: a seeded hash of the name, so a bout keeps its side in
+    every round (whose students start from the previous one) and every run."""
+    digest = hashlib.sha256(f"{seed}:{name}".encode()).digest()
+    return int.from_bytes(digest[:8], "little") < frac * 2**64
+
+
 def load_data(
-    dirs: Sequence[str | Path], obs_dim: int = OBS_DIM
-) -> tuple[np.ndarray, np.ndarray]:
+    dirs: Sequence[str | Path],
+    obs_dim: int = OBS_DIM,
+    holdout: float = 0.05,
+    seed: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The (N, 546) observations and (N, 354) teacher excitations (float16) of the bout files (``b*.npz``) in
-    ``dirs``, as :mod:`scripts.dagger` writes them."""
+    ``dirs``, as :mod:`scripts.dagger` writes them, and the (N,) mask of the samples of the validation bouts
+    (about ``holdout`` of the bouts, :func:`held_out_bout`)."""
     files = sorted(f for d in dirs for f in Path(d).glob("b*.npz"))
     sizes: list[int] = []
     for f in files:
@@ -341,4 +370,5 @@ def load_data(
         with np.load(f) as z:
             X[k : k + n], Y[k : k + n] = z["obs"], z["act"]
         k += n
-    return X, Y
+    held = np.repeat([held_out_bout(f.name, holdout, seed) for f in files], sizes)
+    return X, Y, held.astype(bool)
