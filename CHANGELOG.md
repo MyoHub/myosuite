@@ -16,6 +16,14 @@ Changes since **v3.1.0** (2026-11-11).
 * **Computed muscle control** (`myosuite.biomechanics.computed_muscle_control`): `computed_muscle_control(model, qpos, qvel, qacc, dt)` (or `ComputedMuscleControl.reset` and `.step` per control step) finds the excitations that make a forward simulation track a motion (Thelen, Anderson & Delp 2003) with `StaticOptimizer` and its per-frame `min_activation`. Every step bounds each actuator by the activations its dynamics can reach, takes velocity-dependent forces (force-velocity, joint damping) at the velocity that delivers the desired acceleration over MuJoCo's Euler steps, inverts MuJoCo's own activation dynamics exactly (any `dyntype`, `tausmooth` included) and applies the reserves and residuals, as OpenSim does. For standing and walking the simulation has no contacts and the estimated ground reactions (`contact_forces=True`) are applied, as OpenSim applies measured ones. A 37-degree motion that the 2-dof elbow's muscles produced in simulation is tracked within 0.03 deg at 500 Hz control and 0.25 deg at 100 Hz; myoArm reaches at 100 Hz within 2.4 deg (RMS 0.19 deg); MyoLeg stands on its estimated ground reactions within 0.1 mm; retargeted KIT walks on MyoFullBody (354 muscles, 100 Hz, about 25 ms per step) within 1.5 mm at the root and 0.27 deg RMS at the joints (6-8 deg max), with the residuals that static optimization of the same clips already needs ([#644]).
 * Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 * Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+* Native InstantHMR (`MHR70` 70-keypoint, metric camera-space) biomechanical pipeline
+  (`myosuite.biomechanics.retarget_instanthmr`, `myosuite.viz.muscle_meshes`) for
+  `myofullbody` and `myolegs`: subject anthropometric scaling
+  (`estimate_instanthmr_scales`, `scale_model_from_instanthmr`), metric/nominal
+  `LandmarkIK` (`InstantHMRSource`, `solve_instanthmr_ik`), 3D deformed muscle mesh and
+  activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
+  glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
+  monocular video extractor `tools/instanthmr` ([#749]).
 
 ### Fixed
 
@@ -124,6 +132,12 @@ Changes since **v3.1.0** (2026-11-11).
   (`muscle_tubes.split_branches`), joined into one mesh per muscle: the belly lies on the first branch, from the
   origin, and takes its shape from that branch's length; the branches after the pulleys are tendon. Muscles without
   pulleys export exactly as before, and `--muscles paths` was already correct ([#810]).
+* Partial named motion clips preserve the model's reference pose for omitted joints when no keyframe exists, including nonzero joint references and free-root positions and quaternions. Models with keyframes still use keyframe zero.
+* Re-registering a model's spec recipe takes effect on the next build even after its previous spec has been cached; other recipes retain their caches.
+* Incomplete packaged KIT motion sets raise `MissingMotionData` with missing-file counts and setup guidance even when the cache's first clip exists. Explicit user clip lists retain their normal missing-file errors.
+* **Mimic resets always leave a reference transition.** CPU and mjlab `myoMimic-v0` sample only bins with a frame before the clip end. A one-second clip at a 10 ms control step previously created a bin containing only its final frame; resetting there made the first step index past the clip or enter the next clip. Terminal frames remain available for final-step scoring and failure statistics. Clips shorter than one control transition now fail with a clear error.
+* **CPU clip-following rewards and termination use the post-step pose.** `MuscleMimicClipEnvV0` refreshes derived MuJoCo state after its control-step integration, so tracked sites and muscle geometry agree with the returned qpos/qvel. Site-based rewards and early termination can differ from earlier evaluations; action/observation layouts and integration trajectories are preserved.
+* Motion NPZ loading rejects empty clips, inconsistent frame counts and malformed site-position arrays before playback.
 * **`solved` of the walk tasks means sustained walking.** `myoLegWalk-v0`, the rough, hilly and stairs walks and their
   `myoSarc`/`myoFati` variants set `solved` on every step on which the body was upright and within 0.5 m/s of the target
   velocity. The reset keyframe already moves at about the target speed, so a zero-action episode that falls after
@@ -140,6 +154,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#749]: https://github.com/MyoHub/myosuite/pull/749
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
 ## [3.1.0] - 2026-11-11
