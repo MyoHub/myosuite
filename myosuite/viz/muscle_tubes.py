@@ -151,6 +151,25 @@ def resample_path(
     return centreline, float(arc[-1])
 
 
+def split_branches(points: np.ndarray, wrap_obj: np.ndarray) -> list[np.ndarray]:
+    """Split a tendon path into its pulley branches.
+
+    MuJoCo starts each branch after a pulley with a ``(0, 0, 0)`` marker point
+    whose ``wrap_obj`` is ``-2``. The markers are not on the path and are dropped.
+
+    Args:
+        points: ``(P, 3)`` wrap points of one tendon path.
+        wrap_obj: ``(P,)`` wrap object of each point.
+
+    Returns:
+        Copies of the ``(P_i, 3)`` points of each branch, starting with the
+        origin's. A path without pulleys is one branch.
+    """
+    marker = np.asarray(wrap_obj) == -2
+    branch = np.cumsum(marker)
+    return [points[(branch == b) & ~marker] for b in range(branch[-1] + 1)]
+
+
 def radius_profile(
     fraction: np.ndarray | float, count: int = PATH_POINTS
 ) -> np.ndarray:

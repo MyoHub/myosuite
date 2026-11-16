@@ -43,6 +43,7 @@ CHALLENGE_IDS = [
     "myoChallengeRelocateP2eval-v0",
     "myoChallengeBaodingP1-v1",
     "myoChallengeBaodingP2-v1",
+    "myoChallengeDieReorientP2-v0",
     "myoChallengeTableTennisP1-v0",
 ]
 # One id per basic env class that owns a fatigue model.
@@ -146,7 +147,7 @@ def test_same_instance_reset_is_reproducible(env_id: str, kwargs: dict) -> None:
     try:
         actions = _actions(env)
         # Warm-up reset with another seed: an episode must not depend on the
-        # previous one (Bimanual also skips its object scaling on reset #1).
+        # previous one.
         env.reset(seed=SEED + 1)
         first = _rollout(env, actions)
         np.random.seed(4242)
