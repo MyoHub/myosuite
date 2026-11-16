@@ -211,6 +211,10 @@ Changes since **v3.1.0** (2026-11-11).
   5.2 rendered a policy on inputs it was not trained on. Tutorial 5.2's policy now holds the normaliser as buffers:
   shared by all envs, updated after each PPO update and saved in the checkpoint. Checkpoints trained with the old
   tutorial do not load into the new `ActorCritic`.
+* The site-tracking error of the MuscleMimic full-body playback (`myosuite-musclemimic-fullbody-eval`,
+  `PlaybackResult.mean_tracking_error`) and the SAR activation collector's episode filter match clip columns to
+  the model's mimic sites by name. They paired them by position, so a body posed exactly on the reference
+  reported 0.25 to 0.45 m. Activation sets collected with the old filter were selected by that number.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
