@@ -236,6 +236,15 @@ Changes since **v3.1.0** (2026-11-11).
   the knee translations left their range by up to 121 ranges and every knee-crossing muscle changed length
   together: `bfsh_r` was grouped with `bflh_r`, `semimem_r` and `grac_r`, `sart_r` with `tfl_r`. Groups of models
   with joint couplings change; DynSyn checkpoints keep the groups they recorded.
+* **ChaseTag observes the velocity the opponent moves with.** `opponent_vel` held the opponent policy's raw
+  `[speed, turn rate]` command, while the opponent moves with that command capped at 2 m/s and 2 rad/s. In EVADE
+  episodes the chasing opponent turns towards the agent at a rate proportional to the distance and, in
+  `myoChallengeChaseTagP2eval-v0`, draws its speed from 1-5 m/s, so the observation showed e.g. `[2.83, 2.88]` while
+  the opponent moved at `[2.0, 2.0]`. The observation is now the applied velocity. The cap itself stays: it was in
+  place before the P2eval speed range was added and is what the MyoChallenge 2023 evaluation ran, so 75 % of the
+  P2eval EVADE episodes chase at 2 m/s; the registration now says so. Observations change in the EVADE episodes of
+  `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants; dynamics
+  and rewards are unchanged.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
