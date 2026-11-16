@@ -50,6 +50,7 @@ DATASET_CHOICES: tuple[str, ...] = (
     "grabmyo",
     "ultramocap2025",
     "maurice2020",
+    "diaz2026",
     "custom",
 )
 
@@ -185,6 +186,7 @@ def build_source(args: argparse.Namespace) -> EMGSource:
         RajagopalWalkingSource,
     )
     from scripts.validation.emg_upper_limb import (
+        Diaz2026HandSource,
         Maurice2020Source,
         Emg2PoseHandSource,
         GrabMyoSource,
@@ -271,6 +273,15 @@ def build_source(args: argparse.Namespace) -> EMGSource:
             root,
             subjects=subjects,
             pattern=args.filter,
+            kinematics_rate_hz=args.kinematics_rate,
+        )
+    if args.dataset == "diaz2026":
+        root = args.data_root or "downloads/emg/diaz2026"
+        return Diaz2026HandSource(
+            root,
+            subjects=subjects,
+            pattern=args.filter,
+            max_window_s=args.window_s if args.window_s is not None else 10.0,
             kinematics_rate_hz=args.kinematics_rate,
         )
     if args.dataset == "custom":

@@ -343,6 +343,11 @@ def maurice2020_main(argv: Sequence[str] | None = None) -> int:
     return _dispatch_dataset("maurice2020", argv)
 
 
+def diaz2026_main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the Diaz et al. (2026) BHaM hand biomechanics dataset."""
+    return _dispatch_dataset("diaz2026", argv)
+
+
 def custom_emg_main(argv: Sequence[str] | None = None) -> int:
     """Entry point for custom manifest or standardized ``EMGTrial`` ``.npz`` directories."""
     return _dispatch_dataset("custom", argv)

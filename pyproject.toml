@@ -253,6 +253,7 @@ ninapro-db5 = "myosuite.integrations.mm_evalkit.plugin:ninapro_db5_main"
 grabmyo = "myosuite.integrations.mm_evalkit.plugin:grabmyo_main"
 ultramocap2025 = "myosuite.integrations.mm_evalkit.plugin:ultramocap2025_main"
 maurice2020 = "myosuite.integrations.mm_evalkit.plugin:maurice2020_main"
+diaz2026 = "myosuite.integrations.mm_evalkit.plugin:diaz2026_main"
 custom-emg = "myosuite.integrations.mm_evalkit.plugin:custom_emg_main"
 
 [tool.setuptools.dynamic]

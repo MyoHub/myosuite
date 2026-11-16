@@ -18,6 +18,7 @@ import scipy.io as sio
 from scripts.validation.emg_sources import CAMARGO_CHANNELS, Camargo2021Source
 from scripts.validation.emg_upper_limb import (
     EMG2POSE_JOINT_NAMES,
+    Diaz2026HandSource,
     GrabMyoSource,
     Maurice2020Source,
     UltraMoCap2025Source,
@@ -290,6 +291,7 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
         "grabmyo",
         "ultramocap2025",
         "maurice2020",
+        "diaz2026",
         "custom-emg",
     }
     for ep_key in expected_plugins:
@@ -793,3 +795,224 @@ def test_maurice2020_source_synthetic(tmp_path: Path) -> None:
     assert np.allclose(trial.qpos[:, elbow], 1.0, atol=1e-6)
     cmap = src.default_channel_map(model)
     assert [b.channel for b in cmap.bindings] == ["anterior_deltoid"]
+
+
+_MINI_BHAM_ARM_XML = """
+<mujoco model="mini_bham_arm">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body name="humerus_r" pos="0 0 1">
+      <joint name="elv_angle_r" type="hinge" axis="0 1 0" range="-1.6 2.2"/>
+      <joint name="shoulder_elv_r" type="hinge" axis="-1 0 0" range="0 3.1"/>
+      <joint name="shoulder_rot_r" type="hinge" axis="0 1 0" range="-1.5 2.0"/>
+      <inertial pos="0 0 -0.15" mass="1.8" diaginertia="0.01 0.01 0.002"/>
+      <body name="ulna_r" pos="0 0 -0.28">
+        <joint name="elbow_flexion_r" type="hinge" axis="0 0 1" range="0 2.3"/>
+        <joint name="pro_sup_r" type="hinge" axis="0 1 0" range="-1.57 1.57"/>
+        <inertial pos="0 0 -0.12" mass="1.0" diaginertia="0.005 0.005 0.001"/>
+        <body name="hand_r" pos="0 0 -0.25">
+          <joint name="deviation_r" type="hinge" axis="0 0 1" range="-0.6 0.4"/>
+          <joint name="flexion_r" type="hinge" axis="1 0 0" range="-1.3 1.4"/>
+          <inertial pos="0 0 -0.04" mass="0.4" diaginertia="1e-4 1e-4 1e-4"/>
+          <body name="firstmc_r" pos="0.02 0 -0.03">
+            <joint name="cmc_flexion_r" type="hinge" axis="0 1 0" range="-0.8 0.7"/>
+            <joint name="mp_flexion_r" type="hinge" axis="0 1 0" range="-1.2 0.4"/>
+            <inertial pos="0 0 0" mass="0.02" diaginertia="1e-5 1e-5 1e-5"/>
+          </body>
+          <body name="2proxph_r" pos="0 0 -0.08">
+            <joint name="mcp2_flexion_r" type="hinge" axis="1 0 0" range="-1.0 1.6"/>
+            <inertial pos="0 0 0" mass="0.02" diaginertia="1e-5 1e-5 1e-5"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="FCR_r" joint="flexion_r"/>
+    <motor name="OP_r" joint="cmc_flexion_r"/>
+    <motor name="DI1d_r" joint="mcp2_flexion_r"/>
+    <motor name="DI1s_r" joint="mcp2_flexion_r"/>
+  </actuator>
+</mujoco>
+"""
+
+
+def test_diaz2026_source_synthetic(tmp_path: Path) -> None:
+    h5py = pytest.importorskip("h5py")
+    biodex_ch = [
+        "FCR",
+        "BRD",
+        "TRIlong",
+        "BIC",
+        "FCU",
+        "ECR",
+        "FDP",
+        "ECU",
+        "FDS",
+        "EDC",
+    ]
+    wire_ch = ["FPL", "FDI", "EPL", "ADD", "APL", "OPP", "EPB", "FPB"]
+    ik_cols = [
+        "time",
+        "elv_angle",
+        "shoulder_elv",
+        "shoulder_rot",
+        "elbow_flexion",
+        "pro_sup",
+        "deviation",
+        "flexion",
+        "wrist_hand_r1",
+        "wrist_hand_r3",
+        "cmc_flexion",
+        "cmc_abduction",
+        "mp_flexion",
+        "ip_flexion",
+    ] + [
+        f"{d}{s}"
+        for d in range(2, 6)
+        for s in ("mcp_abduction", "mcp_flexion", "pm_flexion", "md_flexion")
+    ]
+    bounds_cols = [
+        "Trial",
+        "LB_Frame",
+        "LB_Sub",
+        "LB_Time",
+        "RB_Frame",
+        "RB_Sub",
+        "RB_Time",
+    ]
+
+    def _ds(grp, path, cols, data):
+        ds = grp.create_dataset(path, data=data)
+        ds.attrs["Columns"] = np.array(cols, dtype="S")
+
+    t3k = np.arange(1, 6 * 3000 + 1) / 3000.0
+    with h5py.File(tmp_path / "BHaM_subset.hdf5", "w") as hf:
+        subj = hf.create_group("B002")
+        subj.attrs["Age_yrs"] = "19"
+        for task in ("Biodex_WF_50MVC", "Biodex_Practice_WE_MVC"):
+            grp = subj.create_group(task)
+            grp.attrs["FrequencyEMG_Hz"] = "3000"
+            grp.attrs["TaskName"] = "Wrist flexion"
+            grp.attrs["TrialBounds"] = np.array([[1, 200, 0, 2.0, 400, 0, 4.0]])
+            grp.attrs["TrialBounds_Columns"] = np.array(bounds_cols, dtype="S")
+            emg10 = np.column_stack(
+                [t3k, np.zeros((len(t3k), 2)), np.full((len(t3k), 10), 0.3)]
+            )
+            _ds(grp, "Emg/Normalized", ["time", "Frame", "SubFrame", *biodex_ch], emg10)
+            # 5 N m in the trial band on a -1 N m rest offset (limb weight on the lever).
+            in_band = (t3k >= 2.0) & (t3k <= 4.0)
+            trq = np.column_stack(
+                [t3k, np.zeros((len(t3k), 2)), np.where(in_band, 5.0, -1.0)]
+            )
+            _ds(grp, "Forces/Filtered", ["time", "Frame", "SubFrame", "Torque"], trq)
+            ang = np.column_stack(
+                [t3k, np.zeros((len(t3k), 3)), np.full(len(t3k), 6.3)]
+            )
+            _ds(
+                grp,
+                "JointAngles/Filtered",
+                ["time", "Frame", "SubFrame", "Velocity", "Position"],
+                ang,
+            )
+        rom = subj.create_group("RoM_Th_FE")
+        rom.attrs["TrialBounds"] = np.array(
+            [[1, 20, 0, 0.2, 120, 0, 1.2], [2, 120, 0, 1.2, 280, 0, 2.8]]
+        )
+        emg = np.column_stack(
+            [t3k, np.zeros((len(t3k), 2)), np.full((len(t3k), 8), 0.1)]
+        )
+        _ds(rom, "Emg/Normalized", ["time", "Frame", "SubFrame", *wire_ch], emg)
+        t_ik = np.arange(10, 291) / 100.0
+        ik = np.zeros((len(t_ik), len(ik_cols)))
+        ik[:, 0] = t_ik
+        ik[:, ik_cols.index("elbow_flexion")] = 30.0
+        ik[:, ik_cols.index("flexion")] = 0.2  # radians in the published IK
+        ik[:, ik_cols.index("wrist_hand_r3")] = np.degrees(0.1)
+        ik[:, ik_cols.index("cmc_flexion")] = -20.0
+        ik[:, ik_cols.index("mp_flexion")] = 30.0
+        ik[:, ik_cols.index("2mcp_flexion")] = 40.0
+        _ds(rom, "JointAngles/InverseKinematics", ik_cols, ik)
+        hf.create_group("B002/Isometric_GP_MVC/Emg").create_dataset(
+            "Normalized", data=emg
+        )
+        # Isokinetic wrist: dynamometer zero 45 deg off anatomical (range -50..130).
+        wr = subj.create_group("Biodex_RoM_Wrist")
+        wr.attrs["TrialBounds"] = np.array([[1, 50, 0, 0.5, 550, 0, 5.5]])
+        pos = 40.0 + 90.0 * np.sin(2.0 * np.pi * t3k / 3.0)
+        _ds(wr, "Emg/Normalized", ["time", "Frame", "SubFrame", *biodex_ch], emg10)
+        _ds(wr, "Forces/Filtered", ["time", "Frame", "SubFrame", "Torque"], trq)
+        _ds(
+            wr,
+            "JointAngles/Filtered",
+            ["time", "Frame", "SubFrame", "Velocity", "Position"],
+            np.column_stack([t3k, np.zeros((len(t3k), 3)), pos]),
+        )
+        # B001 is excluded by default (collection notes).
+        hf.copy("B002", "B001")
+
+    model = mujoco.MjModel.from_xml_string(_MINI_BHAM_ARM_XML)
+    src = Diaz2026HandSource(tmp_path)
+    assert list(src.trial_ids()) == [
+        "B002/Biodex_WF_50MVC/rep01",
+        "B002/Biodex_RoM_Wrist/rep01",
+        "B002/RoM_Th_FE/rep01",
+        "B002/RoM_Th_FE/rep02",
+    ]
+    assert Diaz2026HandSource(tmp_path, subjects=["B001"]).trial_ids()[0].startswith(
+        "B001/"
+    )
+
+    # Wrist centred on the range: mid-range (40 deg) is 5 deg of flexion.
+    wrist = src.get_trial("B002/Biodex_RoM_Wrist/rep01", model=model)
+    i_mid = round((1.5 - wrist.meta["window_s"][0]) * 100)
+    flex = int(model.jnt_qposadr[model.joint("flexion_r").id])
+    assert wrist.qpos[i_mid, flex] == pytest.approx(np.radians(5.0), abs=1e-3)
+
+    trial = src.get_trial("B002/Biodex_WF_50MVC/rep01", model=model)
+    assert trial.channel_names == tuple(biodex_ch)
+    assert trial.signal_kind == "mvc_normalized"
+    assert np.allclose(np.diff(trial.time), 1.0 / 300.0)
+    assert trial.meta["window_s"] == pytest.approx([1.75, 4.25])
+    elbow = int(model.jnt_qposadr[model.joint("elbow_flexion_r").id])
+    pro_sup = int(model.jnt_qposadr[model.joint("pro_sup_r").id])
+    assert np.allclose(trial.qpos[:, elbow], 0.5 * np.pi)
+    assert np.allclose(trial.qpos[:, pro_sup], -1.57)
+    # Muscles must supply the 6 N m wrist flexion above rest and nothing at the held elbow.
+    flex_dof = int(model.jnt_dofadr[model.joint("flexion_r").id])
+    elbow_dof = int(model.jnt_dofadr[model.joint("elbow_flexion_r").id])
+    assert np.allclose(trial.external_qfrc[30:220, flex_dof], -6.0, atol=1e-3)
+    assert np.allclose(trial.external_qfrc[:, elbow_dof], 0.0, atol=1e-3)
+
+    rom_trial = src.get_trial("B002/RoM_Th_FE/rep02", model=model)
+    assert rom_trial.channel_names == tuple(wire_ch)
+    assert rom_trial.external_qfrc is None
+    q = rom_trial.qpos[0]
+    assert q[model.jnt_qposadr[model.joint("flexion_r").id]] == pytest.approx(0.2)
+    assert q[model.jnt_qposadr[model.joint("mp_flexion_r").id]] == pytest.approx(
+        np.radians(-30.0)
+    )
+    assert q[model.jnt_qposadr[model.joint("cmc_flexion_r").id]] == pytest.approx(
+        np.radians(20.0)
+    )
+    assert q[model.jnt_qposadr[model.joint("mcp2_flexion_r").id]] == pytest.approx(
+        np.radians(40.0)
+    )
+    assert q[elbow] == pytest.approx(np.radians(30.0))
+
+    cmap = src.default_channel_map(model)
+    assert {b.channel: b.actuators for b in cmap.bindings} == {
+        "FCR": ("FCR_r",),
+        "OPP": ("OP_r",),
+        "FDI": ("DI1d_r", "DI1s_r"),
+    }
+    legacy = mujoco.MjModel.from_xml_string(
+        _MINI_BHAM_ARM_XML.replace('"DI1d_r"', '"RI2"').replace(
+            '<motor name="DI1s_r" joint="mcp2_flexion_r"/>', ""
+        )
+    )
+    fdi = [b for b in src.default_channel_map(legacy).bindings if b.channel == "FDI"]
+    assert fdi[0].actuators == ("RI2",)
+    with pytest.raises(KeyError):
+        src.get_trial("B002/RoM_Th_FE/rep03")
