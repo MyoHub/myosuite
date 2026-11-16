@@ -109,8 +109,15 @@ def compute_agent_reward(
     opponent_fell: bool,
     actions: np.ndarray,
     config: ChaseTagVsConfig,
+    prev_distance: float | None = None,
 ) -> float:
     """Dense reward for *agent_id* this step.
+
+    The proximity terms are potential-based (Ng et al., 1999): they pay the change
+    of ``exp(-d)`` since the previous step, so the sum over an episode is bounded
+    by the weight and staying close earns nothing; only the tag pays. The per-step
+    survival reward goes to the runner only, since paying it to the chaser would
+    reward putting the tag off.
 
     Args:
         data: Current MjData.
@@ -122,23 +129,34 @@ def compute_agent_reward(
         opponent_fell: True if the opponent fell.
         actions: This agent's muscle activation vector.
         config: Task configuration.
+        prev_distance: Pelvis distance after the previous step; ``None`` on the
+            first step of an episode (no proximity term).
 
     Returns:
         Scalar reward.
     """
     is_chaser = agent_is_chaser(agent_id, task)
-    return float(
-        chase_tag_dense_reward(
-            np,
-            is_chaser=is_chaser,
-            tagged=tagged,
-            self_fell=self_fell,
-            opponent_fell=opponent_fell,
-            act_sq_sum=float(np.sum(actions**2)),
-            dist=_pelvis_distance(data, meta),
-            config=config,
-        )
-    )
+
+    r = 0.0 if is_chaser else config.r_survival_per_step
+    r += config.r_act_reg * float(np.sum(actions**2))
+
+    if self_fell:
+        r += config.r_fall_penalty
+    if opponent_fell:
+        r -= config.r_fall_penalty  # opponent falling is good for us
+
+    dist = _pelvis_distance(data, meta)
+    closer = 0.0 if prev_distance is None else np.exp(-dist) - np.exp(-prev_distance)
+    if is_chaser:
+        r += config.r_chaser_proximity * closer
+        if tagged:
+            r += config.r_win_bonus
+    else:
+        r += config.r_runner_proximity * closer
+        if tagged:
+            r += config.r_loss_penalty
+
+    return float(r)
 
 
 def chase_tag_dense_reward(

@@ -108,6 +108,10 @@ _WARP_WRAP_DIFF_REW_ATOL = 5e-2
 # Foot-contact events: one step can differ by ~5e-3 in velocities although the muscle
 # lengths agree to 1e-5 (constraint-solver ordering; the other steps match to ~1e-6).
 _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL = 1e-2, 1e-2
+# Flat walks: such a step moves the reward by up to 0.018 (worst of 20 action seeds:
+# myoLegWalk 0.018, myoSarcLegWalk 0.016, myoFatiLegWalk 0.011; median 1e-6). A twin
+# that keeps the full passive force of a myoSarc id is 0.050 or more off on every seed.
+_WALK_REW_ATOL = 3e-2
 # Height-field terrain: MuJoCo Warp generates at most one capsule-hfield contact where
 # C MuJoCo can create several, so a step that lands a foot gets other contact impulses.
 # One tolerance per actor obs term, about twice the worst gaps over 750 synced random
@@ -163,7 +167,7 @@ def _tolerances(env_id: str) -> tuple[float | dict[str, float], float]:
     if "LegDirectional" in env_id:
         return _DIRECTIONAL_OBS_TERM_ATOL, _CONTACT_REW_ATOL
     if "LegWalk" in env_id:
-        return _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL
+        return _CONTACT_OBS_ATOL, _WALK_REW_ATOL
     return 5e-4, 5e-3
 
 
@@ -381,6 +385,41 @@ def test_success_parity_near_target(env_id: str) -> None:
         assert bool(values["success"][0]) == bool(cpu_rwd["solved"])
         solved_steps += bool(cpu_rwd["solved"])
     assert solved_steps > 0, "the solved flag was never exercised"
+
+
+@pytest.mark.parametrize("env_id", ["myoLegWalk-v0", "myoLegRoughTerrainWalk-v0"])
+def test_walk_sustained_success_parity(env_id: str) -> None:
+    """The twin's success turns true on the CPU env's step: one second on target.
+
+    Random actions fall before that, so the CPU body is put back on its reset pose
+    before every step, translating rigidly at the target velocity, and synced.
+    """
+    cpu, mj = _make_pair(env_id)
+    qpos = cpu.data.qpos.copy()
+    action = np.zeros(cpu.action_space.shape, dtype=np.float32)
+    window = round(1.0 / cpu.dt)
+    solved, on_target = [], []
+    for _ in range(window + 3):
+        cpu.data.qpos[:] = qpos
+        cpu.data.qvel[:] = 0.0
+        cpu.data.qvel[:2] = -cpu.target_x_vel, -cpu.target_y_vel  # the model faces -y
+        _sync(cpu, mj)
+        _, _, cpu_term, _, cpu_info = cpu.step(action)
+        _, _, mj_term, _, _ = mj.step(torch.as_tensor(action[None]))
+        assert not cpu_term and not bool(mj_term[0])
+        values = dict(mj.metrics_manager.get_active_iterable_terms(0))
+        assert bool(values["success"][0]) == cpu_info["solved"]
+        solved.append(cpu_info["solved"])
+        on_target.append((values.get("on_target"), cpu_info.get("on_target")))
+    assert solved == [False] * (window - 1) + [True] * 4
+    assert on_target == [([1.0], True)] * len(solved)
+
+    # A reset clears the twin's count.
+    mj.reset()
+    _sync(cpu, mj)
+    mj.step(torch.as_tensor(action[None]))
+    values = dict(mj.metrics_manager.get_active_iterable_terms(0))
+    assert values["on_target"][0] and not values["success"][0]
 
 
 def test_fatigue_torch_matches_numpy() -> None:
@@ -612,6 +651,7 @@ def test_torso_exo_observation_matches_cpu(env_id: str) -> None:
 COUPLED_TWIN_IDS = (
     "myoArmReachFixed-v0",
     "myoArmReachRandom-v0",
+    "myoChallengeChaseTagFBP2-v0",
     "myoFullBodyWaypoint-v0",
     "myoLegDirectionalBackward-v0",
     "myoLegDirectionalForward-v0",
@@ -625,10 +665,9 @@ COUPLED_TWIN_IDS = (
     "myoTorsoExoPoseFixed-v0",
     "myoTorsoPoseFixed-v0",
 )
-# MyoChallenge twins: their CPU envs do not project at reset yet (a competition
-# contract, pinned by the PyPI baselines), so neither do the twins.
+# Table tennis: the CPU env does not project at reset yet (its keyframe holds the
+# paddle off the shoulder couplings), so neither do the twins.
 _PENDING_COUPLED_TWINS = (
-    "myoChallengeChaseTagFBP2-v0",
     "myoChallengeChaseTagFBVsTrain-v0",
     "myoChallengeTableTennisP0-v0",
     "myoChallengeTableTennisP1-v0",
@@ -676,7 +715,8 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
         cpu.reset(seed=0)
         cpu_qpos = cpu.data.qpos.copy()
         cpu.reset(seed=1)
-        joints = mj.scene["robot"].data.joint_pos.cpu().numpy()
+        robot = next(iter(mj.scene.entities.values()))
+        joints = robot.data.joint_pos.cpu().numpy()
         root = 7 if cpu.model.jnt_type[0] == mujoco.mjtJoint.mjJNT_FREE else 0
         # A deterministic reset is replayed (an exo twin's chains have their own layout).
         if np.array_equal(cpu_qpos, cpu.data.qpos) and joints.shape[1] == (
