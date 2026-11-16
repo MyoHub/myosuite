@@ -204,16 +204,16 @@ def test_spaces_timing_physics_and_reward_terms_match(pair) -> None:
 
 
 def test_reset_matches_cpu_reset(pair) -> None:
-    """Keyframe reset (body-frame root angular velocity) and the opponent spawn."""
+    """Keyframe reset on the joint couplings (body-frame root angular velocity)
+    and the opponent spawn."""
     cpu_env, mj = pair
     cpu = cpu_env.unwrapped
+    cpu_env.reset(seed=0)
     mj.reset()
-    np.testing.assert_allclose(
-        mj.sim.data.qpos[0].numpy(), cpu.model.key_qpos[0], atol=1e-6
-    )
-    np.testing.assert_allclose(
-        mj.sim.data.qvel[0].numpy(), cpu.model.key_qvel[0], atol=1e-6
-    )
+    # Keyframe 0 is 4.2e-4 (qpos) and 0.054 (qvel) off the knee couplings.
+    assert np.abs(cpu.data.qvel - cpu.model.key_qvel[0]).max() > 1e-2
+    np.testing.assert_allclose(mj.sim.data.qpos[0].numpy(), cpu.data.qpos, atol=1e-6)
+    np.testing.assert_allclose(mj.sim.data.qvel[0].numpy(), cpu.data.qvel, atol=1e-6)
     assert not mj.sim.data.act.any()
 
     opponent = _opponent(mj)
