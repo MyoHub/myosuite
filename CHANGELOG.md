@@ -370,6 +370,7 @@ Changes since **v3.1.0** (2026-11-11).
   the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
   instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
   at their compiled positions, up to 1e-16 away before).
+* Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
