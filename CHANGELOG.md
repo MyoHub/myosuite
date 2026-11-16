@@ -125,6 +125,7 @@ Changes since **v3.1.0** (2026-11-11).
   origin, and takes its shape from that branch's length; the branches after the pulleys are tendon. Muscles without
   pulleys export exactly as before, and `--muscles paths` was already correct ([#810]).
 * Partial named motion clips preserve the model's reference pose for omitted joints when no keyframe exists, including nonzero joint references and free-root positions and quaternions. Models with keyframes still use keyframe zero.
+* Re-registering a model's spec recipe takes effect on the next build even after its previous spec has been cached; other recipes retain their caches.
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
