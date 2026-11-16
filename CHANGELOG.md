@@ -321,6 +321,12 @@ Changes since **v3.1.0** (2026-11-11).
   inputs on the training samples, and `augment_half_turn` adds the half-turn copies after the split, of training
   samples only. The same synthetic bouts now report 0.092 against 0.087. The fit uses 5 % fewer bouts; `train`
   without `held_out` keeps the step split.
+* **`myoMimic-v0` envs reuse the in-memory motion library without re-reading the clips.** Every env checked the
+  metadata of and hashed every clip file (and five source modules) before it could find the library already in
+  memory: 167 ms for 48 clips of 369 kB here, several seconds for a 972-clip list, paid again by each env of a vector
+  env. The content key is now memoised on each file's size, modification time and inode, so a repeated load reads no
+  clip (14 ms for the same 48 clips); an edited clip gets a new stamp and is checked and hashed again. The library
+  and the disk cache are unchanged.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
