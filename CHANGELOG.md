@@ -152,6 +152,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#711]: https://github.com/MyoHub/myosuite/pull/711
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
+
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
