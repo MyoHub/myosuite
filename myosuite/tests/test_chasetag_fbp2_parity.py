@@ -115,6 +115,7 @@ def _sync(cpu, mj: ManagerBasedRlEnv, prev_distance: float | None = None) -> Non
     opponent, cpu_opponent = _opponent(mj), cpu.opponent
     opponent.pose[0] = _t(cpu_opponent.get_opponent_pose())
     opponent.vel[0] = _t(cpu_opponent.opponent_vel)
+    opponent.xy_vel[0] = _t(cpu._opponent_xy_vel)
     opponent.policy[0] = _POLICY_IDS[cpu_opponent.opponent_policy]
     opponent.noise[0] = _t(cpu_opponent.noise_process.buffer)
     opponent.noise_idx[0] = cpu_opponent.noise_process.idx
@@ -345,6 +346,31 @@ def test_horizon_is_a_truncation_on_both(pair) -> None:
     assert not cpu_term and not bool(mj_term[0])
     assert not cpu_info["lose"]
     np.testing.assert_allclose(float(mj_rew[0]), cpu_rew, atol=_STEP_REW_ATOL)
+
+
+def test_opponent_relative_velocity_is_the_opponent_motion(pair) -> None:
+    """``rel_vel + agent velocity`` is the opponent's displacement over the step."""
+    cpu_env, mj = pair
+    cpu = cpu_env.unwrapped
+    obs_dict = cpu._get_obs_dict(cpu._accessor)
+    index = CHASETAG_OBS_KEYS.index("opponent_relative")
+    start = sum(np.atleast_1d(obs_dict[k]).size for k in CHASETAG_OBS_KEYS[:index])
+    mj.reset()
+    opponent = _opponent(mj)
+    opponent.policy[:] = 2  # random: the opponent moves and turns
+    opponent.pose[:, :2] = 3.0  # clear of the agent and of the arena walls
+    zero = torch.zeros(2, mj.action_manager.total_action_dim)
+    for _ in range(5):
+        before = opponent.pose[:, :2].clone()
+        obs, _, terminated, truncated, _ = mj.step(zero)
+        assert not (terminated.any() or truncated.any())
+        rel_vel = obs[GROUP][:, start + 3 : start + 6]
+        agent_vel = mj.sim.data.qvel[:, :3]
+        moved = torch.cat([opponent.pose[:, :2] - before, torch.zeros(2, 1)], dim=1)
+        torch.testing.assert_close(
+            rel_vel + agent_vel, moved / mj.step_dt, atol=1e-3, rtol=0
+        )
+    assert opponent.xy_vel.abs().max() > 0.1
 
 
 def test_distance_delta_restarts_each_episode(pair) -> None:
