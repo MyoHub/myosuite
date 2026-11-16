@@ -47,6 +47,7 @@ from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
+from myosuite.physics.joint_coupling import JointCouplings
 from myosuite.physics.quat import quat_yaw
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
@@ -438,6 +439,7 @@ class _ChaseTagOpponent(ManagerTermBase):
         )
         self.pose = torch.zeros(n, 3, device=device)  # [x, y, theta]
         self.vel = torch.zeros(n, 2, device=device)  # [lin_vel, rot_vel]
+        self.xy_vel = torch.zeros(n, 2, device=device)  # world-frame, last step
         self.policy = torch.ones(n, dtype=torch.long, device=device)
         # Unit-variance noise buffer and read index of the colored-noise process.
         self.noise = torch.zeros(n, 2, _CHASETAG_NOISE_STEPS, device=device)
@@ -469,6 +471,7 @@ class _ChaseTagOpponent(ManagerTermBase):
         pose = torch.cat([xy, theta], dim=1)
         self.pose[ids] = torch.where((policy == 0)[:, None], self._static_pose, pose)
         self.vel[ids] = 0.0
+        self.xy_vel[ids] = 0.0
         self.policy[ids] = policy
         # reset_noise_process: a fresh noise series per episode.
         self.noise[ids] = _powerlaw_psd_gaussian(
@@ -495,7 +498,7 @@ class _ChaseTagOpponent(ManagerTermBase):
         step = vel.clamp(-2.0, 2.0) * dt
         heading = self.pose[:, 2] + 0.5 * math.pi
         bound = _CHASETAG_ARENA_BOUND
-        self.pose = torch.stack(
+        pose = torch.stack(
             [
                 (self.pose[:, 0] - step[:, 0] * torch.cos(heading)).clamp(
                     -bound, bound
@@ -507,6 +510,8 @@ class _ChaseTagOpponent(ManagerTermBase):
             ],
             dim=1,
         )
+        self.xy_vel = (pose[:, :2] - self.pose[:, :2]) / dt
+        self.pose = pose
         self.vel = vel
         self._write_mocap(self._env)
 
@@ -540,14 +545,14 @@ def _chasetag_advance_opponent(env: ManagerBasedRlEnv) -> None:
 def _chasetag_obs_opponent_relative(env: ManagerBasedRlEnv) -> torch.Tensor:
     """``[rel_pos, rel_vel, dist]`` of ``chasetag_obs``. Shape (N, 7).
 
-    The opponent sits at its mocap position (z = 0); its "velocity" is the
-    ``[lin_vel, rot_vel, 0]`` control pair, as on the CPU.
+    The opponent sits at its mocap position (z = 0) and moves with its
+    world-frame velocity over the last step, as on the CPU.
     """
     qpos, qvel = _chasetag_root(env)
     opponent = _chasetag_opponent(env)
     zeros = torch.zeros_like(opponent.vel[:, :1])
     rel_pos = torch.cat([opponent.pose[:, :2], zeros], dim=1) - qpos[:, :3]
-    rel_vel = torch.cat([opponent.vel, zeros], dim=1) - qvel[:, :3]
+    rel_vel = torch.cat([opponent.xy_vel, zeros], dim=1) - qvel[:, :3]
     dist = torch.linalg.norm(rel_pos, dim=1, keepdim=True)
     return torch.cat([rel_pos, rel_vel, dist], dim=1)
 
@@ -706,7 +711,8 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
     }
     events = {
         # reset_type="none": keyframe 0, including its body-frame root angular
-        # velocity (mjlab's default reset reads it as world-frame).
+        # velocity (mjlab's default reset reads it as world-frame), on the joint
+        # couplings as ChaseTagEnv.reset.
         "reset_scene_to_default": EventTermCfg(
             func=mdp.reset_to_cpu_state,
             mode="reset",
@@ -714,8 +720,7 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
                 "asset_cfg": SceneEntityCfg(_CHASETAG_ENTITY_NAME),
                 "qpos": tuple(float(q) for q in model.key_qpos[0]),
                 "qvel": tuple(float(v) for v in model.key_qvel[0]),
-                # The CPU ChaseTagEnv reset does not project its couplings.
-                "couplings": None,
+                "couplings": JointCouplings.from_model(model),
             },
         ),
         # After the agent reset: the spawn distance is measured from its new pose.
