@@ -61,18 +61,20 @@ activations and controls at 0.5), and the bodies, joints, tendons, equality
 constraints and sensors on both sides. Each model is tried twice: as MyoSuite writes
 it, and rewritten by MuJoCo into one plain file with ``-`` in names replaced by ``_``
 (Newton 1.6.1 and 1.7.0 look up a spatial tendon's sites by their sanitized names, so they
-drop hyphenated sites; `newton#4566 <https://github.com/newton-physics/newton/issues/4566>`_).
+drop hyphenated sites; `newton#4566 <https://github.com/newton-physics/newton/issues/4566>`_,
+fixed in Newton 1.8.0 via `newton#4595 <https://github.com/newton-physics/newton/pull/4595>`_).
 The rewrite also removes geoms using MuJoCo's binary ``.msh`` meshes, which
-Newton 1.7.0 cannot read (upstream PR 4903 adds support). The normalized comparison uses that modified model as its
+Newton 1.7.0 cannot read (fixed in Newton 1.8.0 via
+`newton#4461 <https://github.com/newton-physics/newton/pull/4461>`_). The normalized comparison uses that modified model as its
 reference; it does not establish that normalization preserved every property of
 the authored model. Remaining differences can originate in either Newton's
 importer or its conversion.
 
 Run it on the CPU, in an environment with Newton and without mjlab (the two need
-different ``mujoco-warp`` versions)::
+different ``mujoco-warp`` versions until `#818 <https://github.com/MyoHub/myosuite/issues/818>`_ lands)::
 
    uv venv --python 3.12 .venv-newton
-   uv pip install --python .venv-newton "newton[sim]==1.7.0" "musclemimic_models==1.0.6" -e .
+   uv pip install --python .venv-newton "newton[sim]==1.8.0" "musclemimic_models==1.0.6" -e .
    .venv-newton/bin/python .github/newton_probe/newton_compat_probe.py --out newton_probe
 
 It prints a table and writes ``newton_probe/newton_probe.md`` and
