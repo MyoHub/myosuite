@@ -508,6 +508,7 @@ class BaodingEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
         self._task_state = self.reset_task(self.np_random)
 
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self.get_obs_dict(self._accessor))
