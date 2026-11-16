@@ -128,6 +128,7 @@ Changes since **v3.1.0** (2026-11-11).
 * Re-registering a model's spec recipe takes effect on the next build even after its previous spec has been cached; other recipes retain their caches.
 * Incomplete packaged KIT motion sets raise `MissingMotionData` with missing-file counts and setup guidance even when the cache's first clip exists. Explicit user clip lists retain their normal missing-file errors.
 * **Mimic resets always leave a reference transition.** CPU and mjlab `myoMimic-v0` sample only bins with a frame before the clip end. A one-second clip at a 10 ms control step previously created a bin containing only its final frame; resetting there made the first step index past the clip or enter the next clip. Terminal frames remain available for final-step scoring and failure statistics. Clips shorter than one control transition now fail with a clear error.
+* **CPU clip-following rewards and termination use the post-step pose.** `MuscleMimicClipEnvV0` refreshes derived MuJoCo state after its control-step integration, so tracked sites and muscle geometry agree with the returned qpos/qvel. Site-based rewards and early termination can differ from earlier evaluations; action/observation layouts and integration trajectories are preserved.
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
