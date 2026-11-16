@@ -228,6 +228,9 @@ Changes since **v3.1.0** (2026-11-11).
   The proximity terms now pay the change of `exp(-d)` since the previous step (potential-based shaping, bounded
   by the weight over an episode), and the per-step survival reward goes to the runner only. Observations, actions,
   terminations and `info["score"]` are unchanged; policies trained on the old reward should be retrained.
+* Tutorial 3.3 (inverse dynamics) fixes the swapped `cmc_abduction` / `cmc_flexion` header labels in
+  `tutorials/files/3.3/trajectory.csv` (left over from the older MyoHand joint naming) and selects trajectory
+  columns by joint name.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
