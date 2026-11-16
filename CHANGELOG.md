@@ -26,6 +26,17 @@ Changes since **v3.1.0** (2026-11-11).
   `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
 ### Changed
 
+* **`myoHandPose*` targets matched to the hand by joint name.** The fixed and random targets of the 48
+  `myoHandPose*` ids (`myo`, `myoSarc`, `myoFati`, `myoReaf`) now name their 23 joints. On the released hand
+  (`myo_sim` 0.2.x) nothing changes: the target still covers `qpos[:23]`, and observations and rewards are
+  bit-identical. On the revised MyoHand of `myo_sim` >= 0.3 (MyoHub/myo_sim#147), which adds CMC4/CMC5 and internal
+  `node_*` joints, the ids keep scoring the same 23 joints (the new ones stay at neutral and unscored, `pose_err` has
+  23 entries) with the same `pose_thd`. The fixed ASL targets keep their values. `myoHandPoseRandom-v0` draws its
+  targets from the measured active range of motion instead of the envelope of the ten ASL poses
+  (`envs/myo/tasks/basic/arm/hand_pose_targets.json`, with sources), with MCP hyperextension and the revised hand's
+  flexion-dependent MCP abduction limit; the hand is detected by its `cmc4_flexion_r` joint. New `PoseEnvV0` arguments
+  `target_jnt_names` and `model_target_jnt_ranges`, and a `qpos_ids` argument of `pose_error_obs` / `pose_reward`;
+  the mjlab twins follow.
 * **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
   `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
   keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds

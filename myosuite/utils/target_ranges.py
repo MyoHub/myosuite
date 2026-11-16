@@ -93,6 +93,104 @@ def resolve_joint_target_ranges(
     return bounds[:, 0], bounds[:, 1]
 
 
+class TargetCoupling(NamedTuple):
+    """A limit ``lo <= coef * t[index] + other_coef * t[other] <= hi`` on a target.
+
+    Taken from a limited fixed tendon over two target joints (e.g. the
+    flexion-dependent MCP abduction limit of the revised MyoHand). ``index``
+    is the joint with the larger coefficient, the one a sampler adjusts.
+    """
+
+    index: int
+    other: int
+    coef: float
+    other_coef: float
+    lo: float
+    hi: float
+
+
+class JointTargetLayout(NamedTuple):
+    """Where a named joint target lives in ``qpos``.
+
+    Attributes:
+        qpos_ids: ``qpos`` address of each target entry, or ``None`` when the
+            target covers the leading ``qpos`` entries in order (the layout the
+            pose terms assume by default).
+        couplings: Limits that couple two target entries.
+    """
+
+    qpos_ids: tuple[int, ...] | None
+    couplings: tuple[TargetCoupling, ...]
+
+
+def select_target_jnt_range(
+    joint_names: tuple[str, ...],
+    target_jnt_range: Mapping[str, Any] | None,
+    model_target_jnt_ranges: Mapping[str, Mapping[str, Any]] | None,
+) -> Mapping[str, Any] | None:
+    """Pick the target range for the loaded model.
+
+    Args:
+        joint_names: Joint names of the loaded model.
+        target_jnt_range: Default ``{joint_name: (lo, hi)}``.
+        model_target_jnt_ranges: ``{marker_joint: target_jnt_range}``; the first
+            entry whose marker joint the model has replaces the default.
+
+    Returns:
+        The selected range (the default when no marker matches).
+    """
+    for marker, ranges in (model_target_jnt_ranges or {}).items():
+        if marker in joint_names:
+            return ranges
+    return target_jnt_range
+
+
+def joint_target_layout(
+    model: mujoco.MjModel, joint_names: tuple[str, ...]
+) -> JointTargetLayout:
+    """Lay out a target over *joint_names* (one entry per joint) on *model*.
+
+    Args:
+        model: Compiled MuJoCo model.
+        joint_names: Hinge/slide joint of each target entry.
+
+    Returns:
+        The :class:`JointTargetLayout`.
+
+    Raises:
+        KeyError: If a joint name is not in the model.
+        ValueError: If a joint is not a hinge/slide joint.
+    """
+    adrs = []
+    for name in joint_names:
+        jid = model.joint(name).id
+        if int(model.jnt_type[jid]) not in _SCALAR_JOINT_TYPES:
+            raise ValueError(f"Joint {name!r} is not a hinge/slide joint.")
+        adrs.append(int(model.jnt_qposadr[jid]))
+    entry = {adr: i for i, adr in enumerate(adrs)}
+    couplings = []
+    for t in range(model.ntendon):
+        start, num = int(model.tendon_adr[t]), int(model.tendon_num[t])
+        wraps = range(start, start + num)
+        if not model.tendon_limited[t] or num != 2:
+            continue
+        if any(model.wrap_type[w] != mujoco.mjtWrap.mjWRAP_JOINT for w in wraps):
+            continue
+        terms = [
+            (entry.get(int(model.jnt_qposadr[model.wrap_objid[w]])), model.wrap_prm[w])
+            for w in wraps
+        ]
+        if any(i is None for i, _ in terms):
+            continue
+        (i, ci), (j, cj) = sorted(terms, key=lambda term: -abs(term[1]))
+        lo, hi = model.tendon_range[t]
+        couplings.append(
+            TargetCoupling(i, j, float(ci), float(cj), float(lo), float(hi))
+        )
+    leading = adrs == list(range(len(adrs)))
+    return JointTargetLayout(None if leading else tuple(adrs), tuple(couplings))
+
+
 def resolve_site_target_ranges(
     model: mujoco.MjModel, target_reach_range: Mapping[str, Any]
 ) -> SiteTargets:

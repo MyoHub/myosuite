@@ -86,6 +86,8 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 On every CPU env, a step on which MuJoCo reset a diverged simulation no longer pays a positive reward or counts as `solved`, and `info["mj_unstable"]` marks it. Observations, actions, dynamics and the rewards of regular steps are unchanged, so checkpoints load and score as before; only evaluations that contained a diverged episode change (the ChaseTag envs counted such an episode as a win).
 
+`myoHandPose*` (all 48 ids) match their targets to the hand by joint name. With `myo_sim` 0.2.x observations and rewards are bit-identical, so the published hand-pose checkpoints load and score as before. With the revised MyoHand of `myo_sim` >= 0.3 the observation grows (32 joints, more muscles) and `myoHandPoseRandom-v0` draws targets from the measured active range of motion, so the published checkpoints, trained on the old hand and the old target envelope, do not apply there; they need retraining on the new hand. The ids still score the same 23 joints with the same success threshold (0.7 rad), so success rates stay comparable.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.
