@@ -13,10 +13,9 @@ ONNX canonicalises the raw observation first, ``export_canon_onnx``).
 import argparse
 from pathlib import Path
 
-import numpy as np
 import torch
 
-from chasetag_teacher.augment import half_turn
+from chasetag_teacher.augment import augment_half_turn
 from chasetag_teacher.distill import (
     canonicalise_inplace,
     export_canon_onnx,
@@ -55,15 +54,15 @@ ap.add_argument(
     help="train on yaw-canonicalised observations; the ONNX canonicalises",
 )
 a = ap.parse_args()
-X, Y = load_data([Path(d) for d in a.data])
+X, Y, held = load_data([Path(d) for d in a.data])
 if a.augment:
-    X, Y = np.concatenate((X, half_turn(X))), np.concatenate((Y, Y))
+    X, Y, held = augment_half_turn(X, Y, held)
 print(len(X), "samples", flush=True)
 if a.canon:
     canonicalise_inplace(X)
 init = torch.load(a.init, weights_only=True) if a.init else None
 res = train(X, Y, epochs=a.epochs, batch=a.batch, lr=a.lr, device=a.device, init=init, yaw_aug=a.yaw_aug,
-            log=lambda s: print(s, flush=True))  # fmt: skip
+            log=lambda s: print(s, flush=True), held_out=held)  # fmt: skip
 res["canon"] = a.canon
 out = Path(a.out)
 torch.save(res["state"], out)

@@ -260,6 +260,7 @@ class MotionLib:
         bin_frames: Frames per reset bin.
         bin_clip, bin_start: Clip and first frame of each bin.
         frame_bin: Bin of every frame.
+            Terminal scoring frames belong to the preceding transition bin.
         frames: Per-frame arrays: the :class:`~myosuite.terms.mimic_track.TrackRef`
             fields plus ``body_pos`` / ``body_lin_vel`` (tracked bodies, world) and
             ``reset_qpos`` / ``reset_qvel`` (the full state written at a reset, joints
@@ -380,15 +381,19 @@ def _assemble_lib(
     start = np.concatenate(([0], np.cumsum(lens)[:-1]))
     bin_frames = max(1, round(bin_s / dt))
     bin_clip = np.concatenate(
-        [np.full(-(-n // bin_frames), i) for i, n in enumerate(lens)]
+        [np.full(-(-(n - 1) // bin_frames), i) for i, n in enumerate(lens)]
     )
     bin_start = np.concatenate(
-        [s + bin_frames * np.arange(-(-n // bin_frames)) for s, n in zip(start, lens)]
+        [
+            s + bin_frames * np.arange(-(-(n - 1) // bin_frames))
+            for s, n in zip(start, lens)
+        ]
     )
     clip_id = np.repeat(np.arange(len(lens)), lens)
     frame_bin = np.empty(int(lens.sum()), np.int64)
     for b, (c, s) in enumerate(zip(bin_clip, bin_start)):
         frame_bin[s : min(s + bin_frames, start[c] + lens[c])] = b
+    frame_bin[start + lens - 1] = frame_bin[start + lens - 2]
     return MotionLib(
         names=names, dt=dt, clip_start=start, clip_len=lens, clip_end=start + lens - 1,
         clip_id=clip_id, bin_frames=bin_frames, bin_clip=bin_clip, bin_start=bin_start,
@@ -612,6 +617,9 @@ def load_motion_lib(
         workers: Threads preprocessing clips.
         cache_dir: Optional directory for persistent, data-only NumPy archives.
 
+    Repeated calls whose clip files keep their size, modification time and inode reuse
+    the clips' content key without reading them.
+
     Returns:
         The library (NumPy; do not modify).
 
@@ -620,20 +628,10 @@ def load_motion_lib(
             kinematics (another fingerprint; without one: another myo_sim version), or
             a clip without that metadata.
     """
-    from myosuite.biomechanics.retarget import check_refit_meta  # noqa: PLC0415
-
     from . import resolve_clips  # noqa: PLC0415
-    from .models import (  # noqa: PLC0415
-        compiled_scene,
-        kinematic_fingerprint,
-        model_cfg,
-        model_version,
-    )
+    from .models import compiled_scene, model_cfg  # noqa: PLC0415
 
     files = motion_files(*resolve_clips(clips, root, model))
-    version, fingerprint = model_version(model), kinematic_fingerprint(model)
-    for f in files:
-        check_refit_meta(f, model, version, fingerprint)
     if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
         raise ValueError("workers must be a positive integer")
     if not files:
@@ -641,11 +639,44 @@ def load_motion_lib(
     if not np.isfinite(dt) or dt <= 0 or not np.isfinite(bin_s) or bin_s <= 0:
         raise ValueError("dt and bin_s must be finite and positive")
     files = tuple(str(Path(f).resolve()) for f in files)
+    stats = [os.stat(f) for f in files]
+    stamps = tuple(
+        (f, s.st_size, s.st_mtime_ns, s.st_ino) for f, s in zip(files, stats)
+    )
+    key = _checked_motion_key(stamps, model, self_collisions, dt, bin_s)
     scene = compiled_scene(model, self_collisions)
     tracked = model_cfg(model).tracked_bodies
-    key = _motion_key(files, scene, tracked, dt, bin_s)
     directory = str(Path(cache_dir).expanduser().resolve()) if cache_dir else ""
     return _cached_motion_lib(key, files, scene, tracked, dt, bin_s, workers, directory)
+
+
+@functools.lru_cache(maxsize=8)
+def _checked_motion_key(
+    stamps: tuple[tuple[str, int, int, int], ...], model: str, self_collisions: bool,
+    dt: float, bin_s: float,
+) -> str:  # fmt: skip
+    """Refit-metadata check and content key of the clips, once per set of file stamps.
+
+    Hashing reads every clip (about 9 ms per 0.7 MB), which each env paid again before
+    it could reuse the library in memory. A stamp is a file's path, size, modification
+    time and inode (Python's bytecode cache checks size and modification time): an
+    edited clip gets a new stamp and is checked and hashed again.
+    """
+    from myosuite.biomechanics.retarget import check_refit_meta  # noqa: PLC0415
+
+    from .models import (  # noqa: PLC0415
+        compiled_scene,
+        kinematic_fingerprint,
+        model_cfg,
+        model_version,
+    )
+
+    files = tuple(stamp[0] for stamp in stamps)
+    version, fingerprint = model_version(model), kinematic_fingerprint(model)
+    for f in files:
+        check_refit_meta(f, model, version, fingerprint)
+    scene = compiled_scene(model, self_collisions)
+    return _motion_key(files, scene, model_cfg(model).tracked_bodies, dt, bin_s)
 
 
 @functools.lru_cache(maxsize=2)
