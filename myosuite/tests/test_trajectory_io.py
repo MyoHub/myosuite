@@ -82,6 +82,67 @@ def test_load_motion_clip_rejects_bad_qpos(tmp_path: Path) -> None:
         load_motion_clip(p, expected_nq=4, expected_nv=3)
 
 
+def test_load_motion_clip_rejects_empty_frames(tmp_path: Path) -> None:
+    path = tmp_path / "empty.npz"
+    np.savez(path, qpos=np.empty((0, 2)), qvel=np.empty((0, 2)))
+    with pytest.raises(ValueError, match="qpos must contain at least one frame"):
+        load_motion_clip(path, expected_nq=2, expected_nv=2)
+
+
+@pytest.mark.parametrize("field", ["qvel", "site_xpos"])
+@pytest.mark.parametrize("frames", [0, 1, 4])
+def test_load_motion_clip_rejects_mismatched_frame_counts(
+    tmp_path: Path, field: str, frames: int
+) -> None:
+    path = tmp_path / "mismatched.npz"
+    values = np.zeros((frames, 1) if field == "qvel" else (frames, 2, 3))
+    np.savez(path, qpos=np.zeros((3, 1)), **{field: values})
+    with pytest.raises(
+        ValueError, match=f"{field} frame count mismatch: expected 3, got {frames}"
+    ):
+        load_motion_clip(path, expected_nq=1, expected_nv=1)
+
+
+@pytest.mark.parametrize(
+    "shape", [(), (3,), (3, 3), (3, 2, 2), (3, 2, 4), (3, 2, 3, 1)]
+)
+def test_load_motion_clip_rejects_malformed_site_positions(
+    tmp_path: Path, shape: tuple[int, ...]
+) -> None:
+    path = tmp_path / "bad_sites.npz"
+    np.savez(path, qpos=np.zeros((3, 1)), site_xpos=np.zeros(shape))
+    with pytest.raises(ValueError, match=r"site_xpos must have shape \(T, S, 3\)"):
+        load_motion_clip(path, expected_nq=1, expected_nv=1)
+
+
+@pytest.mark.parametrize("with_qvel", [False, True])
+def test_load_motion_clip_keeps_single_frame_partial_clips(
+    tmp_path: Path, with_qvel: bool
+) -> None:
+    """One-frame named subsets and zero sites remain valid, with optional velocities."""
+    path = tmp_path / "single.npz"
+    velocities = {"qvel": np.array([[0.3]])} if with_qvel else {}
+    np.savez(
+        path,
+        qpos=np.array([[0.2]]),
+        site_xpos=np.empty((1, 0, 3)),
+        joint_names=np.array(["joint_a"]),
+        **velocities,
+    )
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint name="joint_a"/>'
+        '<joint name="joint_b" axis="0 1 0"/><geom size="0.1"/>'
+        "</body></worldbody></mujoco>"
+    )
+    clip = load_motion_clip(path, expected_nq=model.nq, expected_nv=model.nv)
+    assert clip.num_frames == 1 and clip.site_xpos.shape == (1, 0, 3)
+    assert clip.qpos.shape == (1, 1) and clip.qpos_joint_names == ["joint_a"]
+    assert (clip.qvel is not None) == with_qvel
+    data = expand_motion_clip_to_model(clip, model).to_mjdata(model)
+    np.testing.assert_array_equal(data.qpos, [0.2, 0.0])
+    np.testing.assert_array_equal(data.qvel, [0.3 if with_qvel else 0.0, 0.0])
+
+
 def test_load_motion_clip_accepts_partial_joint_subset(tmp_path: Path) -> None:
     """Named joint subsets should load without full-width qpos/qvel arrays."""
     p = tmp_path / "partial.npz"
