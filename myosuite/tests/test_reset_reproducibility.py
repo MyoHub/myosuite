@@ -146,7 +146,7 @@ def test_same_instance_reset_is_reproducible(env_id: str, kwargs: dict) -> None:
     try:
         actions = _actions(env)
         # Warm-up reset with another seed: an episode must not depend on the
-        # previous one (Bimanual also skips its object scaling on reset #1).
+        # previous one.
         env.reset(seed=SEED + 1)
         first = _rollout(env, actions)
         np.random.seed(4242)

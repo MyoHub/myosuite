@@ -11,6 +11,7 @@ from myosuite_dynsyn.groups import (
     k_medoids,
     length_similarity,
     main,
+    record_muscle_lengths,
     synergy_groups,
 )
 
@@ -68,6 +69,32 @@ def test_similarity_measures_length_changes_not_slow_drift() -> None:
     similarity = length_similarity(still, segment=segment)
     assert np.isfinite(similarity).all()
     assert similarity[1, 1] == 1.0
+
+
+def test_coupled_joints_follow_their_masters(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Random velocities must not drive the knee mechanism against its couplings."""
+    import mujoco
+
+    from myosuite import make_env
+    from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
+
+    env = make_env("myoLegWalk-v0")
+    model = env.unwrapped.model
+    couplings = JointCouplings.from_model(model)
+    residual: list[float] = []
+    step = mujoco.mj_step
+
+    def _step(m: mujoco.MjModel, d: mujoco.MjData) -> None:
+        step(m, d)
+        q = d.qpos.copy()
+        project_joint_couplings(couplings, q)
+        residual.append(float(np.abs(q - d.qpos).max()))
+
+    monkeypatch.setattr(mujoco, "mj_step", _step)
+    muscles = np.flatnonzero(model.actuator_dyntype == mujoco.mjtDyn.mjDYN_MUSCLE)
+    record_muscle_lengths(model, muscles, steps=2000)
+    env.close()
+    assert max(residual) < 0.02  # 0.24 when the dependents got random velocities
 
 
 def test_synergy_groups_partition_the_muscles() -> None:
