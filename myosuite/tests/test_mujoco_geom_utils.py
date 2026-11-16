@@ -108,6 +108,27 @@ def test_edited_model_matches_recompiled_model() -> None:
         )
 
 
+def test_edited_model_recomputes_default_extent_and_center() -> None:
+    xml_without_stat = _XML.replace('  <statistic extent="5" center="0 -1 1"/>\n', "")
+    spec = mujoco.MjSpec.from_string(xml_without_stat)
+    model = spec.compile()
+    _edit_compiled(model)
+    refresh_geom_derived_fields(model, spec, [model.body("obj").id])
+
+    expected = _arrays(_recompiled(spec))
+    actual = _arrays(model)
+    for name in (
+        "stat.meaninertia",
+        "stat.meanmass",
+        "stat.meansize",
+        "stat.extent",
+        "stat.center",
+    ):
+        np.testing.assert_allclose(
+            actual[name], expected[name], rtol=1e-12, atol=1e-12, err_msg=name
+        )
+
+
 def test_refresh_restores_culled_contacts() -> None:
     spec = mujoco.MjSpec.from_string(_XML)
     model = spec.compile()

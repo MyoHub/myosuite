@@ -458,7 +458,12 @@ def test_checkpoint_symlink_keeps_format_and_rejects_mismatch(
     blob = tmp_path / "blob_without_extension"
     blob.write_bytes(b"fixture")
     checkpoint = tmp_path / "policy.zip"
-    checkpoint.symlink_to(blob)
+    try:
+        checkpoint.symlink_to(blob)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Creating symlinks on Windows requires elevated privileges")
+        raise
     env = _Env()
     monkeypatch.setattr(myosuite, "make_env", lambda _id: env)
     model = SimpleNamespace(
