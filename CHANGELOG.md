@@ -138,6 +138,19 @@ Changes since **v3.1.0** (2026-11-11).
 * **Mimic resets always leave a reference transition.** CPU and mjlab `myoMimic-v0` sample only bins with a frame before the clip end. A one-second clip at a 10 ms control step previously created a bin containing only its final frame; resetting there made the first step index past the clip or enter the next clip. Terminal frames remain available for final-step scoring and failure statistics. Clips shorter than one control transition now fail with a clear error.
 * **CPU clip-following rewards and termination use the post-step pose.** `MuscleMimicClipEnvV0` refreshes derived MuJoCo state after its control-step integration, so tracked sites and muscle geometry agree with the returned qpos/qvel. Site-based rewards and early termination can differ from earlier evaluations; action/observation layouts and integration trajectories are preserved.
 * Motion NPZ loading rejects empty clips, inconsistent frame counts and malformed site-position arrays before playback.
+* **`solved` of the walk tasks means sustained walking.** `myoLegWalk-v0`, the rough, hilly and stairs walks and their
+  `myoSarc`/`myoFati` variants set `solved` on every step on which the body was upright and within 0.5 m/s of the target
+  velocity. The reset keyframe already moves at about the target speed, so a zero-action episode that falls after
+  about 0.2 s had 7 to 10 solved steps and `evaluate_success` (more than 5 solved steps) reported 100 % on all four
+  ids, as did random actions. `solved` is now true only once that condition has held on every control step of the last
+  second of the episode (`LOCOMOTION_SOLVED_WINDOW_S`, 100 control steps; shared terms `locomotion_streak` and
+  `locomotion_sustained` in `terms.base_reward`), so the earliest solved step is step 100 and a fall or a step off
+  target starts the count again. The per-step flag stays available as `on_target` in
+  `info` and the reward dict. The mjlab twins follow: `Episode_Metrics/success` is the new flag on the last step of an
+  episode and the new `Episode_Metrics/on_target` is the share of an episode's steps on target. `solved` has no reward
+  weight in any registered walk config, so rewards, observations and dynamics are unchanged; what changes is every
+  success rate of these ids (`evaluate_success`, `scripts/eval_mjlab_policy.py`, `scripts/train_sb3.py`,
+  `--stop-on-success`, the success curves of tutorial 2.3). See `docs/baseline_checkpoints.md`.
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
