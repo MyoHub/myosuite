@@ -21,3 +21,19 @@ def half_turn(obs: np.ndarray) -> np.ndarray:
     w, x, y, z = (obs[:, 3 + k].copy() for k in range(4))
     out[:, 3], out[:, 4], out[:, 5], out[:, 6] = -z, -y, x, w  # q_z(pi) * q
     return out
+
+
+def augment_half_turn(
+    obs: np.ndarray, act: np.ndarray, held_out: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Add the half-turn copy of every training sample (not of the held-out ones) after the train / validation split.
+
+    Returns:
+        Observations, excitations and the held-out mask, the copies appended as training samples.
+    """
+    keep = ~held_out
+    return (
+        np.concatenate((obs, half_turn(obs[keep]))),
+        np.concatenate((act, act[keep])),
+        np.concatenate((held_out, np.zeros(int(keep.sum()), bool))),
+    )
