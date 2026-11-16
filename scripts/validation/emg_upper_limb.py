@@ -1521,7 +1521,7 @@ class GrabMyoSource(EMGSource):
 
 
 # Delsys Trigno sensors S4-S6 on the right arm (Fritsche et al., 2026, Table 2).
-ULTRAMOCAP_CHANNELS: dict[str, str] = {
+FRITSCHE2026_CHANNELS: dict[str, str] = {
     "IM EMG4": "biceps_brachii",
     "IM EMG5": "triceps_long",
     "IM EMG6": "deltoid_middle",
@@ -1576,7 +1576,7 @@ def buet_arm_to_upper_limb_coords(
     return coords
 
 
-class UltraMoCap2025Source(EMGSource):
+class Fritsche2026Source(EMGSource):
     """ULTRA-MoCap right-arm biceps, triceps and middle deltoid sEMG with IK.
 
     Fritsche, O., Camacho, S., Hossain, M. S. B., Halfpenny, T., Arciniegas, C.,
@@ -1589,11 +1589,11 @@ class UltraMoCap2025Source(EMGSource):
     synchronised with 100 Hz Vicon OpenSim IK (``Processed IK/*.csv``).
     """
 
-    name = "ultramocap2025"
+    name = "fritsche2026"
 
     def __init__(
         self,
-        data_root: str | Path = "downloads/emg/ultramocap2025",
+        data_root: str | Path = "downloads/emg/fritsche2026",
         *,
         subjects: Sequence[str] | None = None,
         pattern: str | None = None,
@@ -1642,7 +1642,7 @@ class UltraMoCap2025Source(EMGSource):
     def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
         del model
         return EMGChannelMap(
-            name="ultramocap2025_right_arm_3ch",
+            name="fritsche2026_right_arm_3ch",
             version=1,
             bindings=(
                 ChannelBinding("biceps_brachii", ("BIClong_r", "BICshort_r")),
@@ -1658,7 +1658,7 @@ class UltraMoCap2025Source(EMGSource):
         with emg_path.open(encoding="utf-8") as fh:
             hdr = [h.strip() for h in fh.readline().split(",")]
             emg = np.loadtxt(fh, delimiter=",", ndmin=2)
-        keep = [i for i, h in enumerate(hdr) if h in ULTRAMOCAP_CHANNELS]
+        keep = [i for i, h in enumerate(hdr) if h in FRITSCHE2026_CHANNELS]
         # Frame numbers count 100 Hz mocap frames from 1; sub-frames are 2 kHz samples.
         emg_time = (emg[:, 0] - 1.0) / 100.0 + emg[:, 1] / 2000.0
         with ik_path.open(encoding="utf-8") as fh:
@@ -1711,7 +1711,7 @@ class UltraMoCap2025Source(EMGSource):
             trial_id=trial_id,
             time=emg_time[in_emg] - t0,
             signals=emg[in_emg][:, keep],
-            channel_names=tuple(ULTRAMOCAP_CHANNELS[hdr[i]] for i in keep),
+            channel_names=tuple(FRITSCHE2026_CHANNELS[hdr[i]] for i in keep),
             signal_kind="raw",
             qpos=qpos,
             kinematics_time=kin_time,

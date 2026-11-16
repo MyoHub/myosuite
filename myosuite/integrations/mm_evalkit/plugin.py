@@ -74,9 +74,9 @@ def grabmyo_main(argv: Sequence[str] | None = None) -> int:
     return _dispatch_dataset("grabmyo", argv)
 
 
-def ultramocap2025_main(argv: Sequence[str] | None = None) -> int:
+def fritsche2026_main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the Fritsche et al. (2026) ULTRA-MoCap arm dataset."""
-    return _dispatch_dataset("ultramocap2025", argv)
+    return _dispatch_dataset("fritsche2026", argv)
 
 
 def maurice2020_main(argv: Sequence[str] | None = None) -> int:
