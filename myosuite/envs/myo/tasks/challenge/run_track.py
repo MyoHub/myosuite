@@ -500,6 +500,7 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
 
         if self.reset_type != "init":
