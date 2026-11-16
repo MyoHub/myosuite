@@ -303,6 +303,15 @@ Changes since **v3.1.0** (2026-11-11).
   teacher's observation read the shadow body's `ctrl`, which was never written, so they were always 0. In training
   they hold the previous action. `SteeredTeacher.action` now keeps the raw action (`[-1, 1]`) in the shadow's `ctrl`
   and clears it on `reset`; the excitations sent to the FBVs agent are unchanged (`clip(action, 0, 1)`).
+* **`training/chasetag_teacher`: the steering library follows its clips and is no longer unpickled.** `load_library`
+  cached a pickled `ClipLibrary` keyed by the clip folder's path, the myo_sim version, `limit` and `ctrl_dt`, and
+  loaded it with `torch.load(..., weights_only=False)` before looking at the clips. Clips re-retargeted into the same
+  folder, another training split or filter, or a changed library class kept the old library (and every DAgger label
+  and evaluation made with it), and loading the cache file ran whatever it contained. The motion data now goes
+  through the task's motion cache (`build_motion_lib(..., cache_dir=...)`: NumPy arrays read with
+  `allow_pickle=False`, keyed by the bytes of every clip, the compiled body, the tracked bodies, the control step and
+  the preprocessing code), and the library's features are recomputed on each load. Old `lib_*.pt` files are no longer
+  read.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
