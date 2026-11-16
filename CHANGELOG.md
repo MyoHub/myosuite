@@ -115,10 +115,11 @@ Changes since **v3.1.0** (2026-11-11).
   empty. `register_env` now raises `ValueError` when a module re-registers an id that another module registered
   with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 
+[#166]: https://github.com/MyoHub/myosuite/issues/166
+[#525]: https://github.com/MyoHub/myosuite/pull/525
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
-
 ## [3.1.0] - 2026-11-11
 
 * Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
