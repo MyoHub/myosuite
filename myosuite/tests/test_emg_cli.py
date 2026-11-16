@@ -19,9 +19,9 @@ from scripts.validation.emg_sources import CAMARGO_CHANNELS, Camargo2021Source
 from scripts.validation.emg_upper_limb import (
     EMG2POSE_JOINT_NAMES,
     Diaz2026HandSource,
+    Fritsche2026Source,
     GrabMyoSource,
     Maurice2020Source,
-    UltraMoCap2025Source,
     _axis_rot,
     map_cyberglove_to_hand_qpos,
     map_emg2pose_to_hand_qpos,
@@ -289,7 +289,7 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
         "emg2pose",
         "ninapro-db5",
         "grabmyo",
-        "ultramocap2025",
+        "fritsche2026",
         "maurice2020",
         "diaz2026",
         "custom-emg",
@@ -672,7 +672,7 @@ def test_thoracohumeral_decomposition_round_trip() -> None:
     assert np.allclose(hanging["shoulder_elv"], 0.0, atol=1e-5)
 
 
-def test_ultramocap2025_source_synthetic(tmp_path: Path) -> None:
+def test_fritsche2026_source_synthetic(tmp_path: Path) -> None:
     task_dir = tmp_path / "P01" / "Elbow Flexion"
     (task_dir / "EMG").mkdir(parents=True)
     (task_dir / "Processed IK").mkdir()
@@ -706,7 +706,7 @@ def test_ultramocap2025_source_synthetic(tmp_path: Path) -> None:
     )
 
     model = mujoco.MjModel.from_xml_string(_MINI_SCAPULOTHORACIC_XML)
-    src = UltraMoCap2025Source(tmp_path, window_duration_s=2.0)
+    src = Fritsche2026Source(tmp_path, window_duration_s=2.0)
     assert list(src.trial_ids()) == ["P01/ElbowFlexion/Normal"]
     trial = src.get_trial("P01/ElbowFlexion/Normal", model=model)
     assert trial.channel_names == ("biceps_brachii", "triceps_long", "deltoid_middle")
@@ -960,8 +960,10 @@ def test_diaz2026_source_synthetic(tmp_path: Path) -> None:
         "B002/RoM_Th_FE/rep01",
         "B002/RoM_Th_FE/rep02",
     ]
-    assert Diaz2026HandSource(tmp_path, subjects=["B001"]).trial_ids()[0].startswith(
-        "B001/"
+    assert (
+        Diaz2026HandSource(tmp_path, subjects=["B001"])
+        .trial_ids()[0]
+        .startswith("B001/")
     )
 
     # Wrist centred on the range: mid-range (40 deg) is 5 deg of flexion.

@@ -48,7 +48,7 @@ DATASET_CHOICES: tuple[str, ...] = (
     "emg2pose",
     "ninapro_db5",
     "grabmyo",
-    "ultramocap2025",
+    "fritsche2026",
     "maurice2020",
     "diaz2026",
     "custom",
@@ -192,7 +192,7 @@ def build_source(args: argparse.Namespace) -> EMGSource:
         GrabMyoSource,
         NinaProDB5Source,
         Quesada2024UpperLimbSource,
-        UltraMoCap2025Source,
+        Fritsche2026Source,
     )
 
     subjects = [s.strip() for s in args.subjects.split(",")] if args.subjects else None
@@ -257,10 +257,10 @@ def build_source(args: argparse.Namespace) -> EMGSource:
             pattern=args.filter,
             kinematics_rate_hz=args.kinematics_rate,
         )
-    if args.dataset == "ultramocap2025":
-        root = args.data_root or "downloads/emg/ultramocap2025"
+    if args.dataset == "fritsche2026":
+        root = args.data_root or "downloads/emg/fritsche2026"
         win_s = args.window_s if args.window_s is not None else 8.0
-        return UltraMoCap2025Source(
+        return Fritsche2026Source(
             root,
             subjects=subjects,
             pattern=args.filter,
