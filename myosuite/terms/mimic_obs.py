@@ -82,7 +82,8 @@ def mimic_lookahead_obs(
 
     Encodes future site positions (relative to current root) and root
     kinematics deltas at strides {stride, 2*stride, …, k*stride}.
-    Wraps around at the end of the clip.
+    Past the last frame it holds the last frame, as the episode does (it
+    truncates there) and as MuscleMimic's own lookahead does.
 
     Args:
         current_frame: Current frame index in the clip.
@@ -100,7 +101,7 @@ def mimic_lookahead_obs(
     T = clip_site_xpos.shape[0]
     parts: list[np.ndarray] = []
     for step in range(1, k + 1):
-        future_frame = (current_frame + step * stride) % T
+        future_frame = min(current_frame + step * stride, T - 1)
         # Relative site positions
         future_sites = clip_site_xpos[future_frame]  # (n_sites, 3)
         rel_sites = (future_sites - current_root_pos).reshape(-1)
