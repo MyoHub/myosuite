@@ -16,6 +16,7 @@ import numpy as np
 from myosuite.envs.wrappers import PerturbationWrapper
 from myosuite.utils.push_protocol import PushProtocol
 from myosuite.utils.paired_replay import ReplayPolicy, ReplaySnapshot, ReplayStateOwner
+from myosuite.utils.push_scheduling import ContactPhase, jitter_free_root
 
 
 @dataclass
@@ -55,6 +56,9 @@ def _sample(
         "act": data.act.copy(),
         "com_m": data.subtree_com[root].copy(),
         "root_rotation": data.xmat[root].reshape(3, 3).copy(),
+        "muscle_excitation": data.ctrl[resolved["muscle_actuator_ids"]].copy(),
+        "muscle_activation": data.act[resolved["muscle_state_indices"]].copy(),
+        "muscle_force_n": data.actuator_force[resolved["muscle_actuator_ids"]].copy(),
     }
     if resolved["foot_body_ids"]:
         count, vertical = 0, 0.0
@@ -86,7 +90,10 @@ def _sample(
                     )
                 ] = True
         sample.update(
-            foot_contact_count=count, vertical_grf_n=vertical, foot_contact_mask=mask
+            foot_contact_count=count,
+            vertical_grf_n=vertical,
+            foot_contact_mask=mask,
+            foot_positions_m=data.xpos[resolved["foot_body_ids"]].copy(),
         )
     return sample
 
@@ -147,6 +154,8 @@ def run_paired_push(
     *,
     seed: int,
     state_owners: tuple[ReplayStateOwner, ...] = (),
+    contact_phase: ContactPhase | None = None,
+    velocity_jitter_natural: float = 0.0,
 ) -> PairedPushTrial:
     """Reset, replay both arms from one snapshot and restore it even after errors.
 
@@ -165,6 +174,11 @@ def run_paired_push(
     if not isinstance(obs, np.ndarray) or obs.ndim != 1:
         raise ValueError("The paired protocol requires flat CPU observations")
     resolved = protocol.resolve(wrapped)
+    if contact_phase is not None and protocol.phase is not None:
+        raise ValueError("Use measured contact phase or nominal clock phase, not both")
+    obs, resolved = jitter_free_root(
+        env, obs, resolved, seed=seed, std_natural=velocity_jitter_natural
+    )
     if np.any(wrapped.unwrapped.data.xfrc_applied[resolved["body_id"]]):
         raise ValueError(
             "Paired pushes require zero background wrench on the target body"
@@ -172,17 +186,20 @@ def run_paired_push(
     snapshot = ReplaySnapshot.capture(wrapped, policy, state_owners=state_owners)
     try:
         baseline = _rollout(wrapped, policy, obs.copy(), resolved, protocol.steps)
+        if contact_phase is not None:
+            resolved = contact_phase.schedule(baseline.states, resolved)
         snapshot.restore()
-        wrapped.add_perturbation(
-            {
-                "body": protocol.body,
-                "force": resolved["force_world_or_body_n"],
-                "frame": protocol.frame,
-                "point": protocol.point_body_m,
-                "start": resolved["start_step"],
-                "end": resolved["end_step"],
-            }
-        )
+        if resolved.get("phase_available", True):
+            wrapped.add_perturbation(
+                {
+                    "body": protocol.body,
+                    "force": resolved["force_world_or_body_n"],
+                    "frame": protocol.frame,
+                    "point": protocol.point_body_m,
+                    "start": resolved["start_step"],
+                    "end": resolved["end_step"],
+                }
+            )
         pushed = _rollout(wrapped, policy, obs.copy(), resolved, protocol.steps)
         n = resolved["start_step"]
         for key in ("qpos", "qvel", "act"):

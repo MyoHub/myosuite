@@ -30,11 +30,22 @@ class RecoveryCriteria:
     heading_error_rad: float = 0.2
     hold_s: float = 0.25
     lateral_error_L: float | None = None
+    target_speed_mps: float | None = None
+    target_speed_tolerance_mps: float = 0.35
+    require_baseline_tracking: bool = False
 
     def __post_init__(self) -> None:
         for key, value in asdict(self).items():
-            if value is not None and (not np.isfinite(value) or value < 0):
+            if (
+                key != "target_speed_mps"
+                and value is not None
+                and (not np.isfinite(value) or value < 0)
+            ):
                 raise ValueError(f"{key} must be finite and nonnegative")
+        if self.target_speed_mps is not None and not np.isfinite(self.target_speed_mps):
+            raise ValueError("target_speed_mps must be finite")
+        if self.require_baseline_tracking and self.target_speed_mps is None:
+            raise ValueError("Baseline tracking eligibility requires a target speed")
         if self.hold_s <= 0 or not 0 < self.max_tilt_rad <= np.pi:
             raise ValueError("hold_s must be positive and tilt in (0, pi]")
 
@@ -112,12 +123,41 @@ def summarize_trial(
     drift_error = np.abs(push["lateral_L"][:n] - base["lateral_L"][:n])
     baseline = _diagnostics(trial.baseline, base, cfg)
     pushed = _diagnostics(trial.pushed, push, cfg)
+    for signals, diagnostics in ((base, baseline), (push, pushed)):
+        error = (
+            None
+            if criteria.target_speed_mps is None or end >= len(signals["speed_mps"])
+            else float(
+                np.mean(np.abs(signals["speed_mps"][end:] - criteria.target_speed_mps))
+            )
+        )
+        diagnostics["post_push_mean_target_speed_error_mps"] = error
+        diagnostics["tracks_target_speed"] = (
+            None
+            if error is None
+            else bool(error <= criteria.target_speed_tolerance_mps)
+        )
     eligible = (
         baseline["reached_horizon"]
         and not baseline["fall"]
         and not trial.baseline.terminated
+        and cfg.get("phase_available", True)
+        and (
+            not criteria.require_baseline_tracking
+            or baseline["tracks_target_speed"] is True
+        )
     )
     reason = None if eligible else "baseline_fall_or_incomplete"
+    if not cfg.get("phase_available", True):
+        reason = "contact_phase_unavailable"
+    elif (
+        criteria.require_baseline_tracking
+        and baseline["tracks_target_speed"] is False
+        and baseline["reached_horizon"]
+        and not baseline["fall"]
+        and not trial.baseline.terminated
+    ):
+        reason = "baseline_does_not_track_command"
     good = (
         (speed_error <= criteria.speed_error_natural)
         & (heading_error <= criteria.heading_error_rad)
@@ -135,7 +175,7 @@ def summarize_trial(
     wrench = trial.pushed.applied_wrench
     vector_impulse = np.sum(wrench[:, :3], axis=0) * dt
     scalar_impulse = float(np.sum(np.linalg.norm(wrench[:, :3], axis=-1)) * dt)
-    scheduled = cfg["impulse_ns"]
+    scheduled = cfg["impulse_ns"] if cfg.get("phase_available", True) else 0.0
     exposure = max(0, min(len(wrench), end) - start)
     norm = cfg["mass_kg"] * np.sqrt(cfg["gravity_mps2"] * cfg["leg_length_m"])
     return {
@@ -146,7 +186,7 @@ def summarize_trial(
         "eligible": bool(eligible),
         "ineligible_reason": reason,
         "exposed_transitions": exposure,
-        "complete_dose": exposure == end - start,
+        "complete_dose": exposure > 0 and exposure == end - start,
         "scheduled_impulse_ns": scheduled,
         "delivered_scalar_impulse_ns": scalar_impulse,
         "delivered_world_impulse_ns": vector_impulse.tolist(),
@@ -166,4 +206,49 @@ def summarize_trial(
         "paired_effort_delta": None
         if baseline["mean_squared_activation"] is None
         else pushed["mean_squared_activation"] - baseline["mean_squared_activation"],
+        "recovery_definition": "return_to_paired_baseline",
+        "post_push_foot_placement": _placements(trial, cfg),
     }
+
+
+def _placements(trial: PairedPushTrial, cfg: dict) -> list[dict] | None:
+    if "foot_positions_m" not in trial.baseline.states:
+        return None
+    result = []
+    for i, name in enumerate(cfg["requested"]["foot_bodies"]):
+        events = []
+        for trace in (trial.baseline, trial.pushed):
+            rises = (
+                np.flatnonzero(
+                    np.diff(trace.states["foot_contact_mask"][:, i].astype(int)) == 1
+                )
+                + 1
+            )
+            rises = rises[rises >= cfg["end_step"]]
+            events.append(
+                None
+                if not len(rises)
+                else {
+                    "time_s": float(trace.states["time_s"][rises[0]]),
+                    "position_m": trace.states["foot_positions_m"][
+                        rises[0], i
+                    ].tolist(),
+                }
+            )
+        delta = (
+            None
+            if any(e is None for e in events)
+            else (
+                np.asarray(events[1]["position_m"]) - events[0]["position_m"]
+            ).tolist()
+        )
+        result.append(
+            {
+                "body": name,
+                "baseline": events[0],
+                "pushed": events[1],
+                "world_position_delta_m": delta,
+                "matching": "first_threshold_contact_entry_after_push_each_arm",
+            }
+        )
+    return result
