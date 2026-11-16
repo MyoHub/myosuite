@@ -120,3 +120,67 @@ def test_clip_end_step_is_scored_against_the_last_frame(tmp_path: Path) -> None:
         env.close()
     assert frames == [n_frames - 1, n_frames - 1]
     assert rewards[1] == pytest.approx(rewards[0], abs=1e-12)
+
+
+@pytest.mark.parametrize("frame_skip", [1, 5])
+def test_step_scores_fresh_geometry_and_muscles(
+    tmp_path: Path, frame_skip: int
+) -> None:
+    clip = _write_standing_clip(tmp_path / "fresh.npz", 30, 0.0)
+    with np.load(clip, allow_pickle=False) as saved:
+        fields = dict(saved)
+    fields["frequency"] = np.array(500.0 / frame_skip)
+    np.savez(clip, **fields)
+    env = _env(clip, random_start=False, frame_skip=frame_skip)
+    try:
+        env.reset(seed=0)
+        _, reward, terminated, truncated, _ = env.step(np.full(env.model.nu, 0.1))
+        reference = mujoco.MjData(env.model)
+        mujoco.mj_copyData(reference, env.model, env.data)
+        mujoco.mj_forward(env.model, reference)
+        for name in (
+            "site_xpos",
+            "cvel",
+            "actuator_length",
+            "actuator_velocity",
+            "actuator_force",
+        ):
+            np.testing.assert_allclose(
+                getattr(env.data, name),
+                getattr(reference, name),
+                atol=1e-12,
+                rtol=0,
+                err_msg=name,
+            )
+        original = env.data
+        env.data = reference
+        try:
+            expected_reward, _ = env._compute_reward()
+            expected_termination = env._check_termination()
+        finally:
+            env.data = original
+        assert reward == pytest.approx(expected_reward, abs=1e-12)
+        assert not truncated and terminated == expected_termination
+    finally:
+        env.close()
+
+
+def test_final_refresh_preserves_the_integration_trajectory(tmp_path: Path) -> None:
+    env = _env(
+        _write_standing_clip(tmp_path / "trajectory.npz", 30, 0.0), random_start=False
+    )
+    try:
+        env.reset(seed=0)
+        reference = mujoco.MjData(env.model)
+        mujoco.mj_copyData(reference, env.model, env.data)
+        for action in np.random.default_rng(2).uniform(0, 0.2, (10, env.model.nu)):
+            env.step(action)
+            reference.ctrl[:] = action
+            for _ in range(env.frame_skip):
+                mujoco.mj_step(env.model, reference)
+            for name in ("qpos", "qvel", "act"):
+                np.testing.assert_array_equal(
+                    getattr(env.data, name), getattr(reference, name), err_msg=name
+                )
+    finally:
+        env.close()
