@@ -2010,12 +2010,393 @@ class Maurice2020Source(EMGSource):
         )
 
 
+# BHaM channel -> model actuators. Alternatives are tried in order; the first
+# whose actuators all exist binds (rebuilt hand first, then the MoBL-ARMS hand).
+DIAZ2026_CHANNELS: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
+    ("BIC", (("BIClong", "BICshort"),)),
+    ("TRIlong", (("TRIlong",),)),
+    ("BRD", (("BRD",),)),
+    ("FCR", (("FCR",),)),
+    ("FCU", (("FCU",),)),
+    ("ECR", (("ECRL", "ECRB"),)),
+    ("ECU", (("ECU",),)),
+    ("FDS", (("FDS2", "FDS3", "FDS4", "FDS5"),)),
+    ("FDP", (("FDP2", "FDP3", "FDP4", "FDP5"),)),
+    ("EDC", (("EDC2", "EDC3", "EDC4", "EDC5"),)),
+    ("FPL", (("FPL",),)),
+    ("EPL", (("EPL",),)),
+    ("EPB", (("EPB",),)),
+    ("APL", (("APL",),)),
+    ("OPP", (("OP",),)),
+    ("FDI", (("DI1d", "DI1s"), ("RI2",))),
+    ("ADD", (("AdPt", "AdPo"),)),
+    ("FPB", (("FPBs", "FPBd"),)),
+)
+
+# Biodex posture per task (Diaz et al. 2026, text and Fig. 7) [deg]: tested
+# coordinate, elv_angle, shoulder_elv, pro_sup. The elbow sits at 90 deg unless
+# tested; in the elbow range of motion the arm is horizontal, about halfway
+# between abduction and flexion (estimated from Fig. 7).
+_DIAZ2026_BIODEX: dict[str, tuple[str, float, float, float]] = {
+    "WF": ("flexion", 0.0, 0.0, -90.0),
+    "WE": ("flexion", 0.0, 0.0, -90.0),
+    "RoM_Wrist": ("flexion", 0.0, 0.0, -90.0),
+    "EF": ("elbow_flexion", 0.0, 0.0, -90.0),
+    "EE": ("elbow_flexion", 0.0, 0.0, -90.0),
+    "EFN": ("elbow_flexion", 0.0, 0.0, 0.0),
+    "RoM_Elbow": ("elbow_flexion", 45.0, 90.0, -90.0),
+}
+# Typical active wrist range, 80 deg flexion and 70 deg extension: anatomical
+# neutral lies 5 deg towards extension from the middle of the range.
+_WRIST_NEUTRAL_FROM_MID_DEG = -5.0
+# Participants the collection notes advise against analysing (no true effort,
+# not following instructions).
+_DIAZ2026_NOT_RECOMMENDED: tuple[str, ...] = ("B001", "B017")
+_ARM_COORDS: tuple[str, ...] = (
+    "elv_angle",
+    "shoulder_elv",
+    "shoulder_rot",
+    "elbow_flexion",
+    "pro_sup",
+    "deviation",
+    "flexion",
+)
+# ARMS hand thumb axes point opposite to the MoBL-ARMS thumb (CMC flexion, MP, IP).
+_ARMS_THUMB_SIGN: dict[str, float] = {
+    "cmc_abduction": 1.0,
+    "cmc_flexion": -1.0,
+    "mp_flexion": -1.0,
+    "ip_flexion": -1.0,
+}
+
+
+def map_bham_ik_to_qpos(
+    model: mujoco.MjModel, ik_deg: dict[str, np.ndarray]
+) -> tuple[np.ndarray, list[int]]:
+    """Map BHaM MoBL-ARMS + ARMS hand OpenSim IK columns onto *model* ``qpos``.
+
+    Arm coordinates are in degrees, except ``flexion`` and ``deviation``, which
+    the published IK stores in radians (checked against the coupled
+    ``wrist_hand_r3`` = ``flexion`` / 2). Thumb CMC flexion, MP and IP change
+    sign onto the MoBL-ARMS thumb; CMC4/CMC5 stay at ``qpos0``.
+    """
+    coords = {
+        c: np.radians(np.asarray(ik_deg[c], dtype=np.float64)) for c in _ARM_COORDS[:5]
+    }
+    flex = np.asarray(ik_deg["flexion"], dtype=np.float64)
+    r3 = np.radians(2.0 * np.asarray(ik_deg["wrist_hand_r3"], dtype=np.float64))
+    in_deg = np.median(np.abs(flex)) > 10.0 * max(float(np.median(np.abs(r3))), 1e-3)
+    for c in ("flexion", "deviation"):
+        vals = np.asarray(ik_deg[c], dtype=np.float64)
+        coords[c] = np.radians(vals) if in_deg else vals
+    qpos, ctrl_qadr, _ = map_upper_limb_to_qpos(model, coords)
+
+    hand = np.zeros((len(flex), len(EMG2POSE_JOINT_NAMES)), dtype=np.float64)
+    for col, name in enumerate(EMG2POSE_JOINT_NAMES):
+        if name in _ARMS_THUMB_SIGN:
+            hand[:, col] = _ARMS_THUMB_SIGN[name] * np.radians(ik_deg[name])
+        else:
+            # emg2pose "mcp2_flexion" is BHaM "2mcp_flexion".
+            seg, digit, dof = re.match(r"(mcp|pm|md)(\d)_(\w+)", name).groups()
+            hand[:, col] = np.radians(ik_deg[f"{digit}{seg}_{dof}"])
+    qpos_hand, hand_qadr = map_emg2pose_to_hand_qpos(model, hand)
+    qpos[:, hand_qadr] = qpos_hand[:, hand_qadr]
+    project_joint_couplings(JointCouplings.from_model(model), qpos)
+    qpos = project_tendon_nodes(model, qpos)
+    return qpos, sorted(set(ctrl_qadr) | set(hand_qadr))
+
+
+class Diaz2026HandSource(EMGSource):
+    """BHaM hand biomechanics: forearm sEMG and fine-wire thumb EMG with kinematics.
+
+    Diaz, M. T., Benoit, A. R., Kearney, K. M. et al. (2026). A hand
+    biomechanics dataset of kinematics, kinetics, electromyography, and imaging
+    in healthy adults. Scientific Data 13, 646.
+    https://doi.org/10.1038/s41597-026-06939-4.
+    Data: https://doi.org/10.34740/kaggle/ds/7895310 (CC BY 4.0).
+
+    30 adults (19-87 years), dominant arm. Both sessions share one HDF5 file
+    (``BiomechanicsDataset.hdf5``, or any subset with the same layout):
+
+    - Biodex elbow/wrist session: surface EMG of BIC, TRIlong, BRD, FCR, FCU,
+      ECR, ECU, FDS, FDP and EDC during isometric flexion/extension (50 and
+      100 % MVC) and isokinetic range of motion. The posture follows the
+      protocol; the isokinetic angle and the torque come from the dynamometer
+      (flexion positive). The dynamometer's wrist zero is not anatomical, so
+      the wrist angle is centred on the subject's range of motion. Muscles must supply the measured torque at the tested
+      joint and zero net torque at the other, strapped arm coordinates, so a
+      muscle crossing both is balanced by antagonists. The grip on the handle
+      is not modelled either: FDS/FDP must balance their own finger torques.
+    - Hand session: fine-wire EMG of FPL, EPL, EPB, APL, OPP, FPB, ADD and FDI
+      in seven thumb/index range-of-motion tasks, with OpenSim IK of the
+      MoBL-ARMS arm and ARMS hand (left hands mirrored to the right).
+
+    EMG is the published MVC-normalised envelope (20 Hz high-pass, rectified,
+    5 Hz low-pass, 0.2 s moving average), decimated to 300 Hz. One trial is one
+    published trial band padded by ``pad_s`` and capped at ``max_window_s``.
+    Isometric hand tasks are not loaded (fingertip forces are not mapped).
+    Without ``subjects``, B001 and B017 are skipped, as the collection notes
+    advise.
+    """
+
+    name = "diaz2026"
+
+    def __init__(
+        self,
+        data_root: str | Path = "downloads/emg/diaz2026",
+        *,
+        subjects: Sequence[str] | None = None,
+        pattern: str | None = None,
+        pad_s: float = 0.25,
+        max_window_s: float = 10.0,
+        kinematics_rate_hz: float = 100.0,
+    ) -> None:
+        import h5py
+
+        root = Path(data_root)
+        if root.is_file():
+            self.path = root
+        else:
+            full = root / "BiomechanicsDataset.hdf5"
+            found = [full] if full.exists() else sorted(root.glob("*.hdf5"))
+            if not found:
+                raise FileNotFoundError(f"no BHaM .hdf5 file under {root}")
+            self.path = found[0]
+        self.pad_s = pad_s
+        self.max_window_s = max_window_s
+        self.kinematics_rate_hz = kinematics_rate_hz
+        self.pattern = re.compile(pattern) if pattern else None
+        wanted = {s.upper() for s in subjects} if subjects is not None else None
+        task_re = re.compile(r"^(Biodex_(?!Practice).+|RoM_.+)$")
+        skip = set(_DIAZ2026_NOT_RECOMMENDED) if wanted is None else set()
+        self._bands: dict[tuple[str, str], np.ndarray] = {}
+        with h5py.File(self.path, "r", locking=False) as hf:
+            for subj in sorted(hf):
+                if subj.upper() in skip or (
+                    wanted is not None and subj.upper() not in wanted
+                ):
+                    continue
+                for task in sorted(hf[subj]):
+                    grp = hf[subj][task]
+                    if not task_re.match(task) or "Emg/Normalized" not in grp:
+                        continue
+                    kin = (
+                        "Forces/Filtered"
+                        if task.startswith("Biodex_")
+                        else ("JointAngles/InverseKinematics")
+                    )
+                    bounds = np.asarray(grp.attrs.get("TrialBounds", []), float)
+                    if kin in grp and bounds.size:
+                        # Columns: trial, left frame/subframe/time, right frame/subframe/time.
+                        self._bands[(subj, task)] = np.atleast_2d(bounds)[:, [3, 6]]
+        if not self._bands:
+            raise FileNotFoundError(f"no BHaM Biodex/RoM tasks found in {self.path}")
+        self._cache: dict[tuple[str, str], dict[str, Any]] = {}
+        self._ids_cache: tuple[str, ...] | None = None
+
+    def trial_ids(self) -> Sequence[str]:
+        if self._ids_cache is not None:
+            return self._ids_cache
+        featured = (
+            "Biodex_WF_50MVC",
+            "Biodex_WE_50MVC",
+            "Biodex_EF_50MVC",
+            "Biodex_EE_50MVC",
+            "Biodex_RoM_Wrist",
+            "Biodex_RoM_Elbow",
+            "RoM_Th_FE",
+            "RoM_Th_ABAD_Palmar",
+            "RoM_Th_Opp_Tip",
+            "RoM_Ind_FE",
+        )
+        rank = {t: i for i, t in enumerate(featured)}
+        prio: list[tuple[str, int, str]] = []
+        rest: list[str] = []
+        for (subj, task), bands in self._bands.items():
+            for k in range(len(bands)):
+                tid = f"{subj}/{task}/rep{k + 1:02d}"
+                if k == 0 and task in rank:
+                    prio.append((subj, rank[task], tid))
+                else:
+                    rest.append(tid)
+        all_ids = [tid for *_, tid in sorted(prio)] + rest
+        if self.pattern is not None:
+            all_ids = [t for t in all_ids if self.pattern.search(t)]
+        self._ids_cache = tuple(all_ids)
+        return self._ids_cache
+
+    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
+        names = {model.actuator(i).name for i in range(model.nu)}
+
+        def _find(stem: str) -> str | None:
+            return next((c for c in (f"{stem}_r", stem) if c in names), None)
+
+        bindings = []
+        for channel, options in DIAZ2026_CHANNELS:
+            for stems in options:
+                acts = [_find(s) for s in stems]
+                if all(acts):
+                    bindings.append(ChannelBinding(channel, tuple(acts)))
+                    break
+        return EMGChannelMap(
+            name="diaz2026_forearm_thumb", version=1, bindings=tuple(bindings)
+        )
+
+    def _load_task(self, subj: str, task: str) -> dict[str, Any]:
+        key = (subj, task)
+        if key not in self._cache:
+            if len(self._cache) >= 2:
+                self._cache.clear()
+            import h5py
+
+            rec: dict[str, Any] = {}
+            with h5py.File(self.path, "r", locking=False) as hf:
+                grp = hf[subj][task]
+                rec["attrs"] = dict(grp.attrs)
+                for path, name in (
+                    ("Emg/Normalized", "emg"),
+                    ("JointAngles/InverseKinematics", "ik"),
+                    ("JointAngles/Filtered", "angle"),
+                    ("Forces/Filtered", "torque"),
+                ):
+                    if path in grp:
+                        rec[f"{name}_cols"] = [
+                            c.decode() if isinstance(c, bytes) else str(c)
+                            for c in np.asarray(grp[path].attrs["Columns"]).ravel()
+                        ]
+                        rec[name] = np.asarray(grp[path][()], dtype=np.float64)
+            self._cache[key] = rec
+        return self._cache[key]
+
+    def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
+        m = re.match(r"^(\w+)/(\w+)/rep(\d+)$", trial_id)
+        key = (m.group(1), m.group(2)) if m is not None else None
+        rep = int(m.group(3)) if m is not None else 0
+        if key not in self._bands or not 1 <= rep <= len(self._bands[key]):
+            raise KeyError(f"unknown BHaM trial {trial_id!r}")
+        subj, task = key
+        rec = self._load_task(subj, task)
+        emg_cols = rec["emg_cols"]
+        t_emg = rec["emg"][:, emg_cols.index("time")]
+        is_biodex = task.startswith("Biodex_")
+        t_kin = t_emg if is_biodex else rec["ik"][:, rec["ik_cols"].index("time")]
+        lo, hi = self._bands[key][rep - 1]
+        t0 = max(float(lo) - self.pad_s, float(t_emg[0]), float(t_kin[0]))
+        t1 = min(float(hi) + self.pad_s, float(t_emg[-1]), float(t_kin[-1]))
+        if self.max_window_s > 0:
+            t1 = min(t1, t0 + self.max_window_s)
+        if t1 <= t0:
+            raise KeyError(f"trial {trial_id!r} lies outside the recording")
+        # The published envelope is smoothed at 5 Hz, so 300 Hz keeps it intact.
+        step = max(1, round(float(rec["attrs"].get("FrequencyEMG_Hz", 3000)) / 300))
+        rows = np.flatnonzero((t_emg >= t0) & (t_emg <= t1))[::step]
+        ch_idx = [
+            i for i, c in enumerate(emg_cols) if c not in ("time", "Frame", "SubFrame")
+        ]
+
+        qpos = None
+        kin_time = None
+        ext_qfrc = None
+        ctrl_qadr: list[int] = []
+        if model is not None:
+            kin_time = np.arange(0.0, t1 - t0 + 1e-9, 1.0 / self.kinematics_rate_hz)
+            if is_biodex:
+                qpos, ctrl_qadr, ext_qfrc = _bham_biodex_state(
+                    model, rec, task, kin_time + t0, self._bands[key]
+                )
+            else:
+                ik_deg = {
+                    c: np.interp(kin_time + t0, t_kin, rec["ik"][:, i])
+                    for i, c in enumerate(rec["ik_cols"])
+                    if c != "time"
+                }
+                qpos, ctrl_qadr = map_bham_ik_to_qpos(model, ik_deg)
+
+        attrs = rec["attrs"]
+        return EMGTrial(
+            trial_id=trial_id,
+            time=t_emg[rows] - t0,
+            signals=np.clip(rec["emg"][np.ix_(rows, ch_idx)], 0.0, 2.0),
+            channel_names=tuple(emg_cols[i] for i in ch_idx),
+            signal_kind="mvc_normalized",
+            qpos=qpos,
+            kinematics_time=kin_time,
+            external_qfrc=ext_qfrc,
+            meta={
+                "dataset": self.name,
+                "subject": subj,
+                "task": task,
+                "task_name": str(attrs.get("TaskName", "")),
+                "intensity": str(attrs.get("TaskIntensity", "")),
+                "session": "biodex" if is_biodex else "hand",
+                "repetition": rep,
+                "window_s": [t0, t1],
+                "controlled_qpos_adr": ctrl_qadr,
+            },
+        )
+
+
+def _bham_biodex_state(
+    model: mujoco.MjModel,
+    rec: dict[str, Any],
+    task: str,
+    t_abs: np.ndarray,
+    bands: np.ndarray,
+) -> tuple[np.ndarray, list[int], np.ndarray]:
+    """Protocol posture, isokinetic dynamometer angle and measured joint torque.
+
+    The dynamometer torque is not gravity corrected: isometric torques are
+    referenced to their median between the trial bands (the relaxed rest).
+    The dynamometer angle is in degrees (its derivative equals the reported
+    velocity), but its wrist zero is not anatomical and changes between
+    sessions: the middle of the subjects' ranges lies between 11 deg towards
+    extension and 46 deg towards flexion. The wrist angle is therefore centred
+    on the subject's range of motion in this task.
+    """
+    code = task.removeprefix("Biodex_")
+    code = code if code.startswith("RoM_") else code.split("_")[0]
+    tested, elv, sh_elv, pro_sup = _DIAZ2026_BIODEX[code]
+    n = len(t_abs)
+    coords = {c: np.zeros(n) for c in _ARM_COORDS}
+    coords["elv_angle"][:] = np.radians(elv)
+    coords["shoulder_elv"][:] = np.radians(sh_elv)
+    coords["pro_sup"][:] = np.radians(pro_sup)
+    coords["elbow_flexion"][:] = 0.5 * np.pi
+    t_dyn = rec["emg"][:, rec["emg_cols"].index("time")]
+    if code.startswith("RoM_"):
+        # Isokinetic angle in degrees; the isometric position channel is uncalibrated.
+        pos = rec["angle"][:, rec["angle_cols"].index("Position")]
+        if tested == "flexion":
+            mids = [
+                0.5 * (pos[m].min() + pos[m].max())
+                for lo, hi in bands
+                if (m := (t_dyn >= lo) & (t_dyn <= hi)).any()
+            ]
+            pos = pos - (float(np.median(mids)) + _WRIST_NEUTRAL_FROM_MID_DEG)
+        coords[tested] = np.radians(np.interp(t_abs, t_dyn, pos))
+    qpos, ctrl_qadr, _ = map_upper_limb_to_qpos(model, coords)
+    trq = rec["torque"][:, rec["torque_cols"].index("Torque")]
+    if not code.startswith("RoM_"):
+        rest = np.ones(len(t_dyn), dtype=bool)
+        for lo, hi in bands:
+            rest &= (t_dyn < lo - 1.0) | (t_dyn > hi + 1.0)
+        trq = trq - (float(np.median(trq[rest])) if rest.any() else 0.0)
+    torques = {c: np.zeros(n) for c in _ARM_COORDS}
+    torques[tested] = np.interp(t_abs, t_dyn, trq)
+    dt = float(np.median(np.diff(t_abs))) if n > 1 else 0.01
+    ext_qfrc = map_upper_limb_torques_to_qfrc(model, qpos, dt, coords, torques)
+    return qpos, ctrl_qadr, ext_qfrc
+
+
 __all__ = [
+    "DIAZ2026_CHANNELS",
+    "Diaz2026HandSource",
     "EMG2POSE_JOINT_NAMES",
     "Emg2PoseHandSource",
     "GrabMyoSource",
     "NinaProDB5Source",
     "Quesada2024UpperLimbSource",
+    "map_bham_ik_to_qpos",
     "map_cyberglove_to_hand_qpos",
     "map_emg2pose_to_hand_qpos",
     "map_grabmyo_gestures_to_qpos",
