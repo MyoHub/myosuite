@@ -74,6 +74,16 @@ def grabmyo_main(argv: Sequence[str] | None = None) -> int:
     return _dispatch_dataset("grabmyo", argv)
 
 
+def ultramocap2025_main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the Fritsche et al. (2026) ULTRA-MoCap arm dataset."""
+    return _dispatch_dataset("ultramocap2025", argv)
+
+
+def maurice2020_main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the Maurice et al. (2020) AndyData overhead-work dataset."""
+    return _dispatch_dataset("maurice2020", argv)
+
+
 def custom_emg_main(argv: Sequence[str] | None = None) -> int:
     """Entry point for custom manifest or standardized ``EMGTrial`` ``.npz`` directories."""
     return _dispatch_dataset("custom", argv)
