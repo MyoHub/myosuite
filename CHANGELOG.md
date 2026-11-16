@@ -151,6 +151,17 @@ Changes since **v3.1.0** (2026-11-11).
   weight in any registered walk config, so rewards, observations and dynamics are unchanged; what changes is every
   success rate of these ids (`evaluate_success`, `scripts/eval_mjlab_policy.py`, `scripts/train_sb3.py`,
   `--stop-on-success`, the success curves of tutorial 2.3). See `docs/baseline_checkpoints.md`.
+* **`myoChallengeBimanual-v0`: the first `reset()` draws the box size, and `get_metrics` can report a success** (also
+  the `myoSarc` / `myoFati` variants).
+  - The first reset of every env instance skipped the box-size draw and kept the nominal box
+    (`[0.036, 0.044, 0.014]`). `reset(seed=0)` therefore gave another box on a fresh instance than on a reused one
+    (`[0.0383, 0.0418, 0.0150]`), with other observations once the box moves, and an evaluation that builds one env
+    per episode never saw the size randomisation. The first reset now draws like every later one. This changes the
+    first episode of each instance; later episodes are unchanged.
+  - `get_metrics` counted a path as solved when it had more than 5 solved steps, but the env ends the episode on the
+    step after the first solved one, so the score was 0 for every rollout. A path now succeeds with at least one
+    solved step and a clean contact history, as in TableTennis. `rwd_dict["solved"]` is a `bool` on every step (it
+    was a 1x1 array until the box came near the goal), so the per-step reward dicts of a rollout stack into a path.
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
