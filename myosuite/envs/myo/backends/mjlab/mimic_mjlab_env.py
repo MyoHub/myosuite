@@ -75,6 +75,7 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2mat
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
+from myosuite.utils.reach_workspace import reachable_postures
 
 if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
@@ -640,8 +641,9 @@ def _sync_mimic_mjlab_targets(
     """Update ``cache["target_torch"]`` for the current step.
 
     Dispatches to trajectory-clip mode when ``cache["clip_source"]`` is set,
-    otherwise falls back to the original random-box sampling that resamples
-    once per episode (on time regression).
+    otherwise draws each env's targets from the random-posture table
+    (:func:`~myosuite.utils.reach_workspace.reachable_postures`), once per
+    episode (on time regression).
 
     Args:
         env: mjlab environment instance.
@@ -674,12 +676,14 @@ def _sync_mimic_mjlab_targets(
             reset = step < last
             need_draw = bool(check_resets)
         if need_draw:
-            n_sites = int(cache["site_ids"].shape[0])
+            # The tracked sites of one random posture per env (env-local,
+            # matching _tracked_site_pos and the CPU env).
             device = data.qpos.device
-            lo = _device_constant(cache, "lo", cache["lo"], device, torch.float32)
-            hi = _device_constant(cache, "hi", cache["hi"], device, torch.float32)
-            u = torch.rand((n_env, n_sites, 3), device=device, dtype=torch.float32)
-            fresh = lo + (hi - lo) * u
+            table = _device_constant(
+                cache, "target_table", cache["target_table"], device, torch.float32
+            )
+            pick = torch.randint(table.shape[0], (n_env,), device=device)
+            fresh = table[pick]
             cache["target_torch"] = (
                 fresh
                 if target is None
@@ -706,8 +710,8 @@ def _resolve_mimic_mjlab_ids(
     """Lazily build and return the per-env mimic cache.
 
     On the first call for a given ``(env, entity_name, variant)`` triple the
-    cache is populated with model site ids, box bounds, tracking config, and
-    (optionally) a :class:`~myosuite.envs.myo.backends.mjlab.clip_trajectory_source.ClipTrajectorySource`.
+    cache is populated with model site ids, the random-target table (without a
+    clip), tracking config, and (optionally) a :class:`~myosuite.envs.myo.backends.mjlab.clip_trajectory_source.ClipTrajectorySource`.
     Subsequent calls synchronise the targets when their inputs (the step
     counter, the clip start offsets) changed since the last sync, so the
     terms of one step phase share one sync instead of each repeating it; the
@@ -752,8 +756,6 @@ def _resolve_mimic_mjlab_ids(
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
         )
-        lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
-        hi = np.asarray(cfg.target_site_range.high, dtype=np.float64)
     else:
         from myosuite.integrations.musclemimic.fullbody_model import (
             FULLBODY_BODY2SITES_FOR_MIMIC,
@@ -769,8 +771,6 @@ def _resolve_mimic_mjlab_ids(
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
         )
-        lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
-        hi = np.asarray(cfg.target_site_range.high, dtype=np.float64)
 
     site_ids = np.asarray(
         [mj_model.site(name).id for name in site_names],
@@ -813,8 +813,11 @@ def _resolve_mimic_mjlab_ids(
 
     _mimic_mjlab_cache[key] = dict(
         site_ids=site_ids,
-        lo=lo.astype(np.float64),
-        hi=hi.astype(np.float64),
+        target_table=(
+            None
+            if clip_source is not None
+            else reachable_postures(mj_model, site_ids)[1]
+        ),
         tracking=tracking,
         clip=resolved_clip,
         clip_source=clip_source,
@@ -1193,7 +1196,11 @@ def _mimic_obs_lookahead(
         step = _mimic_episode_steps(env)  # (N,)
         clip_lengths = clip_source.clip_lengths(step)
         cur_frames = clip_source.frame_indices(step)
-        frames = [(cur_frames + i * stride) % clip_lengths for i in range(1, k + 1)]
+        # Held at the last frame, where the episode truncates (clip_end).
+        last_frame = clip_lengths - 1
+        frames = [
+            torch.minimum(cur_frames + i * stride, last_frame) for i in range(1, k + 1)
+        ]
         sites = torch.stack([clip_source.site_targets_at_frames(f) for f in frames], 1)
         rpos = rvel = None
         if root_pos and clip_source.ref_qpos(step) is not None:
@@ -2542,12 +2549,11 @@ def _make_mimic_sar_env_cfg(
 #
 # Observations: qpos (without root XY), qvel (scaled), act, root_vel (xyz)
 # Actions:      SAR synergies → SARMuscleActivationAction → MuJoCo ctrl
-# Reward:       5 × exp(−(v_fwd − v_target)²)
+# Reward:       5 × exp(−(v_fwd − v_target)²), v_fwd along the body's heading
 #             + alive_bonus × (height > min_height)
 #             − act_reg_weight × mean(act²)
 # ---------------------------------------------------------------------------
 
-_DIR_FWD_IDX: int = 1  # qvel index for the forward (Y) direction
 _DIR_MIN_HEIGHT: float = 0.5  # root z-pos fall threshold for fullbody model
 
 
@@ -2577,18 +2583,49 @@ def _dir_obs_root_vel(entity_name: str) -> Callable[[Any], Any]:
     return _fn
 
 
+def _anterior_axis_xy(mj_model: Any, body_name: str = "pelvis") -> tuple[float, float]:
+    """Horizontal anterior axis of *body_name* in the free-root frame.
+
+    OpenSim body frames point ``+x`` forward. The free root has no such
+    convention: the MuscleMimic full body faces root ``-y``.
+    """
+    import mujoco  # noqa: PLC0415
+
+    data = mujoco.MjData(mj_model)
+    mujoco.mj_kinematics(mj_model, data)
+    root = data.xmat[int(mj_model.jnt_bodyid[0])].reshape(3, 3)
+    axis = root.T @ data.xmat[mj_model.body(body_name).id].reshape(3, 3)[:, 0]
+    x, y = axis[:2] / np.linalg.norm(axis[:2])
+    return float(x), float(y)
+
+
 def _dir_vel_reward(
     entity_name: str,
     *,
     target_vel: float,
-    fwd_idx: int = _DIR_FWD_IDX,
+    forward_xy: tuple[float, float],
 ) -> Callable[[Any], Any]:
-    """exp(−(target_vel − qvel[fwd_idx])²). Shape (N,)."""
+    """exp(−(target_vel − v_fwd)²), v_fwd the root speed along its heading. Shape (N,).
+
+    Args:
+        entity_name: Scene entity name.
+        target_vel: Target forward speed in m/s.
+        forward_xy: Anterior axis in the free-root frame (:func:`_anterior_axis_xy`).
+    """
+    from myosuite.physics.quat import quat_yaw  # noqa: PLC0415
 
     def _fn(env: Any) -> Any:
         import torch  # noqa: PLC0415
 
-        fwd_vel = env.scene[entity_name].data.data.qvel[:, fwd_idx]
+        index = env.scene[entity_name].indexing
+        # Free-joint state: the root_link_* API lags one substep until forward().
+        quat = env.sim.data.qpos[:, index.free_joint_q_adr[3:7].long()]
+        vel = env.sim.data.qvel[:, index.free_joint_v_adr[:2].long()]
+        yaw = quat_yaw(torch, quat)
+        cos, sin = torch.cos(yaw), torch.sin(yaw)
+        heading_x = cos * forward_xy[0] - sin * forward_xy[1]
+        heading_y = sin * forward_xy[0] + cos * forward_xy[1]
+        fwd_vel = heading_x * vel[:, 0] + heading_y * vel[:, 1]
         return torch.exp(-torch.square(target_vel - fwd_vel))
 
     return _fn
@@ -2730,7 +2767,13 @@ def _make_directional_sar_env_cfg(
 
     rewards = {
         "forward_vel": RewardTermCfg(
-            func=_dir_vel_reward(entity_name, target_vel=target_vel),
+            func=_dir_vel_reward(
+                entity_name,
+                target_vel=target_vel,
+                forward_xy=_anterior_axis_xy(
+                    mj_model if mj_model is not None else spec_fn().compile()
+                ),
+            ),
             weight=5.0,
         ),
         "alive": RewardTermCfg(
