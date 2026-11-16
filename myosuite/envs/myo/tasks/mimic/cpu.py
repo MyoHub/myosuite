@@ -34,10 +34,7 @@ from myosuite.terms.cocontraction import (
     WastedTorqueCfg,
     wasted_torque_reward,
 )
-from myosuite.terms.mimic_obs import (
-    resolve_mimic_site_ids,
-    sample_mimic_target_sites,
-)
+from myosuite.terms.mimic_obs import resolve_mimic_site_ids
 from myosuite.terms.mimic_reward import (
     MimicTrackingConfig,
     compute_mimic_tracking_error,
@@ -46,6 +43,7 @@ from myosuite.terms.mimic_reward import (
     mimic_root_vel_reward,
     mimic_site_tracking_reward,
 )
+from myosuite.utils.reach_workspace import reachable_postures
 
 
 class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
@@ -57,13 +55,6 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
         seed: int | None = None,
         **kwargs: Any,
     ) -> None:
-        low = kwargs.get("mimic_target_low")
-        high = kwargs.get("mimic_target_high")
-        if low is None or high is None:
-            raise ValueError(
-                "mimic_target_low and mimic_target_high must be supplied "
-                "(see MjxMuscleMimicBase.sample_task box sampling)."
-            )
         MyoGymnasiumEnv.__init__(
             self, frame_skip=frame_skip, render_mode=kwargs.get("render_mode")
         )
@@ -71,8 +62,6 @@ class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
         EzPickle.__init__(self, frame_skip=frame_skip, seed=seed, **kwargs)
         self._site_ids: np.ndarray | None = None
         self._target_site_pos: np.ndarray | None = None
-        self._target_lo = np.asarray(low, dtype=np.float64)
-        self._target_hi = np.asarray(high, dtype=np.float64)
         self._wasted_torque: WastedTorqueCfg | None = None
         self._moment_index: MomentArmIndex | None = None
 
@@ -111,7 +100,10 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
       (mjlab terms ``qpos``, ``qvel``, ``act`` and ``mimic_site_*``);
     - reward ``exp(-tracking_reward_scale * mean site error)`` (variant config);
     - muscle ctrl ``sigmoid(5 (a - 0.5))`` (mjlab ``sigmoid`` action mode) of the
-      action (unclipped, as on mjlab).
+      action (unclipped, as on mjlab);
+    - each episode's targets are the tracked sites of one random posture on the
+      joint couplings (:func:`~myosuite.utils.reach_workspace.reachable_postures`),
+      so the model can match them exactly.
 
     Args:
         cfg: Variant config (``default_mimic_config`` / ``default_mimic_fullbody_config``).
@@ -121,7 +113,11 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         frame_skip: Simulation sub-steps per control step.
         wasted_torque: Optional co-contraction cost (:mod:`myosuite.terms.cocontraction`);
             off by default.
-        **kwargs: ``mimic_target_low`` / ``mimic_target_high`` box overrides.
+        **kwargs: ``render_mode``.
+
+    Raises:
+        TypeError: If the removed target-box kwargs ``mimic_target_low`` /
+            ``mimic_target_high`` are passed.
     """
 
     def __init__(
@@ -134,21 +130,13 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         wasted_torque: WastedTorqueCfg | None = None,
         **kwargs: Any,
     ) -> None:
-        mt_low = kwargs.pop(
-            "mimic_target_low",
-            tuple(float(x) for x in cfg.target_site_range.low),
-        )
-        mt_high = kwargs.pop(
-            "mimic_target_high",
-            tuple(float(x) for x in cfg.target_site_range.high),
-        )
+        if {"mimic_target_low", "mimic_target_high"} & kwargs.keys():
+            raise TypeError(
+                "mimic_target_low / mimic_target_high were removed: the targets are "
+                "the tracked sites of random postures (reachable_postures)"
+            )
         super().__init__(
-            frame_skip=frame_skip,
-            seed=seed,
-            mimic_target_low=mt_low,
-            mimic_target_high=mt_high,
-            wasted_torque=wasted_torque,
-            **kwargs,
+            frame_skip=frame_skip, seed=seed, wasted_torque=wasted_torque, **kwargs
         )
         self.model, self._mj_spec, self._xml_path = compile_fn(cfg)
         self.data = mujoco.MjData(self.model)
@@ -156,6 +144,10 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         self._init_wasted_torque(wasted_torque)
         self._site_ids = self._resolve_mimic_sites(site_names)
         self._target_site_pos = np.zeros((len(self._site_ids), 3), dtype=np.float32)
+        self._target_qpos, self._target_sites = reachable_postures(
+            self.model, self._site_ids
+        )
+        self._target_index = 0
         self._tracking_cfg = MimicTrackingConfig(
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
@@ -205,12 +197,9 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
         )
 
     def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
-        assert self._site_ids is not None
-        self._target_site_pos = sample_mimic_target_sites(
-            np_random,
-            self._target_lo,
-            self._target_hi,
-            int(self._site_ids.shape[0]),
+        self._target_index = int(np_random.integers(len(self._target_sites)))
+        self._target_site_pos = self._target_sites[self._target_index].astype(
+            np.float32
         )
         return {}
 
@@ -301,13 +290,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         wasted_torque: WastedTorqueCfg | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(
-            frame_skip=frame_skip,
-            seed=seed,
-            mimic_target_low=(0.0,),
-            mimic_target_high=(1.0,),
-            **kwargs,
-        )
+        super().__init__(frame_skip=frame_skip, seed=seed, **kwargs)
         resolved_model_version = model_version or resolve_models_version()
         # Record this class's own ctor args; the base would replay fixed mimic bounds.
         EzPickle.__init__(

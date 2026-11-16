@@ -162,22 +162,28 @@ def run_case(
     notes: dict[str, list[Any]] = {}
     try:
         reference = mujoco.MjModel.from_xml_path(str(authored_xml(model_id, workdir)))
-        # Newton defaults to implicitfast; integrate as the reference does, so the
-        # trajectories compare the conversion and not two integrators.
+        # Match reference options that Newton leaves to caller configuration.
         result["integrator"] = integrator_name(reference)
+        result["enable_multiccd"] = not bool(
+            reference.opt.disableflags & int(mujoco.mjtDisableBit.mjDSBL_MULTICCD)
+        )
+        solver_options = {
+            "use_mujoco_cpu": engine == "cpu",
+            "use_mujoco_contacts": True,
+            "nconmax": 2048,
+            "njmax": 8192,
+            "strict_capacity": True,
+            "integrator": result["integrator"],
+            "enable_multiccd": result["enable_multiccd"],
+            "kinematic_switchable_roots": False,
+        }
         with _captured(notes):
             builder = newton.ModelBuilder()
+            newton.solvers.SolverMuJoCo.register_custom_attributes(builder)
+            builder.default_shape_cfg.gap = 0.0
             builder.add_mjcf(str(authored_xml(model_id, workdir)), ctrl_direct=True)
             model = builder.finalize(device=device)
-            solver = newton.solvers.SolverMuJoCo(
-                model,
-                use_mujoco_cpu=engine == "cpu",
-                use_mujoco_contacts=True,
-                nconmax=2048,
-                njmax=8192,
-                strict_capacity=True,
-                integrator=result["integrator"],
-            )
+            solver = newton.solvers.SolverMuJoCo(model, **solver_options)
         mapping, source_dofs = _joint_mapping(reference, model, solver)
         result["identity_mapping"] = _identity_mapping(
             reference, model, solver, mapping
@@ -202,15 +208,7 @@ def run_case(
                 joint_q[q_starts[owner] + dof - qd_starts[owner]] += offset
             model.joint_q.assign(joint_q)
             with _captured(notes):
-                solver = newton.solvers.SolverMuJoCo(
-                    model,
-                    use_mujoco_cpu=engine == "cpu",
-                    use_mujoco_contacts=True,
-                    nconmax=2048,
-                    njmax=8192,
-                    strict_capacity=True,
-                    integrator=result["integrator"],
-                )
+                solver = newton.solvers.SolverMuJoCo(model, **solver_options)
             baseline = mujoco.MjData(reference)
             baseline.qpos[:] = source_qpos
             baseline.act[:] = 0.5
@@ -409,7 +407,10 @@ def main(argv: list[str] | None = None) -> int:
                         "force_atol_N": 0.05,
                         "mutation": "10% muscle force/scale increase must exceed the force bounds",
                         "contacts": "native MuJoCo contacts enabled",
+                        "default_shape_gap": 0.0,
                         "integrator": "the reference model's, per case",
+                        "enable_multiccd": "the reference model's, per case",
+                        "kinematic_switchable_roots": False,
                         "nconmax": 2048,
                         "njmax": 8192,
                         "strict_capacity": True,

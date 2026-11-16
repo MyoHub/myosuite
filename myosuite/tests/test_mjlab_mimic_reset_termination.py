@@ -485,7 +485,7 @@ def _reference_lookahead(
     out = torch.zeros(n, k * width)
     offset = 0
     for i in range(1, k + 1):
-        future = (frames + i * stride) % lengths
+        future = torch.minimum(frames + i * stride, lengths - 1)
         sites = (source.site_targets_at_frames(future) - root[:, None]).reshape(n, -1)
         out[:, offset : offset + sites.shape[1]] = sites
         offset += sites.shape[1]
@@ -524,6 +524,41 @@ def test_lookahead_matches_the_reference_loop(
         cache = mimic._resolve_mimic_mjlab_ids(env, entity, variant)
         assert torch.equal(out, _reference_lookahead(env, cache, entity, k, stride))
         assert torch.equal(fn(env), out)  # the shared clip part is reused
+
+
+def test_lookahead_holds_the_last_clip_frame(
+    fullbody_env: tuple[Any, MotionClip],
+) -> None:
+    """Past the clip end every lookahead slot shows the last frame, where the episode stops.
+
+    The synthetic clip's root moves along ``_ROOT_LIN_VEL`` on every frame, so the root
+    deltas of the slots never decrease and their phase reaches 1 and stays there.
+    """
+    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+
+    env, clip = fullbody_env
+    torch.manual_seed(1)
+    env.reset()
+    env.step(torch.zeros(env.num_envs, sum(env.action_manager.action_term_dim)))
+    entity, k, stride = _ENTITY["fullbody"], 5, 20
+    out = mimic._mimic_obs_lookahead(
+        entity, "fullbody", clip, float(env.step_dt), k, stride
+    )(env)
+    source = mimic._resolve_mimic_mjlab_ids(env, entity, "fullbody")["clip_source"]
+    n_sites = source.n_tracked * 3
+    slots = out.reshape(env.num_envs, k, n_sites + 7)
+    step = env.episode_length_buf
+    lengths = source.clip_lengths(step)[:, None]
+    frames = torch.minimum(
+        source.frame_indices(step)[:, None] + stride * torch.arange(1, k + 1),
+        lengths - 1,
+    )
+    torch.testing.assert_close(slots[..., -1], frames.float() / (lengths.float() - 1))
+    direction = torch.tensor(_ROOT_LIN_VEL) / torch.linalg.norm(
+        torch.tensor(_ROOT_LIN_VEL)
+    )
+    along = slots[..., n_sites : n_sites + 3] @ direction
+    assert bool((along.diff(dim=1) >= -1e-5).all()), along
 
 
 # ---------------------------------------------------------------------------

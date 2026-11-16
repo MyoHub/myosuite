@@ -24,6 +24,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.utils.action_map import DynSyn, DynSynGroups
 
 
@@ -40,6 +41,9 @@ def record_muscle_lengths(
     Every ``hold_steps`` steps each joint gets a velocity drawn from
     ``U(-velocity_amplitude, velocity_amplitude)``. Gravity and contacts are off and
     free joints are held still, so the body stays in place and every joint moves.
+    The dependents of joint equalities (knee mechanism, patella) are then put on
+    their couplings, in position and velocity, so they follow their masters
+    instead of being driven against the equality constraints.
 
     Args:
         model: CPU model (copied, not changed).
@@ -64,11 +68,13 @@ def record_muscle_lengths(
         ]
         or [np.zeros(0, dtype=int)]
     )
+    couplings = JointCouplings.from_model(m)
     rng = np.random.default_rng(seed)
     out = np.empty((steps, len(actuator_ids)))
     for t in range(steps):
         if t % hold_steps == 0:
             d.qvel[:] = rng.uniform(-velocity_amplitude, velocity_amplitude, m.nv)
+            project_joint_couplings(couplings, d.qpos, d.qvel)
         d.qvel[free] = 0.0
         d.ctrl[:] = 0.0
         mujoco.mj_step(m, d)

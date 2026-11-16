@@ -59,15 +59,93 @@ def refresh_geom_derived_fields(
     """
     for body_id in body_ids:
         _refresh_body(model, spec, int(body_id))
-    # mj_setConst recomputes every statistic; keep those the model file sets.
+    # MuJoCo < 3.15 recomputes every statistic inside mj_setConst, whereas
+    # MuJoCo >= 3.15 leaves model.stat untouched; recompute unset statistics
+    # explicitly while keeping those the model file sets.
     user_stats = {
         name: np.copy(getattr(model.stat, name))
         for name in _STATISTICS
         if not np.isnan(np.ravel(getattr(spec.stat, name))[0])
     }
-    mujoco.mj_setConst(model, mujoco.MjData(model))
+    data = mujoco.MjData(model)
+    mujoco.mj_setConst(model, data)
+    _recompute_statistics(model, data)
     for name, value in user_stats.items():
         setattr(model.stat, name, value if value.ndim else float(value))
+
+
+def _recompute_statistics(model: mujoco.MjModel, data: mujoco.MjData) -> None:
+    """Recompute ``model.stat`` from ``model`` and ``qpos0`` ``data``."""
+    minval = mujoco.mjMINVAL
+    if model.nv > 0:
+        mass_matrix = data.M if hasattr(data, "M") else data.qM
+        diag_idx = (
+            model.M_rowadr + model.M_rownnz - 1
+            if hasattr(model, "M_rowadr")
+            else model.dof_Madr
+        )
+        model.stat.meaninertia = max(minval, float(np.mean(mass_matrix[diag_idx])))
+    else:
+        model.stat.meaninertia = 1.0
+
+    if model.nbody > 1:
+        model.stat.meanmass = max(minval, float(np.mean(model.body_mass[1:])))
+        radii = np.full(model.nbody - 1, 1e-5, dtype=np.float64)
+        for body_id in range(1, model.nbody):
+            ipos = model.body_ipos[body_id]
+            size = 1e-5
+            g_start = int(model.body_geomadr[body_id])
+            for gid in range(g_start, g_start + int(model.body_geomnum[body_id])):
+                if model.geom_rbound[gid] > 0:
+                    dist = float(np.linalg.norm(model.geom_pos[gid] - ipos))
+                    size = max(size, dist + float(model.geom_rbound[gid]))
+            j_start = int(model.body_jntadr[body_id])
+            for jid in range(j_start, j_start + int(model.body_jntnum[body_id])):
+                size = max(size, float(np.linalg.norm(model.jnt_pos[jid] - ipos)))
+            radii[body_id - 1] = size
+        model.stat.meansize = max(1e-5, float(np.mean(radii)))
+    else:
+        model.stat.meanmass = 1.0
+        model.stat.meansize = 0.1
+
+    pts_min: list[np.ndarray] = []
+    pts_max: list[np.ndarray] = []
+    if model.nbody > 1:
+        pts_min.extend((data.xpos[1:], data.xipos[1:]))
+        pts_max.extend((data.xpos[1:], data.xipos[1:]))
+    if model.njnt > 0:
+        pts_min.append(data.xanchor)
+        pts_max.append(data.xanchor)
+    if model.nsite > 0:
+        pts_min.append(data.site_xpos)
+        pts_max.append(data.site_xpos)
+    if model.ncam > 0:
+        pts_min.append(data.cam_xpos)
+        pts_max.append(data.cam_xpos)
+    if model.nlight > 0:
+        pts_min.append(data.light_xpos)
+        pts_max.append(data.light_xpos)
+    for gid in range(model.ngeom):
+        pos = data.geom_xpos[gid]
+        if model.geom_type[gid] == mujoco.mjtGeom.mjGEOM_PLANE:
+            plane_span = float(max(model.geom_size[gid, 0], model.geom_size[gid, 1]))
+            radius = (
+                0.1 * plane_span if plane_span > 0 else 0.2 * float(model.stat.meansize)
+            )
+            pts_min.append((pos - radius)[None])
+            pts_max.append((pos + radius)[None])
+        elif model.geom_rbound[gid] > 0:
+            radius = float(model.geom_rbound[gid])
+            pts_min.append((pos - radius)[None])
+            pts_max.append((pos + radius)[None])
+    if pts_min:
+        xmin = np.min(np.vstack(pts_min), axis=0)
+        xmax = np.max(np.vstack(pts_max), axis=0)
+        model.stat.center[:] = 0.5 * (xmin + xmax)
+        model.stat.extent = max(minval, float(np.max(xmax - xmin)))
+    else:
+        model.stat.center[:] = 0.0
+        model.stat.extent = 1.0
 
 
 def _refresh_body(model: mujoco.MjModel, spec: mujoco.MjSpec, body_id: int) -> None:
