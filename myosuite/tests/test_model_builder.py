@@ -982,3 +982,26 @@ def test_hand_reorient_target_does_not_collide(env_id: str) -> None:
         geom = model.geom(name)
         assert (int(geom.contype[0]), int(geom.conaffinity[0])) == (0, 0), name
     env.close()
+
+
+def _tint_first_geom(spec: object, alpha: float = 1.0) -> None:
+    spec.geoms[0].rgba = [1.0, 0.0, 0.0, alpha]
+
+
+def test_a_partial_edit_fn_hits_the_recipe_cache() -> None:
+    """``gymnasium.make`` deep-copies kwargs; a copied partial must still hit."""
+    import copy
+    import functools
+
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core import model_builder
+
+    model_builder.clear_spec_caches()
+    edit = functools.partial(_tint_first_geom, alpha=0.5)
+    for _ in range(4):
+        model, _ = model_builder.build_from_recipe(
+            "elbow_standard", edit_fn=copy.deepcopy(edit)
+        )
+    info = model_builder._recipe_spec.cache_info()
+    assert (info.hits, info.misses) == (2, 2)
+    assert model.geom_rgba[0][3] == pytest.approx(0.5)
