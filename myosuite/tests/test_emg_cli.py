@@ -1044,6 +1044,8 @@ def test_diaz2026_source_synthetic(tmp_path: Path) -> None:
     }
     assert held <= set(trial.meta["supported_dofs"])
     assert flex_dof not in trial.meta["supported_dofs"]
+    # Without a handle in the model the trial has no grip.
+    assert "grip" not in trial.meta
 
     rom_trial = src.get_trial("B002/RoM_Th_FE/rep02", model=model)
     assert rom_trial.channel_names == tuple(wire_ch)

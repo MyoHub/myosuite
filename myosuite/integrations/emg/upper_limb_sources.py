@@ -13,6 +13,7 @@ import json
 import re
 import zipfile
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from myosuite.biomechanics.emg_validation import (
     EMGChannelMap,
     EMGTrial,
 )
+from myosuite.biomechanics.grip import GripHandle, HandleGrip, solve_handle_grip
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics, required_qfrc
 from myosuite.integrations.emg.trial_io import BaseEMGSource, resolve_stem_channel_map
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
@@ -2165,10 +2167,21 @@ class Diaz2026HandSource(BaseEMGSource):
       must supply the measured torque at the tested joint. The other arm
       coordinates are strapped, and in elbow tasks the hand's grip on the
       handle holds the wrist: trials list these in ``meta["supported_dofs"]``
-      so that the support, not antagonists, carries their torques. The grip
-      force itself is not modelled: FDS/FDP must balance their own finger
-      torques. The elbow range-of-motion arm posture (45 deg plane of
-      elevation) is an estimate from the paper's Fig. 7.
+      so that the support, not antagonists, carries their torques. The elbow
+      range-of-motion arm posture (45 deg plane of elevation) is an estimate
+      from the paper's Fig. 7.
+    - Grip (``grip_handle``, on by default): the hand holds the cylindrical
+      Biodex handle in a power grip in every setup. When the model carries
+      the handle (:meth:`GripHandle.add_to` on its spec, as ``validate_emg.py``
+      does), the fingers and thumb are closed around it once per model
+      (:func:`~myosuite.biomechanics.grip.solve_handle_grip`; finger flexion
+      kept between neutral and its limit) and the trials declare it in
+      ``meta["grip"]``: the static optimization then takes the hand-handle
+      contacts as unknowns, and the handle transmits the dynamometer torque,
+      so FDS/FDP can flex the wrist or elbow while the handle takes their
+      finger torques. Neither the handle diameter nor the grip instruction is
+      reported; the 35 mm default is an assumption (typical cylindrical
+      handles, 30-40 mm). Without the handle the fingers stay at ``qpos0``.
     - Hand session: fine-wire EMG of FPL, EPL, EPB, APL, OPP, FPB, ADD and FDI
       in seven thumb/index range-of-motion tasks, with OpenSim IK of the
       MoBL-ARMS arm and ARMS hand (left hands mirrored to the right).
@@ -2192,8 +2205,12 @@ class Diaz2026HandSource(BaseEMGSource):
         pad_s: float = 0.25,
         max_window_s: float = 10.0,
         kinematics_rate_hz: float = 100.0,
+        grip_handle: GripHandle | None = GripHandle(),
     ) -> None:
         import h5py
+
+        self.grip_handle = grip_handle
+        self._grips: dict[int, tuple[mujoco.MjModel, HandleGrip]] = {}
 
         root = Path(data_root)
         if root.is_file():
@@ -2334,12 +2351,19 @@ class Diaz2026HandSource(BaseEMGSource):
         ext_qfrc = None
         ctrl_qadr: list[int] = []
         supported: list[int] = []
+        grip_meta: dict[str, Any] = {}
         if model is not None:
             kin_time = np.arange(0.0, t1 - t0 + 1e-9, 1.0 / self.kinematics_rate_hz)
             if is_biodex:
-                qpos, ctrl_qadr, ext_qfrc, supported = _bham_biodex_state(
-                    model, rec, task, kin_time + t0, self._bands[key]
+                grip = self.hand_grip(model)
+                qpos, ctrl_qadr, ext_qfrc, supported, tested = _bham_biodex_state(
+                    model, rec, task, kin_time + t0, self._bands[key], grip
                 )
+                if grip is not None:
+                    grip_meta = {
+                        "grip": asdict(grip.contact_config(loaded_joint=tested)),
+                        "grip_max_penetration_m": grip.max_penetration,
+                    }
             else:
                 ik_deg = {
                     c: np.interp(kin_time + t0, t_kin, rec["ik"][:, i])
@@ -2370,8 +2394,69 @@ class Diaz2026HandSource(BaseEMGSource):
                 "window_s": [t0, t1],
                 "controlled_qpos_adr": ctrl_qadr,
                 "supported_dofs": supported,
+                **grip_meta,
             },
         )
+
+    def hand_grip(self, model: mujoco.MjModel) -> HandleGrip | None:
+        """The hand closed around the handle, once per model; ``None`` without a handle."""
+        if self.grip_handle is None:
+            return None
+        names = {model.body(b).name for b in range(model.nbody)}
+        if self.grip_handle.name not in names:
+            return None
+        cached = self._grips.get(id(model))
+        if cached is not None and cached[0] is model:
+            return cached[1]
+        flex = _find_joint(model, "flexion")
+        wrist = int(model.jnt_bodyid[flex])
+        hand = {wrist}
+        for b in range(wrist + 1, model.nbody):
+            if model.body_parentid[b] in hand:
+                hand.add(b)
+        hand.discard(wrist)
+        collides = model.geom_contype | model.geom_conaffinity
+        joints = [
+            model.joint(j).name
+            for j in range(model.njnt)
+            if model.jnt_bodyid[j] in hand
+        ]
+        # Every finger and thumb phalanx and the palm (metacarpals 2-5) touch it.
+        contact = [
+            model.body(b).name
+            for b in sorted(hand)
+            if (collides[model.geom_bodyid == b] != 0).any()
+            and not model.body(b).name.startswith("firstmc")
+        ]
+        qpos = model.qpos0.copy()
+        data = mujoco.MjData(model)
+        data.qpos[:] = qpos
+        mujoco.mj_kinematics(model, data)
+        grip = solve_handle_grip(
+            model,
+            qpos,
+            hand_body="thirdmc_r" if "thirdmc_r" in names else "thirdmc",
+            joints=joints,
+            contact_bodies=contact,
+            axis=data.xaxis[flex].copy(),
+            handle_body=self.grip_handle.name,
+            ranges={
+                n: (0.0, np.pi)
+                for n in joints
+                if re.match(r"^(mcp|pm|md)\d_flexion", n)
+            },
+        )
+        self._grips[id(model)] = (model, grip)
+        return grip
+
+
+def _find_joint(model: mujoco.MjModel, base: str) -> int:
+    """Id of joint ``{base}_r`` or ``{base}``."""
+    for name in (f"{base}_r", base):
+        j = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+        if j >= 0:
+            return j
+    raise KeyError(f"model has no joint {base!r}")
 
 
 def _bham_biodex_state(
@@ -2380,8 +2465,9 @@ def _bham_biodex_state(
     task: str,
     t_abs: np.ndarray,
     bands: np.ndarray,
-) -> tuple[np.ndarray, list[int], np.ndarray, list[int]]:
-    """Protocol posture, dynamometer angle and torque, and the strapped dofs.
+    grip: HandleGrip | None = None,
+) -> tuple[np.ndarray, list[int], np.ndarray, list[int], str]:
+    """Protocol posture, dynamometer angle and torque, the strapped dofs and the tested joint.
 
     The dynamometer torque is not gravity corrected: isometric torques are
     referenced to their median between the trial bands (the relaxed rest).
@@ -2413,6 +2499,8 @@ def _bham_biodex_state(
             pos = pos - (float(np.median(mids)) + _WRIST_NEUTRAL_FROM_MID_DEG)
         coords[tested] = np.radians(np.interp(t_abs, t_dyn, pos))
     qpos, ctrl_qadr, _ = map_upper_limb_to_qpos(model, coords)
+    if grip is not None:
+        qpos = grip.apply(model, qpos)
     trq = rec["torque"][:, rec["torque_cols"].index("Torque")]
     if not code.startswith("RoM_"):
         rest = np.ones(len(t_dyn), dtype=bool)
@@ -2435,7 +2523,8 @@ def _bham_biodex_state(
         if model.joint(j).name.startswith(held)
         for k in range(_JOINT_NDOF[int(model.jnt_type[j])])
     ]
-    return qpos, ctrl_qadr, ext_qfrc, supported
+    tested_joint = model.joint(_find_joint(model, tested)).name
+    return qpos, ctrl_qadr, ext_qfrc, supported, tested_joint
 
 
 __all__ = [
