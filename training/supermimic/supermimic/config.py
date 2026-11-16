@@ -28,7 +28,8 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     """Observation groups: ``policy`` is the decoder's proprioception history, ``goal`` the encoder's input."""
     command_name: str = "motion"
     soft_width: float = 0.05
-    """Width of the sigmoid that softens the task's failure rule on imagined states."""
+    """Width of the sigmoid that softens the task's failure rule on imagined states, relative to each threshold
+    (absolute for the full body, whose thresholds are 1 m and 1 rad)."""
     max_iterations: int = 320_000
     save_interval: int = 2000
     log_interval: int = 50
@@ -48,6 +49,16 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     standard deviation action_noise at 0.5, shrinking towards 0 and 1, so it stays in the box with no bias (Trial 10:
     the policy stalls, near-silent muscles are never driven up); "reflect" adds N(0, action_noise^2) and folds the draws
     back into [0, 1] at the bounds: the Gaussian's step sizes, nothing piled on 0 or 1, biased upwards near 0."""
+    noise_free_frac: float = 0.0
+    """Share of the training envs (the first ones) that collect with the noise-free policy, so that the replay buffer and
+    imagination's start states cover the deployed policy's own states; their episode returns are logged as det_ret /
+    det_len (a live deterministic training curve). 0: every env explores."""
+    budget_schedules: bool = False
+    """With max_hours > 0: the cosine learning-rate decay runs over the time budget (the runner's clock), ending at 3 %,
+    instead of over lr_decay_iters, and the action noise anneals from action_noise to action_noise_final on the same
+    cosine."""
+    action_noise_final: float = 0.02
+    """The action noise at the end of the time budget (budget_schedules)."""
     warmup_steps: int = 64
     """Simulator steps before any update."""
 

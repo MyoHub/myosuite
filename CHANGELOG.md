@@ -24,6 +24,23 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **`myoMimic-v0` and myoSuperMimic on submodels of a body ([#711]).** A model adapter (`MimicModelCfg`,
+  `register_model`) may have a fixed root (no free joint: the root observations, reward components and failure
+  checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`, joint or site
+  transmission: an action in [0, 1] maps onto each motor's control range, on the CPU and in the twin through
+  `MyoActionCfg.motor_ctrl_range`), any number of tracked bodies, no contact bodies (no ground, no touch), an
+  optional left-right mirror map, effectors whose position error is reported as a success metric and
+  the kinematic fingerprint of clips from another retargeting (`fingerprint`). Built-in
+  example: `myoelbow2dof` (myo_sim's 2-DoF elbow, fixed base, fingertip error in cm). myoSuperMimic trains on such
+  bodies (fixed-root world model, one analytic drive per actuator for muscles and direct or first-order motors,
+  mirror augmentation only with a map); the full body's results are bit-identical. The checkpoint task contract
+  adds the root kind, the motors and the effectors.
+* **`myoMimic-v0` goal in a body's frame** (`ObsCfg.goal_frame`, `goal_bodies`): the goal can be chosen tracked
+  bodies in a frame body's reference frame, now and over the lookahead, with that body's own future motion and no
+  clip phase (e.g. fingertip targets in a palm frame, which a higher-level controller can supply). myoSuperMimic
+  imagines with it unchanged.
+* **myoSuperMimic `noise_free_frac` and `budget_schedules`** (opt-in): a share of the training envs collects with
+  the noise-free policy, and the learning-rate decay (and an action-noise annealing) runs over the time budget.
 
 ### Fixed
 
@@ -39,6 +56,9 @@ Changes since **v3.1.0** (2026-11-11).
   `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
   keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
   Python 3.15 on Linux for the ONNX-free native CPU path.
+* **myoSuperMimic's `soft_width` is relative to each failure threshold.** The full body's thresholds are 1 m and
+  1 rad, so its results are unchanged; on a submodel with small thresholds the softened failure rule no longer
+  turns into a constant per-step death rate.
 
 ### Fixed
 
@@ -368,10 +388,13 @@ Changes since **v3.1.0** (2026-11-11).
   the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
   instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
   at their compiled positions, up to 1e-16 away before).
+* **myoSuperMimic on MuJoCo 3.17:** the world model's joint-type check rejected hinge joints, because a NumPy scalar
+  no longer compares equal to a MuJoCo enum member. Types are compared as Python ints.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#711]: https://github.com/MyoHub/myosuite/pull/711
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810

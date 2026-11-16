@@ -273,7 +273,8 @@ def run(env, runner, refiner, max_steps=0, record=None):
         alive = ~done_eval
         if record:
             qpos = u.sim.data.qpos[:, q_adr].clone()
-            qpos[:, :3] -= u.scene.env_origins
+            if not cmd.fixed_root:
+                qpos[:, :3] -= u.scene.env_origins
             (
                 traj["qpos"].append(qpos.cpu()),
                 traj["f"].append(cmd.f.clone().cpu()),
@@ -313,6 +314,6 @@ def run(env, runner, refiner, max_steps=0, record=None):
         h = cmd.heads
         ref_q, ref_quat = h.ref_q, mat_to_quat(h.root_R @ cmd.kin.R_off.T)
         np.savez_compressed(record, names=np.array(m.names), **{k: torch.stack(v).numpy() for k, v in traj.items()},
-                            ref_qpos=torch.cat((h.root_p, ref_quat, ref_q), -1).cpu().numpy(),
+                            ref_qpos=(ref_q if cmd.fixed_root else torch.cat((h.root_p, ref_quat, ref_q), -1)).cpu().numpy(),
                             clip_start=m.clip_start.cpu().numpy(), clip_len=m.clip_len.cpu().numpy(), fps=1.0 / u.step_dt)  # fmt: skip
     return res

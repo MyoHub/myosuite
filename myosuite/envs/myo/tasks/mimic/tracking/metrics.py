@@ -16,7 +16,9 @@ before a clip's end or failure) and per clip first (suffix ``_clip``):
 * ``mpjpe_mm``: mean distance of the 16 bodies' offsets from the pelvis (world axes);
   ``mpjpe_root_mm`` with the offsets in the root frame; ``g_mpjpe_mm`` of the 17 world
   positions; ``joint_rmse_deg`` / ``joint_mae_deg`` over the independent joints;
-  ``root_ori_rad``; ``body_vel_mps``.
+  ``root_ori_rad``; ``body_vel_mps``; for a model with effectors (e.g. fingertips),
+  their mean world position error under the model's metric name and unit
+  (``MimicModelCfg.effector_metric``).
 
 Clips whose retarget metadata carries ``quality_flags`` (curation, none by default)
 are scored as usual; ``unflagged`` repeats the report without them.
@@ -41,7 +43,7 @@ VALIDATION_REL_SITE = 0.5
 
 def tracking_errors(
     xp: Any, s: mt.TrackState, f: mt.TrackFeatures, r: mt.TrackRef,
-    ref_body_pos: Any, ref_body_lin_vel: Any, indep_cols: Any,
+    ref_body_pos: Any, ref_body_lin_vel: Any, indep_cols: Any, effectors: Any = None,
 ) -> dict[str, Any]:  # fmt: skip
     """Per-state errors against the reference (each ``(...,)``).
 
@@ -53,6 +55,7 @@ def tracking_errors(
         ref_body_pos: ``(..., B, 3)`` reference body positions.
         ref_body_lin_vel: ``(..., B, 3)`` reference body velocities.
         indep_cols: Columns of the independent joints in ``joint_pos``.
+        effectors: Columns of the effector bodies among the tracked ones (adds ``eff``).
 
     Returns:
         Squared and absolute joint errors (rad), relative-site distances in world axes
@@ -63,7 +66,7 @@ def tracking_errors(
     d = xp.sqrt(((f.site_rpos - r.site_rpos) ** 2).sum(-1))
     loc = (f.site_rpos[..., None, :] @ f.root_rot)[..., 0, :]
     ref_loc = (r.site_rpos[..., None, :] @ r.root_rot)[..., 0, :]
-    return {
+    out = {
         "q_sq": (dq**2).mean(-1),
         "q_abs": xp.abs(dq).mean(-1),
         "b_d": d.mean(-1),
@@ -74,6 +77,10 @@ def tracking_errors(
             -1
         ),
     }
+    if effectors is not None and len(effectors):
+        e = s.body_pos[..., effectors, :] - ref_body_pos[..., effectors, :]
+        out["eff"] = xp.sqrt((e**2).sum(-1)).mean(-1)
+    return out
 
 
 METRICS: dict[str, tuple[str, Callable[[float], float]]] = {
@@ -92,6 +99,7 @@ def summarize(
     names: Sequence[str], sums: dict[str, np.ndarray], counts: np.ndarray,
     returns: np.ndarray, max_return: np.ndarray, failed: np.ndarray, failed_05: np.ndarray,
     flagged: Sequence[bool] | None = None,
+    metrics: dict[str, tuple[str, Callable[[float], float]]] | None = None,
 ) -> dict[str, Any]:  # fmt: skip
     """The report of one evaluation from per-clip accumulators.
 
@@ -105,6 +113,7 @@ def summarize(
         failed_05: Clips that failed or exceeded :data:`VALIDATION_REL_SITE`.
         flagged: Clips with quality flags; when any, ``unflagged`` holds the report
             of the other clips (without ``per_clip``) and ``flagged`` their names.
+        metrics: The reported metrics (default :data:`METRICS`).
 
     Returns:
         The metrics (see the module docstring), ``failed`` (clip names) and ``per_clip``.
@@ -119,7 +128,8 @@ def summarize(
         "failed": [n for n, x in zip(names, failed) if x],
     }
     counted = counts > 0
-    for name, (key, fn) in METRICS.items():
+    metrics = METRICS if metrics is None else metrics
+    for name, (key, fn) in metrics.items():
         out[name] = fn(float(sums[key].sum() / max(counts.sum(), 1)))
         vals = [fn(float(v)) for v in sums[key][counted] / counts[counted]]
         out[name + "_clip"] = float(np.mean(vals)) if vals else float("nan")
@@ -129,7 +139,7 @@ def summarize(
         k = ~fl
         sub = summarize(
             [n for n, x in zip(names, k) if x], {key: v[k] for key, v in sums.items()},
-            counts[k], returns[k], max_return[k], failed[k], failed_05[k],
+            counts[k], returns[k], max_return[k], failed[k], failed_05[k], None, metrics,
         )  # fmt: skip
         sub.pop("per_clip")
         out["unflagged"] = sub
@@ -157,7 +167,12 @@ def evaluate(
     m = u.motion
     ids = list(range(len(m.names))) if clips is None else list(clips)
     n = len(ids)
-    sums: dict[str, np.ndarray] = {k: np.zeros(n) for k, _ in METRICS.values()}
+    mc = u._model_cfg
+    metrics, eff = dict(METRICS), None
+    if mc.effectors:
+        eff = np.array([mc.tracked_bodies.index(b) for b in mc.effectors])
+        metrics[mc.effector_metric] = ("eff", lambda x: mc.effector_scale * x)
+    sums: dict[str, np.ndarray] = {k: np.zeros(n) for k, _ in metrics.values()}
     counts, returns = np.zeros(n), np.zeros(n)
     failed, failed_05 = np.zeros(n, bool), np.zeros(n, bool)
     cols = np.asarray(u.info.indep_cols)
@@ -176,7 +191,7 @@ def evaluate(
             fr = u.motion.frames
             errs = tracking_errors(
                 np, s, mt.features(np, s), m.ref(u.frame),
-                fr["body_pos"][u.frame], fr["body_lin_vel"][u.frame], cols,
+                fr["body_pos"][u.frame], fr["body_lin_vel"][u.frame], cols, eff,
             )  # fmt: skip
             for k in sums:
                 sums[k][i] += float(errs[k])
@@ -185,5 +200,5 @@ def evaluate(
     flagged = [bool(m.quality_flags[c]) for c in ids] if m.quality_flags else None
     return summarize(
         [m.names[c] for c in ids], sums, counts, returns, max_return, failed,
-        failed_05, flagged,
+        failed_05, flagged, metrics,
     )  # fmt: skip
