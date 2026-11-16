@@ -265,7 +265,10 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         lookahead_stride: Frame stride for lookahead.
         site_err_threshold: Early-termination site-error threshold (metres).
         root_err_threshold: Early-termination root-error threshold (metres).
-        use_obs_normalizer: Whether to update and apply RunningMeanStd on obs.
+        use_obs_normalizer: Update and apply a per-instance RunningMeanStd on obs
+            (off by default: its statistics change every step, differ per env and
+            are not saved, and it clips to +-10; normalise in the learner and
+            store the statistics with the policy instead).
         frame_skip: Number of simulation sub-steps per control step.
         seed: Optional RNG seed.
         random_start: Start each episode at a clip frame drawn from the env RNG
@@ -279,7 +282,7 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         lookahead_stride: int = 20,
         site_err_threshold: float = 1.0,
         root_err_threshold: float = 0.3,
-        use_obs_normalizer: bool = True,
+        use_obs_normalizer: bool = False,
         frame_skip: int = 5,
         seed: int | None = None,
         random_start: bool = True,
@@ -560,6 +563,7 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         self.data.ctrl[:] = action
         for _ in range(self.frame_skip):
             mujoco.mj_step(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
         self._step_count += 1
 
         obs = self._build_obs()
