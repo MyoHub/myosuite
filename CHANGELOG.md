@@ -330,6 +330,10 @@ Changes since **v3.1.0** (2026-11-11).
 * `myosuite.biomechanics.uncertainty.perturbed_model` scales the passive peak force only where the bias is a
   muscle bias. For `gaintype="muscle"` with an affine bias it had replaced the velocity coefficient
   (`biasprm="0 0 -10"` became 0), also with `strength_cv=0`, so every sample dropped that damping term.
+* `opensim_motion_to_qpos` warns when a mapped coordinate leaves its joint range by more than 5 % of the range,
+  naming the joints and the share of frames. Its default `signs` are gait2392's (knee flexion negative), so a
+  Rajagopal-family file (OpenCap, AddBiomechanics) mapped with the defaults had its knees mirrored into
+  hyperextension without a message; such files need `signs={}`.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
