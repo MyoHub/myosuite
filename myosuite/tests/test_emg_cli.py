@@ -18,8 +18,8 @@ import scipy.io as sio
 from scripts.validation.emg_sources import CAMARGO_CHANNELS, Camargo2021Source
 from scripts.validation.emg_upper_limb import (
     EMG2POSE_JOINT_NAMES,
-    Maurice2020Source,
     GrabMyoSource,
+    Maurice2020Source,
     UltraMoCap2025Source,
     _axis_rot,
     map_cyberglove_to_hand_qpos,
@@ -322,7 +322,7 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
             assert (reg_out / "emg_validation_summary.json").exists()
 
 
-def test_upper_limb_and_hand_coordinate_mappers() -> None:
+def test_upper_limb_and_hand_coordinate_mappers(tmp_path: Path) -> None:
     m_st = mujoco.MjModel.from_xml_string(_MINI_SCAPULOTHORACIC_XML)
     coords = {
         "elv_angle": np.linspace(0.5, 1.2, 6),
@@ -338,6 +338,53 @@ def test_upper_limb_and_hand_coordinate_mappers() -> None:
     assert np.allclose(
         np.linalg.norm(q_st[:, ac_adr : ac_adr + 4], axis=1), 1.0, atol=1e-7
     )
+    selv_adr = int(m_st.jnt_qposadr[m_st.joint("shoulder_elv_r").id])
+    assert np.all(q_st[:, selv_adr] >= 0.0)
+
+    # Extension (shoulder_elv < 0) keeps the girdle at its 0 deg rest posture,
+    # and near-zero frame-0 elevation stays on the non-negative GH elevation branch.
+    ext_coords = {
+        "elv_angle": np.array([0.0, 0.0, 0.8]),
+        "shoulder_elv": np.array([-0.35, 0.0, 1.1]),
+        "shoulder_rot": np.zeros(3),
+    }
+    q_ext, _, _ = map_upper_limb_to_qpos(m_st, ext_coords)
+    sc2_adr = int(m_st.jnt_qposadr[m_st.joint("sternoclavicular_r2_r").id])
+    assert q_ext[0, sc2_adr] == pytest.approx(q_ext[1, sc2_adr], abs=1e-9)
+    assert np.allclose(
+        q_ext[0, ac_adr : ac_adr + 4], q_ext[1, ac_adr : ac_adr + 4], atol=1e-9
+    )
+    assert q_ext[2, selv_adr] > 0.5
+
+    # Verify single-source-of-truth loading from myo_sim scapulothoracic.json format.
+    bins = ("30", "60", "90", "120", "max")
+    fake_st_json = tmp_path / "scapulothoracic.json"
+    fake_st_json.write_text(
+        json.dumps(
+            {
+                "rhythm": {
+                    "frames": {
+                        mode: {
+                            b: {
+                                "trial": ["abd21" if mode == "abduction" else "flx01"],
+                                "sternoclavicular_r2_r": [-0.55],
+                                "sternoclavicular_r3_r": [0.05],
+                                "sternoclavicular_r1_r": [0.20],
+                                "acromioclavicular_r": [[1.0, 0.0, 0.0, 0.0]],
+                            }
+                            for b in bins
+                        }
+                        for mode in ("abduction", "flexion")
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    q_json, _, _ = map_upper_limb_to_qpos(
+        m_st, coords, scapulothoracic_json=fake_st_json
+    )
+    assert np.allclose(q_json[-1, sc2_adr], -0.55, atol=1e-6)
     torques = {
         "elv_angle": np.full(6, 2.0),
         "shoulder_elv": np.linspace(5.0, 15.0, 6),
