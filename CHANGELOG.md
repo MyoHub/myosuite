@@ -195,6 +195,16 @@ Changes since **v3.1.0** (2026-11-11).
   yaw) instead of a fixed world axis. Observations and actions are unchanged; policies trained on the old reward walk
   backwards and score low on the new one. Tutorial 5.5's random-action comparison reports displacement along the
   same direction.
+* **`myoMimic-v0` mjlab twin: the last step of an episode counts in the reset statistics.** With `reset.auto_reset`
+  (the default) mjlab resets an ended env inside `step()`, before the motion command's update of that step, so the
+  episode was folded into its start bin without its last reward and one frame early. A one-step time-out got return
+  0 where the CPU env records 100 x the step reward (bin estimate 0 instead of 3.74 on a test clip), a three-step one
+  68 % of it, and a failure was booked in the bin of the frame before it. Bins with short episodes, such as starts
+  near a clip end, looked like failures and were over-sampled by the return-based resets (`reset.mode="return"`, the
+  `supermimic` preset). The reset now folds that step first: bin returns and failure bins match the CPU
+  `ResetSampler`, and the logged `task_reward` metric includes the last step. Runs that reset the env themselves
+  (`reset.auto_reset=False`, as `training/supermimic` does) are unchanged. This changes the twin's reset distribution
+  during training, not its observations, actions or rewards.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
