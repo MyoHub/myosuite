@@ -188,6 +188,13 @@ Changes since **v3.1.0** (2026-11-11).
   the paddle with the shoulder rhythm 0.59 rad off its couplings (projected, the grasp site is 6.9 cm from the
   paddle handle instead of 1.7 cm, so it first needs a keyframe on the couplings), and
   `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off). See `docs/baseline_checkpoints.md`.
+* **`myoFullBodyWalkSAR-v0` rewards walking forwards.** The forward-velocity term tracked the root's world `+y`
+  velocity, but the MuscleMimic full body faces `-y` (heel to toe is `(0, -1, 0)` at the keyframe), so the reward
+  peaked for walking backwards: at the 1.2 m/s target it paid 5 x 0.003 forwards and 5 x 1.0 backwards. It now tracks
+  the root velocity along the body's heading (the pelvis' anterior axis, read from the model, turned by the root
+  yaw) instead of a fixed world axis. Observations and actions are unchanged; policies trained on the old reward walk
+  backwards and score low on the new one. Tutorial 5.5's random-action comparison reports displacement along the
+  same direction.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
