@@ -3,6 +3,10 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
+from typing import Any
+
 import mujoco
 
 
@@ -30,19 +34,20 @@ def compile_with_options(spec: mujoco.MjSpec, model: mujoco.MjModel) -> mujoco.M
 
 
 def recursive_immobilize(
-    spec,
-    temp_model,
-    parent,
-    remove_eqs=False,
-    remove_actuators=False,
-    remove_sites=True,
-):
-    removed_joint_ids = []
+    spec: mujoco.MjSpec,
+    temp_model: mujoco.MjModel | None,
+    parent: Any,
+    remove_eqs: bool = False,
+    remove_actuators: bool = False,
+    remove_sites: bool = True,
+) -> list[int]:
+    removed_joint_ids: list[int] = []
     if remove_sites:
         for s in parent.sites:
             spec.delete(s)
     for j in parent.joints:
-        removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
+        if temp_model is not None:
+            removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
         if remove_eqs:
             for e in spec.equalities:
                 if e.type == mujoco.mjtEq.mjEQ_JOINT and (

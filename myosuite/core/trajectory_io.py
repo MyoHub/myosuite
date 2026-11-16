@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +27,8 @@ class MotionClip:
 
     ``weights`` is an optional per-frame weight ``(T,)`` (e.g. to down-weight noisy
     frames of a hand-authored trajectory); nothing in MyoSuite reads it, it only
-    travels with the clip.
+    travels with the clip. ``metadata`` likewise travels with the clip, e.g. the
+    per-frame marker error that :func:`myosuite.core.retargeting.retarget` records.
     """
 
     qpos: np.ndarray
@@ -43,6 +44,7 @@ class MotionClip:
     weights: np.ndarray | None = None
     site_xmat: np.ndarray | None = None
     site_velocity: np.ndarray | None = None
+    metadata: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def num_frames(self) -> int:
@@ -261,7 +263,7 @@ def _default_state(mj_model: Any, *, use_qvel: bool) -> np.ndarray:
         return np.zeros(int(mj_model.nv), dtype=np.float64)
     if getattr(mj_model, "key_qpos", None) is not None and int(mj_model.nkey) > 0:
         return np.asarray(mj_model.key_qpos[0], dtype=np.float64)
-    return np.zeros(int(mj_model.nq), dtype=np.float64)
+    return np.asarray(mj_model.qpos0, dtype=np.float64)
 
 
 def _expand_state_field(
@@ -363,6 +365,7 @@ def expand_motion_clip_to_model(
         weights=clip.weights,
         site_xmat=clip.site_xmat,
         site_velocity=clip.site_velocity,
+        metadata=clip.metadata,
     )
 
 
@@ -411,7 +414,8 @@ def load_motion_clip(
     shared ``joint_names`` metadata.  A clip with such names (at any width)
     must be resolved against a concrete MuJoCo model via
     :func:`expand_motion_clip_to_model` before its columns are used as model
-    qpos/qvel.
+    qpos/qvel. Arrays share a positive frame count; optional ``site_xpos`` has
+    shape ``(T, S, 3)``.
     """
     with np.load(path, allow_pickle=False) as npz:
         if "qpos" not in npz.files:
@@ -419,6 +423,8 @@ def load_motion_clip(
         qpos = np.asarray(npz["qpos"], dtype=np.float64)
         if qpos.ndim != 2:
             raise ValueError(f"qpos must be rank-2, got shape {qpos.shape}")
+        if qpos.shape[0] == 0:
+            raise ValueError("qpos must contain at least one frame")
         qpos_joint_names = _decode_name_list(npz, _QPOS_NAME_KEYS)
         if qpos.shape[1] != expected_nq and qpos_joint_names is None:
             raise ValueError(
@@ -439,6 +445,15 @@ def load_motion_clip(
         site_xpos: np.ndarray | None = None
         if "site_xpos" in npz.files:
             site_xpos = np.asarray(npz["site_xpos"], dtype=np.float64)
+            if site_xpos.ndim != 3 or site_xpos.shape[2] != 3:
+                raise ValueError(
+                    f"site_xpos must have shape (T, S, 3), got {site_xpos.shape}"
+                )
+        for name, values in (("qvel", qvel), ("site_xpos", site_xpos)):
+            if values is not None and values.shape[0] != qpos.shape[0]:
+                raise ValueError(
+                    f"{name} frame count mismatch: expected {qpos.shape[0]}, got {values.shape[0]}"
+                )
         site_names: list[str] | None = None
         if "site_names" in npz.files:
             try:
