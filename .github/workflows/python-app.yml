@@ -148,9 +148,10 @@ jobs:
 
       # [rl] (Stable-Baselines3) so the SB3 tests run instead of skipping, among
       # them the tier-1 SB3 -> ONNX export check (test_export_onnx.py).
-      # On Python 3.15, h5py has no stable cp315 wheel on PyPI yet, usd-core
-      # ships neither cp315 wheels nor an sdist, and uv.lock does not cover 3.15
-      # so mujoco is pinned to the locked >=3.14 baseline version (3.14.0).
+      # On Python >=3.14, mjlab (<3.14) does not cap mujoco and UV_NO_SYNC=true
+      # skips uv.lock, so pin mujoco to the locked >=3.14 baseline version (3.14.0).
+      # On Python 3.15, h5py has no stable cp315 wheel on PyPI yet and usd-core
+      # ships neither cp315 wheels nor an sdist.
       - name: Install project and pytest
         run: |
           if [ "${{ matrix.python-version }}" = "3.15" ]; then
@@ -159,10 +160,11 @@ jobs:
               --only-binary h5py \
               --prerelease=allow \
               h5py
-            uv pip install -e ".[mjlab,rl]" "mujoco==3.14.0"
-          else
-            uv pip install -e ".[mjlab,rl]"
           fi
+          case "${{ matrix.python-version }}" in
+            3.14|3.15) uv pip install -e ".[mjlab,rl]" "mujoco==3.14.0" ;;
+            *)         uv pip install -e ".[mjlab,rl]" ;;
+          esac
           uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch ipython "musclemimic_models==1.0.6" "usd-core; python_version < '3.15'" "pytest-testmon; python_version < '3.15'"
 
       - name: Check and report resolved dependencies

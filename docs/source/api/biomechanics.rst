@@ -15,6 +15,18 @@ OpenSim motions
 .. automodule:: myosuite.biomechanics.opensim_motion
    :members:
 
+Motion retargeting
+------------------
+
+.. automodule:: myosuite.biomechanics.retarget
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_smplh
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_instanthmr
+   :members:
+
 Inverse dynamics
 ----------------
 
@@ -53,4 +65,18 @@ External loads
 Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 
 .. automodule:: myosuite.biomechanics.external_loads
+   :members:
+
+Camera
+------
+
+Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+
+.. automodule:: myosuite.biomechanics.camera
+   :members:
+
+Muscle mesh reconstruction
+--------------------------
+
+.. automodule:: myosuite.viz.muscle_meshes
    :members:

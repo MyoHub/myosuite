@@ -24,25 +24,7 @@ from myosuite.utils import gym
 SEED = 123
 N_STEPS = 30
 
-# The first reset of these instances differs from later ones (fixes pending).
-_KNOWN = {
-    **dict.fromkeys(
-        (
-            "myoChallengeBimanual-v0",
-            "myoFatiChallengeBimanual-v0",
-            "myoSarcChallengeBimanual-v0",
-        ),
-        "the first reset keeps the nominal box size (ignore_first_scale)",
-    ),
-    **dict.fromkeys(
-        (
-            "myoChallengeDieReorientP2-v0",
-            "myoFatiChallengeDieReorientP2-v0",
-            "myoSarcChallengeDieReorientP2-v0",
-        ),
-        "reset takes a sign from the previous episode's geom_pos",
-    ),
-}
+_KNOWN: dict[str, str] = {}
 
 
 def _ids() -> list[str]:
