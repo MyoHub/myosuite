@@ -215,6 +215,13 @@ Changes since **v3.1.0** (2026-11-11).
   `PlaybackResult.mean_tracking_error`) and the SAR activation collector's episode filter match clip columns to
   the model's mimic sites by name. They paired them by position, so a body posed exactly on the reference
   reported 0.25 to 0.45 m. Activation sets collected with the old filter were selected by that number.
+* The SAR activation collector (`collect_activations`, tutorial 5.5) ranks fixed-length episodes. Every episode
+  starts on the reference, so its tracking error grows from zero; with random starts running to the clip end the
+  shortest episodes, near the clip end, had the best mean and were the ones kept. Each step is now scored on
+  forwarded data against the clip frame it reached, fallen episodes (free root below `min_root_height`) are
+  rejected, and the first `warmup_steps` activations after the `act = 0` reset are left out.
+  `max_steps_per_episode` is now the length of every episode (default: half the clip). Activation caches built
+  before this change hold the biased selection: delete them.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
