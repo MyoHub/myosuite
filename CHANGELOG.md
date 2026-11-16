@@ -16,7 +16,7 @@ Changes since **v3.1.0** (2026-11-11).
 * **Computed muscle control** (`myosuite.biomechanics.computed_muscle_control`): `computed_muscle_control(model, qpos, qvel, qacc, dt)` (or `ComputedMuscleControl.reset` and `.step` per control step) finds the excitations that make a forward simulation track a motion (Thelen, Anderson & Delp 2003) with `StaticOptimizer` and its per-frame `min_activation`. Every step bounds each actuator by the activations its dynamics can reach, takes velocity-dependent forces (force-velocity, joint damping) at the velocity that delivers the desired acceleration over MuJoCo's Euler steps, inverts MuJoCo's own activation dynamics exactly (any `dyntype`, `tausmooth` included) and applies the reserves and residuals, as OpenSim does. For standing and walking the simulation has no contacts and the estimated ground reactions (`contact_forces=True`) are applied, as OpenSim applies measured ones. A 37-degree motion that the 2-dof elbow's muscles produced in simulation is tracked within 0.03 deg at 500 Hz control and 0.25 deg at 100 Hz; myoArm reaches at 100 Hz within 2.4 deg (RMS 0.19 deg); MyoLeg stands on its estimated ground reactions within 0.1 mm; retargeted KIT walks on MyoFullBody (354 muscles, 100 Hz, about 25 ms per step) within 1.5 mm at the root and 0.27 deg RMS at the joints (6-8 deg max), with the residuals that static optimization of the same clips already needs ([#644]).
 * Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 * Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
-* **Live joint kinematics** (`myosuite.biomechanics.streaming_kinematics`): `StreamingKinematics.push(time, qpos)` estimates positions, velocities and accelerations of a pose stream a fixed number of frames behind the newest pose, with a local polynomial (Savitzky-Golay) fit on the poses' own timestamps (jitter and dropped frames are fine) in the tangent space of free and ball joints, coupled joints projected. It feeds inverse dynamics and static optimization in a live shadow model. On myoArm reaches tracked at 90 Hz with 0.5 deg noise, the static-optimization activations' RMS error falls from 0.32 with no delay to 0.13 at 56 ms and 0.05 at 111 ms.
+* **Live joint kinematics** (`myosuite.biomechanics.streaming_kinematics`): `StreamingKinematics.push(time, qpos)` estimates positions, velocities and accelerations of a pose stream a fixed number of frames behind the newest pose, with a local polynomial (Savitzky-Golay) fit on the poses' own timestamps (jitter and dropped frames are fine) in the tangent space of free and ball joints, coupled joints projected. It feeds inverse dynamics and static optimization in a live shadow model. On myoArm reaches tracked at 90 Hz with 0.5 deg noise, the static-optimization activations' RMS error falls from 0.32 with no delay to 0.13 at 56 ms and 0.05 at 111 ms ([#656]).
 
 ### Fixed
 
@@ -118,6 +118,7 @@ Changes since **v3.1.0** (2026-11-11).
   with a different spec; the registering module itself may still replace it, as on `importlib.reload`.
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
+[#656]: https://github.com/MyoHub/myosuite/pull/656
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 
