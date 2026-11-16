@@ -205,6 +205,12 @@ Changes since **v3.1.0** (2026-11-11).
   `ResetSampler`, and the logged `task_reward` metric includes the last step. Runs that reset the env themselves
   (`reset.auto_reset=False`, as `training/supermimic` does) are unchanged. This changes the twin's reset distribution
   during training, not its observations, actions or rewards.
+* `MuscleMimicClipEnvV0` returns raw observations by default (`use_obs_normalizer=False`). Its in-env running
+  normaliser made the first observation of every new env all zeros, gave each env of a vector env its own drifting
+  statistics, was never saved and clipped to +-10, so `reset(seed)` did not determine the observation and tutorial
+  5.2 rendered a policy on inputs it was not trained on. Tutorial 5.2's policy now holds the normaliser as buffers:
+  shared by all envs, updated after each PPO update and saved in the checkpoint. Checkpoints trained with the old
+  tutorial do not load into the new `ActorCritic`.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
