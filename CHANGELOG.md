@@ -312,6 +312,15 @@ Changes since **v3.1.0** (2026-11-11).
   `allow_pickle=False`, keyed by the bytes of every clip, the compiled body, the tracked bodies, the control step and
   the preprocessing code), and the library's features are recomputed on each load. Old `lib_*.pt` files are no longer
   read.
+* **`training/chasetag_teacher`: DAgger `val_mse` is measured on held-out bouts.** `distill.train` held out 2 % of
+  the steps at random. Consecutive steps of a bout are near-duplicates and the half-turn copy of a validation step was
+  in the training set, so the `val_mse` that `scripts/dagger.py`, `dagger_directional.py` and `retrain.py` log equalled
+  the training error: on synthetic bouts it reported 0.00011 against 0.087 on unseen bouts. `load_data` now also
+  returns a mask of the validation bouts (about 5 % of the bout files, chosen by a seeded hash of the file name, so a
+  bout keeps its side in every round and run), `train(..., held_out=mask)` validates on them only and normalises the
+  inputs on the training samples, and `augment_half_turn` adds the half-turn copies after the split, of training
+  samples only. The same synthetic bouts now report 0.092 against 0.087. The fit uses 5 % fewer bouts; `train`
+  without `held_out` keeps the step split.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
