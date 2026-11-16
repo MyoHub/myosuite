@@ -11,6 +11,8 @@ synthetic motion projected onto the couplings.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import mujoco
 import numpy as np
 import pytest
@@ -197,8 +199,10 @@ def test_kit_lists_and_root_override(monkeypatch, tmp_path) -> None:
                 if ln.strip() and not ln.startswith("#")]  # fmt: skip
 
     monkeypatch.setenv(tr.KIT_ROOT_ENV, str(tmp_path))
-    path, root = tr.resolve_clips("kit_train")
-    assert root == str(tmp_path) and len(clips(path)) == 972
+    assert tr.kit_root() == tmp_path
+    assert len(clips(str(tr.kit_split("train")))) == 972
+    with pytest.raises(tr.MissingMotionData, match="972 of 972 listed clips missing"):
+        tr.resolve_clips("kit_train")
     from myosuite.envs.myo.tasks.mimic.tracking.config import MotionCfg
 
     assert (
@@ -206,6 +210,53 @@ def test_kit_lists_and_root_override(monkeypatch, tmp_path) -> None:
     )  # the task's default: MuscleMimic's training motions
     with pytest.raises(ValueError, match="only the 'train' list"):
         tr.kit_split("test")
+
+
+def test_incomplete_packaged_kit_cache_reports_missing_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Finding the probe clip does not make a partial packaged KIT cache usable."""
+    from myosuite.envs.myo.tasks.mimic import tracking as tr
+    from myosuite.envs.myo.tasks.mimic.tracking.motion import motion_files
+
+    path = tr.kit_split("train")
+    first = next(
+        line.split("#", 1)[0].strip()
+        for line in path.read_text().splitlines()
+        if line.split("#", 1)[0].strip()
+    )
+    probe = tmp_path / first
+    probe.parent.mkdir(parents=True)
+    probe.touch()
+    monkeypatch.setattr(tr, "kit_root", lambda model: tmp_path)
+
+    with pytest.raises(
+        tr.MissingMotionData, match="971 of 972 listed clips missing"
+    ) as err:
+        load_motion_lib("kit_train", "", "myofullbody", True, 0.02, 1.0)
+    assert tr.KIT_ROOT_ENV in str(err.value)
+    assert isinstance(err.value.__cause__, FileNotFoundError)
+
+    # A caller's own list keeps its normal missing-file error.
+    custom, root = tr.resolve_clips(str(path), str(tmp_path))
+    with pytest.raises(FileNotFoundError) as custom_err:
+        motion_files(custom, root)
+    assert not isinstance(custom_err.value, tr.MissingMotionData)
+
+
+def test_complete_packaged_kit_list_resolves(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Complete lists retain their paths and explicit root."""
+    from myosuite.envs.myo.tasks.mimic import tracking as tr
+
+    path = tmp_path / "list.txt"
+    path.write_text("# clips\nfirst.npz\n\nsecond.npz # another\n")
+    (tmp_path / "first.npz").touch()
+    (tmp_path / "second.npz").touch()
+    monkeypatch.setattr(tr, "kit_split", lambda split: path)
+
+    assert tr.resolve_clips("kit_train", str(tmp_path)) == (str(path), str(tmp_path))
 
 
 # ------------------------------------------------------------- kinematic fingerprint

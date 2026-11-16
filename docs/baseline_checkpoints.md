@@ -86,6 +86,12 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 On every CPU env, a step on which MuJoCo reset a diverged simulation no longer pays a positive reward or counts as `solved`, and `info["mj_unstable"]` marks it. Observations, actions, dynamics and the rewards of regular steps are unchanged, so checkpoints load and score as before; only evaluations that contained a diverged episode change (the ChaseTag envs counted such an episode as a win).
 
+`myoMimic-v0` uniform and return resets now exclude terminal-only reference bins on CPU and mjlab, so every reset has at least one reference transition. This corrects the random-start distribution for clips whose last frame starts a bin (for example, a one-second clip at 10 ms). The stored terminal frame remains the final scoring target. Reevaluate policies with the corrected distribution; adaptive per-bin training statistics from a library containing those empty bins must be rebuilt. Policy input/action layouts and clip-start evaluation are unchanged.
+CPU clip-following evaluations through `MuscleMimicClipEnvV0` now score sites after the final physics substep. Earlier site-based rewards and early termination used geometry from one substep earlier than qpos/qvel. Reevaluate checkpoints measured through this class: policy inputs, action layout, control step and integration trajectories are preserved, while rewards and termination can differ.
+`myoChallengeBimanual-v0` and its `myoSarc` / `myoFati` variants draw the box size on the first `reset()` of an env instance too; before, the first episode of every instance used the nominal box. An evaluation that builds a fresh env per episode now sees the size randomisation (10 %, 5 %, 10 % per axis), and a seeded first episode differs from 3.1.0. `get_metrics` counts a path with at least one solved step as a success (before: more than 5, which no episode could reach, so the score was always 0). Observations, actions and rewards are unchanged, and no checkpoint of these ids is published here.
+`myoFullBodyWalkSAR-v0` (mjlab only, tutorial 5.5) now rewards the root velocity along the body's heading. Up to 3.1.0 it rewarded world `+y`, which is backwards for the MuscleMimic full body, so a policy trained before this change walks backwards: retrain it. Observations, actions and dynamics are unchanged, so such a policy still loads. No checkpoint of this id is published here.
+`myoMimic-v0` (mjlab twin): with `reset.auto_reset` (the default) the return-based reset statistics now include the last step of every episode, so starts near a clip end are no longer over-sampled and the reset distribution during training differs from 3.1.0. Observations, actions, rewards and the CPU env are unchanged. No `myoMimic-v0` checkpoint is published here, and the myoSuperMimic tutorial files were trained with resets driven by the runner (`reset.auto_reset=False`), which this does not change.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.
@@ -124,6 +130,18 @@ Re-evaluate a checkpoint after any change to an env's observations with
 `python scripts/eval_mjlab_policy.py <env_id> --backend mjlab`; train it again if its success rate drops
 noticeably (with 64 episodes, differences of a few points are noise). Success rates were measured with
 64 parallel episodes of the deterministic policy.
+
+**Success of the walk tasks (after 3.1.0).** `solved` of `myoLegWalk-v0`, the rough, hilly and stairs walks and their
+`myoSarc`/`myoFati` variants, and `Episode_Metrics/success` of their twins, now mean sustained walking: upright and
+within 0.5 m/s of the target velocity on every control step of the last second. Up to 3.1.0 one such step was enough,
+and the reset keyframe already moves at about the target speed: a zero-action episode that falls after about 0.2 s had
+7 to 10 solved steps, and `evaluate_success` (more than 5 solved steps) gave 100 %. The rates in the table are measured on
+the last step of an episode. An episode that ends in a fall failed before and fails now; an episode that reaches the
+time limit now also needs its whole last second on target. The walk rows were measured with the earlier flag and not
+re-evaluated: they can only stay or drop. Rates from `evaluate_success`, or from any rule that counts an episode with
+one solved step, are not comparable with earlier versions. Observations, actions, rewards and dynamics are unchanged,
+so no checkpoint needs retraining. The per-step flag is still reported as `on_target` (CPU `info`) and
+`Episode_Metrics/on_target` (mjlab, share of an episode's steps).
 
 **Terrain and CPU evaluation.** A deterministic CPU evaluation is a single trajectory. The mjlab twins of the
 rough, hilly and stairs walk tasks bake one terrain into the height field (Warp shares one `hfield_data` between
@@ -188,6 +206,22 @@ keyframe at σ = 0.005, 0.01 and 0.02 rad, and 0, 4 and 3 of 24 from the new sta
 there). The rough-terrain policy, from the same keyframe, is unaffected, and the hilly policy goes the other way on this
 seed (on the CPU with random hill heights it goes from 9.4% to 20.7%, footnote ³). Retrain or fine-tune the `myoLegWalk-v0` checkpoint before using it
 with this version. The directional walks, whose start moved by 3.5e-5, were not re-evaluated.
+
+**Coupled joints at reset (MyoChallenge tasks, after 3.1.0).** The CPU envs `myoChallengeChaseTagP1/P2/P2eval-v0`,
+`myoChallengeChaseTagFBP2-v0` (and its mjlab twin), `myoChallengeOslRunFixed/Random-v0`,
+`myoChallengeRelocateP1/P2/P2eval-v0`, `myoChallengeBimanual-v0`, `myoChallengeSoccerP1/P2-v0` and their `myoFati` /
+`myoSarc` variants now also start with the coupled joints on their joint couplings; 3.1.0 had left them as they were.
+The start state moves most for ChaseTag P1/P2/P2eval (walk keyframes 2 and 3 of `myoLegWalk-v0`: patella rotation
+0.74 rad, feet up to 1.6 cm), Relocate (shoulder rhythm up to 0.16 rad, palm 4.3 cm in P1 and 3.0 cm in P2) and OslRun
+(0.16 rad, biological foot up to 1.4 cm); Bimanual, Soccer P2 and ChaseTag FBP2 move by 2.5 mm, 2.3 cm (trunk, from
+the reset noise) and 0.4 mm. The observation, action, control step and reward definitions are unchanged, so the
+env contract hash does not warn. No checkpoint of these ids is published in `myohub/myosuite-3-baselines` (the table
+above has none for `myoChallengeChaseTagFBP2-v0`), so none was re-evaluated. Policies trained on these ids with
+MyoSuite 3.1.0 or earlier, or with the PyPI 2.x MyoChallenge envs, were trained from the old starts: re-evaluate them
+before comparing, in particular ChaseTag P1/P2 policies, which share the keyframe from whose projected start the
+`myoLegWalk-v0` checkpoint falls. `myoChallengeTableTennisP{0,1,2}-v0` and `myoChallengeChaseTagFBVs-v0` are
+unchanged: the table-tennis keyframe holds the paddle with the shoulder rhythm 0.59 rad off its couplings and needs a
+keyframe on them first, and the tutorial files below were measured on the unchanged two-agent reset.
 
 **Centre-of-mass velocity of the walk tasks (after 3.1.0).** `myoLegWalk-v0`, the rough, hilly and stairs walks and
 their `myoSarc`/`myoFati` variants now observe and reward the velocity of the whole-body centre of mass, on both
