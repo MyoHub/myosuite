@@ -148,7 +148,8 @@ def register_spec_recipe(name: str, spec_fn: Callable[[], mujoco.MjSpec]) -> Non
     """Let recipe *name* build its ``MjSpec`` with *spec_fn* instead of a ``ModelBuilder``.
 
     For models compiled outside the builder (MuscleMimic full body); the name must be
-    registered with :func:`model_recipe` too, so it is listed.
+    registered with :func:`model_recipe` too, so it is listed. Replacing *spec_fn*
+    takes effect on the next build, including when the old spec was cached.
     """
     _SPEC_RECIPES[name] = spec_fn
 
@@ -1076,17 +1077,17 @@ def _cwd() -> Path | None:
 def _recipe_spec(
     name: str,
     recipe_fn: Callable[[ModelBuilder], ModelBuilder],
+    spec_fn: Callable[[], mujoco.MjSpec] | None,
     cwd: Path | None,
     edit_fn: Callable[[mujoco.MjSpec], None] | None,
     params: tuple[tuple[str, Any], ...],
 ) -> mujoco.MjSpec:
     """Uncompiled spec of recipe *name*, edited in place by *edit_fn*.
 
-    *recipe_fn* tells a re-registered recipe apart, *cwd* the relative asset
+    *recipe_fn* and *spec_fn* tell re-registered recipes apart, *cwd* the relative asset
     paths a recipe may write (the TableTennis furniture meshes), *params* the
     reserved recipe kwargs.
     """
-    spec_fn = _SPEC_RECIPES.get(name)
     spec = spec_fn() if spec_fn is not None else recipe_fn(ModelBuilder()).build_spec()
     if edit_fn is not None:
         edit_fn(spec)
@@ -1121,6 +1122,7 @@ def build_from_recipe(
     spec = _recipe_spec(
         name,
         get_recipe(name),
+        _SPEC_RECIPES.get(name),
         _cwd(),
         _cache_edit_fn(edit_fn),
         tuple(sorted(kwargs.items())),
