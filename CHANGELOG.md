@@ -269,6 +269,15 @@ Changes since **v3.1.0** (2026-11-11).
   frame (`terms.mimic_obs.mimic_lookahead_obs` and the mjlab lookahead term), as MuscleMimic's own lookahead
   (`FullbodyObsAdapter`), `MimicEnv` and the episode itself do. Observation sizes, rewards and dynamics are
   unchanged; only lookahead values within 100 frames of a clip end change. See `docs/baseline_checkpoints.md`.
+* **Sarcopenia scales the passive muscle force too.** `apply_sarcopenia_to_model` and `apply_sarcopenia_to_spec`
+  halved the active peak force `gainprm[2]` but left the passive peak force `biasprm[2]` at full strength (inherited
+  from 2.x), so every `myoSarc*` id kept the passive stiffness of a healthy muscle: at a stretched pose the passive
+  force ratio Sarc / base was 1.000 on every id, against 0.5 for the active part. MuJoCo's passive muscle force is
+  `biasprm[2]` times the passive force-length curve, and a smaller cross-section lowers both. Both helpers now scale
+  `biasprm[2]` of every muscle bias by the same factor, resolving automatic peak forces (`force="-1"`, the finger
+  model) first; position servos and other non-muscle biases are unchanged. This changes the dynamics of every
+  `myoSarc*` id on the CPU and of their mjlab twins (and of the `elbow_sarcopenia` recipe and MJX tasks with
+  sarcopenia). No parity baseline covers these ids. See `docs/baseline_checkpoints.md`.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644

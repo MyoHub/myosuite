@@ -108,6 +108,10 @@ _WARP_WRAP_DIFF_REW_ATOL = 5e-2
 # Foot-contact events: one step can differ by ~5e-3 in velocities although the muscle
 # lengths agree to 1e-5 (constraint-solver ordering; the other steps match to ~1e-6).
 _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL = 1e-2, 1e-2
+# Flat walks: such a step moves the reward by up to 0.018 (worst of 20 action seeds:
+# myoLegWalk 0.018, myoSarcLegWalk 0.016, myoFatiLegWalk 0.011; median 1e-6). A twin
+# that keeps the full passive force of a myoSarc id is 0.050 or more off on every seed.
+_WALK_REW_ATOL = 3e-2
 # Height-field terrain: MuJoCo Warp generates at most one capsule-hfield contact where
 # C MuJoCo can create several, so a step that lands a foot gets other contact impulses.
 # One tolerance per actor obs term, about twice the worst gaps over 750 synced random
@@ -163,7 +167,7 @@ def _tolerances(env_id: str) -> tuple[float | dict[str, float], float]:
     if "LegDirectional" in env_id:
         return _DIRECTIONAL_OBS_TERM_ATOL, _CONTACT_REW_ATOL
     if "LegWalk" in env_id:
-        return _CONTACT_OBS_ATOL, _CONTACT_REW_ATOL
+        return _CONTACT_OBS_ATOL, _WALK_REW_ATOL
     return 5e-4, 5e-3
 
 
