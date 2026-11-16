@@ -146,18 +146,27 @@ def test_incomplete_body_mapping_is_rejected() -> None:
         probe._identity_mapping(reference, model, solver, mapping)
 
 
+@pytest.mark.parametrize("multiccd", ["enable", "disable"])
 def test_solver_integrates_like_the_reference(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, multiccd: str
 ) -> None:
     xml = tmp_path / "rk4.xml"
-    xml.write_text('<mujoco><option integrator="RK4"/></mujoco>')
+    xml.write_text(
+        f'<mujoco><option integrator="RK4"><flag multiccd="{multiccd}"/></option></mujoco>'
+    )
     calls: list[dict[str, object]] = []
+    registered: list[object] = []
 
     def solver(model: object, **options: object) -> None:
         calls.append(options)
         raise RuntimeError("stop after the first solver")
 
-    builder = SimpleNamespace(add_mjcf=lambda *_, **__: None, finalize=lambda **_: None)
+    solver.register_custom_attributes = registered.append  # type: ignore[attr-defined]
+    builder = SimpleNamespace(
+        default_shape_cfg=SimpleNamespace(gap=0.1),
+        add_mjcf=lambda *_, **__: None,
+        finalize=lambda **_: None,
+    )
     newton = SimpleNamespace(
         ModelBuilder=lambda: builder, solvers=SimpleNamespace(SolverMuJoCo=solver)
     )
@@ -165,8 +174,13 @@ def test_solver_integrates_like_the_reference(
     monkeypatch.setitem(sys.modules, "warp", SimpleNamespace())
     monkeypatch.setattr(probe, "authored_xml", lambda *_: xml)
     result = probe.run_case("rk4", "cpu", "cpu", 2, 1, tmp_path)
+    assert registered == [builder]
+    assert builder.default_shape_cfg.gap == 0.0
     assert result["integrator"] == "rk4"
+    assert result["enable_multiccd"] is (multiccd == "enable")
     assert [call["integrator"] for call in calls] == ["rk4"]
+    assert [call["enable_multiccd"] for call in calls] == [multiccd == "enable"]
+    assert [call["kinematic_switchable_roots"] for call in calls] == [False]
     assert result["error"]["message"] == "stop after the first solver"
 
 

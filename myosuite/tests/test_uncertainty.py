@@ -345,3 +345,57 @@ def test_owned_samples_match_copying_path_and_preserve_input(
         np.testing.assert_array_equal(getattr(elbow, name), getattr(original, name))
     assert elbow.opt.jacobian == original.opt.jacobian
     assert elbow.opt.disableflags == original.opt.disableflags
+
+
+def test_perturbed_model_leaves_a_non_muscle_bias_alone() -> None:
+    xml = """
+    <mujoco><worldbody><site name="o" pos="0 0 .1"/>
+      <body><joint name="j" axis="0 1 0"/><geom type="capsule" fromto="0 0 0 .3 0 0" size=".02" mass="1"/>
+        <site name="i" pos=".2 0 .05"/></body></worldbody>
+      <tendon><spatial name="t"><site site="o"/><site site="i"/></spatial></tendon>
+      <actuator><general name="m" tendon="t" dyntype="muscle" gaintype="muscle" biastype="affine"
+        gainprm="0.75 1.05 200 200 0.5 1.6 1.5 1.3 1.2" biasprm="0 0 -10"/></actuator></mujoco>"""
+    model = mujoco.MjModel.from_xml_string(xml)
+    for cv in (0.0, 0.5):
+        sample = perturbed_model(
+            model,
+            np.random.default_rng(0),
+            UncertaintyConfig(strength_cv=cv, mass_cv=0.0),
+        )
+        np.testing.assert_array_equal(sample.actuator_biasprm, model.actuator_biasprm)
+    force = []
+    for m in (model, sample):
+        d = mujoco.MjData(m)
+        d.qvel[0] = 2.0
+        mujoco.mj_forward(m, d)
+        force.append(d.actuator_force[0])
+    assert force[0] != 0.0
+    assert force[1] == pytest.approx(force[0])
+
+
+@pytest.mark.parametrize("fps", [50, 100, 400])
+def test_joint_noise_is_the_error_left_after_the_filter(fps: int) -> None:
+    dt, frames = 1.0 / fps, 40 * fps
+    config = UncertaintyConfig(joint_noise_deg=0.5)
+    noise = uncertainty.joint_noise(
+        np.random.default_rng(0), frames, 3, dt, 6.0, config
+    )
+    from scipy import signal
+
+    sos = signal.butter(2, 6.0, fs=fps, output="sos")
+    filtered = signal.sosfiltfilt(sos, noise, axis=0)
+    np.testing.assert_allclose(np.degrees(filtered.std(0)), 0.5, rtol=0.1)
+
+
+def test_torque_bands_do_not_narrow_with_the_frame_rate(elbow: mujoco.MjModel) -> None:
+    def width(fps: int) -> float:
+        t = np.arange(0.0, 1.2, 1.0 / fps)
+        clip = (1.0 + 0.6 * np.sin(2.5 * t))[:, None]
+        config = UncertaintyConfig(samples=30, joint_noise_deg=0.5)
+        bands = static_optimization_bands(
+            elbow, clip, 1.0 / fps, lowpass_hz=6.0, config=config
+        )
+        inner = slice(len(t) // 6, -len(t) // 6)  # away from the filter's end effects
+        return float((bands.joint_torque[-1] - bands.joint_torque[0])[inner].mean())
+
+    assert width(400) == pytest.approx(width(100), rel=0.2)
