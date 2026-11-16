@@ -442,8 +442,13 @@ def musculoskeletal_fingerprint(model: mujoco.MjModel) -> str:
     return fingerprint(model)
 
 
-def _non_root_dof_mask(model: mujoco.MjModel) -> np.ndarray:
+def _non_root_dof_mask(
+    model: mujoco.MjModel, optimization: StaticOptimizationConfig | None = None
+) -> np.ndarray:
+    """Dofs the muscles must drive: not free roots, tendon nodes or supported dofs."""
     mask = np.ones(model.nv, dtype=bool)
+    if optimization is not None:
+        mask[list(optimization.supported_dofs)] = False
     for j in np.flatnonzero(model.jnt_type == mujoco.mjtJoint.mjJNT_FREE):
         adr = int(model.jnt_dofadr[j])
         mask[adr : adr + 6] = False
@@ -569,8 +574,9 @@ def _effort_summary(
     res_sl: np.ndarray,
     tau_sl: np.ndarray,
     status_sl: np.ndarray,
+    optimization: StaticOptimizationConfig | None = None,
 ) -> dict[str, float]:
-    dof_mask = _non_root_dof_mask(model)
+    dof_mask = _non_root_dof_mask(model, optimization)
     moment_arms = _clip_moment_arms(model, qpos_sl)
     act_qfrc = np.einsum("tmn,tm->tn", moment_arms, frc_sl)
     ratios = _reserve_ratios(res_sl, tau_sl, dof_mask, act_qfrc)
@@ -819,6 +825,7 @@ def validate_inverse_emg(
         so_res.reserve[sl],
         so_res.joint_torque[sl],
         so_res.status[sl],
+        optimization,
     )
 
     def _vals(key: str, *, active_only: bool = False) -> np.ndarray:
@@ -972,7 +979,7 @@ def validate_emg_feasibility(
         n_trim = 0
     sl = slice(n_trim, len(kin_time) - n_trim if n_trim > 0 else None)
 
-    dof_mask = _non_root_dof_mask(model)
+    dof_mask = _non_root_dof_mask(model, optimization)
     dof_indices = np.flatnonzero(dof_mask)
     tau_sl = nominal_so.joint_torque[sl]
     moment_sl = _clip_moment_arms(model, kin.qpos[sl])
@@ -1519,6 +1526,7 @@ def validate_trial(
             nom_so.reserve[sl],
             nom_so.joint_torque[sl],
             nom_so.status[sl],
+            optimization,
         )
         report["effort"] = eff
         if eff["reserve_to_torque_ratio_p95"] > thr.max_unconstrained_reserve_ratio:
