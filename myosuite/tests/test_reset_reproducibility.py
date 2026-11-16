@@ -43,6 +43,7 @@ CHALLENGE_IDS = [
     "myoChallengeRelocateP2eval-v0",
     "myoChallengeBaodingP1-v1",
     "myoChallengeBaodingP2-v1",
+    "myoChallengeDieReorientP2-v0",
     "myoChallengeTableTennisP1-v0",
 ]
 # One id per basic env class that owns a fatigue model.
