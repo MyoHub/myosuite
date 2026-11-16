@@ -68,17 +68,40 @@ def _peak_force(model: mujoco.MjModel) -> np.ndarray:
     return force
 
 
+def _passive_peak_force(model: mujoco.MjModel) -> tuple[np.ndarray, np.ndarray]:
+    """Rows with a muscle bias and their passive peak force ``biasprm[:, 2]``.
+
+    MuJoCo's passive muscle force is this peak force times the passive force-length
+    curve. Only a muscle bias holds a peak force; an automatic one (``force="-1"``)
+    is resolved to ``biasprm[3] / acc0``, as for the gain.
+    """
+    import mujoco as _mujoco  # noqa: PLC0415
+
+    biastype = getattr(model, "actuator_biastype", None)
+    if not isinstance(biastype, np.ndarray):
+        n = len(model.actuator_gainprm)
+        return np.zeros(n, dtype=bool), np.zeros(n, dtype=np.float64)
+    passive = biastype == _mujoco.mjtBias.mjBIAS_MUSCLE
+    force = np.array(model.actuator_biasprm[:, 2], dtype=np.float64)
+    auto = passive & (force < 0)
+    if np.any(auto):
+        force[auto] = model.actuator_biasprm[auto, 3] / np.maximum(
+            model.actuator_acc0[auto], _mujoco.mjMINVAL
+        )
+    return passive, force
+
+
 def apply_sarcopenia_to_spec(
     spec: mujoco.MjSpec, force_scale: float = 0.5
 ) -> mujoco.MjSpec:
     """Scale muscle peak forces to simulate sarcopenia (age-related muscle loss).
 
     Spec-level equivalent of :func:`apply_sarcopenia_to_model`: scales the
-    *compiled* peak force ``gainprm[2]`` of every actuator. Muscles declared
-    with ``force="-1"`` keep ``gainprm[2] = -1`` after compilation and get
-    their peak force ``scale / acc0`` from the compiled model, so the spec is
-    compiled once to resolve the peak forces, which are then written back
-    explicitly (scaled).
+    *compiled* peak force ``gainprm[2]`` of every muscle actuator, and the
+    passive peak force ``biasprm[2]`` of every muscle bias. Muscles declared
+    with ``force="-1"`` keep ``-1`` after compilation and get their peak force
+    ``scale / acc0`` from the compiled model, so the spec is compiled once to
+    resolve the peak forces, which are then written back explicitly (scaled).
 
     Args:
         spec: MuJoCo model spec to modify in-place.
@@ -95,11 +118,14 @@ def apply_sarcopenia_to_spec(
     compiled = spec.compile()
     peak_force = _peak_force(compiled)
     is_muscle = _muscle_mask(compiled)
-    for actuator, force, muscle in zip(
-        spec.actuators, peak_force, is_muscle, strict=True
+    passive, passive_force = _passive_peak_force(compiled)
+    for actuator, force, muscle, has_passive, p_force in zip(
+        spec.actuators, peak_force, is_muscle, passive, passive_force, strict=True
     ):
         if muscle:
             actuator.gainprm[2] = float(force) * force_scale
+        if has_passive:
+            actuator.biasprm[2] = float(p_force) * force_scale
     return spec
 
 
@@ -107,12 +133,18 @@ def apply_sarcopenia_to_model(model: mujoco.MjModel, force_scale: float = 0.5) -
     """Scale muscle peak forces on a compiled MjModel in-place.
 
     Multiplies ``actuator_gainprm[:, 2]`` (the maximum isometric force Fmax)
-    by *force_scale* for every muscle actuator. Muscles declared with
-    ``force="-1"`` are first resolved to their peak force ``scale / acc0``.
+    by *force_scale* for every muscle actuator, and the passive peak force
+    ``actuator_biasprm[:, 2]`` of every muscle bias, which 2.x left at full
+    strength: a smaller muscle loses active and passive force alike. Muscles
+    declared with ``force="-1"`` are first resolved to their peak force
+    ``scale / acc0``.
 
     Args:
         model: Compiled MuJoCo model to modify.
         force_scale: Fraction of original peak force to retain (0–1).
     """
     mask = _muscle_mask(model)
+    passive, passive_force = _passive_peak_force(model)
     model.actuator_gainprm[mask, 2] = _peak_force(model)[mask] * force_scale
+    if np.any(passive):
+        model.actuator_biasprm[passive, 2] = passive_force[passive] * force_scale
