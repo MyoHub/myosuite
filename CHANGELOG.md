@@ -327,6 +327,9 @@ Changes since **v3.1.0** (2026-11-11).
   env. The content key is now memoised on each file's size, modification time and inode, so a repeated load reads no
   clip (14 ms for the same 48 clips); an edited clip gets a new stamp and is checked and hashed again. The library
   and the disk cache are unchanged.
+* `myosuite.biomechanics.uncertainty.perturbed_model` scales the passive peak force only where the bias is a
+  muscle bias. For `gaintype="muscle"` with an affine bias it had replaced the velocity coefficient
+  (`biasprm="0 0 -10"` became 0), also with `strength_cv=0`, so every sample dropped that damping term.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
