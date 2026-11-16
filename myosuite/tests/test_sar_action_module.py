@@ -327,13 +327,15 @@ class TestSARTorchTransformForward(unittest.TestCase):
         np.testing.assert_array_equal(out1.numpy(), out2.numpy())
 
 
-def _synergistic_acts(n_samples: int = 400, n_muscles: int = N_MUSCLES) -> np.ndarray:
-    """Low-rank activations (5 non-negative synergies plus noise) in [0, 1]."""
+def _synergistic_acts(
+    n_samples: int = 400, n_muscles: int = N_MUSCLES, n_syn: int = N_SYN
+) -> np.ndarray:
+    """Low-rank activations (*n_syn* non-negative synergies plus noise) in [0, 1]."""
     rng = np.random.default_rng(0)
-    weights = rng.uniform(0.0, 1.0, (5, n_muscles))
-    drive = rng.uniform(0.0, 1.0, (n_samples, 5)) ** 2
+    weights = rng.uniform(0.0, 1.0, (n_syn, n_muscles))
+    drive = rng.uniform(0.0, 1.0, (n_samples, n_syn)) ** 2
     noise = 0.02 * rng.standard_normal((n_samples, n_muscles))
-    return np.clip(drive @ weights / 5.0 + noise, 0.0, 1.0).astype(np.float32)
+    return np.clip(drive @ weights / n_syn + noise, 0.0, 1.0).astype(np.float32)
 
 
 @unittest.skipUnless(
