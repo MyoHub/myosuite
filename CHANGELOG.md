@@ -334,6 +334,16 @@ Changes since **v3.1.0** (2026-11-11).
   naming the joints and the share of frames. Its default `signs` are gait2392's (knee flexion negative), so a
   Rajagopal-family file (OpenCap, AddBiomechanics) mapped with the defaults had its knees mirrored into
   hyperextension without a message; such files need `signs={}`.
+* **Die Reorient and Relocate measure the rotation error as the angle between the object and the goal.** They used
+  the norm of the difference of Euler angles, which jumps by up to 2 pi at the +-pi wrap and near gimbal lock and
+  does not equal the rotation angle elsewhere. In `myoChallengeDieReorientP2-v0` a die 0.05 rad (3 deg) from its goal
+  missed the 0.262 rad (15 deg) tolerance for 9 % of the goals, and one 0.25 rad away for 68 %; the `rot_dist` reward
+  reached 8.3 for a 0.25 rad error. The `rot_dist` reward, the `sparse` score and `solved` now use the geodesic angle
+  (`myosuite.terms.mimic_track.rotation_angle`, also in `obs_dict["rot_angle"]`). This changes success and rewards of
+  `myoChallengeDieReorientDemo/P1/P2-v0` and the rewards of `myoChallengeRelocateP1/P2/P2eval-v0` (their `rot_th`
+  is infinite), with the `myoSarc` / `myoFati` variants. The observations, including the Euler `obj_rot`,
+  `goal_rot` and `rot_err`, are unchanged. The `myoChallengeRelocateP1-v0` parity baseline is regenerated (its
+  observations are identical, its rewards differ by up to 0.64).
 * `static_optimization_bands`: `joint_noise_deg` is the standard deviation of the joint-angle error that remains
   after the analysis' low-pass filter. It was white per-frame noise, of which the filter keeps about
   `sqrt(2 fc / fs)`, so the same motion gave narrower bands at a higher frame rate (torque band 0.52 N m at 100 Hz,
