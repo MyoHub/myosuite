@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import re
 import zipfile
 from collections.abc import Sequence
@@ -54,7 +55,10 @@ EMG2POSE_JOINT_NAMES: tuple[str, ...] = (
     "md5_flexion",
 )
 
-# Seth et al. (2019) / Ludewig et al. (2009) right-girdle rhythm keyframes over HT elevation.
+# Fallback right-girdle rhythm keyframes from Seth et al. (2019) CMC trials ``abd21``
+# (coronal abduction) and ``flx01`` (sagittal flexion) over [0, 30, 60, 90, 120, 150] deg
+# humerothoracic elevation. Used only when ``myo_sim/build/data/scapulothoracic.json``
+# (added in MyoHub/myo_sim#189, section ``rhythm.frames``) is not yet installed.
 _SETH_ELEV_RAD = np.radians([0.0, 30.0, 60.0, 90.0, 120.0, 150.0])
 _SETH_ABD_SC = np.array(
     [
@@ -92,6 +96,64 @@ _SETH_FLX_AC = np.array(
 )
 
 
+def _load_seth_rhythm_keyframes(
+    sc_rest: np.ndarray,
+    ac_rest: np.ndarray,
+    json_path: Path | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Load ``abd21`` and ``flx01`` girdle keyframes from ``scapulothoracic.json`` if available."""
+    if json_path is None:
+        try:
+            import myo_sim
+
+            cand = (
+                Path(myo_sim.__file__).resolve().parent
+                / "build"
+                / "data"
+                / "scapulothoracic.json"
+            )
+            if cand.is_file():
+                json_path = cand
+        except ImportError:
+            json_path = None
+
+    if json_path is None or not json_path.is_file():
+        return _SETH_ELEV_RAD, _SETH_ABD_SC, _SETH_FLX_SC, _SETH_ABD_AC, _SETH_FLX_AC
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    frames = payload.get("rhythm", {}).get("frames", {})
+    if "abduction" not in frames or "flexion" not in frames:
+        return _SETH_ELEV_RAD, _SETH_ABD_SC, _SETH_FLX_SC, _SETH_ABD_AC, _SETH_FLX_AC
+
+    bins = ("30", "60", "90", "120", "max")
+    sc_names = (
+        "sternoclavicular_r2_r",
+        "sternoclavicular_r3_r",
+        "sternoclavicular_r1_r",
+    )
+
+    def _extract_mode(
+        mode_frames: dict[str, Any], preferred_trial: str
+    ) -> tuple[np.ndarray, np.ndarray]:
+        trials = list(mode_frames["30"]["trial"])
+        idx = trials.index(preferred_trial) if preferred_trial in trials else 0
+        sc_mat = np.empty((3, 1 + len(bins)), dtype=np.float64)
+        ac_mat = np.empty((1 + len(bins), 4), dtype=np.float64)
+        sc_mat[:, 0] = sc_rest
+        ac_mat[0] = ac_rest
+        for col, b in enumerate(bins, start=1):
+            entry = mode_frames[b]
+            for k, sname in enumerate(sc_names):
+                sc_mat[k, col] = float(entry[sname][idx])
+            q = np.asarray(entry["acromioclavicular_r"][idx], dtype=np.float64)
+            ac_mat[col] = q / np.linalg.norm(q)
+        return sc_mat, ac_mat
+
+    abd_sc, abd_ac = _extract_mode(frames["abduction"], "abd21")
+    flx_sc, flx_ac = _extract_mode(frames["flexion"], "flx01")
+    return _SETH_ELEV_RAD, abd_sc, flx_sc, abd_ac, flx_ac
+
+
 def _axis_rot(axis: np.ndarray, angle: float) -> np.ndarray:
     return Rotation.from_rotvec(axis * float(angle)).as_matrix()
 
@@ -99,11 +161,22 @@ def _axis_rot(axis: np.ndarray, angle: float) -> np.ndarray:
 def map_upper_limb_to_qpos(
     model: mujoco.MjModel,
     coords: dict[str, np.ndarray],
+    *,
+    scapulothoracic_json: Path | None = None,
 ) -> tuple[np.ndarray, list[int], bool]:
     """Map MoBL-ARMS upper-limb coordinates [rad] onto *model* ``qpos``.
 
     Handles both MoBL-ARMS coupled shoulders and Seth et al. (2019) scapulothoracic
     shoulders (free sternoclavicular hinges + ``acromioclavicular_r`` ball joint).
+
+    On scapulothoracic models, sternoclavicular and acromioclavicular kinematics are
+    interpolated over non-negative humerothoracic elevation (extension ``shoulder_elv < 0``
+    clamps to 0 so the girdle stays at rest) between Seth et al. (2019)'s ``abd21``
+    (coronal abduction, ``elv_angle = 0``) and ``flx01`` (sagittal flexion,
+    ``elv_angle = pi/2``) trajectories using the smooth blend assumption
+    ``w_flx = sin^2(clip(elv_angle, 0, pi/2))``: planes behind the coronal plane
+    (``elv_angle < 0``) clamp to ``abd21`` and cross-body planes past sagittal
+    (``elv_angle > pi/2``) clamp to ``flx01``.
     """
     n_frames = len(next(iter(coords.values())))
     jnt_lookup = {model.joint(j).name: j for j in range(model.njnt)}
@@ -186,30 +259,49 @@ def map_upper_limb_to_qpos(
         chest_id = model.body("chest_r").id
         hum_id = model.body("humerus_r").id
         data = mujoco.MjData(model)
+        elev_grid, abd_sc, flx_sc, abd_ac, flx_ac = _load_seth_rhythm_keyframes(
+            model.qpos0[sc_adrs],
+            model.qpos0[ac_adr : ac_adr + 4],
+            json_path=scapulothoracic_json,
+        )
+
+        def _gh_residual(x: np.ndarray, tgt: np.ndarray) -> np.ndarray:
+            return Rotation.from_matrix(
+                (
+                    _axis_rot(ay, x[0])
+                    @ _axis_rot(ax, x[1])
+                    @ _axis_rot(ay, -x[0])
+                    @ _axis_rot(ar, x[2])
+                ).T
+                @ tgt
+            ).as_rotvec()
+
+        # Frame-0 seed uses ~60% glenohumeral share of humerothoracic elevation
+        # (cf. 2:1 = 0.67 Inman et al., 2.4:1 = 0.70 Braman et al. 2009,
+        # 5:4 = 0.56 Poppen & Walker 1976); subsequent frames warm-start from prev_gh.
         prev_gh = np.array([float(p_arr[0]), 0.6 * float(e_arr[0]), float(r_arr[0])])
 
         for t in range(n_frames):
             p_ht, e_ht, r_ht = float(p_arr[t]), float(e_arr[t]), float(r_arr[t])
+            # Smooth interpolation assumption between coronal abduction (0) and sagittal flexion (pi/2).
             w_flx = float(np.sin(np.clip(p_ht, 0.0, 0.5 * np.pi)) ** 2)
-            e_clamped = float(np.clip(abs(e_ht), 0.0, float(_SETH_ELEV_RAD[-1])))
+            # Clip negative elevation (arm extension) to 0 so the girdle stays at its rest posture.
+            e_clamped = float(np.clip(e_ht, 0.0, float(elev_grid[-1])))
 
             for k, sadr in enumerate(sc_adrs):
-                v_abd = float(np.interp(e_clamped, _SETH_ELEV_RAD, _SETH_ABD_SC[k]))
-                v_flx = float(np.interp(e_clamped, _SETH_ELEV_RAD, _SETH_FLX_SC[k]))
+                v_abd = float(np.interp(e_clamped, elev_grid, abd_sc[k]))
+                v_flx = float(np.interp(e_clamped, elev_grid, flx_sc[k]))
                 qpos[t, sadr] = (1.0 - w_flx) * v_abd + w_flx * v_flx
 
             q_abd = np.array(
-                [
-                    np.interp(e_clamped, _SETH_ELEV_RAD, _SETH_ABD_AC[:, c])
-                    for c in range(4)
-                ]
+                [np.interp(e_clamped, elev_grid, abd_ac[:, c]) for c in range(4)]
             )
             q_flx = np.array(
-                [
-                    np.interp(e_clamped, _SETH_ELEV_RAD, _SETH_FLX_AC[:, c])
-                    for c in range(4)
-                ]
+                [np.interp(e_clamped, elev_grid, flx_ac[:, c]) for c in range(4)]
             )
+            if float(np.dot(q_abd, q_flx)) < 0.0:
+                q_flx = -q_flx
+            # Component-wise linear blend + renormalization (nlerp); accurate for AC rotations (<35 deg).
             ac_q = (1.0 - w_flx) * q_abd + w_flx * q_flx
             ac_q /= np.linalg.norm(ac_q)
             qpos[t, ac_adr : ac_adr + 4] = ac_q
@@ -229,21 +321,35 @@ def map_upper_limb_to_qpos(
             r_gh_target = r_hum0.T @ (r_chest @ r_ht_mat)
 
             sol = least_squares(
-                lambda x, tgt=r_gh_target: Rotation.from_matrix(
-                    (
-                        _axis_rot(ay, x[0])
-                        @ _axis_rot(ax, x[1])
-                        @ _axis_rot(ay, -x[0])
-                        @ _axis_rot(ar, x[2])
-                    ).T
-                    @ tgt
-                ).as_rotvec(),
-                prev_gh,
-                xtol=1e-10,
-                ftol=1e-10,
+                _gh_residual, prev_gh, args=(r_gh_target,), xtol=1e-10, ftol=1e-10
             )
-            p_gh, e_gh, r_gh = (float(v) for v in sol.x)
-            prev_gh = sol.x.copy()
+            if t == 0 or sol.cost > 1e-6:
+                alt_seeds = (
+                    np.array([p_ht, abs(0.6 * e_ht), r_ht]),
+                    np.array([p_ht + np.pi, -0.6 * e_ht, r_ht]),
+                )
+                for seed in alt_seeds:
+                    cand = least_squares(
+                        _gh_residual, seed, args=(r_gh_target,), xtol=1e-10, ftol=1e-10
+                    )
+                    if cand.cost + 1e-10 < sol.cost:
+                        sol = cand
+            if e_ht >= 0.0 and sol.x[1] < 0.0:
+                # (p + pi, -e, r) represents the same 3D rotation; keep GH elevation non-negative
+                # so frame-0 warm starts cannot lock onto the inverted plane+pi branch.
+                flipped = least_squares(
+                    _gh_residual,
+                    np.array([sol.x[0] + np.pi, -sol.x[1], sol.x[2]]),
+                    args=(r_gh_target,),
+                    xtol=1e-10,
+                    ftol=1e-10,
+                )
+                if flipped.cost <= sol.cost + 1e-8 and flipped.x[1] >= 0.0:
+                    sol = flipped
+            p_gh = (float(sol.x[0]) + np.pi) % (2.0 * np.pi) - np.pi
+            e_gh = float(sol.x[1])
+            r_gh = float(sol.x[2])
+            prev_gh = np.array([p_gh, e_gh, r_gh])
             qpos[t, gh_adrs[0]] = p_gh
             qpos[t, gh_adrs[1]] = e_gh
             qpos[t, gh_adrs[2]] = -p_gh
@@ -1667,11 +1773,11 @@ def xsens_urdf_to_upper_limb_coords(
         r_ht[t] = _XSENS_TO_OPENSIM @ (r_xs @ n_pose_t) @ _XSENS_TO_OPENSIM.T
     coords = thoracohumeral_to_upper_limb_coords(model, r_ht)
     coords["elbow_flexion"] = np.asarray(angles["angle_jRightElbow_z"])
-    coords["flex_extension"] = -sum(
-        np.asarray(angles[f"angle_{j}_y"]) for j in _XSENS_LUMBAR_JOINTS
+    coords["flex_extension"] = -np.sum(
+        [np.asarray(angles[f"angle_{j}_y"]) for j in _XSENS_LUMBAR_JOINTS], axis=0
     )
-    coords["lat_bending"] = sum(
-        np.asarray(angles[f"angle_{j}_x"]) for j in _XSENS_LUMBAR_JOINTS
+    coords["lat_bending"] = np.sum(
+        [np.asarray(angles[f"angle_{j}_x"]) for j in _XSENS_LUMBAR_JOINTS], axis=0
     )
     return coords
 
