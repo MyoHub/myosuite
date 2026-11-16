@@ -116,6 +116,8 @@ Changes since **v3.1.0** (2026-11-11).
 * Uncertainty bands now reject failed/nonfinite nominal and sampled solves instead of
   including them in quantiles. OSQP statuses, iterations and residuals are retained;
   accepting `solved inaccurate` requires `UncertaintyConfig(allow_inaccurate=True)`.
+* Uncertainty analysis no longer copies each private sampled model twice. Public
+  static-optimization calls continue to leave the caller's model unchanged.
 * **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
   registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
   target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip

@@ -404,6 +404,27 @@ def test_max_activation_bounds_one_frame() -> None:
     env.close()
 
 
+def test_public_optimizer_keeps_caller_model_unchanged() -> None:
+    env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        model = env.unwrapped.model
+        original = copy.deepcopy(model)
+        optimizer = StaticOptimizer(
+            model, StaticOptimizationConfig(contact_forces=True, contact_distance=0.05)
+        )
+        optimizer.solve(np.array([1.0]), np.zeros(1), np.zeros(1))
+        assert optimizer.model is not model
+        assert (optimizer.model.geom_margin >= 0.05).all()
+        np.testing.assert_array_equal(model.geom_margin, original.geom_margin)
+        np.testing.assert_array_equal(
+            model.actuator_actearly, original.actuator_actearly
+        )
+        assert model.opt.jacobian == original.opt.jacobian
+        assert model.opt.disableflags == original.opt.disableflags
+    finally:
+        env.close()
+
+
 def test_unsolved_frames_warn_once_per_clip(arm_motion) -> None:
     """Frames OSQP stops on (here at ``max_iter``) are flagged, not returned silently.
 

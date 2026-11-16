@@ -199,12 +199,26 @@ class StaticOptimizer:
                 joint ``actuatorfrcrange``) or has more than one activation, or
                 ``on_failure`` is not one of ``"warn"``, ``"raise"``, ``"nan"``.
         """
+        self._initialize(copy.deepcopy(model), config)
+
+    @classmethod
+    def _from_owned_model(
+        cls, model: mujoco.MjModel, config: StaticOptimizationConfig | None = None
+    ) -> StaticOptimizer:
+        """Take ownership of a private model that no caller will reuse."""
+        optimizer = cls.__new__(cls)
+        optimizer._initialize(model, config)
+        return optimizer
+
+    def _initialize(
+        self, m: mujoco.MjModel, config: StaticOptimizationConfig | None
+    ) -> None:
+        """Prepare the model owned by this optimizer."""
         cfg = config or StaticOptimizationConfig()
         if cfg.on_failure not in get_args(OnFailure):
             raise ValueError(
                 f"on_failure must be one of {get_args(OnFailure)}: {cfg.on_failure!r}"
             )
-        m = copy.deepcopy(model)
         unsupported = [
             m.actuator(i).name
             for i in range(m.nu)
@@ -543,7 +557,21 @@ def static_optimization(
         StaticOptimizationWarning: Once, with the number of frames OSQP did not
             solve and their statuses, with ``on_failure="warn"``.
     """
-    so = StaticOptimizer(model, config)
+    return _solve_clip(
+        StaticOptimizer(model, config), qpos, qvel, qacc, external_qfrc, stacklevel=3
+    )
+
+
+def _solve_clip(
+    so: StaticOptimizer,
+    qpos: np.ndarray,
+    qvel: np.ndarray,
+    qacc: np.ndarray,
+    external_qfrc: np.ndarray | None = None,
+    *,
+    stacklevel: int = 2,
+) -> StaticOptimizationResult:
+    """Solve a clip on an existing optimizer, including private sampled models."""
     frames = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", StaticOptimizationWarning)
@@ -568,6 +596,6 @@ def static_optimization(
             f"({dict(Counter(result.status[failed].tolist()))}); their activations "
             "are not optimal (StaticOptimizationConfig: max_iter, tolerance, on_failure)",
             StaticOptimizationWarning,
-            stacklevel=2,
+            stacklevel=stacklevel,
         )
     return result
