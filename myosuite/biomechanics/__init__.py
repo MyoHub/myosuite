@@ -16,6 +16,7 @@
 - :mod:`.retarget_smplh`: AMASS SMPL+H motions straight onto a body model (a refit source).
 - :mod:`.retarget_instanthmr`: InstantHMR MHR70 subject scaling, inverse kinematics, retargeting and 3D muscle mesh reconstruction.
 - :mod:`.effort`: muscle effort metrics of recorded rollouts (NumPy or torch arrays).
+- :mod:`.kinematic_metrics`: smoothness, velocity symmetry, curvature-velocity power law, Fitts throughput and cohort distances of recorded motions.
 - :mod:`.external_loads`: Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 - :mod:`.camera`: Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
 """
