@@ -86,6 +86,7 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 On every CPU env, a step on which MuJoCo reset a diverged simulation no longer pays a positive reward or counts as `solved`, and `info["mj_unstable"]` marks it. Observations, actions, dynamics and the rewards of regular steps are unchanged, so checkpoints load and score as before; only evaluations that contained a diverged episode change (the ChaseTag envs counted such an episode as a win).
 
+`myoMimic-v0` uniform and return resets now exclude terminal-only reference bins on CPU and mjlab, so every reset has at least one reference transition. This corrects the random-start distribution for clips whose last frame starts a bin (for example, a one-second clip at 10 ms). The stored terminal frame remains the final scoring target. Reevaluate policies with the corrected distribution; adaptive per-bin training statistics from a library containing those empty bins must be rebuilt. Policy input/action layouts and clip-start evaluation are unchanged.
 CPU clip-following evaluations through `MuscleMimicClipEnvV0` now score sites after the final physics substep. Earlier site-based rewards and early termination used geometry from one substep earlier than qpos/qvel. Reevaluate checkpoints measured through this class: policy inputs, action layout, control step and integration trajectories are preserved, while rewards and termination can differ.
 
 ## Compatibility notes for 3.1.0
