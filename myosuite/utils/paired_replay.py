@@ -243,3 +243,23 @@ class ReplaySnapshot:
         state = np.empty(mujoco.mj_stateSize(self._model, spec))
         mujoco.mj_getState(self._model, self._native, state, spec)
         return state
+
+    def rng_state(self) -> dict[str, Any]:
+        """Return independent RNG states for data-only experiment artifacts."""
+        return {
+            "python": copy.deepcopy(self._random),
+            "numpy_global": copy.deepcopy(self._numpy),
+            "env_and_state_owners": [
+                copy.deepcopy(value.bit_generator.state)
+                for layer in self._python
+                if isinstance(layer, dict)
+                for value in layer.values()
+                if isinstance(value, np.random.Generator)
+            ],
+            "torch_cpu": None
+            if self._torch is None
+            else self._torch.cpu().numpy().copy(),
+            "torch_cuda": None
+            if self._cuda is None
+            else [state.cpu().numpy().copy() for state in self._cuda],
+        }
