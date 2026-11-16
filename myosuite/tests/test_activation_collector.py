@@ -7,16 +7,20 @@
 
 from __future__ import annotations
 
-import tempfile
+import struct
 import types
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from zipfile import ZipFile
 
 import mujoco
 import numpy as np
 import pytest
 
+from myosuite.core.trajectory_io import MotionClip
+from myosuite.integrations.musclemimic import activation_collector as collector
 from myosuite.integrations.musclemimic.fullbody_local_policy import (
     LocalPolicyArtifacts,
     LocalPolicyRunner,
@@ -390,6 +394,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
             n_episodes_per_clip=n_episodes,
             reward_percentile=percentile,
             max_steps_per_episode=5,
+            warmup_steps=0,
             use_random_start=True,
             seed=0,
         )
@@ -431,6 +436,7 @@ class TestCollectActivationsFromClip(unittest.TestCase):
             n_episodes_per_clip=10,
             reward_percentile=80,
             max_steps_per_episode=5,
+            warmup_steps=0,
         )
 
         rewards = iter([0.0] * 200)
@@ -504,6 +510,90 @@ class TestRewardFilterLengthBias(unittest.TestCase):
         self.assertLess(min(kept_starts), 100)
 
 
+class TestFixedLengthEpisodes(unittest.TestCase):
+    """Episodes start on the reference, so their error grows with time since the start."""
+
+    def _collect(self, **overrides):  # noqa: ANN003, ANN202
+        from myosuite.integrations.musclemimic import activation_collector as ac
+
+        model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+        clip = _slider_clip(300)
+        runner = _EpisodeMarkingRunner()
+        quality_rng = np.random.default_rng(1)
+        episodes: list[dict] = []
+        init_episode = ac._init_episode
+
+        def _init(model, data, clip, *, start_frame=0):  # noqa: ANN001
+            episodes.append(
+                {"start": start_frame, "quality": quality_rng.uniform(1, 2), "steps": 0}
+            )
+            runner.episode_id = len(episodes) - 1
+            init_episode(model, data, clip, start_frame=start_frame)
+
+        def _drifting_error(model, data, clip, frame_idx):  # noqa: ANN001
+            episode = episodes[-1]
+            episode["steps"] += 1
+            episode.setdefault("frames", []).append(frame_idx)
+            return -1e-3 * episode["quality"] * episode["steps"]
+
+        config = ac.CollectionConfig(
+            n_episodes_per_clip=200, reward_percentile=80, **overrides
+        )
+        with (
+            patch.object(ac, "_init_episode", side_effect=_init),
+            patch.object(ac, "_tracking_reward", side_effect=_drifting_error),
+        ):
+            acts = ac.collect_activations_from_clip(
+                runner, model, clip, config, rng=np.random.default_rng(0)
+            )
+        return acts, episodes, config
+
+    def test_every_episode_has_the_same_length_and_quality_decides(self) -> None:
+        acts, episodes, config = self._collect()
+        self.assertEqual({e["steps"] for e in episodes}, {149})
+        n_preview = len(episodes) - config.n_episodes_per_clip
+        worst = np.percentile([e["quality"] for e in episodes[:n_preview]], 20)
+        expected = [
+            i
+            for i, e in enumerate(episodes)
+            if i >= n_preview and e["quality"] <= worst
+        ]
+        self.assertEqual(sorted({int(i) for i in acts[:, 0]}), expected)
+
+    def test_warmup_activations_are_left_out(self) -> None:
+        acts, _, _ = self._collect(warmup_steps=10)
+        counts = np.unique(acts[:, 0], return_counts=True)[1]
+        self.assertTrue(np.all(counts == 149 - 10))
+
+    def test_each_step_is_scored_against_the_frame_it_reached(self) -> None:
+        _, episodes, _ = self._collect()
+        for e in episodes:
+            self.assertEqual(e["frames"], list(range(e["start"] + 1, e["start"] + 150)))
+
+
+class TestFallenEpisodes(unittest.TestCase):
+    def test_a_fallen_episode_is_rejected(self) -> None:
+        from myosuite.integrations.musclemimic import activation_collector as ac
+
+        model = mujoco.MjModel.from_xml_string(
+            '<mujoco><worldbody><body><freejoint/><geom size=".1" mass="1"/></body>'
+            '</worldbody><actuator><general name="a" site="s" dyntype="filter"/>'
+            "</actuator></mujoco>".replace(
+                "<freejoint/>", '<freejoint/><site name="s"/>'
+            )
+        )
+        qpos = np.tile([0.0, 0.0, 0.3, 1.0, 0.0, 0.0, 0.0], (40, 1))
+        clip = types.SimpleNamespace(
+            qpos=qpos, qvel=None, site_xpos=None, source_path="low.npz"
+        )
+        config = ac.CollectionConfig(n_episodes_per_clip=5, warmup_steps=0)
+        with patch.object(ac, "_tracking_reward", return_value=0.0):
+            acts = ac.collect_activations_from_clip(
+                _StubRunner(), model, clip, config, rng=np.random.default_rng(0)
+            )
+        self.assertEqual(acts.shape, (0, model.nu))
+
+
 # ---------------------------------------------------------------------------
 # Tests: collect_activations (multi-clip)
 # ---------------------------------------------------------------------------
@@ -523,7 +613,9 @@ class TestCollectActivations(unittest.TestCase):
         )
 
         runner, model, clips = self._build_inputs(n_clips=3)
-        config = CollectionConfig(n_episodes_per_clip=5, max_steps_per_episode=3)
+        config = CollectionConfig(
+            n_episodes_per_clip=5, max_steps_per_episode=3, warmup_steps=0
+        )
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
@@ -547,7 +639,9 @@ class TestCollectActivations(unittest.TestCase):
         )
 
         runner, model, clips = self._build_inputs(n_clips=1)
-        config = CollectionConfig(n_episodes_per_clip=5, max_steps_per_episode=0)
+        config = CollectionConfig(
+            n_episodes_per_clip=5, max_steps_per_episode=0, warmup_steps=0
+        )
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
@@ -561,47 +655,13 @@ class TestCollectActivations(unittest.TestCase):
             with self.assertRaises(ValueError):
                 collect_activations(runner, model, clips, config)
 
-    def test_cache_path_saves_and_loads(self) -> None:
-        from myosuite.integrations.musclemimic.activation_collector import (
-            CollectionConfig,
-            collect_activations,
-        )
-
-        runner, model, clips = self._build_inputs(n_clips=2)
-        config = CollectionConfig(n_episodes_per_clip=5, max_steps_per_episode=3)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            cache = Path(tmp) / "acts.npy"
-
-            with (
-                patch("mujoco.MjData", return_value=_make_data()),
-                patch("mujoco.mj_resetData"),
-                patch("mujoco.mj_forward"),
-                patch(
-                    "myosuite.integrations.musclemimic.activation_collector._tracking_reward",
-                    return_value=1.0,
-                ),
-            ):
-                acts1 = collect_activations(
-                    runner, model, clips, config, cache_path=cache
-                )
-                self.assertTrue(cache.exists())
-                # Second call should load from cache without calling runner
-                runner2 = _make_policy_runner()
-                acts2 = collect_activations(
-                    runner2, model, clips, config, cache_path=cache
-                )
-
-            np.testing.assert_array_equal(acts1, acts2)
-            # runner2 was never called — loaded from cache
-            runner2.action_for.assert_not_called()
-
     def test_uses_default_config_when_none(self) -> None:
         from myosuite.integrations.musclemimic.activation_collector import (
             collect_activations,
         )
 
-        runner, model, clips = self._build_inputs(n_clips=1)
+        runner, model, _ = self._build_inputs(n_clips=1)
+        clips = [_make_clip(60)]  # the default warm-up needs a window over 10 steps
 
         with (
             patch("mujoco.MjData", return_value=_make_data()),
@@ -615,6 +675,214 @@ class TestCollectActivations(unittest.TestCase):
             acts = collect_activations(runner, model, clips)  # config=None
 
         self.assertIsInstance(acts, np.ndarray)
+
+
+@pytest.fixture
+def cache_case(tmp_path: Path) -> tuple:
+    model = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+    clips = [
+        MotionClip(_slider_clip(8).qpos + offset, None, None, None)
+        for offset in (0.0, 0.2)
+    ]
+    config = collector.CollectionConfig(
+        n_episodes_per_clip=2,
+        max_steps_per_episode=3,
+        warmup_steps=0,
+        use_random_start=False,
+    )
+    return model, clips, config, tmp_path / "activations.npz"
+
+
+def _cached_collect(
+    model: mujoco.MjModel,
+    clips: list[MotionClip],
+    config: collector.CollectionConfig,
+    path: Path,
+    key: str | None = "policy-v1",
+) -> tuple[np.ndarray, _StubRunner]:
+    runner = _StubRunner()
+    acts = collector.collect_activations(
+        runner, model, clips, config, cache_path=path, policy_cache_key=key
+    )
+    return acts, runner
+
+
+@pytest.mark.parametrize("filename", ["activations.npz", "activations.npy", "cache"])
+def test_native_cache_hit_skips_rollouts_at_exact_path(
+    cache_case, filename: str
+) -> None:
+    model, clips, cfg, path = cache_case
+    path = path.with_name(filename)
+    expected, first = _cached_collect(model, clips, cfg, path)
+    assert first.events and path.exists()
+    recompiled = mujoco.MjModel.from_xml_string(_SLIDER_XML)
+    actual, second = _cached_collect(recompiled, clips, cfg, path)
+    assert not second.events
+    np.testing.assert_array_equal(actual, expected)
+    assert actual.dtype == np.float32 and actual.shape[1] == model.na
+    with np.load(path, allow_pickle=False) as archive:
+        assert set(archive.files) == {"metadata", "activations"}
+
+
+@pytest.mark.parametrize("key", [None, "policy-v1"])
+def test_legacy_wrong_width_dtype_and_range_are_never_trusted(
+    cache_case, key, caplog
+) -> None:
+    model, clips, cfg, path = cache_case
+    with path.open("wb") as handle:
+        np.save(handle, np.full((7, 99), 99.0, dtype=np.float64))
+    original = path.read_bytes()
+    if key is None:
+        runner = _StubRunner()
+        actual = collector.collect_activations(
+            runner, model, clips, cfg, cache_path=path
+        )
+    else:
+        actual, runner = _cached_collect(model, clips, cfg, path, key)
+    assert runner.events and actual.shape[1] == model.na
+    assert actual.dtype == np.float32 and np.all((actual >= 0) & (actual <= 1))
+    assert "Ignoring activation cache" in caplog.text
+    assert (path.read_bytes() == original) == (key is None)
+
+
+def test_no_policy_identity_does_not_create_cache(cache_case, caplog) -> None:
+    model, clips, cfg, path = cache_case
+    _, runner = _cached_collect(model, clips, cfg, path, None)
+    assert runner.events and not path.exists()
+    assert "policy_cache_key is required" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "change", ["model", "clip", "order", "names", "config", "seed", "policy"]
+)
+def test_native_cache_invalidates_changed_provenance(cache_case, change: str) -> None:
+    model, clips, cfg, path = cache_case
+    _cached_collect(model, clips, cfg, path)
+    old = path.read_bytes()
+    key = "policy-v1"
+    if change == "model":
+        model.actuator_gainprm[0, 0] *= 2  # Same activation width, different physics.
+    elif change == "clip":
+        clips[0].qpos[0, 0] += 0.1
+    elif change == "order":
+        clips.reverse()
+    elif change == "names":
+        clips[0] = replace(clips[0], site_names=["new_target"])
+    elif change == "config":
+        cfg = replace(cfg, n_episodes_per_clip=3)
+    elif change == "seed":
+        cfg = replace(cfg, seed=8)
+    else:
+        key = "policy-v2"
+    expected, fresh = _cached_collect(model, clips, cfg, path, key)
+    assert fresh.events and path.read_bytes() != old
+    actual, hit = _cached_collect(model, clips, cfg, path, key)
+    assert not hit.events
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "float64",
+        "width",
+        "nan",
+        "negative",
+        "large",
+        "rank",
+        "empty",
+        "object",
+        "truncated",
+        "encrypted",
+        "deflate",
+        "metadata",
+    ],
+)
+def test_invalid_archive_is_recollected(cache_case, bad: str, caplog) -> None:
+    model, clips, cfg, path = cache_case
+    expected, _ = _cached_collect(model, clips, cfg, path)
+    with np.load(path, allow_pickle=False) as archive:
+        metadata = archive["metadata"]
+    acts = expected.copy()
+    if bad == "float64":
+        acts = acts.astype(np.float64)
+    elif bad == "width":
+        acts = np.ones((3, 99), dtype=np.float32)
+    elif bad in {"nan", "negative", "large"}:
+        acts[0, 0] = {"nan": np.nan, "negative": -0.01, "large": 1.01}[bad]
+    elif bad == "rank":
+        acts = acts[:, 0]
+    elif bad == "empty":
+        acts = acts[:0]
+    elif bad == "object":
+        acts = acts.astype(object)
+    elif bad == "metadata":
+        metadata = np.asarray(["not", "scalar"])
+    if bad == "truncated":
+        path.write_bytes(path.read_bytes()[:30])
+    elif bad == "encrypted":
+        payload = bytearray(path.read_bytes())
+        for signature, flag_offset in [(b"PK\x03\x04", 6), (b"PK\x01\x02", 8)]:
+            offset = 0
+            while (offset := payload.find(signature, offset)) >= 0:
+                payload[offset + flag_offset] |= 1
+                offset += len(signature)
+        path.write_bytes(payload)
+    elif bad == "deflate":
+        np.savez_compressed(path, activations=acts, metadata=metadata)
+        with ZipFile(path) as archive:
+            offset = archive.getinfo("metadata.npy").header_offset
+        payload = bytearray(path.read_bytes())
+        name_length, extra_length = struct.unpack_from("<HH", payload, offset + 26)
+        start = offset + 30 + name_length + extra_length
+        payload[start : start + 4] = b"\xff" * 4
+        path.write_bytes(payload)
+    else:
+        np.savez(path, activations=acts, metadata=metadata)
+    actual, runner = _cached_collect(model, clips, cfg, path)
+    assert runner.events and "Ignoring activation cache" in caplog.text
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("key", ["", " ", 12])
+def test_invalid_policy_key_fails_before_rollout(cache_case, key) -> None:
+    model, clips, cfg, path = cache_case
+    with pytest.raises(ValueError, match="policy_cache_key"):
+        _cached_collect(model, clips, cfg, path, key)
+    assert not path.exists()
+
+
+def test_failed_recollection_leaves_existing_cache_intact(
+    cache_case, monkeypatch
+) -> None:
+    model, clips, cfg, path = cache_case
+    _cached_collect(model, clips, cfg, path)
+    original = path.read_bytes()
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            _StubRunner, "step", MagicMock(side_effect=RuntimeError("rollout failed"))
+        )
+        with pytest.raises(RuntimeError, match="rollout failed"):
+            _cached_collect(model, clips, cfg, path, "policy-v2")
+    assert path.read_bytes() == original
+
+
+def test_failed_cache_write_is_atomic_and_cleans_temporary(
+    cache_case, monkeypatch
+) -> None:
+    model, clips, cfg, path = cache_case
+    _cached_collect(model, clips, cfg, path)
+    original = path.read_bytes()
+
+    def fail_write(handle, **arrays) -> None:
+        handle.write(b"partial archive")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(np, "savez", fail_write)
+    with pytest.raises(OSError, match="disk full"):
+        _cached_collect(model, clips, cfg, path, "policy-v2")
+    assert path.read_bytes() == original
+    assert list(path.parent.iterdir()) == [path]
 
 
 if __name__ == "__main__":

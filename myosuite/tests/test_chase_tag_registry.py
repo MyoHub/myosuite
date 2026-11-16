@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
+from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
@@ -101,12 +102,14 @@ class TestFullBodyChaseTagRegistry:
             env.close()
 
     def test_arena_fits_every_contact_and_limit_active(self) -> None:
-        """The explicit arena replaces the 1.3 GB legacy one with >= 10x headroom.
+        """The explicit arena replaces the 1.3 GB legacy one with headroom.
 
-        The worst case puts the body inside a 0.6-1 m tall hfield block (the
-        terrain at its non-FLAT position) with 5 m contact margins and 10 rad
-        joint margins, so every body geom touches the floor and the terrain and
-        both sides of every joint limit are active (~5 MiB used).
+        Burying the body inside a 0.6-1 m tall hfield block (the terrain at its
+        non-FLAT position) with 10 rad joint margins (both sides of every joint
+        limit active) leaves >= 10x arena headroom (~2.8 MiB used). Inflating
+        contact margins to 5 m so every body geom also touches the floor and
+        hits MuJoCo's 50-contact hfield cap simultaneously (~5.3 MiB on MuJoCo
+        <= 3.14, ~26.4 MiB on MuJoCo >= 3.15) still fits with >= 2x headroom.
         """
         import mujoco
 
@@ -121,14 +124,29 @@ class TestFullBodyChaseTagRegistry:
         # Legacy sizes stay on the model for the MJX Warp path.
         assert (model.nconmax, model.njmax) == (spec.nconmax, spec.njmax)
 
+        for joint in spec.joints:
+            if joint.type != mujoco.mjtJoint.mjJNT_FREE:
+                joint.margin = 10.0
+        buried = spec.compile()
+        assert buried.narena == CHASETAG_FB_ARENA_BYTES
+        buried.geom_pos[buried.geom("terrain").id] = 0.0
+        rng = np.random.default_rng(0)
+        hfield_heights = rng.uniform(0.6, 1.0, buried.hfield_data.size)
+        buried.hfield_data[:] = hfield_heights
+        buried_data = mujoco.MjData(buried)
+        for _ in range(3):
+            mujoco.mj_resetData(buried, buried_data)
+            quat = rng.normal(size=4)
+            buried_data.qpos[3:7] = quat / np.linalg.norm(quat)
+            buried_data.qpos[2] = 0.45
+            mujoco.mj_forward(buried, buried_data)
+            assert 10 * buried_data.maxuse_arena <= buried.narena
+
         for geom in spec.geoms:
             if geom.contype or geom.conaffinity:
                 geom.margin = 5.0
         for pair in spec.pairs:
             pair.margin = 5.0
-        for joint in spec.joints:
-            if joint.type != mujoco.mjtJoint.mjJNT_FREE:
-                joint.margin = 10.0
         worst = spec.compile()
         assert worst.narena == CHASETAG_FB_ARENA_BYTES
         worst.geom_pos[worst.geom("terrain").id] = 0.0
@@ -159,7 +177,7 @@ class TestFullBodyChaseTagRegistry:
                 mujoco.mjtWarning.mjWARN_CNSTRFULL,
             ):
                 assert data.warning[warning].number == 0
-            assert 10 * data.maxuse_arena <= worst.narena
+            assert 2 * data.maxuse_arena <= worst.narena
 
 
 class TestChaseTagVsRegistry:
@@ -172,9 +190,9 @@ class TestChaseTagVsRegistry:
 
         try:
             env = make_env(self.ENV_ID)
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
-            return
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         try:
             obs, info = env.reset(seed=0)
             assert set(obs.keys()) == {"agent_0", "agent_1"}
@@ -183,8 +201,9 @@ class TestChaseTagVsRegistry:
                 obs, rewards, terminated, truncated, info = env.step(actions)
                 for agent_id in ("agent_0", "agent_1"):
                     assert np.isfinite(rewards[agent_id])
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
+        except Exception as exc:
+            skip_if_hf_gated(self.ENV_ID, exc)
+            raise
         finally:
             env.close()
 
@@ -488,7 +507,7 @@ class TestChaseTagFullbodyBody:
                 )
 
     def test_baseline_policy_tags_an_idle_player(self) -> None:
-        import onnxruntime as ort
+        ort = pytest.importorskip("onnxruntime")
 
         from myosuite.core.hf_io import download_baseline_file
 
@@ -513,8 +532,9 @@ class TestChaseTagFullbodyBody:
                 )
                 if terminated["agent_0"] or truncated["agent_0"]:
                     break
-        except OSError as exc:
-            pytest.skip(f"Gait reference clip unavailable (no network?): {exc}")
+        except Exception as exc:
+            skip_if_hf_gated("myoChallengeChaseTagFBVs-v0", exc)
+            raise
         finally:
             env.close()
         assert info["tagged"]

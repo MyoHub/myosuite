@@ -52,7 +52,7 @@ def _reg(env_id, entry_point, max_episode_steps, kwargs):
 _reg(
     env_id="myoChallengeSoccerP1-v0",
     entry_point="myosuite.envs.myo.tasks.challenge.soccer:SoccerEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,  # max_time_sec 10 s at 0.01 s per step
     kwargs={
         "model_path": str(_ASSETS_ROOT / "leg_soccer" / "myolegs_soccer.xml"),
         "normalize_act": True,
@@ -65,7 +65,7 @@ _reg(
 _reg(
     env_id="myoChallengeSoccerP2-v0",
     entry_point="myosuite.envs.myo.tasks.challenge.soccer:SoccerEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,  # max_time_sec 10 s at 0.01 s per step
     kwargs={
         "model_path": str(_ASSETS_ROOT / "leg_soccer" / "myolegs_soccer.xml"),
         "normalize_act": True,
@@ -375,6 +375,8 @@ _reg(
         "rough_range": (0.05, 0.1),
         "relief_range": (0.1, 0.3),
         "repeller_opponent": True,
+        # Applied capped at 2 m/s (move_opponent), as in the MyoChallenge 2023
+        # evaluation: 75 % of the EVADE episodes chase at 2 m/s.
         "chase_vel_range": (1, 5),
         "random_vel_range": (-2, 2),
         "repeller_vel_range": (0.3, 1),

@@ -7,8 +7,9 @@
 
 Rolls a :class:`~...LocalPolicyRunner` through a list of motion clips and
 collects ``data.act`` (post-dynamics muscle activations, shape ``(nu,)`` per
-step) from episodes whose mean per-step tracking reward clears a percentile
-threshold.
+step) from fixed-length episodes whose mean per-step tracking reward clears a
+percentile threshold. Episodes that fall are rejected, and the activation
+ramp after the ``act = 0`` reset is left out.
 The filtered activations from all clips are concatenated into a single
 ``(T, n_muscles)`` array that feeds the SAR extraction pipeline.
 
@@ -37,14 +38,25 @@ Typical usage::
     acts = collect_activations(policy, model, clips,
                                CollectionConfig(n_episodes_per_clip=100))
     # acts: (T, n_muscles), values in [0, 1]
+
+Disk reuse additionally requires ``cache_path`` and a caller-owned
+``policy_cache_key`` identifying immutable weights and inference/adapter settings.
+Omitting the key deliberately disables caching; arbitrary runners have no inferred
+stable identity.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
-from dataclasses import dataclass, field
+import os
+import tempfile
+import zlib
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
+from zipfile import BadZipFile
 
 import mujoco
 import numpy as np
@@ -69,13 +81,18 @@ class CollectionConfig:
         n_episodes_per_clip: Number of rollout episodes per motion clip.
         reward_percentile: Only episodes whose mean per-step tracking reward
             reaches this percentile of the preview episodes contribute
-            activations. The original SAR filter ranks fixed-horizon episodes
-            by total reward; the mean ranks them the same way and stays
-            comparable when random starts and the clip end vary the length.
-        max_steps_per_episode: Cap on steps per episode.  ``None`` means
-            run the full clip length.
+            activations. As in the original SAR filter, every episode has the
+            same length, so the tracking error of all of them has grown for
+            the same time since the start on the reference.
+        max_steps_per_episode: Control steps of every episode. ``None`` means
+            half the clip; random starts are drawn so that the episode ends
+            inside the clip.
         use_random_start: Whether to initialise each episode at a random
             clip frame, improving activation diversity.
+        warmup_steps: Leading steps of each episode whose activations are left
+            out: every episode starts from ``act = 0``.
+        min_root_height: An episode whose free root drops below this height (m)
+            has fallen and is rejected. Ignored for models without a free root.
         seed: RNG seed for reproducible random starts.
     """
 
@@ -83,7 +100,108 @@ class CollectionConfig:
     reward_percentile: int = 80
     max_steps_per_episode: int | None = None
     use_random_start: bool = True
+    warmup_steps: int = 10
+    min_root_height: float = 0.5
     seed: int = 0
+
+
+def _cache_metadata(
+    model: mujoco.MjModel,
+    clips: list[MotionClip],
+    config: CollectionConfig,
+    policy_cache_key: str,
+) -> str:
+    from myosuite.core.trajectory_io import MotionClip
+
+    model_bytes = np.empty(mujoco.mj_sizeModel(model), dtype=np.uint8)
+    mujoco.mj_saveModel(model, buffer=model_bytes)
+    clip_hashes = []
+    for clip in clips:
+        digest = hashlib.sha256()
+        for field_info in fields(MotionClip):
+            value = getattr(clip, field_info.name, None)
+            if isinstance(value, np.ndarray):
+                if value.dtype.hasobject:
+                    raise ValueError("Activation cache cannot hash object arrays.")
+                digest.update(
+                    json.dumps((field_info.name, value.shape, value.dtype.str)).encode()
+                )
+                digest.update(np.ascontiguousarray(value).reshape(-1).view(np.uint8))
+            else:
+                if isinstance(value, Path):
+                    value = str(value)
+                digest.update(
+                    json.dumps((field_info.name, value), allow_nan=False).encode()
+                )
+        clip_hashes.append(digest.hexdigest())
+    return json.dumps(
+        {
+            "collector_version": 1,
+            "mujoco_version": mujoco.__version__,
+            "numpy_version": np.__version__,
+            "model_sha256": hashlib.sha256(model_bytes).hexdigest(),
+            "clip_sha256": clip_hashes,
+            "config": asdict(config),
+            "policy_cache_key": policy_cache_key,
+        },
+        sort_keys=True,
+        allow_nan=False,
+    )
+
+
+def _valid_cached_activations(acts: np.ndarray, width: int) -> bool:
+    return (
+        acts.dtype == np.float32
+        and acts.ndim == 2
+        and acts.shape[0] > 0
+        and acts.shape[1] == width
+        and bool(np.all(np.isfinite(acts) & (acts >= 0) & (acts <= 1)))
+    )
+
+
+def _read_activation_cache(path: Path, metadata: str, width: int) -> np.ndarray | None:
+    try:
+        with path.open("rb") as handle:
+            loaded = np.load(handle, allow_pickle=False)
+            if not isinstance(loaded, np.lib.npyio.NpzFile):
+                raise ValueError("legacy array has no provenance")
+            with loaded:
+                if set(loaded.files) != {"activations", "metadata"}:
+                    raise ValueError("unexpected archive fields")
+                if loaded["metadata"].item() != metadata:
+                    raise ValueError("collection provenance changed")
+                acts = loaded["activations"]
+                if not _valid_cached_activations(acts, width):
+                    raise ValueError("invalid activation dtype, shape or values")
+                return acts
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        EOFError,
+        BadZipFile,
+        RuntimeError,
+        zlib.error,
+    ) as exc:
+        logger.warning("Ignoring activation cache %s: %s; recollecting", path, exc)
+        return None
+
+
+def _write_activation_cache(path: Path, metadata: str, acts: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            np.savez(handle, activations=acts, metadata=np.asarray(metadata))
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 @dataclass
@@ -134,6 +252,13 @@ def _tracking_reward(
     return 0.0 if err is None else -float(err)
 
 
+def _has_fallen(model: mujoco.MjModel, data: mujoco.MjData, min_height: float) -> bool:
+    """True when the model has a free root and it is below *min_height*."""
+    if not int(model.njnt) or int(model.jnt_type[0]) != mujoco.mjtJoint.mjJNT_FREE:
+        return False
+    return bool(data.qpos[int(model.jnt_qposadr[0]) + 2] < min_height)
+
+
 def _run_episode(
     policy_runner: LocalPolicyRunner | OnnxPolicyRunner,
     model: mujoco.MjModel,
@@ -143,8 +268,13 @@ def _run_episode(
     max_steps: int,
     *,
     obs_adapter: FullbodyObsAdapter | None = None,
+    warmup_steps: int = 0,
+    min_root_height: float | None = None,
 ) -> tuple[np.ndarray, float]:
     """Run one episode; return ``(activations (T, nu), mean per-step reward)``.
+
+    After each step the data is forwarded and scored against the clip frame
+    the step has reached.
 
     Each episode starts from a fresh MjData state and a reset runner (running
     normaliser and observation history), so it does not depend on the episodes
@@ -160,11 +290,13 @@ def _run_episode(
         obs_adapter: Optional :class:`FullbodyObsAdapter` for this *clip* (must
             match ``clip`` trajectory length when the runner's default adapter
             was built from a different clip).
+        warmup_steps: Leading steps whose activations are not returned.
+        min_root_height: Fall threshold of the free root (m); ``None`` disables it.
 
     Returns:
-        Tuple of activation array ``(steps, nu)`` and mean per-step tracking
-        reward. A sum would favour short episodes, since rewards are negative
-        errors.
+        Tuple of activation array ``(steps - warmup_steps, nu)`` and mean
+        per-step tracking reward; a fallen episode returns no activations and
+        ``-inf``.
     """
     _init_episode(model, data, clip, start_frame=start_frame)
     policy_runner.reset()
@@ -177,10 +309,14 @@ def _run_episode(
             data, clip, state.frame_idx, obs_adapter=obs_adapter
         )
         policy_runner.step(model, data, action)
-        state.activations.append(np.asarray(data.act, dtype=np.float32).copy())
-        state.total_reward += _tracking_reward(model, data, clip, state.frame_idx)
+        mujoco.mj_forward(model, data)
         state.frame_idx = min(state.frame_idx + 1, n_frames - 1)
         state.step_count += 1
+        if min_root_height is not None and _has_fallen(model, data, min_root_height):
+            return np.empty((0, model.nu), dtype=np.float32), -np.inf
+        if state.step_count > warmup_steps:
+            state.activations.append(np.asarray(data.act, dtype=np.float32).copy())
+        state.total_reward += _tracking_reward(model, data, clip, state.frame_idx)
         if state.frame_idx >= n_frames - 1:
             break
 
@@ -214,7 +350,21 @@ def collect_activations_from_clip(
         Empty array with shape ``(0, nu)`` if no episode clears the threshold.
     """
     n_frames = int(clip.qpos.shape[0])
-    max_steps = config.max_steps_per_episode or n_frames
+    max_steps = min(
+        config.max_steps_per_episode or max(1, (n_frames - 1) // 2),
+        max(1, n_frames - 1),
+    )
+    if config.warmup_steps >= max_steps:
+        raise ValueError(
+            f"warmup_steps={config.warmup_steps} leaves no activations of a "
+            f"{max_steps}-step episode"
+        )
+    last_start = n_frames - 1 - max_steps
+    episode = {
+        "max_steps": max_steps,
+        "warmup_steps": config.warmup_steps,
+        "min_root_height": config.min_root_height,
+    }
     data = mujoco.MjData(model)
     clip_obs_adapter: FullbodyObsAdapter | None = None
     if policy_runner.obs_adapter is not None:
@@ -226,19 +376,24 @@ def collect_activations_from_clip(
     n_preview = max(10, config.n_episodes_per_clip // 10)
     preview_rewards: list[float] = []
     for _ in range(n_preview):
-        start = int(rng.integers(0, n_frames)) if config.use_random_start else 0
+        start = int(rng.integers(0, last_start + 1)) if config.use_random_start else 0
         _, r = _run_episode(
             policy_runner,
             model,
             data,
             clip,
             start,
-            max_steps,
             obs_adapter=clip_obs_adapter,
+            **episode,
         )
         preview_rewards.append(r)
 
-    threshold = float(np.percentile(preview_rewards, config.reward_percentile))
+    standing = [r for r in preview_rewards if np.isfinite(r)]
+    threshold = (
+        float(np.percentile(standing, config.reward_percentile))
+        if standing
+        else -np.inf
+    )
     logger.debug(
         "Clip %s: mean-reward threshold (p%d over %d preview) = %.4f",
         getattr(clip, "source_path", "?"),
@@ -251,18 +406,18 @@ def collect_activations_from_clip(
     # Pass 2: full collection, keep episodes above threshold.
     # ------------------------------------------------------------------
     kept: list[np.ndarray] = []
-    for ep_idx in range(config.n_episodes_per_clip):
-        start = int(rng.integers(0, n_frames)) if config.use_random_start else 0
+    for _ in range(config.n_episodes_per_clip):
+        start = int(rng.integers(0, last_start + 1)) if config.use_random_start else 0
         acts, r = _run_episode(
             policy_runner,
             model,
             data,
             clip,
             start,
-            max_steps,
             obs_adapter=clip_obs_adapter,
+            **episode,
         )
-        if r >= threshold and acts.shape[0] > 0:
+        if np.isfinite(r) and r >= threshold and acts.shape[0] > 0:
             kept.append(acts)
 
     if not kept:
@@ -291,13 +446,14 @@ def collect_activations(
     config: CollectionConfig | None = None,
     *,
     cache_path: Path | None = None,
+    policy_cache_key: str | None = None,
 ) -> np.ndarray:
     """Collect muscle activations across multiple motion clips.
 
     Iterates over all clips, filters per-clip activations by reward
-    percentile, and concatenates into one array.  When *cache_path* is
-    given and the file exists, it is loaded directly; otherwise the result
-    is saved there after collection.
+    percentile, and concatenates into one array. Caching requires an explicit
+    policy identity; the model, ordered clip contents and config are fingerprinted
+    automatically. Cache hits return prior samples without advancing the runner.
 
     Args:
         policy_runner: Loaded policy runner.
@@ -305,25 +461,46 @@ def collect_activations(
         clips: List of motion clips to collect from.
         config: Collection hyperparameters.  Defaults to
             :class:`CollectionConfig` with all defaults.
-        cache_path: Optional ``.npy`` path to cache / load results.
+        cache_path: Optional data-only NumPy archive path (prefer ``.npz``).
+            Legacy raw ``.npy`` caches and mismatched or invalid archives are
+            recollected and atomically replaced only after successful collection.
+        policy_cache_key: Caller-owned identity for immutable policy weights and
+            all inference/observation-adapter settings, including stochastic RNG
+            state when applicable. Change it whenever these change. No policy
+            identity or reproducibility is inferred from arbitrary runner objects.
+            When omitted, cache reads and writes are disabled with a warning.
 
     Returns:
         Concatenated activation array ``(T_total, n_muscles)``, dtype
         ``float32``, values in ``[0, 1]``.
 
     Raises:
-        ValueError: If no activations were collected from any clip.
+        ValueError: If no activations were collected, the policy key is empty,
+            or the collected data cannot be cached as float32 activations in [0, 1].
     """
     cfg = config or CollectionConfig()
+    metadata = None
+    if policy_cache_key is not None and (
+        not isinstance(policy_cache_key, str) or not policy_cache_key.strip()
+    ):
+        raise ValueError("policy_cache_key must be a nonempty string or None.")
 
     if cache_path is not None:
         cache_path = Path(cache_path)
-        if cache_path.exists():
-            acts = np.load(cache_path)
-            logger.info(
-                "Loaded cached activations from %s (%s)", cache_path, acts.shape
+        if policy_cache_key is None:
+            logger.warning(
+                "Ignoring activation cache %s: policy_cache_key is required", cache_path
             )
-            return acts
+            cache_path = None
+        else:
+            metadata = _cache_metadata(model, clips, cfg, policy_cache_key)
+            if cache_path.exists():
+                acts = _read_activation_cache(cache_path, metadata, model.na)
+                if acts is not None:
+                    logger.info(
+                        "Loaded cached activations from %s (%s)", cache_path, acts.shape
+                    )
+                    return acts
 
     rng = np.random.default_rng(cfg.seed)
     all_acts: list[np.ndarray] = []
@@ -355,8 +532,12 @@ def collect_activations(
     )
 
     if cache_path is not None:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        np.save(cache_path, result)
+        if not _valid_cached_activations(result, model.na):
+            raise ValueError(
+                "Collected activations have invalid shape or values for caching."
+            )
+        assert metadata is not None
+        _write_activation_cache(cache_path, metadata, result)
         logger.info("Saved activations to %s", cache_path)
 
     return result

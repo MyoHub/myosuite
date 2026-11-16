@@ -27,10 +27,6 @@ from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils.colored_noise import ColoredNoiseProcess
 
 
-# Rounding of the summed timestep: the 1000th step at 10 s ends at 10.000000000000009 s.
-_TIME_EPS = 1e-9
-
-
 class Task(Enum):
     CHASE = 0
     EVADE = 1
@@ -48,7 +44,8 @@ class ChallengeOpponent:
         rng: NumPy random generator.
         probabilities: Policy probabilities (static_stationary, stationary, random).
         min_spawn_distance: Minimum spawn radius from agent.
-        chase_vel_range: Velocity range for the chase policy.
+        chase_vel_range: Speed range (m/s) of the chase policy, drawn once per
+            episode. ``move_opponent`` caps every speed at 2 m/s.
         random_vel_range: Velocity range for the random policy.
         dt: Control timestep.
         pelvis_body_name: Name of the agent body used to track the agent's
@@ -93,11 +90,11 @@ class ChallengeOpponent:
         self.mj_data.mocap_quat[0, :] = euler2quat([0, 0, pose[-1]])
 
     def move_opponent(self, vel: list) -> None:
-        """Move opponent by velocity [lin_vel, rot_vel]."""
-        self.opponent_vel = vel
+        """Move opponent by velocity [lin_vel, rot_vel], capped at 2 m/s and 2 rad/s."""
         assert len(vel) == 2
-        vel[0] = np.abs(vel[0])
-        vel = np.clip(vel, -2, 2)
+        vel = np.clip([np.abs(vel[0]), vel[1]], -2, 2)
+        # Observed as ``opponent_vel``: the applied velocity, not the policy command.
+        self.opponent_vel = vel
         pose = self.get_opponent_pose()
         x_vel = vel[0] * np.cos(pose[-1] + 0.5 * np.pi)
         y_vel = vel[0] * np.sin(pose[-1] + 0.5 * np.pi)
@@ -536,6 +533,8 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         # Prevents win/lose checks before first reset sets keyframe
         self.startFlag = False
         self._prev_distance: float | None = None
+        # World-frame opponent velocity over the last step (opponent_relative obs).
+        self._opponent_xy_vel = np.zeros(2)
 
         # ── Convenience caches ───────────────────────────────────────────────
         self.actuator_names = np.array(
@@ -624,9 +623,9 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if "opponent_relative" in self.obs_keys:
             # mjlab training layout of myoChallengeChaseTagFBP2-v0 (keys
             # CHASETAG_OBS_KEYS): the opponent at its mocap position (z = 0)
-            # with its [lin_vel, rot_vel] control pair as "velocity".
+            # with its world-frame velocity over the last step.
             opp_xy = self.opponent.get_opponent_pose()[:2]
-            opp_vel = self.opponent.opponent_vel
+            opp_vel = self._opponent_xy_vel
             role = [1.0, 0.0] if self.current_task.name == "CHASE" else [0.0, 1.0]
             blocks = chasetag_obs_blocks(
                 model,
@@ -725,7 +724,11 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance simulation: update opponent, apply action, step physics."""
         action = np.clip(action, self.action_space.low, self.action_space.high)
+        opponent_xy = self.opponent.get_opponent_pose()[:2]
         self.opponent.update_opponent_state()
+        self._opponent_xy_vel = (
+            self.opponent.get_opponent_pose()[:2] - opponent_xy
+        ) / self.dt
         self._apply_action(action)
         self._step_physics()
         self.steps += 1
@@ -752,11 +755,13 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
+        self._project_joint_couplings()
         mujoco.mj_forward(self.model, self.data)
         self._maybe_flatten_agent_patch(qpos)
 
         self.steps = 0
         self._prev_distance = None
+        self._opponent_xy_vel = np.zeros(2)
         self.opponent.reset_opponent(
             player_task=self.current_task.name, rng=self.np_random
         )
@@ -836,9 +841,14 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             return self._evade_lose_condition(obs_dict)
         raise NotImplementedError
 
+    def _horizon_steps(self) -> int:
+        """Control steps in ``maxTime``; the summed ``data.time`` is not exact."""
+        return round(self.maxTime / self.dt)
+
     def _chase_lose_condition(self, obs_dict: dict) -> int:
         root_pos = self.data.body(self._pelvis_body_name).xpos[:2]
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime + _TIME_EPS:
+        # Past the horizon only: at the horizon ``TimeLimit`` truncates a CHASE.
+        if self.steps > self._horizon_steps():
             return 1
         if np.abs(root_pos[0]) > 6.5 or np.abs(root_pos[1]) > 6.5:
             return 1
@@ -861,9 +871,7 @@ class ChaseTagEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         return 0
 
     def _evade_win_condition(self, obs_dict: dict) -> int:
-        if float(np.atleast_1d(obs_dict["time"])[0]) >= self.maxTime + _TIME_EPS:
-            return 1
-        return 0
+        return 1 if self.steps >= self._horizon_steps() else 0
 
     def _get_fallen_condition(self) -> int:
         if self.terrain == "FLAT":

@@ -148,7 +148,8 @@ def register_spec_recipe(name: str, spec_fn: Callable[[], mujoco.MjSpec]) -> Non
     """Let recipe *name* build its ``MjSpec`` with *spec_fn* instead of a ``ModelBuilder``.
 
     For models compiled outside the builder (MuscleMimic full body); the name must be
-    registered with :func:`model_recipe` too, so it is listed.
+    registered with :func:`model_recipe` too, so it is listed. Replacing *spec_fn*
+    takes effect on the next build, including when the old spec was cached.
     """
     _SPEC_RECIPES[name] = spec_fn
 
@@ -1032,6 +1033,38 @@ def clear_spec_caches() -> None:
         clear()
 
 
+@dataclass(frozen=True)
+class _PartialEdit:
+    """A ``functools.partial`` edit with equality by content, for the cache key.
+
+    ``gymnasium.make`` deep-copies its kwargs, which copies a partial into a new
+    object that compares unequal, so a partial ``edit_fn`` never hit the cache.
+    """
+
+    func: Callable[..., None]
+    args: tuple[Any, ...]
+    keywords: tuple[tuple[str, Any], ...]
+
+    def __call__(self, spec: mujoco.MjSpec) -> None:
+        self.func(*self.args, spec, **dict(self.keywords))
+
+
+def _cache_edit_fn(
+    edit_fn: Callable[[mujoco.MjSpec], None] | None,
+) -> Callable[[mujoco.MjSpec], None] | None:
+    """*edit_fn*, with a partial replaced by an equal-by-content :class:`_PartialEdit`."""
+    if isinstance(edit_fn, functools.partial):
+        edit = _PartialEdit(
+            edit_fn.func, edit_fn.args, tuple(sorted(edit_fn.keywords.items()))
+        )
+        try:
+            hash(edit)
+        except TypeError:
+            return edit_fn
+        return edit
+    return edit_fn
+
+
 def _cwd() -> Path | None:
     """Working directory, or ``None`` if it no longer exists."""
     try:
@@ -1044,20 +1077,19 @@ def _cwd() -> Path | None:
 def _recipe_spec(
     name: str,
     recipe_fn: Callable[[ModelBuilder], ModelBuilder],
+    spec_fn: Callable[[], mujoco.MjSpec] | None,
     cwd: Path | None,
     edit_fn: Callable[[mujoco.MjSpec], None] | None,
     params: tuple[tuple[str, Any], ...],
 ) -> mujoco.MjSpec:
-    """Uncompiled spec of recipe *name*, edited by *edit_fn* after a first compile.
+    """Uncompiled spec of recipe *name*, edited in place by *edit_fn*.
 
-    *recipe_fn* tells a re-registered recipe apart, *cwd* the relative asset
+    *recipe_fn* and *spec_fn* tell re-registered recipes apart, *cwd* the relative asset
     paths a recipe may write (the TableTennis furniture meshes), *params* the
     reserved recipe kwargs.
     """
-    spec_fn = _SPEC_RECIPES.get(name)
     spec = spec_fn() if spec_fn is not None else recipe_fn(ModelBuilder()).build_spec()
     if edit_fn is not None:
-        spec.compile()  # the edit sees a compiled spec, as when envs applied it
         edit_fn(spec)
     return spec
 
@@ -1071,11 +1103,13 @@ def build_from_recipe(
 
     From its second build in a process (same recipe, edit, working directory
     and kwargs), the spec is kept and every call compiles a private copy of it
-    (see :func:`cached_spec`).
+    (see :func:`cached_spec`). Files a recipe reads are not part of the key:
+    after editing a model file in the running process, call
+    :func:`clear_spec_caches` (or set ``MYOSUITE_SPEC_CACHE=0``).
 
     Args:
         name: Recipe name registered via @model_recipe.
-        edit_fn: In-place edit of the compiled recipe spec, e.g. the ``edit_fn``
+        edit_fn: In-place edit of the recipe spec, e.g. the ``edit_fn``
             kwarg of an env; built and cached with the recipe.
         **kwargs: Unused; reserved for future recipe parameterisation.
 
@@ -1086,6 +1120,11 @@ def build_from_recipe(
         >>> model, spec = build_from_recipe("elbow_standard")
     """
     spec = _recipe_spec(
-        name, get_recipe(name), _cwd(), edit_fn, tuple(sorted(kwargs.items()))
+        name,
+        get_recipe(name),
+        _SPEC_RECIPES.get(name),
+        _cwd(),
+        _cache_edit_fn(edit_fn),
+        tuple(sorted(kwargs.items())),
     )
     return spec.compile(), spec

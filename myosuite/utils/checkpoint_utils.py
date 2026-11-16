@@ -125,6 +125,12 @@ def default_roots(max_levels: int = 4) -> tuple[Path, ...]:
     return (cwd,)
 
 
+def _ckpt_step(path: Path) -> int | None:
+    """Return numeric step suffix from ``model_<step>.pt``, or ``None`` if non-numeric."""
+    suffix = path.stem.split("_")[-1]
+    return int(suffix) if suffix.isdigit() else None
+
+
 def find_checkpoint(
     env_id: str,
     checkpoint: str | Path | None = None,
@@ -157,18 +163,24 @@ def find_checkpoint(
             (
                 c
                 for c in (root / "logs" / "rsl_rl" / experiment).glob("*/model_*.pt")
-                if _run_is_for(c.parent, env_id)
+                if _ckpt_step(c) is not None and _run_is_for(c.parent, env_id)
             )
             if experiment
             else [],
-            key=lambda c: (c.parent.name, int(c.stem.split("_")[-1])),
+            key=lambda c: (c.parent.name, _ckpt_step(c) or 0),
         )
         if runs:
             return runs[-1]
     for root in roots:
         baseline = sorted(
-            (root / "baselines" / "checkpoints" / env_id).glob("model_*.pt"),
-            key=lambda c: int(c.stem.split("_")[-1]),
+            (
+                c
+                for c in (root / "baselines" / "checkpoints" / env_id).glob(
+                    "model_*.pt"
+                )
+                if _ckpt_step(c) is not None
+            ),
+            key=lambda c: _ckpt_step(c) or 0,
         )
         if baseline:
             return baseline[-1]
@@ -180,7 +192,8 @@ def find_checkpoint(
 
         check_contract(env_id, hf_dir)
         hf_ckpts = sorted(
-            hf_dir.glob("model_*.pt"), key=lambda c: int(c.stem.split("_")[-1])
+            (c for c in hf_dir.glob("model_*.pt") if _ckpt_step(c) is not None),
+            key=lambda c: _ckpt_step(c) or 0,
         )
         if hf_ckpts:
             return hf_ckpts[-1]
@@ -279,7 +292,14 @@ def sb3_policy(model: Any, vec_normalize: Any | None = None) -> Policy:
     return act
 
 
-def load_policy(env: Any, checkpoint: Path | None, strict: bool = False) -> Policy:
+def load_policy(
+    env: Any,
+    checkpoint: Path | None,
+    strict: bool = False,
+    *,
+    allow_provenance_mismatch: bool = False,
+    current_deployment: dict[str, Any] | None = None,
+) -> Policy:
     """Return ``act(obs) -> action`` for a checkpoint, driving *env* with raw observations.
 
     Args:
@@ -288,6 +308,9 @@ def load_policy(env: Any, checkpoint: Path | None, strict: bool = False) -> Poli
             ``.zip``, or ``None``. The ``VecNormalize`` statistics saved next to an
             SB3 checkpoint (:func:`find_vec_normalize`) normalize its observations.
         strict: Raise instead of falling back to a random policy.
+        allow_provenance_mismatch: Explicitly override new deployment provenance
+            mismatches after review. A present manifest is checked even if strict=False.
+        current_deployment: Actual configured deployment for custom I/O or references.
 
     Returns:
         A deterministic policy; a random one when there is no usable checkpoint (none
@@ -312,6 +335,35 @@ def load_policy(env: Any, checkpoint: Path | None, strict: bool = False) -> Poli
     if checkpoint is None:
         print("No checkpoint found; using a random policy.")
         return random_policy
+    if not checkpoint.exists():
+        print(f"Checkpoint not found ({checkpoint}); using a random policy.")
+        return random_policy
+    if checkpoint.is_dir():
+        step_ckpts = [
+            c for c in checkpoint.glob("model_*.pt") if _ckpt_step(c) is not None
+        ]
+        if step_ckpts:
+            checkpoint = max(step_ckpts, key=lambda c: _ckpt_step(c) or 0)
+        else:
+            any_ckpts = sorted(checkpoint.glob("model_*.pt"))
+            if not any_ckpts:
+                if strict:
+                    raise FileNotFoundError(
+                        f"No model_*.pt checkpoints found in {checkpoint}"
+                    )
+                print(
+                    f"No model_*.pt checkpoints found in {checkpoint}; using a random policy."
+                )
+                return random_policy
+            checkpoint = any_ckpts[-1]
+    from myosuite.utils.deployment_manifest import validate_policy_manifest
+
+    validate_policy_manifest(
+        checkpoint,
+        env,
+        current=current_deployment,
+        allow_mismatch=allow_provenance_mismatch,
+    )
     if checkpoint.suffix == ".zip":  # Stable-Baselines3
         try:
             model = load_sb3_model(checkpoint)
@@ -341,10 +393,6 @@ def load_policy(env: Any, checkpoint: Path | None, strict: bool = False) -> Poli
         return sb3_policy(model, load_vec_normalize(stats) if stats else None)
     from myosuite.utils.rslrl_policy import load_rslrl_policy  # mjlab / RSL-RL
 
-    if checkpoint.is_dir():
-        checkpoint = max(
-            checkpoint.glob("model_*.pt"), key=lambda c: int(c.stem.split("_")[-1])
-        )
     policy = load_rslrl_policy(checkpoint, env.action_space.shape[0])
     print(f"mjlab policy: {checkpoint}")
     return lambda obs: policy.act(np.atleast_2d(obs))[0]  # the policy takes batches

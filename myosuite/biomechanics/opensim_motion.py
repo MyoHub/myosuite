@@ -26,6 +26,7 @@ the model, before estimating ground reactions.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +40,8 @@ from myosuite.physics.joint_coupling import JointCouplings, project_joint_coupli
 GROUND_Y_UP = (float(np.sqrt(0.5)), float(np.sqrt(0.5)), 0.0, 0.0)
 # gait2392's knees flex negative, MyoSuite's positive.
 GAIT2392_SIGNS: Mapping[str, float] = {"knee_angle_r": -1.0, "knee_angle_l": -1.0}
+# A mapped joint this far (fraction of its range) outside its limits is reported.
+RANGE_TOLERANCE = 0.05
 PELVIS_COORDINATES = (
     "pelvis_tilt",
     "pelvis_list",
@@ -79,8 +82,9 @@ def read_opensim_motion(
         path: File with a header ending in ``endheader``, a line of column
             labels starting with ``time``, and one row per frame.
         in_degrees: Units of rotational coordinates; ``None`` reads the header's
-            ``inDegrees``, and degrees when it has none (the SIMM ``.mot``
-            convention).
+            ``inDegrees``. Without it, legacy SIMM ``.mot`` uses degrees; legacy
+            ``.sto`` uses radians unless its header says ``Angles are in degrees.``.
+            Versioned storage defaults to radians.
 
     Returns:
         The file's columns.
@@ -104,7 +108,15 @@ def read_opensim_motion(
         raise ValueError(f"{path}: the first column is {labels[0]!r}, not 'time'")
     data = np.loadtxt(lines[end + 2 :], ndmin=2)
     if in_degrees is None:
-        in_degrees = header.get("indegrees", "yes") == "yes"
+        if "indegrees" in header:
+            in_degrees = header["indegrees"] in ("yes", "y")
+        else:
+            legacy = int(header.get("version", "0")) < 1
+            simm = Path(path).suffix.lower() == ".mot"
+            degrees_note = any(
+                line.strip() == "Angles are in degrees." for line in lines[:end]
+            )
+            in_degrees = legacy and (simm or degrees_note)
     return OpenSimMotion(
         time=data[:, 0],
         labels=tuple(labels[1:]),
@@ -183,6 +195,31 @@ def _level_ground(model: mujoco.MjModel, body: int) -> np.ndarray:
     return _mul(_quat(2, yaw), _quat(0, np.array([0.5 * np.pi])))[0]
 
 
+def _warn_out_of_range(
+    model: mujoco.MjModel, qpos: np.ndarray, names: set[str]
+) -> None:
+    """Warn about mapped limited joints that leave their range (wrong sign or units)."""
+    outside = []
+    for name in sorted(names):
+        j = model.joint(name).id
+        if not model.jnt_limited[j]:
+            continue
+        lo, hi = model.jnt_range[j]
+        q = qpos[:, model.jnt_qposadr[j]]
+        excess = np.maximum(lo - q, q - hi) / (hi - lo)
+        share = float(np.mean(excess > RANGE_TOLERANCE))
+        if share:
+            outside.append(f"{name} ({share:.0%} of frames)")
+    if outside:
+        warnings.warn(
+            "mapped coordinates outside their joint range: "
+            + ", ".join(outside)
+            + "; check `signs` (Rajagopal-family files need signs={}) and the units",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def opensim_motion_to_qpos(
     model: mujoco.MjModel,
     motion: OpenSimMotion,
@@ -214,7 +251,11 @@ def opensim_motion_to_qpos(
             zero pelvis angles give the model's default pose; on MyoLeg the walk
             then goes along -y. :data:`GROUND_Y_UP` keeps OpenSim's x axis.
         signs: Per coordinate, the sign that turns OpenSim's into the model's
-            convention.
+            convention. The default is gait2392's (knee flexion negative);
+            Rajagopal-family models (OpenCap, AddBiomechanics) store knee flexion
+            positive and need ``signs={}``. A mapped joint more than
+            :data:`RANGE_TOLERANCE` of its range outside its limits raises a
+            ``UserWarning`` naming it, which points at the wrong ``signs`` or units.
         project_couplings: Put coupled joints on their polynomials, as
             :func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics` does.
 
@@ -256,6 +297,7 @@ def opensim_motion_to_qpos(
                 value = angle(value)
             qpos[:, model.jnt_qposadr[j]] = signs.get(name, 1.0) * value
             used.add(name)
+    _warn_out_of_range(model, qpos, used)
 
     if root_body is not None:
         missing = [c for c in PELVIS_COORDINATES if c not in motion.labels]

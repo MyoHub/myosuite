@@ -21,8 +21,14 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.terms.base_reward import locomotion_solved, walk_env_reward
+from myosuite.terms.base_reward import (
+    locomotion_solved,
+    locomotion_streak,
+    locomotion_sustained,
+    walk_env_reward,
+)
 from myosuite.physics.quat_math import quat2mat
+from myosuite.terms.base_obs import com_linear_velocity
 
 
 class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
@@ -111,6 +117,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         self.target_y_vel = target_y_vel
         self.target_rot = target_rot
         self.steps = 0
+        self._on_target_steps = 0
         self.normalize_act = normalize_act
 
         self._init_qpos = self.model.key_qpos[0].copy()
@@ -181,9 +188,15 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         return np.sum(mass * self.data.xipos, 0) / np.sum(mass)
 
     def _get_com_velocity(self) -> np.ndarray:
-        mass = np.expand_dims(self.model.body_mass, -1)
-        cvel = -self.data.cvel
-        return (np.sum(mass * cvel, 0) / np.sum(mass))[3:5]
+        model, data = self.model, self.data
+        velocity = com_linear_velocity(
+            np,
+            model.body_mass,
+            data.cvel,
+            data.xipos,
+            data.subtree_com[model.body_rootid],
+        )
+        return -velocity[:2]  # the model faces -y
 
     def _get_height(self) -> float:
         return float(self._get_com()[2])
@@ -331,6 +344,8 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         vel_error = float(
             np.hypot(self.target_x_vel - com_vel[0], self.target_y_vel - com_vel[1])
         )
+        on_target = bool(locomotion_solved(np, vel_error, bool(done)))
+        streak = locomotion_streak(self._on_target_steps, on_target)
         act_mag = (
             float(np.linalg.norm(obs_dict.get("act", np.zeros(1)))) / self.model.na
             if self.model.na != 0
@@ -344,7 +359,8 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
                 ("joint_angle_rew", float(term_rwd["joint_angle_rew"])),
                 ("act_mag", act_mag),
                 ("sparse", vel_reward),
-                ("solved", bool(locomotion_solved(np, vel_error, bool(done)))),
+                ("solved", bool(locomotion_sustained(streak, self.dt))),
+                ("on_target", on_target),
                 ("done", done),
             )
         )
@@ -385,6 +401,9 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
+        self._on_target_steps = locomotion_streak(
+            self._on_target_steps, rwd_dict["on_target"]
+        )
         return self._finalize_step(obs_dict, rwd_dict)
 
     def reset(
@@ -398,6 +417,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         _gym.Env.reset(self, seed=seed)
         self._run_reset_stages()
         self.steps = 0
+        self._on_target_steps = 0
         mujoco.mj_resetData(self.model, self.data)
         if self.reset_type == "random":
             qpos, qvel = self._get_randomized_initial_state()
@@ -478,6 +498,7 @@ class LegTerrainEnvV0(LegWalkEnvV0):
         gym.Env.reset(self, seed=seed)
         self._run_reset_stages()
         self.steps = 0
+        self._on_target_steps = 0
         rng = self.np_random
         if self.terrain == "rough":
             rough = rng.uniform(low=-0.5, high=0.5, size=(10000,))

@@ -63,7 +63,20 @@ From the command line (the CPU counterpart of ``scripts/train_mjlab.py``)::
    python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
 
 It supports ``--algo ppo|sac|td3``, ``--n-envs``, ``--normalize`` and ``--tensorboard``, and prints the
-deterministic success rate after training.
+deterministic success rate after training. By default, ``--vec-env dummy`` steps the
+environments serially. Use ``--vec-env subproc`` for one spawned CPU worker per env::
+
+   python scripts/train_sb3.py myoArmReachRandom-v0 --n-envs 4 --vec-env subproc --normalize
+
+Workers retain the same ``seed + rank`` initialization and ``Monitor`` episode
+statistics. Spawning and interprocess communication add overhead: benchmark your
+task and keep the worker count within available CPU cores. A direct SB3 vectorizer
+benchmark on Windows/i7-14700KF with four arm-reach envs measured 1.74 times the simulation throughput of
+four serial envs, with about 3.7 seconds more startup time. That measurement used
+SB3 2.7.1, MuJoCo 3.11 and ``OMP_NUM_THREADS=1`` / ``MKL_NUM_THREADS=1``; it excludes learning
+and is not a universal speedup. A single serial env was fastest for the cheap elbow
+task. When calling ``main()`` or creating workers from Python, use an
+``if __name__ == "__main__":`` guard, as in the script.
 
 
 Training (GPU)
@@ -165,8 +178,12 @@ means
 * **pose** tasks: the joint errors (target minus current angle) have a norm below the
   task's ``pose_thd`` (rad; e.g. 0.7 for the hand numeral poses);
 * **reach** tasks: every tip site is within the task's reach threshold of its target;
-* **locomotion** (``myoLegWalk``, ``myoLegDirectional*``, terrain walks): upright and
-  the planar COM velocity within 0.5 m/s of the commanded velocity (speed times heading);
+* **directional walks** (``myoLegDirectional*``): upright and the planar velocity within
+  0.5 m/s of the commanded velocity (speed times heading);
+* **walks** (``myoLegWalk``, terrain walks): upright and the planar COM velocity within
+  0.5 m/s of the target velocity on every control step of the last second, so an episode
+  that falls is never a success (``Episode_Metrics/on_target`` logs the share of steps
+  that meet the condition);
 * ``myoLegStandRandom``: the pelvis has reached its (relative) target position.
 
 The training log uses the *sampled* policy (with exploration noise). For muscle tasks

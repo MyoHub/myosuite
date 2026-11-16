@@ -53,7 +53,10 @@ are not predicted.
 from __future__ import annotations
 
 import copy
+import warnings
+from collections import Counter
 from dataclasses import dataclass, fields, replace
+from typing import Any, Literal, get_args
 
 import mujoco
 import numpy as np
@@ -71,6 +74,15 @@ _CONTACT_ROWS = (
     mujoco.mjtConstraint.mjCNSTR_CONTACT_FRICTIONLESS,
     mujoco.mjtConstraint.mjCNSTR_CONTACT_PYRAMIDAL,
 )
+OnFailure = Literal["warn", "raise", "nan"]
+
+
+class StaticOptimizationWarning(UserWarning):
+    """OSQP did not solve some frames of a static optimization."""
+
+
+class StaticOptimizationError(RuntimeError):
+    """OSQP did not solve a frame of a static optimization (``on_failure="raise"``)."""
 
 
 @dataclass(frozen=True)
@@ -104,6 +116,13 @@ class StaticOptimizationConfig:
         residual_optimal_force: Optimal force of the free-joint residuals when
             contacts are estimated [N or N m]; ``None`` is a tenth of the body
             weight. Without contacts residuals are not penalised.
+        on_failure: What to do with a frame OSQP did not solve (any status but
+            ``"solved"``, e.g. ``"maximum iterations reached"``): ``"warn"``
+            keeps its unconverged solution and warns
+            (:func:`static_optimization` once per clip, with the failed frame
+            count), ``"raise"`` raises :class:`StaticOptimizationError`, and
+            ``"nan"`` returns NaN activations and forces for it (``joint_torque``,
+            ``status`` and solver diagnostics stay).
     """
 
     reserve_optimal_force: float | tuple[float, ...] | None = None
@@ -115,6 +134,7 @@ class StaticOptimizationConfig:
     contact_distance: float = 0.01
     contact_optimal_force: float | None = None
     residual_optimal_force: float | None = None
+    on_failure: OnFailure = "warn"
 
 
 @dataclass(frozen=True)
@@ -132,6 +152,9 @@ class StaticOptimizationResult:
         joint_torque: ``(..., nv)`` inverse dynamics ``tau``, the sum of the actuator,
             reserve and constraint generalized forces.
         status: ``(...)`` OSQP status, ``"solved"`` when converged.
+        iterations: ``(...)`` OSQP iteration count.
+        primal_residual: ``(...)`` OSQP primal residual of the QP.
+        dual_residual: ``(...)`` OSQP dual residual of the QP.
         contact_force: ``(..., nbody, 3)`` world-frame contact force on each body
             (zero without ``contact_forces``); body 0 holds the reaction on the world.
         contact_qfrc: ``(..., nv)`` generalized force of those contact forces, the
@@ -146,6 +169,9 @@ class StaticOptimizationResult:
     status: np.ndarray
     contact_force: np.ndarray
     contact_qfrc: np.ndarray
+    iterations: np.ndarray
+    primal_residual: np.ndarray
+    dual_residual: np.ndarray
 
 
 class StaticOptimizer:
@@ -170,9 +196,14 @@ class StaticOptimizer:
 
         Raises:
             ValueError: If an actuator's force is clamped (``forcelimited``,
-                joint ``actuatorfrcrange``) or has more than one activation.
+                joint ``actuatorfrcrange``) or has more than one activation, or
+                ``on_failure`` is not one of ``"warn"``, ``"raise"``, ``"nan"``.
         """
         cfg = config or StaticOptimizationConfig()
+        if cfg.on_failure not in get_args(OnFailure):
+            raise ValueError(
+                f"on_failure must be one of {get_args(OnFailure)}: {cfg.on_failure!r}"
+            )
         m = copy.deepcopy(model)
         unsupported = [
             m.actuator(i).name
@@ -252,8 +283,8 @@ class StaticOptimizer:
         """Per dof, ``sum_i |R_ij| F_i`` at ``qpos0`` and rest [N m or N].
 
         ``R`` are the moment arms; ``F`` each muscle's peak isometric force and,
-        for other actuators, the force at the larger-magnitude end of the
-        activation or control range. This scales the default reserves.
+        for other actuators, the largest absolute force at either end of the
+        activation or control range, including bias. This scales the default reserves.
 
         Returns:
             ``(nv,)`` peak generalized force the actuators can apply at each dof
@@ -264,8 +295,8 @@ class StaticOptimizer:
         mujoco.mj_fwdPosition(m, d)
         mujoco.mj_fwdVelocity(m, d)
         lo, hi = self._probe
-        gain = (self._actuator_force(hi) - self._actuator_force(lo)) / (hi - lo)
-        force = np.abs(gain) * np.maximum(np.abs(lo), np.abs(hi))
+        f_hi, f_lo = self._actuator_force(hi), self._actuator_force(lo)
+        force = np.maximum(np.abs(f_hi), np.abs(f_lo))
         muscle = m.actuator_gaintype == mujoco.mjtGain.mjGAIN_MUSCLE
         force[muscle] = np.abs(_peak_force(m)[muscle])
         moment = np.zeros((m.nu, m.nv))
@@ -284,7 +315,7 @@ class StaticOptimizer:
 
     def _solve_qp(
         self, A: np.ndarray, lower: np.ndarray, upper: np.ndarray, weight: np.ndarray
-    ) -> tuple[np.ndarray, str]:
+    ) -> tuple[np.ndarray | None, Any]:
         """Minimise the cost subject to ``lower <= A x <= upper``, warm-started.
 
         OSQP's matrix keeps the union of all sparsity patterns seen so far, so most
@@ -295,7 +326,7 @@ class StaticOptimizer:
             if not (pattern & ~self._pattern).any():
                 self._solver.update(Ax=A.T[self._pattern.T], l=lower, u=upper)
                 res = self._solver.solve(raise_error=False)
-                return res.x, res.info.status
+                return res.x, res.info
             pattern |= self._pattern
         self._pattern = pattern
         cols, rows = np.nonzero(pattern.T)  # CSC order
@@ -316,7 +347,7 @@ class StaticOptimizer:
             warm_starting=True,
         )
         res = self._solver.solve(raise_error=False)
-        return res.x, res.info.status
+        return res.x, res.info
 
     def solve(
         self,
@@ -343,6 +374,14 @@ class StaticOptimizer:
 
         Returns:
             The solution of this frame.
+
+        Raises:
+            StaticOptimizationError: If OSQP did not solve it and
+                ``on_failure="raise"``.
+
+        Warns:
+            StaticOptimizationWarning: If OSQP did not solve it and
+                ``on_failure="warn"``.
         """
         lo, hi = self._lo, self._hi
         if max_activation is not None:
@@ -387,21 +426,59 @@ class StaticOptimizer:
             np.full(n_eq, _CONSTRAINT_WEIGHT),
             np.ones(n_c),
         ]
-        x, status = self._solve_qp(A, lower, upper, weight)
+        x, solver = self._solve_qp(A, lower, upper, weight)
+        if x is None:
+            x = np.full(A.shape[1], np.nan)
 
         a = np.clip(x[:nu], lo, hi)
         f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
         contact_qfrc = efc_J[rows].T @ f
-        return StaticOptimizationResult(
+        result = StaticOptimizationResult(
             activation=a,
             actuator_force=gain * a + bias,
             reserve=self._optimal_force * x[nu : nu + nv],
             constraint_force=J_eq.T @ (_CONSTRAINT_SCALE * x[nu + nv : nu + nv + n_eq])
             + contact_qfrc,
             joint_torque=tau,
-            status=np.asarray(status),
+            status=np.asarray(solver.status),
             contact_force=self._body_contact_forces(rows, f),
             contact_qfrc=contact_qfrc,
+            iterations=np.asarray(solver.iter),
+            primal_residual=np.asarray(solver.prim_res),
+            dual_residual=np.asarray(solver.dual_res),
+        )
+        return self._apply_failure_policy(result)
+
+    def _apply_failure_policy(
+        self, result: StaticOptimizationResult
+    ) -> StaticOptimizationResult:
+        """*result* as ``config.on_failure`` says, if OSQP did not solve its frame."""
+        status = str(result.status)
+        if status == "solved":
+            return result
+        if self.config.on_failure == "raise":
+            raise StaticOptimizationError(f"OSQP did not solve the frame: {status}")
+        if self.config.on_failure == "warn":
+            warnings.warn(
+                f"OSQP did not solve the frame ({status}); its activations are not optimal",
+                StaticOptimizationWarning,
+                stacklevel=3,
+            )
+            return result
+        kept = (
+            "joint_torque",
+            "status",
+            "iterations",
+            "primal_residual",
+            "dual_residual",
+        )
+        return replace(
+            result,
+            **{
+                f.name: np.full(np.shape(getattr(result, f.name)), np.nan)
+                for f in fields(result)
+                if f.name not in kept
+            },
         )
 
     def _contact_rows(self) -> tuple[np.ndarray, np.ndarray]:
@@ -453,24 +530,44 @@ def static_optimization(
         qacc: ``(T, nv)`` accelerations, e.g. from
             :func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics`.
         external_qfrc: Optional ``(T, nv)`` known external generalized forces.
-        config: Weights and tolerances.
+        config: Weights, tolerances and ``on_failure``.
 
     Returns:
         The per-frame solutions stacked along a leading axis.
+
+    Raises:
+        StaticOptimizationError: At the first frame OSQP did not solve, with
+            ``on_failure="raise"``.
+
+    Warns:
+        StaticOptimizationWarning: Once, with the number of frames OSQP did not
+            solve and their statuses, with ``on_failure="warn"``.
     """
     so = StaticOptimizer(model, config)
-    frames = [
-        so.solve(
-            qpos[t],
-            qvel[t],
-            qacc[t],
-            None if external_qfrc is None else external_qfrc[t],
-        )
-        for t in range(len(qpos))
-    ]
-    return StaticOptimizationResult(
+    frames = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", StaticOptimizationWarning)
+        for t in range(len(qpos)):
+            ext = None if external_qfrc is None else external_qfrc[t]
+            try:
+                frames.append(so.solve(qpos[t], qvel[t], qacc[t], ext))
+            except StaticOptimizationError as exc:
+                raise StaticOptimizationError(
+                    f"frame {t} of {len(qpos)}: {exc}"
+                ) from exc
+    result = StaticOptimizationResult(
         **{
             f.name: np.stack([getattr(fr, f.name) for fr in frames])
             for f in fields(StaticOptimizationResult)
         }
     )
+    failed = result.status != "solved"
+    if failed.any() and so.config.on_failure == "warn":
+        warnings.warn(
+            f"OSQP did not solve {int(failed.sum())} of {len(failed)} frames "
+            f"({dict(Counter(result.status[failed].tolist()))}); their activations "
+            "are not optimal (StaticOptimizationConfig: max_iter, tolerance, on_failure)",
+            StaticOptimizationWarning,
+            stacklevel=2,
+        )
+    return result

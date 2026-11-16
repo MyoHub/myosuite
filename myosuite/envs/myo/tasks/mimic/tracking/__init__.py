@@ -71,7 +71,8 @@ def download_retargeted_clips(
     dataset. Downloaded files are reused.
 
     Args:
-        repo_id: The dataset.
+        repo_id: The dataset, ``owner/name[@revision]`` (default revision:
+            :func:`~myosuite.core.hf_io.pinned_revision`).
         model: Task model name (e.g. ``"myofullbody"``).
         version: Its version (the myo_sim version).
         local_dir: Download into this directory instead of the Hugging Face cache.
@@ -81,8 +82,11 @@ def download_retargeted_clips(
     """
     from huggingface_hub import snapshot_download  # noqa: PLC0415
 
+    from myosuite.core.hf_io import pinned_revision  # noqa: PLC0415
+
+    repo_id, _, revision = repo_id.partition("@")
     base = snapshot_download(
-        repo_id, repo_type="dataset",
+        repo_id, repo_type="dataset", revision=pinned_revision(repo_id, revision),
         allow_patterns=f"{model}/{version}/*", local_dir=local_dir,
     )  # fmt: skip
     return Path(base) / model / version
@@ -131,8 +135,22 @@ def resolve_clips(
 
     The KIT names map to the packaged lists; their root defaults to
     :func:`kit_root`. Anything else is a clip, directory or list.
+
+    Raises:
+        MissingMotionData: If a packaged KIT list is incomplete at its root.
     """
     if clips in KIT_CLIP_SETS:
+        from .motion import motion_files  # noqa: PLC0415
+
         root = root or str(kit_root(model))
-        return str(kit_split(KIT_CLIP_SETS[clips])), root
+        path = str(kit_split(KIT_CLIP_SETS[clips]))
+        try:
+            motion_files(path, root)
+        except FileNotFoundError as exc:
+            raise MissingMotionData(
+                f"incomplete {clips} for {model}: {exc}. Retarget the full KIT list "
+                f"with scripts/mimic/retarget_amass.py or set {KIT_ROOT_ENV} to "
+                "a complete retargeted clip root"
+            ) from exc
+        return path, root
     return clips, root

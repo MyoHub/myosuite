@@ -16,13 +16,18 @@ shadow model. The scored FBVs env builds myo_sim's ``myofullbody`` and ignores
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+import tempfile
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import mujoco
 import numpy as np
 
+from myosuite.biomechanics.retarget import file_sha256
+from myosuite.core import trajectory_yaw
 from myosuite.core.trajectory_io import MotionClip, load_motion_clip
 from myosuite.core.trajectory_yaw import (
     clip_natural_yaw,
@@ -57,6 +62,7 @@ AGENTS: tuple[str, str] = ("agent_0", "agent_1")
 PREFIX: dict[str, str] = {"agent_0": "a0_", "agent_1": "a1_"}
 OPPONENT: dict[str, str] = {"agent_0": "agent_1", "agent_1": "agent_0"}
 DEFAULT_WALK = "MyoFullBody/gmr/KIT/167/walking_medium06_poses.npz"
+_COMPASS_CACHE_SCHEMA = 1
 
 
 def _clip_qvel(clip: MotionClip, frame: int) -> np.ndarray:
@@ -72,20 +78,83 @@ def ensure_compass_clips(
     expected_nq: int,
     expected_nv: int,
 ) -> dict[str, MotionClip]:
-    """Yaw-rotate *src* onto the 8 compass headings (cached on disk)."""
+    """Yaw-rotate *src* onto the eight compass headings with verified disk reuse.
+
+    Generated arrays and heading filenames are unchanged. Cache paths are
+    namespaced by the source bytes, compass schema and installed yaw implementation;
+    a checksum manifest verifies every generated file before reuse. Legacy flat
+    caches are left untouched and recollected. Sources must remain unchanged
+    during generation. Source files and their plain-array metadata are preserved.
+    """
     src = Path(src)
     cache_dir = Path(cache_dir)
+    source_sha256 = file_sha256(src)
+    identity = {
+        "schema": _COMPASS_CACHE_SCHEMA,
+        "source_name": src.name,
+        "source_sha256": source_sha256,
+        "yaw_sha256": file_sha256(Path(trajectory_yaw.__file__)),
+        "numpy_version": np.__version__,
+        "headings": list(COMPASS_LABELS),
+        "step": COMPASS_STEP,
+        "expected_nq": expected_nq,
+        "expected_nv": expected_nv,
+    }
+    cache_key = hashlib.sha256(
+        json.dumps(identity, sort_keys=True).encode()
+    ).hexdigest()
+    cache_dir = cache_dir / cache_key
     cache_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = cache_dir / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        manifest = None
+    checksums = (
+        manifest["files"]
+        if isinstance(manifest, dict)
+        and manifest.get("identity") == identity
+        and isinstance(manifest.get("files"), dict)
+        else {}
+    )
     base = load_motion_clip(src, expected_nq=expected_nq, expected_nv=expected_nv)
     natural = clip_natural_yaw(base.qpos, base.qvel)
     clips: dict[str, MotionClip] = {}
-    for i, lab in enumerate(COMPASS_LABELS):
-        dst = cache_dir / f"{src.stem}_{lab}.npz"
-        if not dst.is_file():
-            write_rotated_clip_npz(src, dst, i * COMPASS_STEP - natural)
-        clips[lab] = load_motion_clip(
-            dst, expected_nq=expected_nq, expected_nv=expected_nv
-        )
+    updated = {}
+    with tempfile.TemporaryDirectory(prefix=".compass-", dir=cache_dir) as staging:
+        pending = {}
+        for i, lab in enumerate(COMPASS_LABELS):
+            dst = cache_dir / f"{src.stem}_{lab}.npz"
+            try:
+                checksum = file_sha256(dst) if dst.is_file() else None
+            except OSError:
+                checksum = None
+            valid = checksum is not None and checksums.get(lab) == checksum
+            if not valid:
+                temporary = Path(staging) / dst.name
+                write_rotated_clip_npz(src, temporary, i * COMPASS_STEP - natural)
+                checksum = file_sha256(temporary)
+                pending[dst] = temporary
+            updated[lab] = checksum
+            clips[lab] = replace(
+                load_motion_clip(
+                    pending.get(dst, dst),
+                    expected_nq=expected_nq,
+                    expected_nv=expected_nv,
+                ),
+                source_path=dst.resolve(),
+            )
+        if file_sha256(src) != source_sha256:
+            raise ValueError("Source motion changed during compass generation; retry.")
+        for dst, temporary in pending.items():
+            temporary.replace(dst)
+        if checksums != updated:
+            temporary_manifest = Path(staging) / "manifest.json"
+            temporary_manifest.write_text(
+                json.dumps({"identity": identity, "files": updated}, sort_keys=True),
+                encoding="utf-8",
+            )
+            temporary_manifest.replace(manifest_path)
     return clips
 
 
@@ -142,6 +211,7 @@ class SteeredTeacher:
         self.heading = heading
         self.runner.obs_adapter = self.adapters[heading]
         self.runner.reset()
+        self.shadow_data.ctrl[:] = 0.0
 
     def set_heading(self, heading: str) -> bool:
         """Switch the goal clip. Does not teleport the body or reset history."""
@@ -156,6 +226,11 @@ class SteeredTeacher:
         return pingpong_frame(self.t, n) if self.pingpong else self.t % n
 
     def action(self, fbvs_data: mujoco.MjData, amap: AgentShadowMap) -> np.ndarray:
+        """Excitations for one FBVs agent: the raw action clipped to ``[0, 1]``.
+
+        The raw action (``[-1, 1]``) stays in the shadow's ``ctrl``: the next
+        observation's excitation block is the previous action, as in training.
+        """
         copy_agent_to_shadow(fbvs_data, self.shadow_data, amap)
         mujoco.mj_forward(self.shadow_model, self.shadow_data)
         act = self.runner.action_for(
@@ -164,6 +239,7 @@ class SteeredTeacher:
             self.goal_frame(),
             history_idx=self.t,
         )
+        self.shadow_data.ctrl[:] = act
         self.t += 1
         return np.clip(act, 0.0, 1.0).astype(np.float32)
 
@@ -221,6 +297,7 @@ class ChaseTagSteeredPair:
         """Download ``mm-10m-2`` and compass clips, then :meth:`create`."""
         from huggingface_hub import hf_hub_download, snapshot_download
 
+        from myosuite.core.hf_io import pinned_revision
         from myosuite.integrations.musclemimic.fullbody_model import (
             compile_mimic_fullbody_mjmodel,
             default_mimic_fullbody_config,
@@ -230,7 +307,11 @@ class ChaseTagSteeredPair:
         )
 
         raw = fbvs_env.unwrapped
-        root = Path(teacher_root or snapshot_download(repo_id="amathislab/mm-10m-2"))
+        teacher = "amathislab/mm-10m-2"
+        root = Path(
+            teacher_root
+            or snapshot_download(repo_id=teacher, revision=pinned_revision(teacher))
+        )
         cfg = default_mimic_fullbody_config()
         cfg.model_version = checkpoint_models_version("hf://amathislab/mm-10m-2")
         shadow, _, _ = compile_mimic_fullbody_mjmodel(cfg)
@@ -239,6 +320,7 @@ class ChaseTagSteeredPair:
                 repo_id="amathislab/musclemimic-retargeted",
                 filename=DEFAULT_WALK,
                 repo_type="dataset",
+                revision=pinned_revision("amathislab/musclemimic-retargeted"),
             )
         )
         cache = Path(

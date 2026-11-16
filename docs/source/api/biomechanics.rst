@@ -15,6 +15,18 @@ OpenSim motions
 .. automodule:: myosuite.biomechanics.opensim_motion
    :members:
 
+Motion retargeting
+------------------
+
+.. automodule:: myosuite.biomechanics.retarget
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_smplh
+   :members:
+
+.. automodule:: myosuite.biomechanics.retarget_instanthmr
+   :members:
+
 Inverse dynamics
 ----------------
 
@@ -27,8 +39,44 @@ Static optimization
 .. automodule:: myosuite.biomechanics.static_optimization
    :members:
 
+Computed muscle control
+-----------------------
+
+.. automodule:: myosuite.biomechanics.computed_muscle_control
+   :members:
+
 Uncertainty bands
 -----------------
 
+Every nominal and sampled frame must converge before quantiles are reported.
+``UncertaintySolveError`` retains the failed result, sample index (``None`` for
+the nominal model) and rejected frame indices. ``allow_inaccurate=True`` explicitly
+accepts OSQP's ``solved inaccurate`` status; iteration failures and nonfinite
+values still raise. Failed draws are not discarded or resampled.
+Returned bands include every sample's status, iteration count and QP residuals;
+the nominal diagnostics are on ``bands.nominal``.
+
 .. automodule:: myosuite.biomechanics.uncertainty
+   :members:
+
+External loads
+--------------
+
+Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
+
+.. automodule:: myosuite.biomechanics.external_loads
+   :members:
+
+Camera
+------
+
+Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+
+.. automodule:: myosuite.biomechanics.camera
+   :members:
+
+Muscle mesh reconstruction
+--------------------------
+
+.. automodule:: myosuite.viz.muscle_meshes
    :members:

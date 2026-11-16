@@ -60,6 +60,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import re
 import weakref
 from collections.abc import Callable
 from pathlib import Path
@@ -68,10 +69,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
+    MjlabEntityAccessor,
+)
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2mat
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
+from myosuite.utils.reach_workspace import reachable_postures
 
 if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
@@ -88,26 +92,49 @@ if TYPE_CHECKING:
 _mimic_mjlab_cache: dict[tuple[int, str, str], dict[str, Any]] = {}
 
 
-def _mimic_cache_key(env: Any, entity_name: str, variant: str) -> tuple[int, str, str]:
-    """Cache key that survives env wrappers.
+def _unwrap_env_owner(env: Any) -> Any:
+    """Resolve a stable per-instance owner across env wrappers and proxy stubs."""
+    unwrapped = getattr(env, "unwrapped", None)
+    if unwrapped is not None:
+        return unwrapped
+    scene = getattr(env, "scene", None)
+    if scene is not None:
+        return scene
+    return env
 
-    ``id(env)`` differs per wrapper, so every view of one env would get its own
-    entry — and hence its own :class:`ClipTrajectorySource`, which draws random
-    start frames on first use. ``env.cfg`` is shared by all views; keying on
-    it also lets the entry be dropped when the config is collected.
-    """
-    owner = getattr(env, "cfg", None)
-    if owner is None:
-        return (id(env), entity_name, variant)
+
+def _mimic_cache_key(env: Any, entity_name: str, variant: str) -> tuple[int, str, str]:
+    """Cache key that survives env wrappers without colliding across instances."""
+    owner = _unwrap_env_owner(env)
     key = (id(owner), entity_name, variant)
     if key not in _mimic_mjlab_cache:
         try:
             weakref.finalize(owner, _mimic_mjlab_cache.pop, key, None)
         except TypeError:
-            # Not weak-referenceable (e.g. a SimpleNamespace test stub).
-            # the entry then lives as long as the process, as it did before.
+            # Not weak-referenceable (e.g. a non-weakref test stub).
             pass
     return key
+
+
+def _invalidate_mimic_reset_cache(
+    env: Any, entity_name: str, env_ids_long: Any
+) -> None:
+    """Mark *env_ids_long* as resetting across cached entries for *env*."""
+    owner_id = id(_unwrap_env_owner(env))
+    for (cached_owner_id, cached_entity, _), cache in list(_mimic_mjlab_cache.items()):
+        if cached_owner_id != owner_id or cached_entity != entity_name:
+            continue
+        cache["synced_inputs"] = None
+        cache["synced_step_counter"] = None
+        last_step = cache.get("last_step")
+        if last_step is not None:
+            last_step[env_ids_long] = 1
+        clip_source = cache.get("clip_source")
+        if (
+            clip_source is not None
+            and getattr(clip_source, "_last_step", None) is not None
+        ):
+            clip_source._last_step[env_ids_long] = 1
 
 
 _MIMIC_REWARD_MODE_MIMIC = "mimic"
@@ -335,11 +362,12 @@ def _init_state_from_model(mj_model: Any, *, project_couplings: bool = False) ->
         if not name:
             continue
         if jtype in (int(_mj.mjtJoint.mjJNT_SLIDE), int(_mj.mjtJoint.mjJNT_HINGE)):
+            escaped = re.escape(name)
             qpos_adr = int(mj_model.jnt_qposadr[j])
-            joint_pos[f"^{name}$"] = float(kqpos[qpos_adr])
+            joint_pos[f"^{escaped}$"] = float(kqpos[qpos_adr])
             if kqvel is not None:
                 dof_adr = int(mj_model.jnt_dofadr[j])
-                joint_vel[f"^{name}$"] = float(kqvel[dof_adr])
+                joint_vel[f"^{escaped}$"] = float(kqvel[dof_adr])
 
     return EntityCfg.InitialStateCfg(
         pos=pos,
@@ -399,10 +427,15 @@ def _mimic_keyframe_reset_event(
 
         if env_ids is None:
             env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)
+        elif isinstance(env_ids, slice):
+            env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)[
+                env_ids
+            ]
         else:
             env_ids_long = torch.as_tensor(
                 env_ids, device=device, dtype=torch.long
             ).reshape(-1)
+        _invalidate_mimic_reset_cache(env, entity_name, env_ids_long)
 
         n_reset = int(env_ids_long.shape[0])
         qpos = (
@@ -608,8 +641,9 @@ def _sync_mimic_mjlab_targets(
     """Update ``cache["target_torch"]`` for the current step.
 
     Dispatches to trajectory-clip mode when ``cache["clip_source"]`` is set,
-    otherwise falls back to the original random-box sampling that resamples
-    once per episode (on time regression).
+    otherwise draws each env's targets from the random-posture table
+    (:func:`~myosuite.utils.reach_workspace.reachable_postures`), once per
+    episode (on time regression).
 
     Args:
         env: mjlab environment instance.
@@ -637,18 +671,19 @@ def _sync_mimic_mjlab_targets(
         n_env = int(data.qpos.shape[0])
         if target is None or last is None:
             reset = torch.ones(n_env, dtype=torch.bool, device=step.device)
+            need_draw = True
         else:
             reset = step < last
-        resample = (
-            target is None or last is None or (check_resets and bool(reset.any()))
-        )
-        if resample:
-            n_sites = int(cache["site_ids"].shape[0])
+            need_draw = bool(check_resets)
+        if need_draw:
+            # The tracked sites of one random posture per env (env-local,
+            # matching _tracked_site_pos and the CPU env).
             device = data.qpos.device
-            lo = _device_constant(cache, "lo", cache["lo"], device, torch.float32)
-            hi = _device_constant(cache, "hi", cache["hi"], device, torch.float32)
-            u = torch.rand((n_env, n_sites, 3), device=device, dtype=torch.float32)
-            fresh = lo + (hi - lo) * u
+            table = _device_constant(
+                cache, "target_table", cache["target_table"], device, torch.float32
+            )
+            pick = torch.randint(table.shape[0], (n_env,), device=device)
+            fresh = table[pick]
             cache["target_torch"] = (
                 fresh
                 if target is None
@@ -675,8 +710,8 @@ def _resolve_mimic_mjlab_ids(
     """Lazily build and return the per-env mimic cache.
 
     On the first call for a given ``(env, entity_name, variant)`` triple the
-    cache is populated with model site ids, box bounds, tracking config, and
-    (optionally) a :class:`~myosuite.envs.myo.backends.mjlab.clip_trajectory_source.ClipTrajectorySource`.
+    cache is populated with model site ids, the random-target table (without a
+    clip), tracking config, and (optionally) a :class:`~myosuite.envs.myo.backends.mjlab.clip_trajectory_source.ClipTrajectorySource`.
     Subsequent calls synchronise the targets when their inputs (the step
     counter, the clip start offsets) changed since the last sync, so the
     terms of one step phase share one sync instead of each repeating it; the
@@ -721,8 +756,6 @@ def _resolve_mimic_mjlab_ids(
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
         )
-        lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
-        hi = np.asarray(cfg.target_site_range.high, dtype=np.float64)
     else:
         from myosuite.integrations.musclemimic.fullbody_model import (
             FULLBODY_BODY2SITES_FOR_MIMIC,
@@ -738,8 +771,6 @@ def _resolve_mimic_mjlab_ids(
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
         )
-        lo = np.asarray(cfg.target_site_range.low, dtype=np.float64)
-        hi = np.asarray(cfg.target_site_range.high, dtype=np.float64)
 
     site_ids = np.asarray(
         [mj_model.site(name).id for name in site_names],
@@ -782,8 +813,11 @@ def _resolve_mimic_mjlab_ids(
 
     _mimic_mjlab_cache[key] = dict(
         site_ids=site_ids,
-        lo=lo.astype(np.float64),
-        hi=hi.astype(np.float64),
+        target_table=(
+            None
+            if clip_source is not None
+            else reachable_postures(mj_model, site_ids)[1]
+        ),
         tracking=tracking,
         clip=resolved_clip,
         clip_source=clip_source,
@@ -829,9 +863,17 @@ def _mimic_obs_act(entity_name: str) -> Callable[[Any], Any]:
 
 
 def _tracked_site_pos(env: Any, entity_name: str, cache: dict[str, Any]) -> Any:
-    """World positions of the tracked sites, ``(N, n_tracked, 3)``."""
-    site_xpos = env.scene[entity_name].data.data.site_xpos
-    return site_xpos[:, _site_index(cache, site_xpos.device), :]
+    """Env-local positions of the tracked sites, ``(N, n_tracked, 3)``."""
+    entity = env.scene[entity_name]
+    site_xpos = getattr(entity.data, "site_pos_w", None)
+    if site_xpos is None:
+        site_xpos = entity.data.data.site_xpos
+    pos = site_xpos[:, _site_index(cache, site_xpos.device), :]
+    if not getattr(entity, "is_fixed_base", True):
+        origins = getattr(env.scene, "env_origins", None)
+        if origins is not None:
+            pos = pos - origins.to(device=pos.device, dtype=pos.dtype)[:, None, :]
+    return pos
 
 
 def _clip_ref(env: Any, cache: dict[str, Any], name: str) -> Any:
@@ -1071,19 +1113,27 @@ def _mimic_deepmimic_reward(
         ref_qvel_full = ref_qvel
         qpos_indices = resolved_clip.qpos_model_indices
         qvel_indices = resolved_clip.qvel_model_indices
-        cur_qpos = _clip_columns(cache, "qpos", data.qpos, qpos_indices)
+        # A fixed-base entity (bimanual) has no root: qpos[:7] are hinge angles.
+        free_root = not env.scene[entity_name].is_fixed_base
+        local_qpos = data.qpos
+        if free_root and data.qpos.shape[1] >= 3:
+            origins = getattr(env.scene, "env_origins", None)
+            if origins is not None:
+                local_qpos = data.qpos.clone()
+                local_qpos[:, :3] = local_qpos[:, :3] - origins.to(
+                    device=local_qpos.device, dtype=local_qpos.dtype
+                )
+        cur_qpos = _clip_columns(cache, "qpos", local_qpos, qpos_indices)
         cur_qvel = _clip_columns(cache, "qvel", data.qvel, qvel_indices)
         ref_qpos = _clip_columns(cache, "qpos", ref_qpos_full, qpos_indices)
         ref_qvel = _clip_columns(cache, "qvel", ref_qvel_full, qvel_indices)
 
-        # A fixed-base entity (bimanual) has no root: qpos[:7] are hinge angles.
-        free_root = not env.scene[entity_name].is_fixed_base
         has_root_pos = free_root and _clip_has_required_indices(qpos_indices, range(3))
         has_root_quat = free_root and _clip_has_required_indices(
             qpos_indices, range(3, 7)
         )
         has_root_vel = free_root and _clip_has_required_indices(qvel_indices, range(3))
-        cur_root_pos = data.qpos[:, :3] if has_root_pos else None
+        cur_root_pos = local_qpos[:, :3] if has_root_pos else None
         cur_root_vel = data.qvel[:, :3] if has_root_vel else None
         cur_root_quat = data.qpos[:, 3:7] if has_root_quat else None
         ref_root_pos = ref_qpos_full[:, :3] if has_root_pos else None
@@ -1146,7 +1196,11 @@ def _mimic_obs_lookahead(
         step = _mimic_episode_steps(env)  # (N,)
         clip_lengths = clip_source.clip_lengths(step)
         cur_frames = clip_source.frame_indices(step)
-        frames = [(cur_frames + i * stride) % clip_lengths for i in range(1, k + 1)]
+        # Held at the last frame, where the episode truncates (clip_end).
+        last_frame = clip_lengths - 1
+        frames = [
+            torch.minimum(cur_frames + i * stride, last_frame) for i in range(1, k + 1)
+        ]
         sites = torch.stack([clip_source.site_targets_at_frames(f) for f in frames], 1)
         rpos = rvel = None
         if root_pos and clip_source.ref_qpos(step) is not None:
@@ -1177,11 +1231,15 @@ def _mimic_obs_lookahead(
         # Site targets are relative to the root; a fixed base (bimanual) has none, so
         # they stay in the world frame and carry no root terms.
         free_root = not env.scene[entity_name].is_fixed_base
-        cur_root_pos = (
-            data.qpos[:, :3]
-            if free_root
-            else torch.zeros(n_envs, 3, device=data.qpos.device)
-        )
+        if free_root:
+            cur_root_pos = data.qpos[:, :3]
+            origins = getattr(env.scene, "env_origins", None)
+            if origins is not None:
+                cur_root_pos = cur_root_pos - origins.to(
+                    device=cur_root_pos.device, dtype=cur_root_pos.dtype
+                )
+        else:
+            cur_root_pos = torch.zeros(n_envs, 3, device=data.qpos.device)
 
         has_root_pos = free_root and _clip_has_required_indices(
             resolved_clip.qpos_model_indices, range(3)
@@ -1284,10 +1342,15 @@ def _mimic_rsi_event(
         # env_ids=None means "all envs" in mjlab's event contract.
         if env_ids is None:
             env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)
+        elif isinstance(env_ids, slice):
+            env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)[
+                env_ids
+            ]
         else:
             env_ids_long = torch.as_tensor(
                 env_ids, device=device, dtype=torch.long
             ).reshape(-1)
+        _invalidate_mimic_reset_cache(env, entity_name, env_ids_long)
         n_reset = int(env_ids_long.shape[0])
         if hasattr(clip_source, "_clip_indices") and hasattr(clip_source, "clips"):
             new_clip_indices = torch.randint(
@@ -1329,6 +1392,47 @@ def _mimic_rsi_event(
                 project_joint_couplings(device_couplings[key], ref_qpos, ref_qvel)
             else:
                 project_joint_couplings(device_couplings[key], ref_qpos)
+        entity = env.scene[entity_name]
+        is_fixed_without_free_root = bool(getattr(entity, "is_fixed_base", False)) and (
+            mj_model is not None
+            or not hasattr(entity, "write_root_state_to_sim")
+            or (ref_qvel is not None and ref_qpos.shape[1] == ref_qvel.shape[1])
+        )
+        if is_fixed_without_free_root:
+            free_qpos_adrs = (
+                tuple(
+                    int(mj_model.jnt_qposadr[j])
+                    for j in range(int(mj_model.njnt))
+                    if int(mj_model.jnt_type[j]) == int(mujoco.mjtJoint.mjJNT_FREE)
+                )
+                if mj_model is not None
+                else ()
+            )
+            if not free_qpos_adrs:
+                joint_pos = ref_qpos.float()
+                joint_vel = (
+                    ref_qvel.float()
+                    if ref_qvel is not None
+                    else torch.zeros_like(joint_pos)
+                )
+                entity.write_joint_state_to_sim(
+                    joint_pos, joint_vel, env_ids=env_ids_long
+                )
+                return
+            qpos = ref_qpos.clone()
+            env_origins = env.scene.env_origins[env_ids_long].to(
+                device=device, dtype=qpos.dtype
+            )
+            for qadr in free_qpos_adrs:
+                qpos[:, qadr : qadr + 3] += env_origins
+            data.qpos[env_ids_long] = qpos
+            if ref_qvel is not None:
+                data.qvel[env_ids_long] = ref_qvel.float()
+            else:
+                data.qvel[env_ids_long] = 0.0
+            env.sim.forward()
+            return
+
         # Add per-env world origins so the bodies appear in the right place.
         env_origins = env.scene.env_origins[env_ids_long]  # (n_reset, 3)
         root_pos = ref_qpos[:, :3].float() + env_origins
@@ -1346,7 +1450,6 @@ def _mimic_rsi_event(
         root_state = torch.cat(
             [root_pos, root_quat, root_lin_vel, root_ang_vel], dim=-1
         )  # (n_reset, 13)
-        entity = env.scene[entity_name]
 
         # --- Write joint state (non-root DOFs) ---
         joint_pos = ref_qpos[:, 7:].float()  # (n_reset, nq-7)
@@ -1354,29 +1457,8 @@ def _mimic_rsi_event(
             joint_vel = ref_qvel[:, 6:].float()  # (n_reset, nv-6)
         else:
             joint_vel = torch.zeros(n_reset, ref_qpos.shape[1] - 7, device=device)
-        try:
-            entity.write_root_state_to_sim(root_state, env_ids=env_ids_long)
-            entity.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids_long)
-        except ValueError as exc:
-            if "fixed-base entity" not in str(exc) or mj_model is None:
-                raise
-            qpos = ref_qpos.clone()
-            env_origins = env.scene.env_origins[env_ids_long].to(
-                device=device, dtype=qpos.dtype
-            )
-            free_qpos_adrs = tuple(
-                int(mj_model.jnt_qposadr[j])
-                for j in range(int(mj_model.njnt))
-                if int(mj_model.jnt_type[j]) == int(mujoco.mjtJoint.mjJNT_FREE)
-            )
-            for qadr in free_qpos_adrs:
-                qpos[:, qadr : qadr + 3] += env_origins
-            data.qpos[env_ids_long] = qpos
-            if ref_qvel is not None:
-                data.qvel[env_ids_long] = ref_qvel.float()
-            else:
-                data.qvel[env_ids_long] = 0.0
-            env.sim.forward()
+        entity.write_root_state_to_sim(root_state, env_ids=env_ids_long)
+        entity.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids_long)
 
     return _fn
 
@@ -1436,6 +1518,11 @@ def _mimic_early_termination(
             if ref_qpos is not None:
                 ref_root = ref_qpos[:, :3]
                 cur_root = entity.data.root_link_pos_w
+                origins = getattr(env.scene, "env_origins", None)
+                if origins is not None:
+                    cur_root = cur_root - origins.to(
+                        device=cur_root.device, dtype=cur_root.dtype
+                    )
         deviated = mimic_termination_mask(
             torch,
             cur_sites,
@@ -1726,9 +1813,15 @@ def _make_mimic_env_cfg(
     # mjlab RewardManager multiplies every term by ctrl_dt (scale_by_dt=True).
     # Compensate so the logged reward matches the raw composite reward (0–1).
     reward_weight = float(mimic_reward_weight) / ctrl_dt if ctrl_dt > 0 else 1.0
+    from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: PLC0415
+        episode_length_s as _cpu_episode_length_s,
+    )
+
     rewards = {"tracking": RewardTermCfg(func=reward_fn, weight=reward_weight)}
     decimation = max(1, int(round(ctrl_dt / sim_dt)))
-    episode_length_s = float(max_episode_steps) * ctrl_dt
+    episode_length_s = _cpu_episode_length_s(
+        int(max_episode_steps), decimation * sim_dt
+    )
 
     env_cfg_kwargs: dict[str, Any] = dict(
         scene=scene_cfg,
@@ -2061,7 +2154,33 @@ def _register_or_replace_mjlab_task(
 # ---------------------------------------------------------------------------
 
 
-class SARMuscleActivationActionCfg:
+try:
+    from mjlab.managers.action_manager import (
+        ActionTerm as _SARActionTermBase,
+        ActionTermCfg as _SARActionTermCfgBase,
+    )
+except ImportError:
+
+    class _SARActionTermCfgBase:  # type: ignore[no-redef]
+        def __init__(self, *, entity_name: str) -> None:
+            self.entity_name = entity_name
+
+    class _SARActionTermBase:  # type: ignore[no-redef]
+        def __init__(self, cfg: Any, env: Any) -> None:
+            self.cfg = cfg
+            self._env = env
+            self._entity = env.scene[cfg.entity_name]
+
+        @property
+        def num_envs(self) -> int:
+            return int(self._env.num_envs)
+
+        @property
+        def device(self) -> Any:
+            return self._env.device
+
+
+class SARMuscleActivationActionCfg(_SARActionTermCfgBase):
     """Action term config that maps SAR synergy actions to muscle activations.
 
     The policy outputs ``n_synergies`` values in ``[-1, 1]``.  These are
@@ -2084,7 +2203,7 @@ class SARMuscleActivationActionCfg:
         actuator_names: tuple[str, ...],
         sar_transform: Any,
     ) -> None:
-        self.entity_name = entity_name
+        super().__init__(entity_name=entity_name)
         self.actuator_names = actuator_names
         self.sar_transform = sar_transform
 
@@ -2092,7 +2211,7 @@ class SARMuscleActivationActionCfg:
         return SARMuscleActivationAction(self, env)
 
 
-class SARMuscleActivationAction:
+class SARMuscleActivationAction(_SARActionTermBase):
     """Action term: SAR synergy actions → muscle activations → MuJoCo ctrl.
 
     Applies the SAR inverse transform so the policy learns in a low-dimensional
@@ -2107,11 +2226,7 @@ class SARMuscleActivationAction:
         import mujoco
         import torch
 
-        self.cfg = cfg
-        self._env = env
-        self.num_envs = env.num_envs
-        self.device = env.device
-
+        super().__init__(cfg=cfg, env=env)
         self._sar: Any = cfg.sar_transform.to(self.device)
 
         if self._sar.n_muscles != len(cfg.actuator_names):
@@ -2119,8 +2234,15 @@ class SARMuscleActivationAction:
                 f"SARTorchTransform has n_muscles={self._sar.n_muscles} "
                 f"but {len(cfg.actuator_names)} actuator names were provided"
             )
-        entity = env.scene[cfg.entity_name]
-        target_ids, _ = entity.find_actuators(cfg.actuator_names)
+        entity = self._entity
+        act_patterns = tuple(
+            n if (n.startswith("^") and n.endswith("$")) else f"^{re.escape(n)}$"
+            for n in cfg.actuator_names
+        )
+        try:
+            target_ids, _ = entity.find_actuators(act_patterns, preserve_order=True)
+        except TypeError:
+            target_ids, _ = entity.find_actuators(act_patterns)
         if len(target_ids) != len(cfg.actuator_names):
             raise ValueError(
                 f"SARMuscleActivationAction expected {len(cfg.actuator_names)} "
@@ -2427,12 +2549,11 @@ def _make_mimic_sar_env_cfg(
 #
 # Observations: qpos (without root XY), qvel (scaled), act, root_vel (xyz)
 # Actions:      SAR synergies → SARMuscleActivationAction → MuJoCo ctrl
-# Reward:       5 × exp(−(v_fwd − v_target)²)
+# Reward:       5 × exp(−(v_fwd − v_target)²), v_fwd along the body's heading
 #             + alive_bonus × (height > min_height)
 #             − act_reg_weight × mean(act²)
 # ---------------------------------------------------------------------------
 
-_DIR_FWD_IDX: int = 1  # qvel index for the forward (Y) direction
 _DIR_MIN_HEIGHT: float = 0.5  # root z-pos fall threshold for fullbody model
 
 
@@ -2440,7 +2561,15 @@ def _dir_obs_qpos_wo_root_xy(entity_name: str) -> Callable[[Any], Any]:
     """qpos without root XY translation (indices 0–1 removed). Shape (N, nq-2)."""
 
     def _fn(env: Any) -> Any:
-        return env.scene[entity_name].data.data.qpos[:, 2:].clone()
+        entity = env.scene[entity_name]
+        qpos = entity.data.data.qpos[:, 2:].clone()
+        if not getattr(entity, "is_fixed_base", False):
+            origins = getattr(env.scene, "env_origins", None)
+            if origins is not None:
+                qpos[:, 0] = qpos[:, 0] - origins[:, 2].to(
+                    device=qpos.device, dtype=qpos.dtype
+                )
+        return qpos
 
     return _fn
 
@@ -2454,18 +2583,49 @@ def _dir_obs_root_vel(entity_name: str) -> Callable[[Any], Any]:
     return _fn
 
 
+def _anterior_axis_xy(mj_model: Any, body_name: str = "pelvis") -> tuple[float, float]:
+    """Horizontal anterior axis of *body_name* in the free-root frame.
+
+    OpenSim body frames point ``+x`` forward. The free root has no such
+    convention: the MuscleMimic full body faces root ``-y``.
+    """
+    import mujoco  # noqa: PLC0415
+
+    data = mujoco.MjData(mj_model)
+    mujoco.mj_kinematics(mj_model, data)
+    root = data.xmat[int(mj_model.jnt_bodyid[0])].reshape(3, 3)
+    axis = root.T @ data.xmat[mj_model.body(body_name).id].reshape(3, 3)[:, 0]
+    x, y = axis[:2] / np.linalg.norm(axis[:2])
+    return float(x), float(y)
+
+
 def _dir_vel_reward(
     entity_name: str,
     *,
     target_vel: float,
-    fwd_idx: int = _DIR_FWD_IDX,
+    forward_xy: tuple[float, float],
 ) -> Callable[[Any], Any]:
-    """exp(−(target_vel − qvel[fwd_idx])²). Shape (N,)."""
+    """exp(−(target_vel − v_fwd)²), v_fwd the root speed along its heading. Shape (N,).
+
+    Args:
+        entity_name: Scene entity name.
+        target_vel: Target forward speed in m/s.
+        forward_xy: Anterior axis in the free-root frame (:func:`_anterior_axis_xy`).
+    """
+    from myosuite.physics.quat import quat_yaw  # noqa: PLC0415
 
     def _fn(env: Any) -> Any:
         import torch  # noqa: PLC0415
 
-        fwd_vel = env.scene[entity_name].data.data.qvel[:, fwd_idx]
+        index = env.scene[entity_name].indexing
+        # Free-joint state: the root_link_* API lags one substep until forward().
+        quat = env.sim.data.qpos[:, index.free_joint_q_adr[3:7].long()]
+        vel = env.sim.data.qvel[:, index.free_joint_v_adr[:2].long()]
+        yaw = quat_yaw(torch, quat)
+        cos, sin = torch.cos(yaw), torch.sin(yaw)
+        heading_x = cos * forward_xy[0] - sin * forward_xy[1]
+        heading_y = sin * forward_xy[0] + cos * forward_xy[1]
+        fwd_vel = heading_x * vel[:, 0] + heading_y * vel[:, 1]
         return torch.exp(-torch.square(target_vel - fwd_vel))
 
     return _fn
@@ -2481,7 +2641,14 @@ def _dir_alive_reward(
     def _fn(env: Any) -> Any:
         import torch  # noqa: PLC0415
 
-        height = env.scene[entity_name].data.data.qpos[:, 2]
+        entity = env.scene[entity_name]
+        height = entity.data.data.qpos[:, 2]
+        if not getattr(entity, "is_fixed_base", False):
+            origins = getattr(env.scene, "env_origins", None)
+            if origins is not None:
+                height = height - origins[:, 2].to(
+                    device=height.device, dtype=height.dtype
+                )
         return (height >= min_height).to(dtype=torch.float32)
 
     return _fn
@@ -2600,7 +2767,13 @@ def _make_directional_sar_env_cfg(
 
     rewards = {
         "forward_vel": RewardTermCfg(
-            func=_dir_vel_reward(entity_name, target_vel=target_vel),
+            func=_dir_vel_reward(
+                entity_name,
+                target_vel=target_vel,
+                forward_xy=_anterior_axis_xy(
+                    mj_model if mj_model is not None else spec_fn().compile()
+                ),
+            ),
             weight=5.0,
         ),
         "alive": RewardTermCfg(
@@ -2620,10 +2793,16 @@ def _make_directional_sar_env_cfg(
         ),
     }
 
+    from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: PLC0415
+        episode_length_s as _cpu_episode_length_s,
+    )
+
     return ManagerBasedRlEnvCfg(
         scene=scene_cfg,
         decimation=decimation,
-        episode_length_s=float(max_episode_steps) * ctrl_dt,
+        episode_length_s=_cpu_episode_length_s(
+            int(max_episode_steps), decimation * sim_dt
+        ),
         observations=observations,
         actions=actions,
         terminations=terminations,

@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import copy
+import warnings
+from dataclasses import replace
 
 import mujoco
 import numpy as np
@@ -25,6 +27,39 @@ from myosuite.biomechanics.static_optimization import (
 )
 
 pytestmark = pytest.mark.tier1
+
+
+def test_native_solver_diagnostics_are_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        optimizer = StaticOptimizer(env.unwrapped.model)
+        qpos, zero = np.array([1.0]), np.zeros(1)
+        optimizer.solve(qpos, zero, zero)
+        native = []
+        solve = optimizer._solver.solve
+
+        def capture(*args, **kwargs):
+            result = solve(*args, **kwargs)
+            native.append(result.info)
+            return result
+
+        monkeypatch.setattr(optimizer._solver, "solve", capture)
+        result = optimizer.solve(qpos, zero, zero)
+        assert result.iterations == native[0].iter
+        assert result.primal_residual == native[0].prim_res
+        assert result.dual_residual == native[0].dual_res
+        assert result.status == native[0].status == "solved"
+        clip = static_optimization(
+            env.unwrapped.model,
+            np.tile(qpos, (2, 1)),
+            np.zeros((2, 1)),
+            np.zeros((2, 1)),
+        )
+        assert clip.iterations.shape == clip.primal_residual.shape == (2,)
+    finally:
+        env.close()
 
 
 def _qfrc_actuator(model: mujoco.MjModel, qpos, qvel, activation) -> np.ndarray:
@@ -136,6 +171,56 @@ def test_motor_controls_match_the_closed_form(reserve: float | None) -> None:
     np.testing.assert_allclose(
         frame.actuator_force, frame.activation, rtol=1e-12
     )  # before the gear
+
+
+@pytest.mark.parametrize("reference", [0.0, 0.5, 2.0])
+@pytest.mark.parametrize("gear", [1.0, -2.0])
+def test_servo_peak_torque_includes_native_bias(reference: float, gear: float) -> None:
+    model = mujoco.MjModel.from_xml_string(f"""
+      <mujoco><compiler angle="radian"/><option gravity="0 0 0"/>
+      <worldbody><body><joint name="j" ref="{reference}"/><geom size=".1"/></body></worldbody>
+      <actuator><position joint="j" kp="100" gear="{gear}" ctrlrange="1 2"/></actuator></mujoco>
+    """)
+    data = mujoco.MjData(model)
+    endpoints = []
+    for ctrl in model.actuator_ctrlrange[0]:
+        data.ctrl[0] = ctrl
+        mujoco.mj_forward(model, data)
+        endpoints.append(data.qfrc_actuator.copy())
+    expected = np.max(np.abs(endpoints), axis=0)
+    optimizer = StaticOptimizer(model)
+    np.testing.assert_allclose(optimizer.peak_actuator_qfrc(), expected, rtol=1e-12)
+    np.testing.assert_allclose(
+        optimizer.config.reserve_optimal_force,
+        StaticOptimizationConfig().reserve_fraction * expected,
+        rtol=1e-12,
+    )
+
+
+@pytest.mark.parametrize("fraction", [0.005, 0.1])
+def test_servo_reserves_match_the_biased_closed_form(fraction: float) -> None:
+    model = mujoco.MjModel.from_xml_string("""
+      <mujoco><compiler angle="radian"/><option gravity="0 0 0"/>
+      <worldbody><body><joint name="j" ref="2"/><geom size=".1"/></body></worldbody>
+      <actuator><position joint="j" kp="10" ctrlrange="-1 1"/></actuator></mujoco>
+    """)
+    optimizer = StaticOptimizer(
+        model, StaticOptimizationConfig(reserve_fraction=fraction)
+    )
+    frame = optimizer.solve(model.qpos0, np.zeros(1), np.zeros(1), np.array([19.0]))
+    # Native force is 10 u - 20, so its peak magnitude on [-1, 1] is 30.
+    # min u^2 + (r / F)^2, 10 u - 20 + r = -19 -> u=10/(100+F^2).
+    reserve = fraction * 30.0
+    assert frame.status == "solved"
+    np.testing.assert_allclose(
+        frame.activation, [10.0 / (100.0 + reserve**2)], rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        frame.reserve, [reserve**2 / (100.0 + reserve**2)], rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        frame.actuator_force + frame.reserve, frame.joint_torque, atol=1e-8
+    )
 
 
 def _scaled_strength(model: mujoco.MjModel, k: float) -> mujoco.MjModel:
@@ -317,3 +402,48 @@ def test_max_activation_bounds_one_frame() -> None:
         so.solve(qpos, zero, zero, load).activation, free.activation, atol=1e-6
     )
     env.close()
+
+
+def test_unsolved_frames_warn_once_per_clip(arm_motion) -> None:
+    """Frames OSQP stops on (here at ``max_iter``) are flagged, not returned silently.
+
+    Before, a 1-iteration solve returned every frame as an ordinary result and
+    warned nothing, with activations up to 0.7 off the solved clip.
+    """
+    model, rec = arm_motion
+    clip = (model, rec["qpos"][:5], rec["qvel"][:5], rec["qacc"][:5])
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        static_optimization(*clip)
+        solved = [w for w in record if "did not solve" in str(w.message)]
+        assert not solved
+        out = static_optimization(*clip, config=StaticOptimizationConfig(max_iter=1))
+    failed = out.status != "solved"
+    flagged = [w for w in record if "did not solve" in str(w.message)]
+    assert failed.any()
+    assert len(flagged) == 1, [str(w.message) for w in flagged]
+    assert issubclass(flagged[0].category, UserWarning)
+    assert f"did not solve {failed.sum()} of 5 frames" in str(flagged[0].message)
+
+
+def test_unsolved_frames_raise_or_become_nan(arm_motion) -> None:
+    """``on_failure="raise"`` names the frame; ``"nan"`` blanks only its solution."""
+    model, rec = arm_motion
+    clip = (model, rec["qpos"][:5], rec["qvel"][:5], rec["qacc"][:5])
+    config = StaticOptimizationConfig(max_iter=1, on_failure="raise")
+    with pytest.raises(RuntimeError, match=r"frame \d+ of 5: OSQP did not solve"):
+        static_optimization(*clip, config=config)
+    with pytest.raises(RuntimeError, match="OSQP did not solve"):
+        StaticOptimizer(model, config).solve(
+            rec["qpos"][0], rec["qvel"][0], rec["qacc"][0]
+        )
+    out = static_optimization(*clip, config=replace(config, on_failure="nan"))
+    failed = out.status != "solved"
+    assert failed.any()
+    assert (
+        np.isnan(out.activation[failed]).all() and np.isnan(out.reserve[failed]).all()
+    )
+    assert np.isfinite(out.activation[~failed]).all()
+    assert np.isfinite(out.joint_torque).all()
+    with pytest.raises(ValueError, match="on_failure"):
+        StaticOptimizer(model, replace(config, on_failure="ignore"))

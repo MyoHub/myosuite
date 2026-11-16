@@ -24,6 +24,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
+from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.utils.action_map import DynSyn, DynSynGroups
 
 
@@ -40,6 +41,9 @@ def record_muscle_lengths(
     Every ``hold_steps`` steps each joint gets a velocity drawn from
     ``U(-velocity_amplitude, velocity_amplitude)``. Gravity and contacts are off and
     free joints are held still, so the body stays in place and every joint moves.
+    The dependents of joint equalities (knee mechanism, patella) are then put on
+    their couplings, in position and velocity, so they follow their masters
+    instead of being driven against the equality constraints.
 
     Args:
         model: CPU model (copied, not changed).
@@ -64,11 +68,13 @@ def record_muscle_lengths(
         ]
         or [np.zeros(0, dtype=int)]
     )
+    couplings = JointCouplings.from_model(m)
     rng = np.random.default_rng(seed)
     out = np.empty((steps, len(actuator_ids)))
     for t in range(steps):
         if t % hold_steps == 0:
             d.qvel[:] = rng.uniform(-velocity_amplitude, velocity_amplitude, m.nv)
+            project_joint_couplings(couplings, d.qpos, d.qvel)
         d.qvel[free] = 0.0
         d.ctrl[:] = 0.0
         mujoco.mj_step(m, d)
@@ -92,8 +98,13 @@ def length_similarity(lengths: np.ndarray, segment: int = 100) -> np.ndarray:
     Returns:
         ``(n_muscles, n_muscles)`` similarity in ``[0, 1]``.
     """
-    n = len(lengths) // segment * segment
-    x = lengths[:n].reshape(n // segment, segment, -1)
+    if len(lengths) == 0:
+        raise ValueError("lengths must be non-empty")
+    if segment < 1:
+        raise ValueError(f"segment must be >= 1, got {segment}")
+    seg = min(segment, len(lengths))
+    n = len(lengths) // seg * seg
+    x = lengths[:n].reshape(n // seg, seg, -1)
     x = x - x.mean(1, keepdims=True)
     norm = np.linalg.norm(x, axis=1, keepdims=True)
     cos = np.einsum("smi,smj->sij", x, x) / (
@@ -244,12 +255,14 @@ def task_muscles(task: str) -> tuple[mujoco.MjModel, np.ndarray, list[str]]:
     )
 
     env = make_env(task, backend="mjlab", num_envs=1, device="cpu")
-    (name,) = muscle_action_terms(env.cfg)
-    model = env.sim.mj_model
-    names = action_actuator_names(env.action_manager.get_term(name), env)
-    short = [model.actuator(i).name.split("/")[-1] for i in range(model.nu)]
-    ids = np.array([short.index(n) for n in names])
-    env.close()
+    try:
+        (name,) = muscle_action_terms(env.cfg)
+        model = copy.deepcopy(env.sim.mj_model)
+        names = action_actuator_names(env.action_manager.get_term(name), env)
+        short = [model.actuator(i).name.split("/")[-1] for i in range(model.nu)]
+        ids = np.array([short.index(n) for n in names])
+    finally:
+        env.close()
     return model, ids, names
 
 

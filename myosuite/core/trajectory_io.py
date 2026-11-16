@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +27,8 @@ class MotionClip:
 
     ``weights`` is an optional per-frame weight ``(T,)`` (e.g. to down-weight noisy
     frames of a hand-authored trajectory); nothing in MyoSuite reads it, it only
-    travels with the clip.
+    travels with the clip. ``metadata`` likewise travels with the clip, e.g. the
+    per-frame marker error that :func:`myosuite.core.retargeting.retarget` records.
     """
 
     qpos: np.ndarray
@@ -43,6 +44,7 @@ class MotionClip:
     weights: np.ndarray | None = None
     site_xmat: np.ndarray | None = None
     site_velocity: np.ndarray | None = None
+    metadata: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def num_frames(self) -> int:
@@ -261,7 +263,7 @@ def _default_state(mj_model: Any, *, use_qvel: bool) -> np.ndarray:
         return np.zeros(int(mj_model.nv), dtype=np.float64)
     if getattr(mj_model, "key_qpos", None) is not None and int(mj_model.nkey) > 0:
         return np.asarray(mj_model.key_qpos[0], dtype=np.float64)
-    return np.zeros(int(mj_model.nq), dtype=np.float64)
+    return np.asarray(mj_model.qpos0, dtype=np.float64)
 
 
 def _expand_state_field(
@@ -363,6 +365,7 @@ def expand_motion_clip_to_model(
         weights=clip.weights,
         site_xmat=clip.site_xmat,
         site_velocity=clip.site_velocity,
+        metadata=clip.metadata,
     )
 
 
@@ -411,59 +414,71 @@ def load_motion_clip(
     shared ``joint_names`` metadata.  A clip with such names (at any width)
     must be resolved against a concrete MuJoCo model via
     :func:`expand_motion_clip_to_model` before its columns are used as model
-    qpos/qvel.
+    qpos/qvel. Arrays share a positive frame count; optional ``site_xpos`` has
+    shape ``(T, S, 3)``.
     """
-    npz = np.load(path, allow_pickle=False)
-    if "qpos" not in npz.files:
-        raise KeyError(f"Motion file missing required key 'qpos': {path}")
-    qpos = np.asarray(npz["qpos"], dtype=np.float64)
-    if qpos.ndim != 2:
-        raise ValueError(f"qpos must be rank-2, got shape {qpos.shape}")
-    qpos_joint_names = _decode_name_list(npz, _QPOS_NAME_KEYS)
-    if qpos.shape[1] != expected_nq and qpos_joint_names is None:
-        raise ValueError(
-            f"qpos width mismatch: expected nq={expected_nq}, got {qpos.shape[1]}"
-        )
-    qvel: np.ndarray | None = None
-    qvel_joint_names: list[str] | None = None
-    if "qvel" in npz.files:
-        qvel_arr = np.asarray(npz["qvel"], dtype=np.float64)
-        qvel_joint_names = _decode_name_list(npz, _QVEL_NAME_KEYS)
-        if qvel_arr.ndim != 2:
-            raise ValueError(f"qvel must be rank-2, got shape {qvel_arr.shape}")
-        if qvel_arr.shape[1] != expected_nv and qvel_joint_names is None:
+    with np.load(path, allow_pickle=False) as npz:
+        if "qpos" not in npz.files:
+            raise KeyError(f"Motion file missing required key 'qpos': {path}")
+        qpos = np.asarray(npz["qpos"], dtype=np.float64)
+        if qpos.ndim != 2:
+            raise ValueError(f"qpos must be rank-2, got shape {qpos.shape}")
+        if qpos.shape[0] == 0:
+            raise ValueError("qpos must contain at least one frame")
+        qpos_joint_names = _decode_name_list(npz, _QPOS_NAME_KEYS)
+        if qpos.shape[1] != expected_nq and qpos_joint_names is None:
             raise ValueError(
-                f"qvel width mismatch: expected nv={expected_nv}, got {qvel_arr.shape}"
+                f"qpos width mismatch: expected nq={expected_nq}, got {qpos.shape[1]}"
             )
-        qvel = qvel_arr
-    site_xpos: np.ndarray | None = None
-    if "site_xpos" in npz.files:
-        site_xpos = np.asarray(npz["site_xpos"], dtype=np.float64)
-    site_names: list[str] | None = None
-    if "site_names" in npz.files:
-        try:
-            site_names = read_npz_names(npz, "site_names")
-        except Exception as exc:
-            import warnings
+        qvel: np.ndarray | None = None
+        qvel_joint_names: list[str] | None = None
+        if "qvel" in npz.files:
+            qvel_arr = np.asarray(npz["qvel"], dtype=np.float64)
+            qvel_joint_names = _decode_name_list(npz, _QVEL_NAME_KEYS)
+            if qvel_arr.ndim != 2:
+                raise ValueError(f"qvel must be rank-2, got shape {qvel_arr.shape}")
+            if qvel_arr.shape[1] != expected_nv and qvel_joint_names is None:
+                raise ValueError(
+                    f"qvel width mismatch: expected nv={expected_nv}, got {qvel_arr.shape}"
+                )
+            qvel = qvel_arr
+        site_xpos: np.ndarray | None = None
+        if "site_xpos" in npz.files:
+            site_xpos = np.asarray(npz["site_xpos"], dtype=np.float64)
+            if site_xpos.ndim != 3 or site_xpos.shape[2] != 3:
+                raise ValueError(
+                    f"site_xpos must have shape (T, S, 3), got {site_xpos.shape}"
+                )
+        for name, values in (("qvel", qvel), ("site_xpos", site_xpos)):
+            if values is not None and values.shape[0] != qpos.shape[0]:
+                raise ValueError(
+                    f"{name} frame count mismatch: expected {qpos.shape[0]}, got {values.shape[0]}"
+                )
+        site_names: list[str] | None = None
+        if "site_names" in npz.files:
+            try:
+                site_names = read_npz_names(npz, "site_names")
+            except Exception as exc:
+                import warnings
 
-            warnings.warn(
-                f"Could not decode site_names from motion file: {exc}", stacklevel=2
-            )
-            site_names = None
-    frequency_hz: float | None = None
-    if "frequency" in npz.files:
-        try:
-            frequency_hz = float(np.asarray(npz["frequency"]).reshape(()))
-        except Exception as exc:
-            import warnings
+                warnings.warn(
+                    f"Could not decode site_names from motion file: {exc}", stacklevel=2
+                )
+                site_names = None
+        frequency_hz: float | None = None
+        if "frequency" in npz.files:
+            try:
+                frequency_hz = float(np.asarray(npz["frequency"]).reshape(()))
+            except Exception as exc:
+                import warnings
 
-            warnings.warn(
-                f"Could not decode frequency from motion file: {exc}", stacklevel=2
-            )
-            frequency_hz = None
-    weights: np.ndarray | None = None
-    if "weights" in npz.files:
-        weights = np.asarray(npz["weights"], dtype=np.float64).reshape(-1)
+                warnings.warn(
+                    f"Could not decode frequency from motion file: {exc}", stacklevel=2
+                )
+                frequency_hz = None
+        weights: np.ndarray | None = None
+        if "weights" in npz.files:
+            weights = np.asarray(npz["weights"], dtype=np.float64).reshape(-1)
     return MotionClip(
         qpos=qpos,
         qvel=qvel,
@@ -538,19 +553,20 @@ def motion_clip_from_states(
     ):
         raise ValueError("qvel must contain finite velocities matching qpos")
     original_qvel = qvel
-    qpos = np.asarray(qpos, dtype=float if supplied_qvel else np.float32).astype(float)
-    step = np.zeros((max(len(qpos) - 1, 0), model.nv))
-    for t in range(len(qpos) - 1):
-        mujoco.mj_differentiatePos(model, step[t], dt, qpos[t], qpos[t + 1])
-    qvel = np.zeros((len(qpos), model.nv))
-    if len(qpos) > 1:
-        qvel[0], qvel[-1] = step[0], step[-1]
-        qvel[1:-1] = 0.5 * (step[:-1] + step[1:])
-    qvel = (
-        np.asarray(original_qvel, dtype=float).copy()
-        if supplied_qvel
-        else qvel.astype(np.float32).astype(float)
-    )
+    qpos_f64 = np.asarray(qpos, dtype=np.float64)
+    if supplied_qvel:
+        qpos = qpos_f64.copy()
+        qvel = np.asarray(original_qvel, dtype=float).copy()
+    else:
+        step = np.zeros((max(len(qpos_f64) - 1, 0), model.nv))
+        for t in range(len(qpos_f64) - 1):
+            mujoco.mj_differentiatePos(model, step[t], dt, qpos_f64[t], qpos_f64[t + 1])
+        qvel = np.zeros((len(qpos_f64), model.nv))
+        if len(qpos_f64) > 1:
+            qvel[0], qvel[-1] = step[0], step[-1]
+            qvel[1:-1] = 0.5 * (step[:-1] + step[1:])
+        qpos = qpos_f64.astype(np.float32).astype(float)
+        qvel = qvel.astype(np.float32).astype(float)
     ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, n) for n in sites]
     if min(ids, default=0) < 0:
         raise ValueError("Reference site is missing from model")
