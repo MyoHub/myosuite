@@ -28,14 +28,6 @@ N_STEPS = 30
 _KNOWN = {
     **dict.fromkeys(
         (
-            "myoChallengeBimanual-v0",
-            "myoFatiChallengeBimanual-v0",
-            "myoSarcChallengeBimanual-v0",
-        ),
-        "the first reset keeps the nominal box size (ignore_first_scale)",
-    ),
-    **dict.fromkeys(
-        (
             "myoChallengeDieReorientP2-v0",
             "myoFatiChallengeDieReorientP2-v0",
             "myoSarcChallengeDieReorientP2-v0",

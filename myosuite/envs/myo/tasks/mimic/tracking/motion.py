@@ -260,6 +260,7 @@ class MotionLib:
         bin_frames: Frames per reset bin.
         bin_clip, bin_start: Clip and first frame of each bin.
         frame_bin: Bin of every frame.
+            Terminal scoring frames belong to the preceding transition bin.
         frames: Per-frame arrays: the :class:`~myosuite.terms.mimic_track.TrackRef`
             fields plus ``body_pos`` / ``body_lin_vel`` (tracked bodies, world) and
             ``reset_qpos`` / ``reset_qvel`` (the full state written at a reset, joints
@@ -380,15 +381,19 @@ def _assemble_lib(
     start = np.concatenate(([0], np.cumsum(lens)[:-1]))
     bin_frames = max(1, round(bin_s / dt))
     bin_clip = np.concatenate(
-        [np.full(-(-n // bin_frames), i) for i, n in enumerate(lens)]
+        [np.full(-(-(n - 1) // bin_frames), i) for i, n in enumerate(lens)]
     )
     bin_start = np.concatenate(
-        [s + bin_frames * np.arange(-(-n // bin_frames)) for s, n in zip(start, lens)]
+        [
+            s + bin_frames * np.arange(-(-(n - 1) // bin_frames))
+            for s, n in zip(start, lens)
+        ]
     )
     clip_id = np.repeat(np.arange(len(lens)), lens)
     frame_bin = np.empty(int(lens.sum()), np.int64)
     for b, (c, s) in enumerate(zip(bin_clip, bin_start)):
         frame_bin[s : min(s + bin_frames, start[c] + lens[c])] = b
+    frame_bin[start + lens - 1] = frame_bin[start + lens - 2]
     return MotionLib(
         names=names, dt=dt, clip_start=start, clip_len=lens, clip_end=start + lens - 1,
         clip_id=clip_id, bin_frames=bin_frames, bin_clip=bin_clip, bin_start=bin_start,
