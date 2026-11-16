@@ -195,7 +195,6 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             else self.model.actuator_ctrlrange[:, 1].astype(np.float32)
         )
         self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
-        self.ignore_first_scale = bool(obj_scale_change)
 
     def _center_box_mesh(self) -> None:
         """Express the visual box mesh in the collision box's frame.
@@ -383,7 +382,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 ("goal_dist", goal_dis),
                 (
                     "solved",
-                    goal_dis < self.proximity_th
+                    bool(goal_dis < self.proximity_th)
                     and self.goal_touch >= self.TARGET_GOAL_TOUCH,
                 ),
                 ("done", self._get_done(obj_pos[-1])),
@@ -431,11 +430,12 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             if mocap_id >= 0:
                 self.data.mocap_pos[mocap_id] = getattr(self, attr)
 
-    def get_metrics(self, paths: list, successful_steps: int = 5) -> dict[str, float]:
+    def get_metrics(self, paths: list, successful_steps: int = 1) -> dict[str, float]:
         """Success rate, time, effort, peak force and goal distance (legacy ``bimanual_v0``).
 
-        A path succeeds if it was solved on more than ``successful_steps`` steps and
-        its contact history has no :class:`ContactTrajIssue`.
+        A path succeeds if it was solved on at least ``successful_steps`` steps and
+        its contact history has no :class:`ContactTrajIssue`. The episode ends on
+        the step after the first solved one, so a path has at most 2 solved steps.
 
         Args:
             paths: Rollouts whose ``env_infos`` stack the per-step ``obs_dict``
@@ -448,7 +448,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         """
         score = np.mean(
             [
-                solved_step_count(p) > successful_steps
+                solved_step_count(p) >= successful_steps
                 and evaluate_contact_trajectory(_touch_history(p)) is None
                 for p in paths
             ]
@@ -506,13 +506,11 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.model.geom_friction[self.obj_gid] = self.np_random.uniform(
                 **self.obj_friction_range
             )
-        if self.obj_scale_range and not self.ignore_first_scale:
+        if self.obj_scale_range:
             obj_scales = self.np_random.uniform(**self.obj_scale_range) + 1
             self.model.geom(self.obj_gid).size = self.obj_size0 * obj_scales
             self._scale_obj_mesh(obj_scales)
             obj_edited = True
-        else:
-            self.ignore_first_scale = False
         if obj_edited:  # new mass or size: inertia, bounds, mj_setConst constants
             refresh_geom_derived_fields(self.model, self._mj_spec, (self.obj_bid,))
         self._run_reset_stages()

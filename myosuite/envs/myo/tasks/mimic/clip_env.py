@@ -560,6 +560,7 @@ class MuscleMimicClipEnvV0(gym.Env, EzPickle):
         self.data.ctrl[:] = action
         for _ in range(self.frame_skip):
             mujoco.mj_step(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
         self._step_count += 1
 
         obs = self._build_obs()

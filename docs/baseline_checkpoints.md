@@ -86,6 +86,10 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 
 On every CPU env, a step on which MuJoCo reset a diverged simulation no longer pays a positive reward or counts as `solved`, and `info["mj_unstable"]` marks it. Observations, actions, dynamics and the rewards of regular steps are unchanged, so checkpoints load and score as before; only evaluations that contained a diverged episode change (the ChaseTag envs counted such an episode as a win).
 
+`myoMimic-v0` uniform and return resets now exclude terminal-only reference bins on CPU and mjlab, so every reset has at least one reference transition. This corrects the random-start distribution for clips whose last frame starts a bin (for example, a one-second clip at 10 ms). The stored terminal frame remains the final scoring target. Reevaluate policies with the corrected distribution; adaptive per-bin training statistics from a library containing those empty bins must be rebuilt. Policy input/action layouts and clip-start evaluation are unchanged.
+CPU clip-following evaluations through `MuscleMimicClipEnvV0` now score sites after the final physics substep. Earlier site-based rewards and early termination used geometry from one substep earlier than qpos/qvel. Reevaluate checkpoints measured through this class: policy inputs, action layout, control step and integration trajectories are preserved, while rewards and termination can differ.
+`myoChallengeBimanual-v0` and its `myoSarc` / `myoFati` variants draw the box size on the first `reset()` of an env instance too; before, the first episode of every instance used the nominal box. An evaluation that builds a fresh env per episode now sees the size randomisation (10 %, 5 %, 10 % per axis), and a seeded first episode differs from 3.1.0. `get_metrics` counts a path with at least one solved step as a success (before: more than 5, which no episode could reach, so the score was always 0). Observations, actions and rewards are unchanged, and no checkpoint of these ids is published here.
+
 ## Compatibility notes for 3.1.0
 
 What changes for checkpoints between MyoSuite 3.0.x and 3.1.0. The notes below the table give the details.
@@ -124,6 +128,18 @@ Re-evaluate a checkpoint after any change to an env's observations with
 `python scripts/eval_mjlab_policy.py <env_id> --backend mjlab`; train it again if its success rate drops
 noticeably (with 64 episodes, differences of a few points are noise). Success rates were measured with
 64 parallel episodes of the deterministic policy.
+
+**Success of the walk tasks (after 3.1.0).** `solved` of `myoLegWalk-v0`, the rough, hilly and stairs walks and their
+`myoSarc`/`myoFati` variants, and `Episode_Metrics/success` of their twins, now mean sustained walking: upright and
+within 0.5 m/s of the target velocity on every control step of the last second. Up to 3.1.0 one such step was enough,
+and the reset keyframe already moves at about the target speed: a zero-action episode that falls after about 0.2 s had
+7 to 10 solved steps, and `evaluate_success` (more than 5 solved steps) gave 100 %. The rates in the table are measured on
+the last step of an episode. An episode that ends in a fall failed before and fails now; an episode that reaches the
+time limit now also needs its whole last second on target. The walk rows were measured with the earlier flag and not
+re-evaluated: they can only stay or drop. Rates from `evaluate_success`, or from any rule that counts an episode with
+one solved step, are not comparable with earlier versions. Observations, actions, rewards and dynamics are unchanged,
+so no checkpoint needs retraining. The per-step flag is still reported as `on_target` (CPU `info`) and
+`Episode_Metrics/on_target` (mjlab, share of an episode's steps).
 
 **Terrain and CPU evaluation.** A deterministic CPU evaluation is a single trajectory. The mjlab twins of the
 rough, hilly and stairs walk tasks bake one terrain into the height field (Warp shares one `hfield_data` between
