@@ -24,6 +24,7 @@ Changes since **v3.1.0** (2026-11-11).
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
 * `scripts/eval_mjlab_policy.py --stochastic` on the CPU backend draws the action noise from a generator seeded with
   `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
+
 ### Changed
 
 * **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
@@ -123,12 +124,12 @@ Changes since **v3.1.0** (2026-11-11).
   (`muscle_tubes.split_branches`), joined into one mesh per muscle: the belly lies on the first branch, from the
   origin, and takes its shape from that branch's length; the branches after the pulleys are tendon. Muscles without
   pulleys export exactly as before, and `--muscles paths` was already correct ([#810]).
+* Partial named motion clips preserve the model's reference pose for omitted joints when no keyframe exists, including nonzero joint references and free-root positions and quaternions. Models with keyframes still use keyframe zero.
 
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
-
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
