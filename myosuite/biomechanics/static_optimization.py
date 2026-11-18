@@ -174,6 +174,29 @@ class StaticOptimizationResult:
     dual_residual: np.ndarray
 
 
+def _near_optimal(
+    matrix: sparse.csc_matrix,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    weight: np.ndarray,
+    primal: np.ndarray,
+    dual: np.ndarray,
+    tolerance: float,
+) -> bool:
+    """Check the previous solution against the rebuilt QP's absolute tolerance."""
+    if not (np.isfinite(primal).all() and np.isfinite(dual).all()):
+        return False
+    activity = matrix @ primal
+    active = np.abs(dual) > tolerance
+    bounds = np.where(dual[active] > 0, upper[active], lower[active])
+    return bool(
+        np.all(activity >= lower - tolerance)
+        and np.all(activity <= upper + tolerance)
+        and np.all(np.abs(activity[active] - bounds) <= tolerance)
+        and np.all(np.abs(2.0 * weight * primal + matrix.T @ dual) <= tolerance)
+    )
+
+
 class StaticOptimizer:
     """Static optimization of one model, frame by frame.
 
@@ -292,6 +315,7 @@ class StaticOptimizer:
         )
         self._solver: osqp.OSQP | None = None
         self._pattern: np.ndarray | None = None
+        self._warm_start: tuple[np.ndarray, np.ndarray] | None = None
 
     def peak_actuator_qfrc(self) -> np.ndarray:
         """Per dof, ``sum_i |R_ij| F_i`` at ``qpos0`` and rest [N m or N].
@@ -333,34 +357,47 @@ class StaticOptimizer:
         """Minimise the cost subject to ``lower <= A x <= upper``, warm-started.
 
         OSQP's matrix keeps the union of all sparsity patterns seen so far, so most
-        frames only update values; a new nonzero rebuilds the problem.
+        frames only update values. A rebuild can reuse converged primal and
+        dual values if they still approximately satisfy the new problem.
         """
         pattern = A != 0
-        if self._pattern is not None and self._pattern.shape == pattern.shape:
-            if not (pattern & ~self._pattern).any():
-                self._solver.update(Ax=A.T[self._pattern.T], l=lower, u=upper)
-                res = self._solver.solve(raise_error=False)
-                return res.x, res.info
-            pattern |= self._pattern
-        self._pattern = pattern
-        cols, rows = np.nonzero(pattern.T)  # CSC order
-        indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=A.shape[1]))]
-        A_csc = sparse.csc_matrix((A[rows, cols], rows, indptr), shape=A.shape)
-        self._solver = osqp.OSQP()
-        self._solver.setup(
-            sparse.diags(2.0 * weight, format="csc"),
-            np.zeros(A.shape[1]),
-            A_csc,
-            lower,
-            upper,
-            verbose=False,
-            eps_abs=self.config.tolerance,
-            eps_rel=self.config.tolerance,
-            max_iter=self.config.max_iter,
-            polishing=True,
-            warm_starting=True,
-        )
+        previous_pattern = self._pattern
+        same_shape = previous_pattern is not None and previous_pattern.shape == A.shape
+        if same_shape and not (pattern & ~previous_pattern).any():
+            self._solver.update(Ax=A.T[previous_pattern.T], l=lower, u=upper)
+        else:
+            if same_shape:
+                pattern |= previous_pattern
+            cols, rows = np.nonzero(pattern.T)
+            indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=A.shape[1]))]
+            A_csc = sparse.csc_matrix((A[rows, cols], rows, indptr), shape=A.shape)
+            solver = osqp.OSQP()
+            solver.setup(
+                sparse.diags(2.0 * weight, format="csc"),
+                np.zeros(A.shape[1]),
+                A_csc,
+                lower,
+                upper,
+                verbose=False,
+                eps_abs=self.config.tolerance,
+                eps_rel=self.config.tolerance,
+                max_iter=self.config.max_iter,
+                polishing=True,
+                warm_starting=True,
+            )
+            if same_shape and self._warm_start is not None:
+                primal, dual = self._warm_start
+                if _near_optimal(
+                    A_csc, lower, upper, weight, primal, dual, self.config.tolerance
+                ):
+                    solver.warm_start(x=primal, y=dual)
+            self._solver, self._pattern = solver, pattern
         res = self._solver.solve(raise_error=False)
+        self._warm_start = (
+            (res.x, res.y)
+            if res.info.status == "solved" and res.x is not None and res.y is not None
+            else None
+        )
         return res.x, res.info
 
     def solve(
