@@ -1,12 +1,12 @@
 # Measures how much of each MyoSuite model survives NVIDIA Newton's MJCF import
-# (.github/newton_probe/newton_compat_probe.py). Runs on the release pull request (dev into
-# main) and by hand. It reports and never fails the run.
+# (.github/newton_probe/newton_compat_probe.py) and executes the experimental
+# Newton integration test suite when Newton files change.
 name: Newton probe
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: ["main"]
+    branches: ["main", "dev"]
   workflow_dispatch:
     inputs:
       newton_version:
@@ -23,9 +23,65 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    outputs:
+      newton_touched: ${{ steps.diff.outputs.newton_touched }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -Eq '^(myosuite/integrations/newton/|myosuite/tests/test_newton|\.github/newton_probe/|\.github/workflows/newton-probe\.yml$)'; then
+            echo "newton_touched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "newton_touched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  newton-tests:
+    needs: [changes]
+    if: >-
+      always() && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft && (
+          needs.changes.outputs.newton_touched == 'true' ||
+          (github.base_ref == 'main' && github.head_ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository)
+        ))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install Newton and MyoSuite test dependencies
+        env:
+          NEWTON_VERSION: ${{ inputs.newton_version }}
+        run: |
+          uv venv --python 3.12
+          uv pip install "newton[sim]${NEWTON_VERSION:+==$NEWTON_VERSION}" "pytest" -e .
+
+      - name: Run Newton integration tests
+        env:
+          MYOSUITE_REQUIRE_NEWTON: "1"
+        run: |
+          .venv/bin/python -m pytest myosuite/tests/test_newton*.py -v -rs -o addopts=""
+
   probe:
     # Pull requests: only a release (dev into main) from this repository, not a draft.
-    if: github.event_name != 'pull_request' || (github.head_ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && github.head_ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 30
