@@ -127,6 +127,16 @@ gain/bias VJPs (`MuJoCo-Warp issue 1970 <https://github.com/google-deepmind/mujo
 Installing ``myosuite``, ``mjlab``, and upcoming Newton 1.9 (`Newton PR 5337 <https://github.com/newton-physics/newton/pull/5337>`__)
 in one environment is tracked in `MyoSuite issue 818 <https://github.com/MyoHub/myosuite/issues/818>`__.
 
+**Batched rollout probe (experimental).** For external compatibility probes requiring
+multi-world rollouts on ``newton>=1.8.0``, :mod:`myosuite.integrations.newton` provides
+the experimental ``NewtonBatchSim`` and ``NewtonAccessor`` (an
+:class:`~myosuite.core.protocols.EnvAccessor` adapter). It replicates a MyoSuite MJCF
+across ``N`` worlds with ``SolverMuJoCo``, remaps merged-joint coordinates, controls,
+activations, and sites back into authored MuJoCo order, runs MyoSuite's sigmoid
+normalization and portable ``ExcitationStage`` pipeline, and evaluates pure
+:mod:`myosuite.terms` observation and reward functions without registering a third
+``make_env`` backend.
+
 Historical baseline: 2026-10-23 (PR 4903)
 -----------------------------------------
 
