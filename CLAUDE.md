@@ -26,6 +26,8 @@ add minimal comments and descriptions in the code / python files
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
 - **Training/learning implementations:** read `docs/wiki/training-guidelines.md` before adding trainers, world models, algorithm-specific evaluation, or method-specific dependencies.
+  - Method-specific code (network architectures, trainers, buffers, self-play pools) goes in `training/<method>/`, not `myosuite/`, even when it only serves to load that method's checkpoints. Reviewers check placement against the guidelines' *Boundary* section.
+  - A new method ships with a benchmark against PPO on the same envs, seeds and budget, saying how it differs (guidelines, *Benchmark against PPO*).
 
 ### CPU Env Contract
 
