@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-eden-rl"
+version = "0.1.0"
+description = "Eden-derived RL backbones, optimizers, latent estimators, AMP priors, and Genesis muscle bridge for MyoSuite"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["NOTICE.txt"]
+dependencies = [
+    "numpy>=1.24",
+    "torch>=2.10",
+    "mujoco>=3.2,<4",
+]
+
+[project.optional-dependencies]
+rsl = [
+    "myosuite[mjlab]",
+    "rsl-rl-lib>=5.0",
+    "tensordict>=0.5",
+]
+genesis = [
+    "genesis-world>=1.4.6",
+]
+test = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+myosuite-eden-train = "eden_rl.train:main"
+
+[tool.setuptools.packages.find]
+include = ["eden_rl*"]
