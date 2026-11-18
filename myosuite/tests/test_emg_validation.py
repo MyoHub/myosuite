@@ -443,3 +443,53 @@ def test_export_mm_evalkit_rollout_contracts(tmp_path: Path) -> None:
         expected_activation_width=model_free.nu,
         expected_motion_group="walk_set",
     )
+
+
+def test_emg_trial_supported_dofs_roundtrip_and_auto_forwarding(
+    tmp_path: Path,
+) -> None:
+    model = mujoco.MjModel.from_xml_string(
+        """
+        <mujoco><option gravity="0 0 0"/><worldbody><body>
+          <joint name="elbow" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 .3 0 0" size=".02" mass="1"/>
+          <body pos=".3 0 0"><joint name="wrist" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 .08 0 0" size=".02" mass=".4"/>
+          </body></body></worldbody>
+          <tendon><fixed name="fcr"><joint joint="elbow" coef=".01"/>
+            <joint joint="wrist" coef=".02"/></fixed></tendon>
+          <actuator>
+            <motor name="FCR" tendon="fcr" gear="500" ctrlrange="0 1"/>
+            <motor name="TRI" joint="elbow" gear="-20" ctrlrange="0 1"/>
+            <motor name="ECR" joint="wrist" gear="-10" ctrlrange="0 1"/>
+          </actuator></mujoco>"""
+    )
+    t = np.linspace(0.0, 0.5, 51)
+    trial = EMGTrial(
+        trial_id="strapped_wrist_trial",
+        time=t,
+        signals=np.column_stack([np.full_like(t, 0.5), np.zeros_like(t)]),
+        channel_names=("FCR", "TRI"),
+        signal_kind="mvc_normalized",
+        qpos=np.zeros((len(t), 2)),
+        kinematics_time=t,
+        external_qfrc=np.tile(np.array([[0.0, -5.0]]), (len(t), 1)),
+        supported_dofs=(0,),
+    )
+    saved = tmp_path / "strapped.npz"
+    save_emg_trial(saved, trial)
+    loaded = load_emg_trial(saved)
+    assert loaded.supported_dofs == (0,)
+
+    cmap = EMGChannelMap(
+        name="two_ch",
+        bindings=(
+            ChannelBinding(channel="FCR", actuators=("FCR",)),
+            ChannelBinding(channel="TRI", actuators=("TRI",)),
+        ),
+    )
+    rep = validate_trial(model, loaded, channel_map=cmap, trim_s=0.0)
+    assert rep["inverse_emg"]["per_channel"]["TRI"]["peak_pred"] == pytest.approx(
+        0.0, abs=1e-4
+    )
+    assert rep["effort"]["reserve_to_torque_ratio_p95"] == pytest.approx(0.0, abs=1e-4)

@@ -339,10 +339,13 @@ def _evaluate_model_on_source(
         use_contacts = contact_fallback and bool(
             trial.meta.get("contact_forces_fallback")
         )
+        supported = trial.supported_dofs or tuple(
+            int(d) for d in trial.meta.get("supported_dofs", ())
+        )
         opt_cfg = StaticOptimizationConfig(
             contact_forces=use_contacts,
             contact_distance=0.03 if use_contacts else 0.01,
-            supported_dofs=tuple(int(d) for d in trial.meta.get("supported_dofs", ())),
+            supported_dofs=supported,
         )
         ctrl_qadr = trial.meta.get("controlled_qpos_adr")
         rep = validate_trial(

@@ -2334,6 +2334,7 @@ class Diaz2026HandSource(EMGSource):
             qpos=qpos,
             kinematics_time=kin_time,
             external_qfrc=ext_qfrc,
+            supported_dofs=tuple(supported),
             meta={
                 "dataset": self.name,
                 "subject": subj,

@@ -13,7 +13,7 @@ import json
 import re
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -361,6 +361,7 @@ class EMGTrial:
     cycle_events: np.ndarray | None = None
     mvc_peaks: np.ndarray | None = None
     filter_config: EMGFilterConfig | None = None
+    supported_dofs: tuple[int, ...] = ()
     meta: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -457,6 +458,7 @@ def save_emg_trial(path: str | Path, trial: EMGTrial) -> None:
         "filter_config": None
         if trial.filter_config is None
         else asdict(trial.filter_config),
+        "supported_dofs": [int(d) for d in trial.supported_dofs],
         "meta": dict(trial.meta),
     }
     arrays[EMG_TRIAL_META_KEY] = np.array(json.dumps(header, sort_keys=True))
@@ -495,6 +497,7 @@ def load_emg_trial(path: str | Path) -> EMGTrial:
             cycle_events=d["cycle_events"] if "cycle_events" in d.files else None,
             mvc_peaks=d["mvc_peaks"] if "mvc_peaks" in d.files else None,
             filter_config=fcfg,
+            supported_dofs=tuple(int(x) for x in header.get("supported_dofs", ())),
             meta=header.get("meta", {}),
         )
 
@@ -618,6 +621,22 @@ def musculoskeletal_fingerprint(model: mujoco.MjModel) -> str:
     }
     blob = json.dumps(doc, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def _trial_optimization(
+    trial: EMGTrial, optimization: StaticOptimizationConfig | None
+) -> StaticOptimizationConfig | None:
+    """Fold trial-declared ``supported_dofs`` into *optimization* when unset."""
+    dofs = trial.supported_dofs or tuple(
+        int(d) for d in trial.meta.get("supported_dofs", ())
+    )
+    if not dofs:
+        return optimization
+    if optimization is None:
+        return StaticOptimizationConfig(supported_dofs=dofs)
+    if optimization.supported_dofs:
+        return optimization
+    return replace(optimization, supported_dofs=dofs)
 
 
 def _non_root_dof_mask(
@@ -858,6 +877,7 @@ def validate_inverse_emg(
         )
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = kinematics or clip_kinematics(
@@ -1081,6 +1101,7 @@ def validate_emg_feasibility(
         )
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = kinematics or clip_kinematics(
@@ -1638,6 +1659,7 @@ def validate_trial(
         return report
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = clip_kinematics(model, q_proj, dt, lowpass_hz=kinematics_lowpass_hz)
