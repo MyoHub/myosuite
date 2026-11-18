@@ -12,7 +12,7 @@ import importlib
 import re
 import warnings
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, runtime_checkable
 
 import mujoco
@@ -353,6 +353,7 @@ class EMGTrial:
     cycle_events: np.ndarray | None = None
     mvc_peaks: np.ndarray | None = None
     filter_config: EMGFilterConfig | None = None
+    supported_dofs: tuple[int, ...] = ()
     meta: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -440,6 +441,22 @@ def musculoskeletal_fingerprint(model: mujoco.MjModel) -> str:
             "development build or a release containing it; 0.2.5 lacks this API."
         ) from exc
     return fingerprint(model)
+
+
+def _trial_optimization(
+    trial: EMGTrial, optimization: StaticOptimizationConfig | None
+) -> StaticOptimizationConfig | None:
+    """Fold trial-declared ``supported_dofs`` into *optimization* when unset."""
+    dofs = trial.supported_dofs or tuple(
+        int(d) for d in trial.meta.get("supported_dofs", ())
+    )
+    if not dofs:
+        return optimization
+    if optimization is None:
+        return StaticOptimizationConfig(supported_dofs=dofs)
+    if optimization.supported_dofs:
+        return optimization
+    return replace(optimization, supported_dofs=dofs)
 
 
 def _non_root_dof_mask(
@@ -680,6 +697,7 @@ def validate_inverse_emg(
         )
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = kinematics or clip_kinematics(
@@ -903,6 +921,7 @@ def validate_emg_feasibility(
         )
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = kinematics or clip_kinematics(
@@ -1460,6 +1479,7 @@ def validate_trial(
         return report
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = clip_kinematics(model, q_proj, dt, lowpass_hz=kinematics_lowpass_hz)
