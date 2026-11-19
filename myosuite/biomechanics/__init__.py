@@ -10,6 +10,7 @@
 - :mod:`.computed_muscle_control`: excitations that make a forward simulation track a motion.
 - :mod:`.uncertainty`: Monte Carlo uncertainty bands for muscle estimates.
 - :mod:`.opensim_motion`: OpenSim ``.mot`` / ``.sto`` motions on MyoSuite models.
+- :mod:`.motion_dataset`: dataset layer (:class:`~.motion_dataset.MotionDataset`, :class:`~.motion_dataset.KinematicTrial`) composing splits, subject metadata, and licences with :class:`~.retarget.ClipSource`.
 - :mod:`.retarget`: landmark IK of motion onto a body model, on its couplings.
 - :mod:`.observability`: local landmark geometry, rank and motion ambiguity.
 - :mod:`.smplh`: SMPL+H forward kinematics (AMASS motions) in NumPy.
