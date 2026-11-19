@@ -378,6 +378,7 @@ Changes since **v3.1.0** (2026-11-11).
 * `myoChallengeBimanual-v0` (and its `myoSarc` / `myoFati` variants) updates `touch_history`, `max_force` and `goal_touch` in `reset()` and `step()` rather than inside `_get_obs_dict` / `get_reward_dict`, and keeps `obs_dict["time"]` as a 1-element array on drop termination.
 * `myoChallengeTableTennisP{0,1,2}-v0` (and variants) updates `contact_trajectory` and multi-rally `relaunch_ball()` inside `reset()` / `step()` instead of `_get_obs_dict` / `get_reward_dict`, calls `mj_forward` and refreshes `obs_dict` after a ball relaunch, and samples `cal_ball_qvel` when `ball_qvel=True` even without `ball_xyz_range`.
 * `myoChallengeSoccerP1/P2-v0` (and variants) sets `rwd_dict["sparse"] = float(goal_scored)` instead of `float(done)` so falls no longer award sparse points, enforces `min_agent_spawn_distance` between the root and the ball at reset, and defaults `goalkeeper_policy` to `"stationary"` when goalkeeper probabilities sum below 1.
+* `RunTrackEnv` (`myoChallengeOslRunFixed/Random-v0`) stores `ACTUATOR_PARAM` and `OSL_PARAM_LIST` per environment instance rather than mutating shared class-level containers, and seeds `self.np_random` before constructing `TrackField`.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
