@@ -377,6 +377,7 @@ Changes since **v3.1.0** (2026-11-11).
 * `HeightField.size` reads `hfield.data.size`, `ChaseTagField.flatten_agent_patch` passes `(y, x)` to `cart2map` matching `_compute_heightmap_obs`, and `ChaseTagEnv` seeds `self.np_random` before building terrain and opponents, clamps keyframe indices on single-keyframe models (`myoChallengeChaseTagFBP2-v0`), and handles exact-equilibrium repeller offsets and sub-unit probability sums.
 * `myoChallengeBimanual-v0` (and its `myoSarc` / `myoFati` variants) updates `touch_history`, `max_force` and `goal_touch` in `reset()` and `step()` rather than inside `_get_obs_dict` / `get_reward_dict`, and keeps `obs_dict["time"]` as a 1-element array on drop termination.
 * `myoChallengeTableTennisP{0,1,2}-v0` (and variants) updates `contact_trajectory` and multi-rally `relaunch_ball()` inside `reset()` / `step()` instead of `_get_obs_dict` / `get_reward_dict`, calls `mj_forward` and refreshes `obs_dict` after a ball relaunch, and samples `cal_ball_qvel` when `ball_qvel=True` even without `ball_xyz_range`.
+* `myoChallengeSoccerP1/P2-v0` (and variants) sets `rwd_dict["sparse"] = float(goal_scored)` instead of `float(done)` so falls no longer award sparse points, enforces `min_agent_spawn_distance` between the root and the ball at reset, and defaults `goalkeeper_policy` to `"stationary"` when goalkeeper probabilities sum below 1.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
