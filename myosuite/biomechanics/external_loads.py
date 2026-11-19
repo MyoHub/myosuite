@@ -147,3 +147,70 @@ def held_mass_qfrc(
     if site is not None:
         return force_at_site(model, qpos, site, force)
     return force_at_body(model, qpos, body, force, point=point)
+
+
+def inertial_frame_qfrc(
+    model: mujoco.MjModel,
+    qpos: np.ndarray,
+    lin_acc: np.ndarray,
+    *,
+    qvel: np.ndarray | None = None,
+    ang_vel: np.ndarray | None = None,
+    ang_acc: np.ndarray | None = None,
+    pivot: np.ndarray | None = None,
+) -> np.ndarray:
+    """Map non-inertial support-frame acceleration into generalized force ``(nv,)``.
+
+    Computes D'Alembert body wrenches across all dynamic bodies (``body_weldid != 0``)
+    and projects them into generalized coordinates via ``mj_applyFT`` for inverse
+    dynamics and static optimization on moving platforms.
+
+    Args:
+        model: Compiled MuJoCo model, unchanged.
+        qpos: Synchronized joint configuration ``(nq,)``.
+        lin_acc: Support-frame linear acceleration ``(3,)`` [m/s^2].
+        qvel: Optional joint velocities ``(nv,)`` for Coriolis/gyroscopic terms.
+        ang_vel: Optional support-frame angular velocity ``(3,)`` [rad/s].
+        ang_acc: Optional support-frame angular acceleration ``(3,)`` [rad/s^2].
+        pivot: Optional rotation pivot ``(3,)`` [m] in model world coordinates.
+
+    Returns:
+        ``(nv,)`` generalized non-inertial force vector.
+    """
+    from myosuite.physics.base_excitation import inertial_body_wrenches  # noqa: PLC0415
+
+    data = _data(model, qpos)
+    if qvel is not None:
+        v = np.asarray(qvel, dtype=float)
+        if v.shape != (model.nv,) or not np.all(np.isfinite(v)):
+            raise ValueError(f"qvel must contain {model.nv} finite velocities")
+        data.qvel[:] = v
+    mujoco.mj_comVel(model, data)
+
+    dyn_mask = model.body_weldid != 0
+    wrenches = inertial_body_wrenches(
+        np,
+        model.body_mass,
+        model.body_inertia,
+        data.xipos,
+        data.ximat,
+        data.cvel,
+        data.subtree_com[model.body_rootid],
+        _vector(lin_acc, "lin_acc"),
+        ang_vel=_vector(ang_vel, "ang_vel"),
+        ang_acc=_vector(ang_acc, "ang_acc"),
+        pivot=_vector(pivot, "pivot"),
+        dynamic_mask=dyn_mask,
+    )
+    qfrc = np.zeros(model.nv)
+    for bid in np.flatnonzero(dyn_mask):
+        mujoco.mj_applyFT(
+            model,
+            data,
+            wrenches[bid, :3],
+            wrenches[bid, 3:],
+            data.xipos[bid],
+            int(bid),
+            qfrc,
+        )
+    return qfrc

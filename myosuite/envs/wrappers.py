@@ -20,6 +20,10 @@ Available wrappers
     Injects scheduled external forces/torques to named bodies for perturbation
     experiments (motor control, reactive balance, neuroscience lesion studies).
 
+:class:`BaseExcitationWrapper`
+    Injects continuous D'Alembert non-inertial wrenches from a moving/vibrating
+    support-frame profile across all dynamic bodies.
+
 Muscle-command wrappers
 -----------------------
 None of them is active by default (a plain env runs only its own map): the
@@ -353,6 +357,121 @@ class PerturbationWrapper(RecordConstructorArgs, gym.Wrapper):
         result = self.env.step(action)
         self._step_count += 1
         return result
+
+
+class BaseExcitationWrapper(
+    _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """Apply continuous D'Alembert non-inertial wrenches from a moving support frame.
+
+    Evaluates a :class:`~myosuite.physics.base_excitation.BaseExcitationProfile`
+    at each control step and writes translational, centrifugal, Coriolis, and
+    rotational Euler wrenches into ``data.xfrc_applied`` for all dynamic bodies
+    (``model.body_weldid != 0``). Random profile draws use ``env.unwrapped.np_random``
+    during ``reset(seed=...)`` so episodes remain deterministic.
+
+    Args:
+        env: A MyoSuite Gymnasium environment exposing ``model`` and ``data``.
+        profile: A :class:`~myosuite.physics.base_excitation.BaseExcitationProfile`.
+        pivot: Rotation pivot ``(x, y, z)`` [m] in world coordinates.
+        record_info: Attach ``info["base_excitation"]`` kinematics on each step.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        profile: Any,
+        *,
+        pivot: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        record_info: bool = True,
+    ) -> None:
+        from myosuite.physics.base_excitation import BaseExcitationProfile  # noqa: PLC0415
+
+        if not isinstance(profile, BaseExcitationProfile):
+            raise TypeError(
+                f"profile must satisfy BaseExcitationProfile, got {type(profile).__name__}"
+            )
+        p_vec = np.asarray(pivot, dtype=np.float64)
+        if p_vec.shape != (3,) or not np.all(np.isfinite(p_vec)):
+            raise ValueError("pivot must be a finite 3-vector")
+
+        RecordConstructorArgs.__init__(
+            self,
+            profile=profile,
+            pivot=tuple(float(x) for x in p_vec),
+            record_info=record_info,
+        )
+        gym.Wrapper.__init__(self, env)
+        host = env.unwrapped
+        model = getattr(host, "model", None)
+        if model is None:
+            raise TypeError(
+                "BaseExcitationWrapper requires an env with a MuJoCo model."
+            )
+
+        self.profile = profile
+        self.pivot = p_vec
+        self.record_info = bool(record_info)
+        self._dyn_mask = np.asarray(model.body_weldid != 0, dtype=bool)
+        self._dyn_ids = np.flatnonzero(self._dyn_mask)
+        self._last_wrenches = np.zeros((self._dyn_ids.size, 6), dtype=np.float64)
+        self._dt = float(
+            getattr(
+                host, "_ctrl_dt", model.opt.timestep * getattr(host, "frame_skip", 1)
+            )
+        )
+        self._step_count = 0
+        self._state: Any = None
+
+    def reset(self, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
+        obs, info = self.env.reset(**kwargs)
+        host = self.unwrapped
+        data = getattr(host, "data", None)
+        if data is not None and self._dyn_ids.size:
+            data.xfrc_applied[self._dyn_ids] = 0.0
+        self._last_wrenches.fill(0.0)
+        self._step_count = 0
+        self._state = self.profile.reset(host.np_random, self._dt)
+        return obs, info
+
+    def step(self, action: Any) -> tuple[Any, float, bool, bool, dict[str, Any]]:
+        from myosuite.physics.base_excitation import inertial_body_wrenches  # noqa: PLC0415
+
+        host = self.unwrapped
+        model = host.model
+        data = host.data
+        if self._state is None:
+            self._state = self.profile.reset(host.np_random, self._dt)
+
+        kin = self.profile.sample(self._step_count * self._dt, self._state)
+        if self._dyn_ids.size:
+            wrenches = inertial_body_wrenches(
+                np,
+                model.body_mass,
+                model.body_inertia,
+                data.xipos,
+                data.ximat,
+                data.cvel,
+                data.subtree_com[model.body_rootid],
+                kin.lin_acc,
+                ang_vel=kin.ang_vel,
+                ang_acc=kin.ang_acc,
+                pivot=self.pivot,
+                dynamic_mask=self._dyn_mask,
+            )
+            active = wrenches[self._dyn_ids]
+            data.xfrc_applied[self._dyn_ids] += active - self._last_wrenches
+            self._last_wrenches[:] = active
+
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self._step_count += 1
+        if self.record_info:
+            info["base_excitation"] = {
+                "lin_acc": kin.lin_acc.astype(np.float32),
+                "ang_vel": kin.ang_vel.astype(np.float32),
+                "ang_acc": kin.ang_acc.astype(np.float32),
+            }
+        return obs, reward, terminated, truncated, info
 
 
 class _PicklableStage:
