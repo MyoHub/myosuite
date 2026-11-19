@@ -455,8 +455,47 @@ class SMPLHSource:
     # the last clip's subject data, for finish() (targets() and finish() run in pairs)
     _last: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
-    def _subject(self, path: str | Path) -> dict[str, Any]:
-        a = load_amass(path)
+    def _subject(self, path: Any) -> dict[str, Any]:
+        from myosuite.biomechanics.motion_dataset import KinematicTrial  # noqa: PLC0415
+
+        if isinstance(path, KinematicTrial):
+            if "poses" in path.arrays:
+                arr = path.arrays
+                gender_raw = arr.get("gender", path.subject.sex or "neutral")
+                gender = (
+                    (
+                        gender_raw.decode()
+                        if isinstance(gender_raw, bytes)
+                        else str(gender_raw)
+                    )
+                    .strip()
+                    .lower()
+                )
+                poses = np.asarray(arr["poses"], np.float64)
+                betas = np.asarray(arr.get("betas", np.zeros(16)), np.float64)
+                trans = np.asarray(
+                    arr.get("trans", np.zeros((len(poses), 3))), np.float64
+                )
+                fps = float(
+                    path.fps or arr.get("fps", arr.get("mocap_framerate", 60.0))
+                )
+                a: dict[str, Any] = {
+                    "poses": poses,
+                    "betas": betas,
+                    "trans": trans,
+                    "gender": gender,
+                    "fps": fps,
+                }
+            elif path.path is not None:
+                a = load_amass(path.path)
+            else:
+                raise ValueError(
+                    f"AMASS KinematicTrial {path.trial_id!r} needs arrays['poses'] or path"
+                )
+        elif isinstance(path, dict):
+            a = dict(path)
+        else:
+            a = load_amass(path)
         body = _body_model(str(Path(self.body_models) / a["gender"] / "model.npz"))
         n = len(a["poses"])
         sl = slice(self.trim[0], n - self.trim[1])
@@ -472,7 +511,7 @@ class SMPLHSource:
         }
 
     def targets(
-        self, path: str | Path, model: mujoco.MjModel, lmap: LandmarkMap
+        self, path: Any, model: mujoco.MjModel, lmap: LandmarkMap
     ) -> ClipTargets:
         """Targets of an AMASS clip on *model* (see the module docstring)."""
         c, smap = self.calibration, self.smap
