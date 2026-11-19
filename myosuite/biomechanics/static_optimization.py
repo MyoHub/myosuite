@@ -263,8 +263,17 @@ class StaticOptimizer:
         body_weight = float(
             m.body_mass[m.body_weldid != 0].sum() * np.linalg.norm(m.opt.gravity)
         )
-        self._contact_force = cfg.contact_optimal_force or body_weight
-        residual = cfg.residual_optimal_force or 0.1 * body_weight
+        default_force = body_weight if body_weight > 0.0 else 1.0
+        self._contact_force = (
+            cfg.contact_optimal_force
+            if cfg.contact_optimal_force is not None
+            else default_force
+        )
+        residual = (
+            cfg.residual_optimal_force
+            if cfg.residual_optimal_force is not None
+            else 0.1 * default_force
+        )
         if cfg.reserve_optimal_force is None:
             peak = self.peak_actuator_qfrc()
             spanned = peak > 1e-9 * peak.max(initial=0.0)
@@ -441,8 +450,26 @@ class StaticOptimizer:
             np.ones(n_c),
         ]
         x, solver = self._solve_qp(A, lower, upper, weight)
-        if x is None:
-            x = np.full(A.shape[1], np.nan)
+        status = solver if isinstance(solver, str) else solver.status
+        iterations = 0 if isinstance(solver, str) else solver.iter
+        primal_residual = np.nan if isinstance(solver, str) else solver.prim_res
+        dual_residual = np.nan if isinstance(solver, str) else solver.dual_res
+        if x is None or x.dtype == object or not np.all(np.isfinite(x)):
+            zero_a = np.clip(np.zeros(nu), lo, hi)
+            failed = StaticOptimizationResult(
+                activation=zero_a,
+                actuator_force=gain * zero_a + bias,
+                reserve=np.zeros(nv),
+                constraint_force=np.zeros(nv),
+                joint_torque=tau,
+                status=np.asarray(status),
+                contact_force=np.zeros((m.nbody, 3)),
+                contact_qfrc=np.zeros(nv),
+                iterations=np.asarray(iterations),
+                primal_residual=np.asarray(primal_residual),
+                dual_residual=np.asarray(dual_residual),
+            )
+            return self._apply_failure_policy(failed)
 
         a = np.clip(x[:nu], lo, hi)
         f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
@@ -454,12 +481,12 @@ class StaticOptimizer:
             constraint_force=J_eq.T @ (_CONSTRAINT_SCALE * x[nu + nv : nu + nv + n_eq])
             + contact_qfrc,
             joint_torque=tau,
-            status=np.asarray(solver.status),
+            status=np.asarray(status),
             contact_force=self._body_contact_forces(rows, f),
             contact_qfrc=contact_qfrc,
-            iterations=np.asarray(solver.iter),
-            primal_residual=np.asarray(solver.prim_res),
-            dual_residual=np.asarray(solver.dual_res),
+            iterations=np.asarray(iterations),
+            primal_residual=np.asarray(primal_residual),
+            dual_residual=np.asarray(dual_residual),
         )
         return self._apply_failure_policy(result)
 
