@@ -417,6 +417,31 @@ def _arm_points() -> tuple[InstantHMRPoint, ...]:
     return tuple(pts)
 
 
+def _hand_points(weight: float = 0.25) -> tuple[InstantHMRPoint, ...]:
+    pts = []
+    digits = (
+        ("ThumbTip", "thumb_tip", "distal_thumb"),
+        ("IndexTip", "index_tip", "distph2"),
+        ("MiddleTip", "middle_tip", "distph3"),
+        ("RingTip", "ring_tip", "distph4"),
+        ("PinkyTip", "pinky_tip", "distph5"),
+    )
+    for S, side, m in (("L_", "left", "_l"), ("R_", "right", "_r")):
+        for label, mhr_suf, body_stem in digits:
+            body_name = f"{body_stem}{m}"
+            pts.append(
+                InstantHMRPoint(
+                    f"{S}{label}",
+                    (f"{side}_{mhr_suf}",),
+                    body_name,
+                    (body_name,),
+                    f"{S}Wrist",
+                    weight=weight,
+                )
+            )
+    return tuple(pts)
+
+
 def _leg_orientations() -> tuple[InstantHMROrientation, ...]:
     ors = []
     for S, side, m in (("L_", "left", "_l"), ("R_", "right", "_r")):
@@ -573,9 +598,85 @@ INSTANTHMR_MYOLEGS = InstantHMRMap(
     posture=(("mtp_angle_l", 0.0, 0.02), ("mtp_angle_r", 0.0, 0.02)),
 )
 
+INSTANTHMR_MYOTORSO_ARMS = InstantHMRMap(
+    name="instanthmr-mhr70->myotorso_arms",
+    version="1",
+    points=(
+        InstantHMRPoint(
+            "Sacrum",
+            ("left_hip", "right_hip"),
+            "sacrum",
+            ("sacrum",),
+            weight=0.0,
+        ),
+        InstantHMRPoint(
+            "Shoulders",
+            ("left_shoulder", "right_shoulder"),
+            "torso",
+            ("humerus_l", "humerus_r"),
+            "Sacrum",
+            weight=0.35,
+        ),
+        InstantHMRPoint(
+            "Head",
+            ("left_ear", "right_ear"),
+            "head",
+            ("head",),
+            "Shoulders",
+            weight=0.3,
+        ),
+        *_arm_points(),
+        *_hand_points(),
+    ),
+    orientations=(
+        InstantHMROrientation(
+            "Torso",
+            "torso",
+            (("left_hip", "right_hip"), ("left_shoulder", "right_shoulder")),
+            (("right_shoulder",), ("left_shoulder",)),
+            (("sacrum",), ("humerus_l", "humerus_r")),
+            (("humerus_r",), ("humerus_l",)),
+            weight=0.15,
+        ),
+        InstantHMROrientation(
+            "Head",
+            "head",
+            (("right_ear",), ("left_ear",)),
+            (("left_ear", "right_ear"), ("nose", "left_eye", "right_eye")),
+            canonical_primary=(0.0, 1.0, 0.0),
+            canonical_secondary=(1.0, 0.0, 0.0),
+            weight=0.03,
+        ),
+        *_arm_orientations(),
+    ),
+    calibration={"shoulder_elv_l": np.pi / 2, "shoulder_elv_r": np.pi / 2},
+    feet=((), ()),
+    contact_keypoints=((), ()),
+    leg_edges=(
+        ("L_Shoulder", "L_Elbow"),
+        ("L_Elbow", "L_Wrist"),
+        ("R_Shoulder", "R_Elbow"),
+        ("R_Elbow", "R_Wrist"),
+    ),
+    posture=(
+        ("elv_angle_l", 0.0, 0.01),
+        ("elv_angle_r", 0.0, 0.01),
+    ),
+    hinges=tuple(
+        InstantHMRHinge(
+            f"elbow_flexion{m}",
+            (f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist"),
+            (f"humerus{m}", f"ulna{m}", f"lunate{m}"),
+        )
+        for side, m in (("left", "_l"), ("right", "_r"))
+    ),
+)
+
 INSTANTHMR_MAPS: dict[str, InstantHMRMap] = {
     "myofullbody": INSTANTHMR_MYOFULLBODY,
     "myolegs": INSTANTHMR_MYOLEGS,
+    "myotorso_arms": INSTANTHMR_MYOTORSO_ARMS,
+    "myoarms": INSTANTHMR_MYOTORSO_ARMS,
 }
 
 
@@ -661,7 +762,11 @@ def _femur_secondary(
 
 def _canonical_axes(m: mujoco.MjModel, d: mujoco.MjData) -> np.ndarray:
     up = np.array([0.0, 0.0, 1.0])
-    lr = d.xpos[m.body("femur_l").id] - d.xpos[m.body("femur_r").id]
+    body_names = {m.body(i).name for i in range(m.nbody)}
+    if {"femur_l", "femur_r"} <= body_names:
+        lr = d.xpos[m.body("femur_l").id] - d.xpos[m.body("femur_r").id]
+    else:
+        lr = d.xpos[m.body("humerus_l").id] - d.xpos[m.body("humerus_r").id]
     left = _unit(lr - np.dot(lr, up) * up)
     return np.column_stack([np.cross(left, up), left, up])
 
@@ -852,17 +957,22 @@ class InstantHMRSource:
             else c.leg_length
             / max(0.5 * sum(subj_len[names.index(b)] for _, b in imap.leg_edges), 1e-6)
         )
-        sole = jw[:, [_JIDX[j] for side in imap.contact_keypoints for j in side]]
-        sole_floor = np.percentile(sole[..., 2], 2, axis=0)
-        floor = float(np.median(sole_floor))
-
+        has_contacts = bool(imap.contact_keypoints[0] and imap.contact_keypoints[1])
         out = np.empty((len(names), T, 3))
-        root = x[0].copy()
-        root[:, :2] = s_root * (
-            root[:, :2] - root[0, :2] if self.zero_xy_start else root[:, :2]
-        )
-        root[:, 2] = s_root * (root[:, 2] - floor)
-        out[0] = root
+        if has_contacts:
+            sole = jw[:, [_JIDX[j] for side in imap.contact_keypoints for j in side]]
+            sole_floor = np.percentile(sole[..., 2], 2, axis=0)
+            floor = float(np.median(sole_floor))
+            root = x[0].copy()
+            root[:, :2] = s_root * (
+                root[:, :2] - root[0, :2] if self.zero_xy_start else root[:, :2]
+            )
+            root[:, 2] = s_root * (root[:, 2] - floor)
+            out[0] = root
+        else:
+            sole = sole_floor = None
+            floor = float(np.median(x[0][:, 2]))
+            out[0] = c.model_pos[0] + s_root * (x[0] - x[0][0])
 
         ratio: dict[int, float] = {}
         for k, p in enumerate(imap.points[1:], 1):
@@ -894,26 +1004,31 @@ class InstantHMRSource:
                 theta = _smooth(_segment_angle(a, b, e), self.target_sigma * fps)
                 posture[:, len(imap.posture) + k] = np.interp(theta, tab[1], tab[0])
 
-        contact = _foot_contacts(
-            sole,
-            sole_floor,
-            fps,
-            len(imap.contact_keypoints[0]),
-            self.contact_height,
-            self.contact_speed,
-        )
+        if has_contacts and sole is not None and sole_floor is not None:
+            contact = _foot_contacts(
+                sole,
+                sole_floor,
+                fps,
+                len(imap.contact_keypoints[0]),
+                self.contact_height,
+                self.contact_speed,
+            )
+        else:
+            contact = np.zeros((T, 2), dtype=bool)
 
-        k_pelvis = [o.body for o in lmap.orientations].index("pelvis")
+        ori_bodies = [o.body for o in lmap.orientations]
+        k_root = ori_bodies.index("pelvis") if "pelvis" in ori_bodies else 0
+        root_ori_body = ori_bodies[k_root]
         quat0 = quat[0].copy()
-        if not ori_valid[0, k_pelvis]:
-            ok_p = np.flatnonzero(ori_valid[:, k_pelvis])
+        if not ori_valid[0, k_root]:
+            ok_p = np.flatnonzero(ori_valid[:, k_root])
             if len(ok_p):
-                quat0[k_pelvis] = quat[int(ok_p[0]), k_pelvis]
+                quat0[k_root] = quat[int(ok_p[0]), k_root]
             else:
                 d_cal = mujoco.MjData(model)
                 d_cal.qpos[:] = c.qpos
                 mujoco.mj_kinematics(model, d_cal)
-                quat0[k_pelvis] = d_cal.xquat[model.body("pelvis").id]
+                quat0[k_root] = d_cal.xquat[model.body(root_ori_body).id]
         seed = _start_pose(model, c.qpos, c.model_pos[0], out[0, 0], quat0, lmap)
 
         degen_frames = int((~ori_valid).any(axis=1).sum())
@@ -1005,6 +1120,8 @@ def default_instanthmr_map(
         return INSTANTHMR_MYOFULLBODY
     if {"pelvis", "femur_l", "femur_r", "tibia_l", "tibia_r"} <= names:
         return INSTANTHMR_MYOLEGS
+    if {"sacrum", "torso", "humerus_l", "humerus_r", "head"} <= names:
+        return INSTANTHMR_MYOTORSO_ARMS
     raise ValueError(
         "Could not infer InstantHMRMap from model bodies; pass imap explicitly"
     )
@@ -1069,10 +1186,15 @@ def estimate_instanthmr_scales(
         return float(np.clip(val, bounds[0], bounds[1]))
 
     scales: dict[str, float] = {}
-    s_pelvis = clamp(
-        med_dist(("left_hip",), ("right_hip",)) / mod_dist(("femur_l",), ("femur_r",))
-    )
-    scales["pelvis"] = s_pelvis
+    has_femurs = {"femur_l", "femur_r"} <= body_names
+    if has_femurs and "pelvis" in body_names:
+        s_pelvis = clamp(
+            med_dist(("left_hip",), ("right_hip",))
+            / mod_dist(("femur_l",), ("femur_r",))
+        )
+        scales["pelvis"] = s_pelvis
+    else:
+        s_pelvis = 1.0
 
     L_torso = med_dist(("left_hip", "right_hip"), ("left_shoulder", "right_shoulder"))
     if {"sacrum", "humerus_l", "humerus_r"} <= body_names:
@@ -1080,6 +1202,8 @@ def estimate_instanthmr_scales(
         v_lo = (
             0.5 * (d.xpos[model.body("femur_l").id] + d.xpos[model.body("femur_r").id])
             - root_0
+            if has_femurs
+            else np.zeros(3)
         )
         has_clav = {"clavicle_l", "clavicle_r"} <= body_names
         if has_clav:
@@ -1151,44 +1275,55 @@ def estimate_instanthmr_scales(
             tuple[str, ...],
             tuple[str, ...],
         ]
-    ] = [
-        (
-            "femur_l",
-            "femur_r",
-            ("left_hip",),
-            ("left_knee",),
-            ("right_hip",),
-            ("right_knee",),
-            ("femur_l",),
-            ("tibia_l",),
-            ("femur_r",),
-            ("tibia_r",),
-        ),
-        (
-            "tibia_l",
-            "tibia_r",
-            ("left_knee",),
-            ("left_ankle",),
-            ("right_knee",),
-            ("right_ankle",),
-            ("tibia_l",),
-            ("talus_l",),
-            ("tibia_r",),
-            ("talus_r",),
-        ),
-        (
-            "talus_l",
-            "talus_r",
-            ("left_heel",),
-            ("left_big_toe_tip", "left_small_toe_tip"),
-            ("right_heel",),
-            ("right_big_toe_tip", "right_small_toe_tip"),
-            ("calcn_l",),
-            ("toes_l",),
-            ("calcn_r",),
-            ("toes_r",),
-        ),
-    ]
+    ] = []
+    if {
+        "femur_l",
+        "femur_r",
+        "tibia_l",
+        "tibia_r",
+        "talus_l",
+        "talus_r",
+    } <= body_names:
+        limb_pairs.extend(
+            [
+                (
+                    "femur_l",
+                    "femur_r",
+                    ("left_hip",),
+                    ("left_knee",),
+                    ("right_hip",),
+                    ("right_knee",),
+                    ("femur_l",),
+                    ("tibia_l",),
+                    ("femur_r",),
+                    ("tibia_r",),
+                ),
+                (
+                    "tibia_l",
+                    "tibia_r",
+                    ("left_knee",),
+                    ("left_ankle",),
+                    ("right_knee",),
+                    ("right_ankle",),
+                    ("tibia_l",),
+                    ("talus_l",),
+                    ("tibia_r",),
+                    ("talus_r",),
+                ),
+                (
+                    "talus_l",
+                    "talus_r",
+                    ("left_heel",),
+                    ("left_big_toe_tip", "left_small_toe_tip"),
+                    ("right_heel",),
+                    ("right_big_toe_tip", "right_small_toe_tip"),
+                    ("calcn_l",),
+                    ("toes_l",),
+                    ("calcn_r",),
+                    ("toes_r",),
+                ),
+            ]
+        )
     if {
         "humerus_l",
         "humerus_r",
@@ -1797,6 +1932,7 @@ def reconstruct_from_instanthmr(
 
 __all__ = [
     "CAM_TO_WORLD", "INSTANTHMR_MAPS", "INSTANTHMR_MYOFULLBODY", "INSTANTHMR_MYOLEGS",
+    "INSTANTHMR_MYOTORSO_ARMS",
     "MHR70_JOINTS", "Calibration", "InstantHMRHinge", "InstantHMRIKResult",
     "InstantHMRMap", "InstantHMROrientation", "InstantHMRPoint",
     "InstantHMRReconstruction", "InstantHMRSource", "calibrate",
