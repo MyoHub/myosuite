@@ -102,6 +102,7 @@ Pure `joint_penalty` and `joint_limit_violation` terms now read `EnvAccessor.joi
 `myoChallengeBimanual-v0` and its variants now advance `touch_history`, `max_force` and `goal_touch` once per `reset()` / `step()` instead of mutating episode state when `get_obs_dict()` or `get_reward_dict()` is inspected externally. Standard `reset()`/`step()` trajectories and observations are unchanged.
 `myoChallengeTableTennisP{0,1,2}-v0` and variants now run `mj_forward` and refresh `obs_dict` immediately after a multi-rally `relaunch_ball()` (`rally_count > 1`), sample `cal_ball_qvel` when `ball_qvel=True` even if `ball_xyz_range` is `None`, and keep `get_obs_dict()` / `get_reward_dict()` side-effect-free. Single-rally P0/P1 rollouts are unchanged; no checkpoint of these ids is published here.
 `myoChallengeSoccerP1/P2-v0` and variants now report `rwd_dict["sparse"] = float(goal_scored)` instead of `float(done)` (which previously paid sparse points on a fall) and enforce `min_agent_spawn_distance` at reset when positive. Dense rewards (`sparse` weight is 0) and observations at default spawn settings are unchanged; no checkpoint of these ids is published here.
+CPU `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) now perturbs and clips only `jnt_limited` joints instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset. Observation/action shapes and checkpoint loading are unchanged; CPU reset evaluations keep the keyframe pelvis X position.
 
 ## Compatibility notes for 3.1.0
 
