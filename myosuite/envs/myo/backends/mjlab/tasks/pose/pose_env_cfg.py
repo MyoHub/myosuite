@@ -29,6 +29,11 @@ from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks.pose import mdp
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0
 from myosuite.envs.myo.tasks.basic.torso.pose import TorsoEnvV0
+from myosuite.utils.target_ranges import (
+    JointTargetLayout,
+    joint_target_layout,
+    select_target_jnt_range,
+)
 
 ENTITY = "robot"
 COMMAND = "pose"
@@ -53,6 +58,7 @@ class _PoseVariant:
         default_pose_thd: Constructor default of ``pose_thd``.
         far_thd: Distance above which the penalty applies and the episode ends.
         target_always_mean: Target is the range mean (``TorsoEnvV0``).
+        named_targets: Targets are matched to joints by name (``PoseEnvV0``).
     """
 
     default_obs_keys: tuple[str, ...]
@@ -60,6 +66,7 @@ class _PoseVariant:
     default_pose_thd: float
     far_thd: float
     target_always_mean: bool
+    named_targets: bool
 
 
 _POSE_ENV = _PoseVariant(
@@ -68,6 +75,7 @@ _POSE_ENV = _PoseVariant(
     default_pose_thd=0.35,
     far_thd=2 * math.pi,
     target_always_mean=False,
+    named_targets=True,
 )
 _TORSO_ENV = _PoseVariant(
     default_obs_keys=tuple(TorsoEnvV0.DEFAULT_OBS_KEYS),
@@ -75,23 +83,44 @@ _TORSO_ENV = _PoseVariant(
     default_pose_thd=0.25,
     far_thd=math.pi,
     target_always_mean=True,
+    named_targets=False,
 )
 
 
 def _target_bounds(
-    task: ref.CpuTaskSpec, variant: _PoseVariant
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """CPU target: ``target_jnt_range`` (positional, dict order) or fixed value."""
+    task: ref.CpuTaskSpec, variant: _PoseVariant, info: ref.CompiledModelInfo
+) -> tuple[tuple[float, ...], tuple[float, ...], tuple[str, ...]]:
+    """CPU target: ``target_jnt_range`` (dict order) or fixed value, and joint names.
+
+    The range is the one the CPU env selects for the loaded model
+    (``model_target_jnt_ranges``).
+    """
     kw = task.kwargs
     fixed = variant.target_always_mean or kw.get("target_type", "generate") == "fixed"
-    if kw.get("target_jnt_range") is not None:
-        rng = np.array(list(kw["target_jnt_range"].values()), dtype=float)
+    target_jnt_range = kw.get("target_jnt_range")
+    if variant.named_targets:
+        target_jnt_range = select_target_jnt_range(
+            info.joint_names, target_jnt_range, kw.get("model_target_jnt_ranges")
+        )
+    if target_jnt_range is not None:
+        rng = np.array(list(target_jnt_range.values()), dtype=float)
         low, high = rng[:, 0], rng[:, 1]
         if fixed:
             low = high = rng.mean(axis=1)
+        names = tuple(target_jnt_range)
     else:
         low = high = np.asarray(kw["target_jnt_value"], dtype=float)
-    return tuple(low.tolist()), tuple(high.tolist())
+        names = tuple(kw.get("target_jnt_names") or ())
+    return tuple(low.tolist()), tuple(high.tolist()), names
+
+
+def _target_layout(
+    task: ref.CpuTaskSpec, variant: _PoseVariant, names: tuple[str, ...]
+) -> JointTargetLayout:
+    """``qpos`` layout and coupled limits of a named target (CPU ``PoseEnvV0``)."""
+    if not (variant.named_targets and names):
+        return JointTargetLayout(None, ())
+    return joint_target_layout(ref.build_cpu_spec(task).compile(), names)
 
 
 def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
@@ -100,16 +129,27 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
     info = ref.compiled_info(task)
     robot = SceneEntityCfg(ENTITY)
 
-    low, high = _target_bounds(task, variant)
+    low, high, names = _target_bounds(task, variant, info)
+    layout = _target_layout(task, variant, names)
+    qpos_ids = layout.qpos_ids
     commands = {
-        COMMAND: mdp.JointPoseCommandCfg(entity_name=ENTITY, low=low, high=high)
+        COMMAND: mdp.JointPoseCommandCfg(
+            entity_name=ENTITY,
+            low=low,
+            high=high,
+            qpos_ids=qpos_ids,
+            couplings=layout.couplings if low != high else (),
+        )
     }
 
     obs_funcs = {
         "qpos": (mdp.qpos, {"asset_cfg": robot}),
         "qvel": (mdp.qvel, {"asset_cfg": robot}),
         "act": (mdp.act, {"asset_cfg": robot}),
-        "pose_err": (mdp.pose_err, {"command_name": COMMAND, "asset_cfg": robot}),
+        "pose_err": (
+            mdp.pose_err,
+            {"command_name": COMMAND, "asset_cfg": robot, "qpos_ids": qpos_ids},
+        ),
     }
     chains = ref.free_joint_chains(info)  # freejoints turned into 6-DoF chains
     if chains:  # keep the CPU observation layout
@@ -133,6 +173,7 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
         "pose_thd": float(kw.get("pose_thd", variant.default_pose_thd)),
         "far_thd": variant.far_thd,
         "asset_cfg": robot,
+        "qpos_ids": qpos_ids,
     }
     rewards = {}
     for key, weight in kw.get("weighted_reward_keys", variant.default_weights).items():
@@ -153,6 +194,7 @@ def _make_env_cfg(env_id: str, variant: _PoseVariant) -> ManagerBasedRlEnvCfg:
                 "command_name": COMMAND,
                 "far_thd": variant.far_thd,
                 "asset_cfg": robot,
+                "qpos_ids": qpos_ids,
             },
         ),
     }

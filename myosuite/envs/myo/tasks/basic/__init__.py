@@ -13,6 +13,11 @@ import numpy as np
 
 import myosuite.core.registry as _registry
 from myosuite.envs.wrappers import condition_wrapper_specs
+from myosuite.envs.myo.tasks.basic.arm.hand_pose_targets import (
+    HAND_POSE_JOINTS,
+    revised_hand_active_range,
+    revised_hand_marker_joint,
+)
 from myosuite.envs.myo.assets._resolve import (
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
@@ -275,6 +280,8 @@ _reg(
 )
 
 # Hand-Joint posing ==============================
+# Target vectors list the joints of HAND_POSE_JOINTS (matched by name, so the
+# revised hand of myo_sim >= 0.3 keeps its extra joints at neutral, unscored).
 
 # Remove this when the ASL envs stablizes
 _reg(
@@ -311,6 +318,7 @@ _reg(
                 0,
             ]
         ),
+        "target_jnt_names": HAND_POSE_JOINTS,
         "normalize_act": True,
         "pose_thd": 0.7,
         "reset_type": "init",  # none, init, random
@@ -319,31 +327,8 @@ _reg(
 )
 
 # Create ASL envs ==============================
-jnt_namesHand = [
-    "pro_sup_r",
-    "deviation_r",
-    "flexion_r",
-    "cmc_flexion_r",  # index 3 in composed hand (was cmc_abduction at index 3 in old)
-    "cmc_abduction_r",  # index 4 in composed hand (was cmc_flexion at index 4 in old)
-    "mp_flexion_r",
-    "ip_flexion_r",
-    "mcp2_flexion_r",
-    "mcp2_abduction_r",
-    "pm2_flexion_r",
-    "md2_flexion_r",
-    "mcp3_flexion_r",
-    "mcp3_abduction_r",
-    "pm3_flexion_r",
-    "md3_flexion_r",
-    "mcp4_flexion_r",
-    "mcp4_abduction_r",
-    "pm4_flexion_r",
-    "md4_flexion_r",
-    "mcp5_flexion_r",
-    "mcp5_abduction_r",
-    "pm5_flexion_r",
-    "md5_flexion_r",
-]
+# cmc_flexion_r / cmc_abduction_r are entries 3 / 4 (the legacy hand had them swapped).
+jnt_namesHand = list(HAND_POSE_JOINTS)
 
 ASL_qpos = {}
 # Positions 3 and 4 are swapped vs. old model: composed hand has cmc_flexion_r at index 3,
@@ -409,6 +394,7 @@ for k in ASL_qpos.keys():
             "model_recipe": "hand_pose",
             "viz_site_targets": ("THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"),
             "target_jnt_value": np.array(ASL_qpos[k], "float"),
+            "target_jnt_names": HAND_POSE_JOINTS,
             "normalize_act": True,
             "pose_thd": 0.7,
             "reset_type": "init",  # none, init, random
@@ -430,6 +416,10 @@ _reg(
         "model_recipe": "hand_pose",
         "viz_site_targets": ("THtip_r", "IFtip_r", "MFtip_r", "RFtip_r", "LFtip_r"),
         "target_jnt_range": Rpos,
+        # Revised hand (myo_sim >= 0.3): measured active range instead.
+        "model_target_jnt_ranges": {
+            revised_hand_marker_joint(): revised_hand_active_range()
+        },
         "normalize_act": True,
         "pose_thd": 0.7,
         "reset_type": "random",  # none, init, random
