@@ -171,12 +171,13 @@ def quat_to_rotvec(xp: Any, q: Any) -> Any:
     """Unit quaternion (wxyz) -> rotation vector, stable near 0 and pi."""
     q = xp.where(q[..., :1] < 0, -q, q)
     v = q[..., 1:]
-    sin_half = xp.sqrt((v * v).sum(-1))[..., None]
+    v_sq = (v * v).sum(-1)[..., None]
+    sin_half = xp.sqrt(xp.clip(v_sq, 1e-30, None))
     half = xp.arctan2(sin_half, q[..., :1])
     scale = xp.where(
-        sin_half < 1e-6,
+        v_sq < 1e-12,
         2.0 / xp.clip(q[..., :1], 1e-6, None),
-        2 * half / (sin_half + 1e-12),
+        2.0 * half / sin_half,
     )
     return v * scale
 
