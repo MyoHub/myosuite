@@ -23,4 +23,5 @@
 - :mod:`.chumpy_pickle`: Chumpy-free ``.pkl`` unpickler for legacy SMPL, SMPL+H, SMPL-X and MANO body models.
 - :mod:`.emg`: EMG filtering, muscle activation dynamics and tendon-node projection.
 - :mod:`.hand_retarget`: MANO-to-wrist frame calibration, presets, and DexPilot SLSQP hand retargeting.
+- :mod:`.hoi_retarget`: Hand-object interaction clip transforms and contact-aware MuJoCo IK.
 """
