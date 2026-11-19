@@ -372,10 +372,13 @@ Changes since **v3.1.0** (2026-11-11).
   at their compiled positions, up to 1e-16 away before).
 * Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
+* **Pure joint-limit terms, batched term shapes and ChaseTag-vs EVADE scoring ([#803]).** `joint_penalty` and `joint_limit_violation` now read `EnvAccessor.joint_limits()` (`jnt_range` on limited hinge/slide coordinates) instead of `actuator_ctrlrange`, which mismatched `qpos` whenever `nq != nu` or muscles had `[0, 1]` control ranges. `MuscleActionTerm` scopes fatigue muscle counts to the entity's indexed muscle actuators and writes through `write_ctrl_to_sim`; pure observation, reward and termination terms preserve leading batch dimensions and target devices; `reset_random_pose` requires an explicit seeded `rng`; and `ChaseTagVs` `compute_damage` / `get_score` route tag damage according to the active `CHASE`/`EVADE` role and clamp scores to `[0, 1]` (`docs/baseline_checkpoints.md`).
+
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
+[#803]: https://github.com/MyoHub/myosuite/pull/803
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
 ## [3.1.0] - 2026-11-11
