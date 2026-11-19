@@ -46,6 +46,17 @@ Training methods adapted from or based on external research or code must preserv
 
 Agents must check attribution and license requirements before adding or modifying externally derived training code.
 
+## Benchmark against PPO
+
+Every new method under `training/<method>/` includes a benchmark against PPO, the registered default trainer (`myo_ppo_runner_cfg` through `scripts/train_mjlab.py`). Run the method's own trainer and the PPO baseline side by side so the comparison is like for like:
+
+- Use the same registered `env_id`s, at least one and preferably two, with unmodified observations, actions and rewards. Report any task-side change separately.
+- Use the same seeds, at least three per arm, and the same budget in environment steps. Report wall-clock time and hardware too.
+- Report final success rate or return as mean ± std over seeds, learning curves against environment steps and against wall-clock time, and peak memory or GPU hours.
+- State in one sentence how the method differs, with the numbers that show it: for example better final performance, more sample-efficient, faster in wall-clock, more robust, or able to do something PPO cannot.
+
+Put the table and curves in the method's README. Pin the checkpoints and evaluation logs on Hugging Face at a revision (see CLAUDE.md, *Model weights*). For methods where PPO is not the natural reference (imitation or offline learning, for example), add the closest standard baseline, such as behaviour cloning, and keep PPO as the common reference row.
+
 ## Boundary
 
 Keep in `myosuite/`:
@@ -67,5 +78,9 @@ Keep in `training/`:
 - other method-specific learning code
 
 When in doubt, keep the training implementation under `training/` and move only clearly reusable runtime functionality into `myosuite/`.
+
+A loader for one method's checkpoints is not a reason to copy that method's network into `myosuite/`. Have the method export a format MyoSuite already loads (ONNX through `myosuite.utils.export_onnx`, or a plain `nn.Module` / TorchScript artifact). If a custom architecture must be rebuilt, the training package registers it; the architecture code stays in `training/<method>/`.
+
+Reviewers check this boundary on every PR that touches `myosuite/`: architectures, trainers, optimizer settings beyond registered defaults, replay buffers and self-play pools in the installable package are a placement violation, even when the PR's tests pass.
 
 > **MyoSuite defines the simulation and task contract; training methods consume that contract.**
