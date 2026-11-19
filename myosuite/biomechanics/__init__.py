@@ -21,4 +21,5 @@
 - :mod:`.external_loads`: Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 - :mod:`.camera`: Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
 - :mod:`.chumpy_pickle`: Chumpy-free ``.pkl`` unpickler for legacy SMPL, SMPL+H, SMPL-X and MANO body models.
+- :mod:`.emg`: EMG filtering, muscle activation dynamics and tendon-node projection.
 """
