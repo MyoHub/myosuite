@@ -394,6 +394,26 @@ def _body_model(path: str) -> SMPLH:
     return SMPLH(path)
 
 
+def _resolve_body_model_path(body_models: str | Path, gender: str) -> str:
+    root = Path(body_models)
+    if root.is_file():
+        return str(root)
+    g = gender.strip().lower()
+    gu = g.upper()
+    candidates = (
+        root / g / "model.npz",
+        root / g / "model.pkl",
+        root / f"SMPLH_{gu}.npz",
+        root / f"SMPLH_{gu}.pkl",
+        root / f"SMPLX_{gu}.npz",
+        root / f"SMPLX_{gu}.pkl",
+    )
+    for cand in candidates:
+        if cand.is_file():
+            return str(cand)
+    return str(candidates[0])
+
+
 def _rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """``(T, 3, 3)`` shortest rotations taking the directions *a* onto *b*."""
     a = a / np.linalg.norm(a, axis=-1, keepdims=True)
@@ -457,7 +477,7 @@ class SMPLHSource:
 
     def _subject(self, path: str | Path) -> dict[str, Any]:
         a = load_amass(path)
-        body = _body_model(str(Path(self.body_models) / a["gender"] / "model.npz"))
+        body = _body_model(_resolve_body_model_path(self.body_models, str(a["gender"])))
         n = len(a["poses"])
         sl = slice(self.trim[0], n - self.trim[1])
         verts = {v: SMPLH_VERTICES[v] for v in SMPLH_VERTICES}
@@ -600,7 +620,7 @@ def smplh_source(
         smap: The table.
         **kwargs: Further :class:`SMPLHSource` options (e.g. ``trim``).
     """
-    template = _body_model(str(Path(body_models) / "neutral" / "model.npz"))
+    template = _body_model(_resolve_body_model_path(body_models, "neutral"))
     cal = calibrate(model, smap, template)
     return SMPLHSource(smap, cal, body_models, **kwargs), cal.lmap
 

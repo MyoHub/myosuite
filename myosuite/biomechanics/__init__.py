@@ -19,4 +19,5 @@
 - :mod:`.kinematic_metrics`: smoothness, velocity symmetry, curvature-velocity power law, Fitts throughput and cohort distances of recorded motions.
 - :mod:`.external_loads`: Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 - :mod:`.camera`: Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+- :mod:`.chumpy_pickle`: Chumpy-free ``.pkl`` unpickler for legacy SMPL, SMPL+H, SMPL-X and MANO body models.
 """
