@@ -45,7 +45,7 @@ _OFF_COUPLING_CHALLENGES = {
         "keyframe 0 holds the paddle with the shoulder rhythm 0.59 rad off its couplings; "
         "projected, the grasp site is 6.9 cm from the handle (needs a keyframe on them)"
     ),
-    r"myoChallengeChaseTagFBVs-v0": (
+    r"myoChallengeChaseTagFBVs(Train)?-v0": (
         "the two-agent env resets to its standing pose, patella 5.2 cm off its coupling"
     ),
 }

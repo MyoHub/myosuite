@@ -668,6 +668,7 @@ COUPLED_TWIN_IDS = (
 # Table tennis: the CPU env does not project at reset yet (its keyframe holds the
 # paddle off the shoulder couplings), so neither do the twins.
 _PENDING_COUPLED_TWINS = (
+    "myoChallengeChaseTagFBVsTrain-v0",
     "myoChallengeTableTennisP0-v0",
     "myoChallengeTableTennisP1-v0",
     "myoChallengeTableTennisP2-v0",

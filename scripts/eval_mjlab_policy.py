@@ -928,6 +928,9 @@ def evaluate_cpu(
     )
     _check_stochastic(cfg, policy)
     policy.seed(cfg.seed)
+    for env in envs:  # two-player envs (ChaseTag train): a mirror match
+        if hasattr(env.unwrapped, "set_opponent_policy"):
+            env.unwrapped.set_opponent_policy(policy.act)
     grid = (
         GridRenderer(
             envs[0].unwrapped.model,
@@ -1042,6 +1045,14 @@ def evaluate_mjlab(
         action_map_applied=trained is not None,
     ).to(device)
     _check_stochastic(cfg, policy)
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.self_play import (  # noqa: PLC0415
+        find_opponent_pool,
+    )
+
+    pool = find_opponent_pool(env)
+    if pool is not None:  # self-play twin: the policy also plays the opponent
+        pool.add(policy)
+        print("[INFO] Self-play task: the policy plays both players (mirror match).")
     has_success = "success" in env.metrics_manager.active_terms
 
     obs, _ = env.reset()

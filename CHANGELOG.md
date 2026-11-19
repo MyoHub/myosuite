@@ -24,6 +24,24 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **`myoChallengeChaseTagFBVsTrain-v0`: train a ChaseTag player on the GPU ([#578]).** `myoChallengeChaseTagFBVs-v0` seen
+  from `agent_0`, with `agent_1` played inside the env. The model, reset, role draw, rules, reward and score are
+  FBVs's, and the observation is an FBVs player's 546-d one, so a trained policy exports as a MyoChallenge
+  submission as-is (`export_rslrl_to_onnx(..., obs_dim=546, act_dim=354)`, no adapter).
+  - CPU env and mjlab twin under one id. For the same actions the CPU env is bit-identical to FBVs; the twin
+    matches the CPU env term by term and step by step (`test_chasetag_fbvs_train*.py`).
+  - Opponent: on mjlab, frozen snapshots of the learner (self-play; `scripts/train_mjlab.py` adds a snapshot every
+    50 iterations) or a fixed checkpoint; on the CPU, any policy (`opponent_policy=` callable, `.onnx` or `.pt`).
+    Evaluation is a mirror match.
+  - Training starts both players as the tutorial 5.4 walker (`DirectionalWalkerActor`, a fixed 546 -> 528 adapter
+    in front of the 5.4 network), so snapshots and the ONNX export carry the adapter. `load_rslrl_policy` /
+    `export_rslrl_to_onnx` rebuild such actors. The adapter gives the heading relative to the walking direction:
+    the 5.4 observation has no pelvis yaw, so a world-frame heading cannot be steered and chaser and runner look
+    the same (`body_frame_heading=False` keeps it).
+  - FBVs itself is unchanged (its reward terms now share backend-agnostic functions with the twin).
+  - No muscle-condition variants: the two bodies share one model.
+  - Tutorial 5.6 (ChaseTag Colab): step 5 includes training in this env (FBP2's 537-d observation does not fit a
+    submission), and the optional local check reports pursuer falls per the 1v1 win rules.
 
 ### Fixed
 
@@ -39,6 +57,9 @@ Changes since **v3.1.0** (2026-11-11).
   `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
   keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
   Python 3.15 on Linux for the ONNX-free native CPU path.
+* **ChaseTag 1v1 train env (`myoChallengeChaseTagFBVsTrain-v0`) win conditions** match `myoChallengeChaseTagFBVs-v0`:
+  tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win; a
+  runner fall does not stop play ([#578]).
 
 ### Fixed
 
@@ -372,6 +393,7 @@ Changes since **v3.1.0** (2026-11-11).
   at their compiled positions, up to 1e-16 away before).
 * Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
+[#578]: https://github.com/MyoHub/myosuite/pull/578
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672

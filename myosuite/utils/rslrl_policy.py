@@ -50,12 +50,18 @@ class RslRlPolicy(torch.nn.Module):
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
-        first_linear = next(
-            (m for m in mlp.modules() if isinstance(m, torch.nn.Linear)), None
-        )
-        if first_linear is None:
-            raise ValueError("Actor MLP must contain at least one Linear layer.")
-        self.obs_dim = first_linear.in_features
+        # An input module that changes the width (e.g. an observation adapter)
+        # names the observation size it takes as ``in_dim``.
+        in_dim = getattr(normalizer, "in_dim", None)
+        if in_dim is not None:
+            self.obs_dim = int(in_dim)
+        else:
+            first_linear = next(
+                (m for m in mlp.modules() if isinstance(m, torch.nn.Linear)), None
+            )
+            if first_linear is None:
+                raise ValueError("Actor MLP must contain at least one Linear layer.")
+            self.obs_dim = first_linear.in_features
         self.register_buffer("std", None if std is None else std.flatten().clone())
         self.generator: torch.Generator | None = None
 
@@ -99,6 +105,12 @@ class RslRlPolicy(torch.nn.Module):
         return (self.sample(x) if stochastic else self(x)).cpu().numpy()
 
 
+# Actor recognised by its weight names when the run's agent.yaml is missing.
+_WALKER_ACTOR = (
+    "myosuite.integrations.musclemimic.directional_walker_actor:DirectionalWalkerActor"
+)
+
+
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
     """``params/agent.yaml`` written by ``scripts/train_mjlab.py`` (if present)."""
     path = checkpoint.parent / "params" / "agent.yaml"
@@ -114,10 +126,13 @@ def load_rslrl_policy(
     """Rebuild the deterministic actor of an RSL-RL checkpoint.
 
     Layer sizes are read from the weights; the activation comes from the run's
-    ``params/agent.yaml`` (default ``elu``). If that file gives the actor's
-    ``distribution_cfg.std_range``, the std used by :meth:`RslRlPolicy.sample` is
-    clamped to it, as in training (the saved parameter can lie just outside the
-    range); without one the checkpoint's std is used as is.
+    ``params/agent.yaml`` (default ``elu``). An actor class other than
+    ``MLPModel`` (``actor.class_name`` there) rebuilds its own modules through
+    its ``deterministic_modules(actor_state, actor_cfg)``. If ``agent.yaml``
+    gives the actor's ``distribution_cfg.std_range``, the std used by
+    :meth:`RslRlPolicy.sample` is clamped to it, as in training (the saved
+    parameter can lie just outside the range); without one the checkpoint's std
+    is used as is.
 
     Args:
         checkpoint: ``model_*.pt`` from an mjlab training run.
@@ -145,6 +160,39 @@ def load_rslrl_policy(
         )
     actor_state: dict[str, torch.Tensor] = state["actor_state_dict"]
     actor_cfg = _agent_params(checkpoint).get("actor", {})
+    learned_std = any(
+        k in actor_state
+        for k in ("distribution.std_param", "distribution.log_std_param")
+    )
+    std = None
+    if "distribution.std_param" in actor_state:
+        std = actor_state["distribution.std_param"]
+    elif "distribution.log_std_param" in actor_state:
+        std = actor_state["distribution.log_std_param"].exp()
+    std_range = (actor_cfg.get("distribution_cfg") or {}).get("std_range")
+    if std is not None and std_range is not None:
+        # Same bounds as rsl_rl's GaussianDistribution (lower limit 1e-6).
+        std = std.clamp(max(float(std_range[0]), 1e-6), float(std_range[1]))
+    class_name = actor_cfg.get("class_name")
+    if class_name is None:  # no params/agent.yaml next to the checkpoint
+        walker = "mlp.actor_mean.weight" in actor_state
+        class_name = _WALKER_ACTOR if walker else "MLPModel"
+    if class_name != "MLPModel":
+        from rsl_rl.utils import resolve_callable  # noqa: PLC0415
+
+        net, adapter = resolve_callable(class_name).deterministic_modules(
+            actor_state, actor_cfg
+        )
+        linears = [m for m in net.modules() if isinstance(m, torch.nn.Linear)]
+        if linears:
+            out_dim = linears[-1].out_features
+            if out_dim != action_dim and (learned_std or out_dim != 2 * action_dim):
+                raise ValueError(
+                    f"{checkpoint} outputs {out_dim} values"
+                    f"{' (one per action, with a learned std)' if learned_std else ''}; "
+                    f"the env takes {action_dim} actions. It was trained on another env."
+                )
+        return RslRlPolicy(net, adapter, action_dim, std).eval()
 
     linear = sorted(
         (
@@ -181,23 +229,10 @@ def load_rslrl_policy(
         )
     else:
         normalizer = torch.nn.Identity()
-    learned_std = any(
-        k in actor_state
-        for k in ("distribution.std_param", "distribution.log_std_param")
-    )
     if out_dim != action_dim and (learned_std or out_dim != 2 * action_dim):
         raise ValueError(
             f"{checkpoint} outputs {out_dim} values"
             f"{' (one per action, with a learned std)' if learned_std else ''}; "
             f"the env takes {action_dim} actions. It was trained on another env."
         )
-    std = None
-    if "distribution.std_param" in actor_state:
-        std = actor_state["distribution.std_param"]
-    elif "distribution.log_std_param" in actor_state:
-        std = actor_state["distribution.log_std_param"].exp()
-    std_range = (actor_cfg.get("distribution_cfg") or {}).get("std_range")
-    if std is not None and std_range is not None:
-        # Same bounds as rsl_rl's GaussianDistribution (lower limit 1e-6).
-        std = std.clamp(max(float(std_range[0]), 1e-6), float(std_range[1]))
     return RslRlPolicy(mlp, normalizer, action_dim, std).eval()
