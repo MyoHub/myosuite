@@ -35,8 +35,10 @@ Two kinds of custom stages exist:
 
 from __future__ import annotations
 
+import functools
+import math
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import mujoco
@@ -163,6 +165,147 @@ class LowPassStage(ExcitationStage):
             self._fresh[...] = True
         else:
             self._fresh[env_ids] = True
+
+
+class FESStage(ExcitationStage):
+    """Functional Electrical Stimulation (FES) recruitment and fatigue stage.
+
+    Maps normalized stimulation commands ``u`` in ``[0, 1]`` through a pulse-width
+    spatial recruitment curve, Ding/Riener force-frequency scaling, and rapid
+    synchronous motor-unit fatigue and recovery (inspired by ``pyomeca/cocofest``,
+    Riener & Quintern 1997, and Ding et al. 2003). Portable across CPU (NumPy) and
+    ``mjlab`` (PyTorch) via :class:`~myosuite.envs.wrappers.ExcitationStageWrapper`.
+    """
+
+    def __init__(
+        self,
+        *,
+        stim_freq_hz: float = 35.0,
+        f50_hz: float = 25.0,
+        freq_exponent: float = 2.5,
+        pulse_width_range_us: tuple[float, float] = (0.0, 500.0),
+        threshold_us: float = 100.0,
+        saturation_us: float = 450.0,
+        recruitment_steepness: float = 2.0,
+        step_dt: float = 0.02,
+        tau_fatigue_s: float = 18.0,
+        tau_recovery_s: float = 45.0,
+        min_fitness: float = 0.20,
+        stimulated_indices: Sequence[int] | None = None,
+        passthrough_unstimulated: bool = True,
+        name: str = "fes",
+        order: float | None = None,
+    ) -> None:
+        pw_min, pw_max = pulse_width_range_us
+        if not (
+            stim_freq_hz > 0.0
+            and f50_hz > 0.0
+            and freq_exponent > 0.0
+            and 0.0 <= pw_min < pw_max
+            and pw_min <= threshold_us < saturation_us <= pw_max
+            and recruitment_steepness >= 1.0
+            and step_dt > 0.0
+            and tau_fatigue_s > 0.0
+            and tau_recovery_s > 0.0
+            and 0.0 <= min_fitness <= 1.0
+        ):
+            raise ValueError(
+                "Invalid FESStage recruitment, frequency, or fatigue parameters"
+            )
+        self.stim_freq_hz = float(stim_freq_hz)
+        self.f50_hz = float(f50_hz)
+        self.freq_exponent = float(freq_exponent)
+        self.pulse_width_range_us = (float(pw_min), float(pw_max))
+        self.threshold_us = float(threshold_us)
+        self.saturation_us = float(saturation_us)
+        self.recruitment_steepness = float(recruitment_steepness)
+        self.step_dt = float(step_dt)
+        self.tau_fatigue_s = float(tau_fatigue_s)
+        self.tau_recovery_s = float(tau_recovery_s)
+        self.min_fitness = float(min_fitness)
+        self.stimulated_indices = (
+            None
+            if stimulated_indices is None
+            else tuple(int(i) for i in stimulated_indices)
+        )
+        self.passthrough_unstimulated = bool(passthrough_unstimulated)
+        self.name, self.order = name, order
+
+        ratio_q = math.pow(self.stim_freq_hz / self.f50_hz, self.freq_exponent)
+        self.freq_gain = ratio_q / (1.0 + ratio_q)
+        self._fitness: Any = None
+        self._fresh: Any = None
+        self._stim_mask: Any = None
+
+    @property
+    def fitness(self) -> Any:
+        """Current per-muscle motor-unit fitness ``mu`` in ``[min_fitness, 1]``."""
+        if self._fitness is None:
+            return None
+        return (
+            self._fitness.clone()
+            if hasattr(self._fitness, "clone")
+            else self._fitness.copy()
+        )
+
+    def __call__(self, u: Any, xp: Any) -> Any:
+        if self._fitness is None:
+            self._fitness = xp.ones_like(u)
+            self._fresh = xp.ones_like(u[..., 0], dtype=bool)
+            if self.stimulated_indices is not None:
+                n_m = int(u.shape[-1])
+                if any(i < 0 or i >= n_m for i in self.stimulated_indices):
+                    raise ValueError(
+                        f"stimulated_indices {self.stimulated_indices} out of bounds for {n_m} muscles"
+                    )
+                base_row = u[0] if getattr(u, "ndim", 1) > 1 else u
+                mask = xp.zeros_like(base_row, dtype=bool)
+                for idx in self.stimulated_indices:
+                    mask[idx] = True
+                self._stim_mask = mask
+
+        fresh = self._fresh[..., None]
+        self._fitness = xp.where(fresh, xp.ones_like(self._fitness), self._fitness)
+        self._fresh = xp.zeros_like(self._fresh)
+
+        u_clip = xp.clip(u, 0.0, 1.0)
+        pw_min, pw_max = self.pulse_width_range_us
+        pw = pw_min + u_clip * (pw_max - pw_min)
+        s = xp.clip(
+            (pw - self.threshold_us) / (self.saturation_us - self.threshold_us),
+            0.0,
+            1.0,
+        )
+        p = self.recruitment_steepness
+        sp = s**p
+        omp = (1.0 - s) ** p
+        r_pw = sp / (sp + omp)
+        a_rec = self.freq_gain * r_pw
+        u_fes = xp.clip(self._fitness * a_rec, 0.0, 1.0)
+
+        dfit = (
+            (self.min_fitness - self._fitness) * a_rec / self.tau_fatigue_s
+            + (1.0 - self._fitness) * (1.0 - a_rec) / self.tau_recovery_s
+        ) * self.step_dt
+        self._fitness = xp.clip(self._fitness + dfit, self.min_fitness, 1.0)
+
+        if self._stim_mask is not None:
+            other = u_clip if self.passthrough_unstimulated else xp.zeros_like(u_clip)
+            u_fes = xp.where(self._stim_mask, u_fes, other)
+        return u_fes.clone() if hasattr(u_fes, "clone") else u_fes.copy()
+
+    def reset(self, env_ids: Any = None) -> None:
+        if self._fresh is None:
+            return
+        if env_ids is None or (isinstance(env_ids, slice) and env_ids == slice(None)):
+            self._fresh[...] = True
+        else:
+            self._fresh[env_ids] = True
+
+
+def fes_stage_factory(**kwargs: Any) -> Callable[[], FESStage]:
+    """Return a picklable zero-argument factory constructing a :class:`FESStage`."""
+    return functools.partial(FESStage, **kwargs)
 
 
 CtrlStage = Callable[[Any, np.ndarray], np.ndarray]
