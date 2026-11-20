@@ -148,3 +148,74 @@ def test_depth_jump_rejected_even_with_2d_box_overlap(tmp_path: Path) -> None:
     np.savez_compressed(out, **clip)
     with np.load(out, allow_pickle=False) as loaded:
         assert "track_lost" in loaded["quality_flags"].tolist()
+
+
+def _make_walking_person(
+    bbox: tuple[float, float, float, float],
+    pelvis_xyz: tuple[float, float, float],
+    swing_phase: float,
+    swing_amp_m: float,
+) -> _DummyPerson:
+    p = _make_person(bbox, pelvis_xyz)
+    hip = np.asarray(pelvis_xyz, dtype=np.float32)
+    p.joints_3d_cam[9] = hip + np.array([-0.10, 0.0, 0.0], dtype=np.float32)
+    p.joints_3d_cam[10] = hip + np.array([0.10, 0.0, 0.0], dtype=np.float32)
+    s = float(swing_amp_m * np.sin(swing_phase))
+    p.joints_3d_cam[13] = hip + np.array([-0.10, 0.80, s], dtype=np.float32)
+    p.joints_3d_cam[14] = hip + np.array([0.10, 0.80, -s], dtype=np.float32)
+    return p
+
+
+def test_leg_swing_selection_locks_walking_subject_over_large_bystander() -> None:
+    fps = 30.0
+    results: list[_DummyResult] = []
+    for t in range(18):
+        # Huge foreground static bystander (clinician standing near camera).
+        bystander = _make_walking_person(
+            (20.0, 20.0, 420.0, 620.0), (-0.8, 0.0, 1.8), 0.0, 0.0
+        )
+        # Smaller walking patient further away with active 3D leg swing.
+        walker = _make_walking_person(
+            (480.0 + 2.0 * t, 120.0, 580.0 + 2.0 * t, 380.0),
+            (0.5 + 0.03 * t, 0.0, 3.4),
+            2.0 * np.pi * 1.5 * (t / fps),
+            0.25,
+        )
+        results.append(_DummyResult([bystander, walker]))
+
+    clip_area = extract_predictions(
+        results, fps=fps, config=TrackerConfig(selection_mode="bbox_area")
+    )
+    clip_swing = extract_predictions(
+        results, fps=fps, config=TrackerConfig(selection_mode="leg_swing")
+    )
+    assert clip_area["joints_3d_cam"][0, 0, 0] == pytest.approx(-0.8)
+    assert clip_swing["valid"].all()
+    assert clip_swing["joints_3d_cam"][0, 0, 0] == pytest.approx(0.5)
+    assert clip_swing["joints_3d_cam"][-1, 0, 0] == pytest.approx(0.5 + 0.03 * 17)
+
+
+def test_leg_swing_selection_waits_for_late_walker_entry() -> None:
+    fps = 30.0
+    results: list[_DummyResult] = []
+    for t in range(12):
+        bystander = _make_walking_person(
+            (30.0, 30.0, 380.0, 580.0), (-0.7, 0.0, 1.9), 0.0, 0.0
+        )
+        if t < 3:
+            results.append(_DummyResult([bystander]))
+        else:
+            walker = _make_walking_person(
+                (460.0 + 2.0 * t, 110.0, 560.0 + 2.0 * t, 370.0),
+                (0.6 + 0.03 * t, 0.0, 3.2),
+                2.0 * np.pi * 1.5 * (t / fps),
+                0.25,
+            )
+            results.append(_DummyResult([bystander, walker]))
+
+    clip = extract_predictions(
+        results, fps=fps, config=TrackerConfig(selection_mode="leg_swing")
+    )
+    assert not clip["valid"][:3].any()
+    assert clip["valid"][3:].all()
+    assert clip["joints_3d_cam"][3, 0, 0] == pytest.approx(0.6 + 0.03 * 3)
