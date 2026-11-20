@@ -18,6 +18,7 @@ Changes since **v3.1.0** (2026-11-11).
 * Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
 * Pose2Sim `.toml` camera calibration I/O, Brown-Conrady and fisheye lens undistortion, multi-frame sequence triangulation with milliradian diagnostics, and walk-integrated gravity and stature alignment in `myosuite.biomechanics.camera`.
 * Targetless multi-camera extrinsic calibration from walking human motion (`myosuite.biomechanics.camera_calibration` and `tools/humancalib`): 3D leg-swing subject selection, Umeyama/Procrustes initialisation, analytic-Jacobian bundle adjustment, and `< 15 mrad` acceptance gating.
+* Walk-frame gravity alignment (`cam_to_world_mode="walk"` in `myosuite.biomechanics.retarget_instanthmr` and `level_walk_plane=True` in `myosuite.biomechanics.gvhmr`) and 3D ankle-to-hip leg-swing subject selection (`selection_mode="leg_swing"` in `tools/instanthmr`).
 * Native InstantHMR (`MHR70` 70-keypoint, metric camera-space) biomechanical pipeline
   (`myosuite.biomechanics.retarget_instanthmr`, `myosuite.viz.muscle_meshes`) for
   `myofullbody` and `myolegs`: subject anthropometric scaling

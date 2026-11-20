@@ -67,6 +67,47 @@ def y_up_to_z_up_root(
     return orient_z, trans_z
 
 
+def level_walk_root(
+    global_orient: np.ndarray,
+    transl: np.ndarray,
+    pelvis_j0: np.ndarray,
+    *,
+    min_displacement_m: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Remove residual camera pitch slope from a ``+Z``-up walking root trajectory."""
+    orient = np.asarray(global_orient, dtype=np.float64)
+    trans = np.asarray(transl, dtype=np.float64)
+    if orient.ndim != 2 or orient.shape[-1] != 3 or trans.shape != orient.shape:
+        raise ValueError(
+            f"Expected (T, 3) arrays; got global_orient {orient.shape}, transl {trans.shape}."
+        )
+    j0 = np.broadcast_to(np.asarray(pelvis_j0, dtype=np.float64), trans.shape)
+    if len(trans) < 6:
+        return orient.astype(np.float32), trans.astype(np.float32)
+    p = trans + j0
+    quarter = max(1, len(p) // 4)
+    disp = p[-quarter:].mean(axis=0) - p[:quarter].mean(axis=0)
+    if float(np.linalg.norm(disp[:2])) < min_displacement_m:
+        return orient.astype(np.float32), trans.astype(np.float32)
+    w = np.linalg.svd(p - p.mean(axis=0), full_matrices=False)[2][0]
+    if float(np.dot(w, disp)) < 0.0:
+        w = -w
+    wh_norm = float(np.linalg.norm(w[:2]))
+    if wh_norm <= 1e-6:
+        return orient.astype(np.float32), trans.astype(np.float32)
+    w_h = np.array([w[0] / wh_norm, w[1] / wh_norm, 0.0], dtype=np.float64)
+    axis = np.cross(w, w_h)
+    sin_a = float(np.linalg.norm(axis))
+    if sin_a <= 1e-8:
+        return orient.astype(np.float32), trans.astype(np.float32)
+    angle = float(np.arctan2(sin_a, float(np.clip(np.dot(w, w_h), -1.0, 1.0))))
+    r_level = axis_angle_to_matrix(((axis / sin_a) * angle)[None, :])[0]
+    r_root = axis_angle_to_matrix(orient)
+    orient_out = matrix_to_axis_angle(np.einsum("ab,tbc->tac", r_level, r_root))
+    trans_out = (p - p[0:1]) @ r_level.T + p[0:1] - j0
+    return orient_out.astype(np.float32), trans_out.astype(np.float32)
+
+
 def compute_pelvis_j0(body_model: str | Path | SMPLH, betas: np.ndarray) -> np.ndarray:
     """Compute per-frame or static rest-pose pelvis ``J0(betas)`` from a body model."""
     model = body_model if isinstance(body_model, SMPLH) else SMPLH(body_model)
@@ -99,6 +140,7 @@ def to_amass_clip(
     body_model: str | Path | SMPLH | None = None,
     pose_layout: str = "smplx",
     source_video: str | Path | None = None,
+    level_walk_plane: bool = False,
 ) -> dict[str, np.ndarray]:
     """Pack a GVHMR estimation result into AMASS ``.npz`` fields."""
     if pose_layout not in ("smplx", "smplh"):
@@ -146,6 +188,8 @@ def to_amass_clip(
             )
 
     orient_z, trans_z = y_up_to_z_up_root(orient, transl, pelvis_j0)
+    if level_walk_plane:
+        orient_z, trans_z = level_walk_root(orient_z, trans_z, pelvis_j0)
     pose_dim = SMPLX_POSE_DIM if pose_layout == "smplx" else SMPLH_POSE_DIM
     poses = np.zeros((num_frames, pose_dim), dtype=np.float32)
     poses[:, ROOT_ORIENT_SLICE] = orient_z
@@ -219,6 +263,7 @@ __all__ = [
     "Y_UP_TO_Z_UP_AXIS_ANGLE",
     "Y_UP_TO_Z_UP_MATRIX",
     "compute_pelvis_j0",
+    "level_walk_root",
     "load_gvhmr_result",
     "save_amass_npz",
     "to_amass_clip",
