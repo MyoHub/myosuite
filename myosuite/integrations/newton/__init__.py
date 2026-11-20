@@ -28,6 +28,14 @@ if TYPE_CHECKING:
         resolve_env_xml,
     )
     from myosuite.integrations.newton.batch_sim import NewtonBatchSim
+    from myosuite.integrations.newton.playback import (
+        ClosedLoopParityReport,
+        rollout_closed_loop_parity,
+    )
+    from myosuite.integrations.newton.task_env import (
+        NewtonRslRlVecEnv,
+        NewtonTaskEnv,
+    )
     from myosuite.integrations.newton.torch_pipeline import (
         NewtonActionCfg,
         NewtonActionPipeline,
@@ -41,6 +49,14 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
         "resolve_env_xml",
     ),
     "myosuite.integrations.newton.batch_sim": ("NewtonBatchSim",),
+    "myosuite.integrations.newton.playback": (
+        "ClosedLoopParityReport",
+        "rollout_closed_loop_parity",
+    ),
+    "myosuite.integrations.newton.task_env": (
+        "NewtonRslRlVecEnv",
+        "NewtonTaskEnv",
+    ),
     "myosuite.integrations.newton.torch_pipeline": (
         "NewtonActionCfg",
         "NewtonActionPipeline",
@@ -52,14 +68,20 @@ _NAME_TO_MODULE: dict[str, str] = {
     name: mod for mod, names in _EXPORTS_BY_MODULE.items() for name in names
 }
 
+_SUBMODULES = ("accessor", "batch_sim", "playback", "task_env", "torch_pipeline")
+
 __all__ = [
+    "ClosedLoopParityReport",
     "IndexMapping",
     "NewtonAccessor",
     "NewtonActionCfg",
     "NewtonActionPipeline",
     "NewtonBatchSim",
+    "NewtonRslRlVecEnv",
+    "NewtonTaskEnv",
     "TorchNewtonAccessor",
     "resolve_env_xml",
+    "rollout_closed_loop_parity",
 ]
 
 
@@ -67,10 +89,10 @@ def __getattr__(name: str) -> Any:
     if name in _NAME_TO_MODULE:
         module = importlib.import_module(_NAME_TO_MODULE[name])
         return getattr(module, name)
-    if name in ("accessor", "batch_sim", "torch_pipeline"):
+    if name in _SUBMODULES:
         return importlib.import_module(f"{__name__}.{name}")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:
-    return sorted([*globals(), *__all__, "accessor", "batch_sim", "torch_pipeline"])
+    return sorted([*globals(), *__all__, *_SUBMODULES])
