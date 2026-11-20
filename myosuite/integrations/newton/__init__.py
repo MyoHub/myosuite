@@ -28,6 +28,11 @@ if TYPE_CHECKING:
         resolve_env_xml,
     )
     from myosuite.integrations.newton.batch_sim import NewtonBatchSim
+    from myosuite.integrations.newton.torch_pipeline import (
+        NewtonActionCfg,
+        NewtonActionPipeline,
+        TorchNewtonAccessor,
+    )
 
 _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
     "myosuite.integrations.newton.accessor": (
@@ -36,6 +41,11 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
         "resolve_env_xml",
     ),
     "myosuite.integrations.newton.batch_sim": ("NewtonBatchSim",),
+    "myosuite.integrations.newton.torch_pipeline": (
+        "NewtonActionCfg",
+        "NewtonActionPipeline",
+        "TorchNewtonAccessor",
+    ),
 }
 
 _NAME_TO_MODULE: dict[str, str] = {
@@ -45,7 +55,10 @@ _NAME_TO_MODULE: dict[str, str] = {
 __all__ = [
     "IndexMapping",
     "NewtonAccessor",
+    "NewtonActionCfg",
+    "NewtonActionPipeline",
     "NewtonBatchSim",
+    "TorchNewtonAccessor",
     "resolve_env_xml",
 ]
 
@@ -54,10 +67,10 @@ def __getattr__(name: str) -> Any:
     if name in _NAME_TO_MODULE:
         module = importlib.import_module(_NAME_TO_MODULE[name])
         return getattr(module, name)
-    if name in ("accessor", "batch_sim"):
+    if name in ("accessor", "batch_sim", "torch_pipeline"):
         return importlib.import_module(f"{__name__}.{name}")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:
-    return sorted([*globals(), *__all__, "accessor", "batch_sim"])
+    return sorted([*globals(), *__all__, "accessor", "batch_sim", "torch_pipeline"])
