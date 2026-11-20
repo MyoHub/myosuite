@@ -11,6 +11,7 @@ from myosuite_instanthmr.extract import (
     box_iou,
     extract_predictions,
     extract_video_clip,
+    select_initial_walking_bbox,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "box_iou",
     "extract_predictions",
     "extract_video_clip",
+    "select_initial_walking_bbox",
 ]

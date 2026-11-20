@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import mujoco
 import numpy as np
 
+from myosuite.biomechanics.camera import WalkFrameAlignment, align_walk_frame
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics
 from myosuite.biomechanics.retarget import (
     ClipTargets,
@@ -788,6 +789,49 @@ def knee_flexion(joints_world: np.ndarray) -> dict[str, np.ndarray]:
     return out
 
 
+def estimate_instanthmr_walk_frame(
+    joints_3d_cam: np.ndarray,
+    *,
+    valid: np.ndarray | None = None,
+    vertical_method: Literal["walk", "frame"] = "walk",
+    height_m: float = 1.70,
+) -> WalkFrameAlignment:
+    """Estimate canonical walk-frame gravity and heading alignment from MHR70 camera joints."""
+    pts = np.asarray(joints_3d_cam, dtype=np.float64).copy()
+    if pts.ndim != 3 or pts.shape[1:] != (len(MHR70_JOINTS), 3):
+        raise ValueError(f"Expected (T, 70, 3) joints_3d_cam, got {pts.shape}")
+    if valid is not None:
+        mask = np.asarray(valid, dtype=bool)
+        if mask.shape != (len(pts),):
+            raise ValueError(f"valid mask shape {mask.shape} != ({len(pts)},)")
+        pts[~mask] = np.nan
+    head_idx = tuple(
+        _JIDX[k] for k in ("nose", "left_eye", "right_eye", "left_ear", "right_ear")
+    )
+    if not np.isfinite(pts[:, head_idx]).any():
+        head_idx = (_JIDX["left_shoulder"], _JIDX["right_shoulder"])
+    sole_idx = tuple(
+        _JIDX[k]
+        for k in (
+            "left_heel",
+            "left_big_toe_tip",
+            "left_small_toe_tip",
+            "right_heel",
+            "right_big_toe_tip",
+            "right_small_toe_tip",
+        )
+    )
+    return align_walk_frame(
+        pts,
+        height_m,
+        head_indices=head_idx,
+        sole_indices=sole_idx,
+        left_heel_index=_JIDX["left_heel"],
+        right_heel_index=_JIDX["right_heel"],
+        vertical_method=vertical_method,
+    )
+
+
 @dataclass
 class InstantHMRSource:
     """InstantHMR MHR70 ``.npz`` clips as a :class:`~.retarget.ClipSource`."""
@@ -795,6 +839,7 @@ class InstantHMRSource:
     imap: InstantHMRMap
     calibration: Calibration
     cam_to_world: np.ndarray | None = None
+    cam_to_world_mode: Literal["fixed", "walk", "frame"] = "fixed"
     trim: tuple[int, int] = (0, 0)
     zero_xy_start: bool = True
     contact_height: float = 0.035
@@ -807,20 +852,31 @@ class InstantHMRSource:
     _last: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
     def _world_joints(self, clip: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-        if self.cam_to_world is not None:
-            R_cw = _check_rotation(self.cam_to_world)
-        elif clip["cam_to_world"] is not None:
-            R_cw = clip["cam_to_world"]
-        else:
-            R_cw = self.calibration.canon_to_model @ CAM_TO_WORLD
+        if self.cam_to_world_mode not in ("fixed", "walk", "frame"):
+            raise ValueError(
+                "cam_to_world_mode must be 'fixed', 'walk', or 'frame', "
+                f"got {self.cam_to_world_mode!r}"
+            )
         n = len(clip["joints_3d_cam"])
         sl = slice(self.trim[0], n - self.trim[1] if self.trim[1] > 0 else n)
         j_cam = clip["joints_3d_cam"][sl]
+        v_sl = clip["valid"][sl]
         if len(j_cam) < 2:
             raise ValueError(
                 f"trimmed clip needs at least 2 frames, got {len(j_cam)} from {n}"
             )
-        return j_cam @ R_cw.T, clip["valid"][sl]
+        if self.cam_to_world is not None:
+            R_cw = _check_rotation(self.cam_to_world)
+        elif clip["cam_to_world"] is not None:
+            R_cw = clip["cam_to_world"]
+        elif self.cam_to_world_mode == "fixed":
+            R_cw = self.calibration.canon_to_model @ CAM_TO_WORLD
+        else:
+            align = estimate_instanthmr_walk_frame(
+                j_cam, valid=v_sl, vertical_method=self.cam_to_world_mode
+            )
+            R_cw = self.calibration.canon_to_model @ align.rotation
+        return j_cam @ R_cw.T, v_sl
 
     def targets(
         self,
@@ -948,6 +1004,7 @@ class InstantHMRSource:
         meta = {
             "instanthmr_map": self.imap.name,
             "instanthmr_map_version": self.imap.version,
+            "cam_to_world_mode": self.cam_to_world_mode,
             "trim": list(self.trim),
             "segment_range": info["segment_range"],
             "frames_source": info["frames_source"],
@@ -1013,6 +1070,7 @@ def estimate_instanthmr_scales(
     imap: InstantHMRMap | None = None,
     *,
     cam_to_world: np.ndarray | None = None,
+    cam_to_world_mode: Literal["fixed", "walk", "frame"] = "fixed",
     trim: tuple[int, int] = (0, 0),
     max_gap_s: float = 0.25,
     bilateral_symmetry: bool = True,
@@ -1028,6 +1086,8 @@ def estimate_instanthmr_scales(
         model: Unscaled target MuJoCo model.
         imap: Optional :class:`InstantHMRMap` (inferred from *model* when ``None``).
         cam_to_world: Optional ``(3, 3)`` camera-to-world rotation.
+        cam_to_world_mode: Camera-to-world alignment when *cam_to_world* is omitted
+            (``"fixed"``, ``"walk"``, or ``"frame"``).
         trim: ``(start, end)`` frames dropped before measuring segment lengths.
         max_gap_s: Maximum missing-frame gap duration (s) allowed when loading *clip*.
         bilateral_symmetry: Average left and right limb scales to keep the model
@@ -1042,7 +1102,12 @@ def estimate_instanthmr_scales(
     imap = imap or default_instanthmr_map(model)
     cal = calibrate(model, imap)
     src = InstantHMRSource(
-        imap, cal, cam_to_world=cam_to_world, trim=trim, max_gap_s=max_gap_s
+        imap,
+        cal,
+        cam_to_world=cam_to_world,
+        cam_to_world_mode=cam_to_world_mode,
+        trim=trim,
+        max_gap_s=max_gap_s,
     )
     jw, valid = src._world_joints(_as_clip(clip, max_gap_s=max_gap_s))
 
@@ -1271,6 +1336,7 @@ def scale_model_from_instanthmr(
     *,
     body_mass: float | None = None,
     cam_to_world: np.ndarray | None = None,
+    cam_to_world_mode: Literal["fixed", "walk", "frame"] = "fixed",
     trim: tuple[int, int] = (0, 0),
     max_gap_s: float = 0.25,
     bilateral_symmetry: bool = True,
@@ -1283,6 +1349,7 @@ def scale_model_from_instanthmr(
         nominal,
         imap,
         cam_to_world=cam_to_world,
+        cam_to_world_mode=cam_to_world_mode,
         trim=trim,
         max_gap_s=max_gap_s,
         bilateral_symmetry=bilateral_symmetry,
@@ -1388,6 +1455,7 @@ def solve_instanthmr_ik(
             imap,
             body_mass=body_mass,
             cam_to_world=source_kwargs.get("cam_to_world"),
+            cam_to_world_mode=source_kwargs.get("cam_to_world_mode", "fixed"),
             trim=source_kwargs.get("trim", (0, 0)),
             max_gap_s=source_kwargs.get("max_gap_s", 0.25),
             bilateral_symmetry=bilateral_symmetry,
@@ -1540,7 +1608,8 @@ __all__ = [
     "MHR70_JOINTS", "Calibration", "InstantHMRHinge", "InstantHMRIKResult",
     "InstantHMRMap", "InstantHMROrientation", "InstantHMRPoint",
     "InstantHMRReconstruction", "InstantHMRSource", "calibrate",
-    "default_instanthmr_map", "estimate_instanthmr_scales", "instanthmr_source",
+    "default_instanthmr_map", "estimate_instanthmr_scales",
+    "estimate_instanthmr_walk_frame", "instanthmr_source",
     "knee_flexion", "landmark_bodies", "load_instanthmr", "map_dict",
     "reconstruct_from_instanthmr", "scale_model_from_instanthmr",
     "scale_spec_from_instanthmr", "segment_orientations",
