@@ -15,7 +15,7 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 
 from myosuite.biomechanics.external_loads import force_at_body
-from myosuite.integrations.capture.markers import _read_markers
+from myosuite.integrations.capture.markers import _open_c3d, _read_markers
 
 _LEN_TO_M = {"m": 1.0, "cm": 0.01, "mm": 0.001}
 _FORCE_TO_N = {"n": 1.0, "kn": 1000.0}
@@ -222,16 +222,9 @@ def read_c3d_trial(
     min_force_n: float = 5.0,
 ) -> C3DTrial:
     """Read markers, analog channels (EMG/sensors) and calibrated force plates from C3D."""
-    try:
-        import ezc3d
-    except ImportError as exc:
-        raise ImportError(
-            "Reading .c3d files needs ezc3d: pip install 'myosuite[capture]'."
-        ) from exc
-
     rot = _check_proper_rotation(point_to_world)
     markers = read_markers(path, point_to_world=rot)
-    capture = ezc3d.c3d(str(path), extract_forceplat_data=True)
+    capture = _open_c3d(path, extract_forceplat_data=True)
 
     analog_grp = capture["parameters"].get("ANALOG", {})
     a_labels = list(analog_grp.get("LABELS", {}).get("value", []))
