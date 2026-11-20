@@ -344,6 +344,7 @@ class StaticOptimizer:
         self._solver: osqp.OSQP | None = None
         self._pattern: np.ndarray | None = None
         self._warm_start: tuple[np.ndarray, np.ndarray] | None = None
+        self._linear: np.ndarray | None = None
         full_names = [m.actuator(i).name for i in range(m.nu)]
         leaf_counts = Counter(n.split("/")[-1] for n in full_names if n)
         self._actuator_index: dict[str, int] = {}
@@ -423,7 +424,6 @@ class StaticOptimizer:
         lower: np.ndarray,
         upper: np.ndarray,
         weight: np.ndarray,
-        linear: np.ndarray | None = None,
     ) -> tuple[np.ndarray | None, Any]:
         """Minimise the cost subject to ``lower <= A x <= upper``, warm-started.
 
@@ -432,6 +432,7 @@ class StaticOptimizer:
         dual values if they still approximately satisfy the new problem.
         """
         n = A.shape[1]
+        linear, self._linear = self._linear, None
         q = np.zeros(n) if linear is None else linear
         pattern = A != 0
         previous_pattern = self._pattern
@@ -508,6 +509,9 @@ class StaticOptimizer:
             min_activation: Optional ``(nu,)`` lower activation bounds for this
                 frame (e.g. the activations reachable under activation
                 dynamics), within the actuators' ranges and the upper bounds.
+            emg_activation: Optional ``(nu,)`` array or ``{actuator_name: value}``
+                mapping of normalized ``[0, 1]`` EMG targets for this frame;
+                ``NaN`` or omitted entries fall back to pure effort minimization.
 
         Returns:
             The solution of this frame.
@@ -564,8 +568,11 @@ class StaticOptimizer:
             np.full(n_eq, _CONSTRAINT_WEIGHT),
             np.ones(n_c),
         ]
-        linear = np.r_[act_q, np.zeros(nv + n_eq + n_c)]
-        x, solver = self._solve_qp(A, lower, upper, weight, linear=linear)
+        self._linear = np.r_[act_q, np.zeros(nv + n_eq + n_c)]
+        try:
+            x, solver = self._solve_qp(A, lower, upper, weight)
+        finally:
+            self._linear = None
         status = solver if isinstance(solver, str) else solver.status
         iterations = 0 if isinstance(solver, str) else solver.iter
         primal_residual = np.nan if isinstance(solver, str) else solver.prim_res
