@@ -108,9 +108,8 @@ def myo_ppo_runner_cfg(
     The normalizer statistics are saved in the checkpoint and frozen at
     evaluation; ``load_rslrl_policy`` / ``export_rslrl_to_onnx`` fold them into
     the policy, which therefore still consumes the raw CPU observations. Tasks
-    that must export to the browser runtime (which cannot load running
-    statistics, see ``docs/wiki/cross-backend-contract.md``) pass
-    ``obs_normalization=False`` and rely on fixed per-term ``scale`` instead.
+    exporting to a browser must embed these frozen statistics in the ONNX actor
+    and apply them exactly once (see ``docs/wiki/cross-backend-contract.md``).
 
     Args:
         experiment_name: Log directory name under ``logs/rsl_rl``.

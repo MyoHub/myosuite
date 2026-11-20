@@ -11,8 +11,18 @@ on CPU (numpy) and in JAX jit/scan contexts.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+
+
+def _is_jax_array(*values: Any) -> bool:
+    for v in values:
+        if v is not None and (
+            hasattr(v, "__jax_array__") or type(v).__module__.startswith("jax")
+        ):
+            return True
+    return False
 
 
 @dataclass
@@ -25,9 +35,9 @@ class RunningMeanStd:
         count: Number of samples seen.
     """
 
-    mean: np.ndarray
-    var: np.ndarray
-    count: int = 0
+    mean: Any
+    var: Any
+    count: Any = 0
 
     @classmethod
     def zeros(cls, dim: int) -> RunningMeanStd:
@@ -46,7 +56,7 @@ class RunningMeanStd:
         )
 
 
-def update(stats: RunningMeanStd, batch: np.ndarray) -> RunningMeanStd:
+def update(stats: RunningMeanStd, batch: Any) -> RunningMeanStd:
     """Update stats with a new batch of observations (Welford parallel form).
 
     Args:
@@ -56,28 +66,43 @@ def update(stats: RunningMeanStd, batch: np.ndarray) -> RunningMeanStd:
     Returns:
         New :class:`RunningMeanStd` with updated state.
     """
-    x = np.asarray(batch, dtype=np.float64)
-    if x.ndim == 1:
-        x = x[np.newaxis]
-    b = x.shape[0]
-    batch_mean = x.mean(axis=0)
-    batch_var = x.var(axis=0)
+    if _is_jax_array(stats.mean, stats.var, batch):
+        import jax.numpy as jnp
+
+        x = jnp.asarray(batch, dtype=jnp.asarray(stats.mean).dtype)
+        if x.ndim == 1:
+            x = x[jnp.newaxis]
+        b = x.shape[0]
+        if b == 0:
+            return RunningMeanStd(mean=stats.mean, var=stats.var, count=stats.count)
+        batch_mean = x.mean(axis=0)
+        batch_var = x.var(axis=0)
+    else:
+        x = np.asarray(batch, dtype=np.float64)
+        if x.ndim == 1:
+            x = x[np.newaxis]
+        b = x.shape[0]
+        if b == 0:
+            return RunningMeanStd(
+                mean=stats.mean.copy(), var=stats.var.copy(), count=stats.count
+            )
+        batch_mean = x.mean(axis=0)
+        batch_var = x.var(axis=0)
 
     n = stats.count
     total = n + b
     delta = batch_mean - stats.mean
     new_mean = stats.mean + delta * b / total
-    # Parallel variance combination
     new_var = (stats.var * n + batch_var * b + delta * delta * n * b / total) / total
     return RunningMeanStd(mean=new_mean, var=new_var, count=total)
 
 
 def normalize(
     stats: RunningMeanStd,
-    obs: np.ndarray,
+    obs: Any,
     eps: float = 1e-8,
     clip: float = 10.0,
-) -> np.ndarray:
+) -> Any:
     """Normalise observations using running stats.
 
     Args:
@@ -89,5 +114,11 @@ def normalize(
     Returns:
         Normalised array, same shape as ``obs``, clipped to ``[-clip, clip]``.
     """
+    if _is_jax_array(stats.mean, stats.var, obs):
+        import jax.numpy as jnp
+
+        normed = (obs - stats.mean) / jnp.sqrt(stats.var + eps)
+        return jnp.clip(normed, -clip, clip).astype(jnp.float32)
+
     normed = (obs - stats.mean) / np.sqrt(stats.var + eps)
     return np.clip(normed, -clip, clip).astype(np.float32)

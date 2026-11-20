@@ -14,6 +14,7 @@ at a time; open-loop rollouts diverge (float32 Warp vs float64 MuJoCo).
 
 from __future__ import annotations
 
+import importlib.metadata
 import gymnasium as gym
 import numpy as np
 import pytest
@@ -61,14 +62,38 @@ _STEP_ATOL = {
     "opponent_relative": 2e-2,
     "role": 0.0,
 }
+# Before mujoco-warp 3.16, inside-wrapped arm/wrist tendons (e.g. ECRL_tendon on
+# ECRL_torus_wrap, r = 8 mm; google-deepmind/mujoco_warp#1713) can stall in their
+# float32 Newton solve and add up to 2*pi*r (~50 mm) on one 2 ms substep, kicking
+# wrist/forearm/elbow dofs up to 0.032 rad in qpos and 7.64 rad/s in qvel over
+# seeds 0-29 while trunk/leg dofs stay <= 2.4e-3 rad and <= 0.23 rad/s.
+_INSIDE_WRAP_FIXED_IN = (3, 16)
+_ARM_JOINT_PREFIXES = (
+    "sternoclavicular",
+    "unrotscap",
+    "acromioclavicular",
+    "unrothum",
+    "elv_angle",
+    "shoulder",
+    "elbow_flexion",
+    "pro_sup",
+    "deviation",
+    "flexion",
+)
+_WARP_INSIDE_WRAP_ARM_ATOL = {"qpos_local": 5e-2, "qvel_local": 10.0}
 _STEP_MEDIAN_ATOL = 1e-3  # a block that is merely bounded (e.g. zeros) fails this
 # Blocks whose median float32/solver noise exceeds the default. Orientation stays near 1e-4,
 # with rare single-step spikes on any body: up to 0.0105 on the MuscleMimic body and 0.0071
 # on myofullbody over seeds 2-6, with matching contact sets. qvel_local spikes at one
 # contact-rich step of seed 2 with mujoco / mujoco-warp 3.11: 6e-4 on Windows, 1.5e-3 and
 # 1.6e-3 on some Linux runners (the same tree passes on others). Dropped joint velocities
-# still give a 4e-2 median.
-_STEP_MEDIAN_ATOL_BY_KEY = {"orientation": 1e-2, "qvel_local": 5e-3}
+# still give a 4e-2 median. root_vel_body has length 2, so its median is the mean of its two
+# components (up to 7.0e-3 over seeds 0-29 vs _STEP_ATOL 2e-2).
+_STEP_MEDIAN_ATOL_BY_KEY = {
+    "orientation": 1e-2,
+    "qvel_local": 5e-3,
+    "root_vel_body": 1e-2,
+}
 _STEP_REW_ATOL = 1e-3
 # Same state, no physics: term functions must agree to float32 precision.
 _TERM_ATOL = 1e-5
@@ -130,14 +155,45 @@ def _cpu_obs(cpu) -> np.ndarray:
     return cpu._obs_dict_to_vec(cpu._get_obs_dict(cpu._accessor)).astype(np.float32)
 
 
+def _has_old_warp_inside_wrap() -> bool:
+    try:
+        ver = importlib.metadata.version("mujoco-warp").split(".")[:2]
+        return (int(ver[0]), int(ver[1])) < _INSIDE_WRAP_FIXED_IN
+    except (importlib.metadata.PackageNotFoundError, ValueError):
+        return False
+
+
+def _arm_local_dof_mask(model) -> np.ndarray:
+    names = [
+        next(
+            model.joint(j).name
+            for j in range(model.njnt)
+            if model.jnt_qposadr[j] == idx
+        )
+        for idx in range(7, model.nq)
+    ]
+    return np.array([n.startswith(_ARM_JOINT_PREFIXES) for n in names])
+
+
 def _assert_obs_close(cpu, got: np.ndarray, expected: np.ndarray) -> None:
     """Per-block comparison of one-step observations (see ``_STEP_ATOL``)."""
     obs_dict = cpu._get_obs_dict(cpu._accessor)
+    arm_mask = _arm_local_dof_mask(cpu.model) if _has_old_warp_inside_wrap() else None
     start = 0
     for key in CHASETAG_OBS_KEYS:
         size = np.atleast_1d(obs_dict[key]).size
         diff = np.abs(got[start : start + size] - expected[start : start + size])
-        assert diff.max() <= _STEP_ATOL[key], (key, diff.max())
+        if arm_mask is not None and key in _WARP_INSIDE_WRAP_ARM_ATOL:
+            assert diff[~arm_mask].max() <= _STEP_ATOL[key], (
+                key,
+                diff[~arm_mask].max(),
+            )
+            assert diff[arm_mask].max() <= _WARP_INSIDE_WRAP_ARM_ATOL[key], (
+                key,
+                diff[arm_mask].max(),
+            )
+        else:
+            assert diff.max() <= _STEP_ATOL[key], (key, diff.max())
         median_atol = _STEP_MEDIAN_ATOL_BY_KEY.get(key, _STEP_MEDIAN_ATOL)
         assert np.median(diff) <= median_atol, (key, np.median(diff))
         start += size

@@ -174,6 +174,29 @@ class StaticOptimizationResult:
     dual_residual: np.ndarray
 
 
+def _near_optimal(
+    matrix: sparse.csc_matrix,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    weight: np.ndarray,
+    primal: np.ndarray,
+    dual: np.ndarray,
+    tolerance: float,
+) -> bool:
+    """Check the previous solution against the rebuilt QP's absolute tolerance."""
+    if not (np.isfinite(primal).all() and np.isfinite(dual).all()):
+        return False
+    activity = matrix @ primal
+    active = np.abs(dual) > tolerance
+    bounds = np.where(dual[active] > 0, upper[active], lower[active])
+    return bool(
+        np.all(activity >= lower - tolerance)
+        and np.all(activity <= upper + tolerance)
+        and np.all(np.abs(activity[active] - bounds) <= tolerance)
+        and np.all(np.abs(2.0 * weight * primal + matrix.T @ dual) <= tolerance)
+    )
+
+
 class StaticOptimizer:
     """Static optimization of one model, frame by frame.
 
@@ -199,12 +222,26 @@ class StaticOptimizer:
                 joint ``actuatorfrcrange``) or has more than one activation, or
                 ``on_failure`` is not one of ``"warn"``, ``"raise"``, ``"nan"``.
         """
+        self._initialize(copy.deepcopy(model), config)
+
+    @classmethod
+    def _from_owned_model(
+        cls, model: mujoco.MjModel, config: StaticOptimizationConfig | None = None
+    ) -> StaticOptimizer:
+        """Take ownership of a private model that no caller will reuse."""
+        optimizer = cls.__new__(cls)
+        optimizer._initialize(model, config)
+        return optimizer
+
+    def _initialize(
+        self, m: mujoco.MjModel, config: StaticOptimizationConfig | None
+    ) -> None:
+        """Prepare the model owned by this optimizer."""
         cfg = config or StaticOptimizationConfig()
         if cfg.on_failure not in get_args(OnFailure):
             raise ValueError(
                 f"on_failure must be one of {get_args(OnFailure)}: {cfg.on_failure!r}"
             )
-        m = copy.deepcopy(model)
         unsupported = [
             m.actuator(i).name
             for i in range(m.nu)
@@ -249,8 +286,17 @@ class StaticOptimizer:
         body_weight = float(
             m.body_mass[m.body_weldid != 0].sum() * np.linalg.norm(m.opt.gravity)
         )
-        self._contact_force = cfg.contact_optimal_force or body_weight
-        residual = cfg.residual_optimal_force or 0.1 * body_weight
+        default_force = body_weight if body_weight > 0.0 else 1.0
+        self._contact_force = (
+            cfg.contact_optimal_force
+            if cfg.contact_optimal_force is not None
+            else default_force
+        )
+        residual = (
+            cfg.residual_optimal_force
+            if cfg.residual_optimal_force is not None
+            else 0.1 * default_force
+        )
         if cfg.reserve_optimal_force is None:
             peak = self.peak_actuator_qfrc()
             spanned = peak > 1e-9 * peak.max(initial=0.0)
@@ -278,6 +324,7 @@ class StaticOptimizer:
         )
         self._solver: osqp.OSQP | None = None
         self._pattern: np.ndarray | None = None
+        self._warm_start: tuple[np.ndarray, np.ndarray] | None = None
 
     def peak_actuator_qfrc(self) -> np.ndarray:
         """Per dof, ``sum_i |R_ij| F_i`` at ``qpos0`` and rest [N m or N].
@@ -319,34 +366,47 @@ class StaticOptimizer:
         """Minimise the cost subject to ``lower <= A x <= upper``, warm-started.
 
         OSQP's matrix keeps the union of all sparsity patterns seen so far, so most
-        frames only update values; a new nonzero rebuilds the problem.
+        frames only update values. A rebuild can reuse converged primal and
+        dual values if they still approximately satisfy the new problem.
         """
         pattern = A != 0
-        if self._pattern is not None and self._pattern.shape == pattern.shape:
-            if not (pattern & ~self._pattern).any():
-                self._solver.update(Ax=A.T[self._pattern.T], l=lower, u=upper)
-                res = self._solver.solve(raise_error=False)
-                return res.x, res.info
-            pattern |= self._pattern
-        self._pattern = pattern
-        cols, rows = np.nonzero(pattern.T)  # CSC order
-        indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=A.shape[1]))]
-        A_csc = sparse.csc_matrix((A[rows, cols], rows, indptr), shape=A.shape)
-        self._solver = osqp.OSQP()
-        self._solver.setup(
-            sparse.diags(2.0 * weight, format="csc"),
-            np.zeros(A.shape[1]),
-            A_csc,
-            lower,
-            upper,
-            verbose=False,
-            eps_abs=self.config.tolerance,
-            eps_rel=self.config.tolerance,
-            max_iter=self.config.max_iter,
-            polishing=True,
-            warm_starting=True,
-        )
+        previous_pattern = self._pattern
+        same_shape = previous_pattern is not None and previous_pattern.shape == A.shape
+        if same_shape and not (pattern & ~previous_pattern).any():
+            self._solver.update(Ax=A.T[previous_pattern.T], l=lower, u=upper)
+        else:
+            if same_shape:
+                pattern |= previous_pattern
+            cols, rows = np.nonzero(pattern.T)
+            indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=A.shape[1]))]
+            A_csc = sparse.csc_matrix((A[rows, cols], rows, indptr), shape=A.shape)
+            solver = osqp.OSQP()
+            solver.setup(
+                sparse.diags(2.0 * weight, format="csc"),
+                np.zeros(A.shape[1]),
+                A_csc,
+                lower,
+                upper,
+                verbose=False,
+                eps_abs=self.config.tolerance,
+                eps_rel=self.config.tolerance,
+                max_iter=self.config.max_iter,
+                polishing=True,
+                warm_starting=True,
+            )
+            if same_shape and self._warm_start is not None:
+                primal, dual = self._warm_start
+                if _near_optimal(
+                    A_csc, lower, upper, weight, primal, dual, self.config.tolerance
+                ):
+                    solver.warm_start(x=primal, y=dual)
+            self._solver, self._pattern = solver, pattern
         res = self._solver.solve(raise_error=False)
+        self._warm_start = (
+            (res.x, res.y)
+            if res.info.status == "solved" and res.x is not None and res.y is not None
+            else None
+        )
         return res.x, res.info
 
     def solve(
@@ -427,8 +487,26 @@ class StaticOptimizer:
             np.ones(n_c),
         ]
         x, solver = self._solve_qp(A, lower, upper, weight)
-        if x is None:
-            x = np.full(A.shape[1], np.nan)
+        status = solver if isinstance(solver, str) else solver.status
+        iterations = 0 if isinstance(solver, str) else solver.iter
+        primal_residual = np.nan if isinstance(solver, str) else solver.prim_res
+        dual_residual = np.nan if isinstance(solver, str) else solver.dual_res
+        if x is None or x.dtype == object or not np.all(np.isfinite(x)):
+            zero_a = np.clip(np.zeros(nu), lo, hi)
+            failed = StaticOptimizationResult(
+                activation=zero_a,
+                actuator_force=gain * zero_a + bias,
+                reserve=np.zeros(nv),
+                constraint_force=np.zeros(nv),
+                joint_torque=tau,
+                status=np.asarray(status),
+                contact_force=np.zeros((m.nbody, 3)),
+                contact_qfrc=np.zeros(nv),
+                iterations=np.asarray(iterations),
+                primal_residual=np.asarray(primal_residual),
+                dual_residual=np.asarray(dual_residual),
+            )
+            return self._apply_failure_policy(failed)
 
         a = np.clip(x[:nu], lo, hi)
         f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
@@ -440,12 +518,12 @@ class StaticOptimizer:
             constraint_force=J_eq.T @ (_CONSTRAINT_SCALE * x[nu + nv : nu + nv + n_eq])
             + contact_qfrc,
             joint_torque=tau,
-            status=np.asarray(solver.status),
+            status=np.asarray(status),
             contact_force=self._body_contact_forces(rows, f),
             contact_qfrc=contact_qfrc,
-            iterations=np.asarray(solver.iter),
-            primal_residual=np.asarray(solver.prim_res),
-            dual_residual=np.asarray(solver.dual_res),
+            iterations=np.asarray(iterations),
+            primal_residual=np.asarray(primal_residual),
+            dual_residual=np.asarray(dual_residual),
         )
         return self._apply_failure_policy(result)
 
@@ -543,7 +621,21 @@ def static_optimization(
         StaticOptimizationWarning: Once, with the number of frames OSQP did not
             solve and their statuses, with ``on_failure="warn"``.
     """
-    so = StaticOptimizer(model, config)
+    return _solve_clip(
+        StaticOptimizer(model, config), qpos, qvel, qacc, external_qfrc, stacklevel=3
+    )
+
+
+def _solve_clip(
+    so: StaticOptimizer,
+    qpos: np.ndarray,
+    qvel: np.ndarray,
+    qacc: np.ndarray,
+    external_qfrc: np.ndarray | None = None,
+    *,
+    stacklevel: int = 2,
+) -> StaticOptimizationResult:
+    """Solve a clip on an existing optimizer, including private sampled models."""
     frames = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", StaticOptimizationWarning)
@@ -568,6 +660,6 @@ def static_optimization(
             f"({dict(Counter(result.status[failed].tolist()))}); their activations "
             "are not optimal (StaticOptimizationConfig: max_iter, tolerance, on_failure)",
             StaticOptimizationWarning,
-            stacklevel=2,
+            stacklevel=stacklevel,
         )
     return result
