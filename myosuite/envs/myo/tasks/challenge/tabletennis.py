@@ -187,7 +187,6 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         touching_objects = set(
             get_ball_contact_labels(self.model, self.data, self.id_info)
         )
-        self.contact_trajectory.append(touching_objects)
         obs_dict["touching_info"] = self._ball_label_to_obs(touching_objects)
         if self.model.na > 0:
             obs_dict["act"] = self.data.act.copy()
@@ -219,28 +218,35 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 ("act_reg", -1.0 * act_mag),
                 ("sparse", paddle_touch[0] == 1),
                 ("solved", np.array([[solved]])),
-                ("done", np.array([[self._get_done(ball_pos[-1], solved)]])),
+                (
+                    "done",
+                    np.array([[self._get_done(ball_pos[-1], solved, obs_dict)]]),
+                ),
             )
         )
         rwd_dict["dense"] = sum(
             float(wt) * float(np.array(rwd_dict[key]).squeeze())
             for key, wt in self.rwd_keys_wt.items()
         )
-        if rwd_dict["solved"]:
-            self.cur_rally += 1
-        if rwd_dict["solved"] and self.cur_rally < self.rally_count:
-            rwd_dict["done"] = False
-            rwd_dict["solved"] = False
-            self.data.time = 0.0
-            self.contact_trajectory = []
-            self.relaunch_ball()
         return rwd_dict
 
-    def _get_done(self, z: float, solved: bool) -> int:
-        if self.obs_dict["time"] > MAX_TIME:
+    def _get_done(
+        self,
+        z: float,
+        solved: bool,
+        obs_dict: dict[str, Any] | None = None,
+    ) -> int:
+        target_obs = (
+            obs_dict if obs_dict is not None else getattr(self, "obs_dict", None)
+        )
+        if (
+            target_obs is not None
+            and float(np.asarray(target_obs["time"]).squeeze()) > MAX_TIME
+        ):
             return 1
         if z < 0.3:
-            self.obs_dict["time"] = MAX_TIME
+            if target_obs is not None:
+                target_obs["time"] = np.array([MAX_TIME])
             return 1
         if solved:
             return 1
@@ -345,6 +351,8 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         gym.Env.reset(self, seed=seed)
         self.contact_trajectory = []
         self._init_qpos[:] = self.model.key_qpos[0].copy()
+        self._init_qvel[:] = 0.0
+        self._init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = self.start_vel
         if self.paddle_mass_range:
             self.model.body_mass[self.id_info.paddle_bid] = self.np_random.uniform(
                 *self.paddle_mass_range
@@ -375,8 +383,13 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 )
         else:
             reset_qpos_local = self._init_qpos.copy()
-        if self.ball_qvel and ball_pos is not None:
-            v_bounds = self.cal_ball_qvel(ball_pos)
+        if self.ball_qvel:
+            launch_pos = (
+                ball_pos
+                if ball_pos is not None
+                else self._init_qpos[self.ball_posadr : self.ball_posadr + 3]
+            )
+            v_bounds = self.cal_ball_qvel(launch_pos)
             v_low, v_high = v_bounds[1], v_bounds[0]
             ball_vel = self.np_random.uniform(low=v_low, high=v_high)
             self._init_qvel[self.ball_dofadr : self.ball_dofadr + 3] = ball_vel
@@ -386,6 +399,9 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.data.qvel[:] = self._init_qvel
         mujoco.mj_forward(self.model, self.data)
         self.cur_rally = 0
+        self.contact_trajectory = [
+            set(get_ball_contact_labels(self.model, self.data, self.id_info))
+        ]
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(self.obs_dict)
@@ -397,9 +413,23 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         n_frames = int(self._ctrl_dt / self.model.opt.timestep)
         self.data.ctrl[:] = ctrl
         self._step_physics(n_frames)
+        self.contact_trajectory.append(
+            set(get_ball_contact_labels(self.model, self.data, self.id_info))
+        )
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         self.obs_dict = self._get_obs_dict(self._accessor)
         self.rwd_dict = self.get_reward_dict(self.obs_dict)
+        if bool(np.asarray(self.rwd_dict["solved"]).squeeze()):
+            self.cur_rally += 1
+            if self.cur_rally < self.rally_count:
+                self.rwd_dict["done"] = False
+                self.rwd_dict["solved"] = False
+                self.data.time = 0.0
+                self.contact_trajectory = []
+                self.relaunch_ball()
+                mujoco.mj_forward(self.model, self.data)
+                self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
+                self.obs_dict = self._get_obs_dict(self._accessor)
         obs, reward, terminated, truncated, info = self._finalize_step(
             self.obs_dict, self.rwd_dict
         )

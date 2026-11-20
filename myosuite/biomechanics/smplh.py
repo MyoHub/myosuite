@@ -2,17 +2,21 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""SMPL+H forward kinematics in NumPy (AMASS motions).
+"""SMPL+H and SMPL-X forward kinematics in NumPy (AMASS motions).
 
-Linear blend skinning of the SMPL+H body model (Romero et al. 2017, MANO/SMPL+H; the
-16-beta gender-specific models AMASS ships): shape blend shapes, joint regression,
-rigid joint transforms along the kinematic tree, and, for a chosen subset of vertices,
-pose blend shapes and skinning. Only the rigid transforms are needed for joint
-positions and orientations, so posing a long clip costs a few matrix products per
-joint; vertices are skinned only where asked for (e.g. heels and toe tips).
+Linear blend skinning of the SMPL+H / SMPL-X body models (Romero et al. 2017;
+Pavlakos et al. 2019): shape blend shapes, joint regression, rigid joint transforms
+along the kinematic tree, and, for a chosen subset of vertices, pose blend shapes
+and skinning. Only the rigid transforms are needed for joint positions and
+orientations, so posing a long clip costs a few matrix products per joint; vertices
+are skinned only where asked for (e.g. heels and toe tips).
 
-The body model files (``model.npz``) are not part of MyoSuite: they come with AMASS
-under the SMPL+H licence. Nothing here downloads or redistributes them.
+Licensing note:
+    Body model files (``model.npz`` / ``SMPLH_*.pkl`` / ``SMPLX_*.pkl``) are not part
+    of MyoSuite and no model parameters are bundled here. Obtain them directly from
+    AMASS / MPI-IS under their upstream license terms (SMPL+H and SMPL-X are governed
+    by MPI-IS non-commercial research licenses: https://mano.is.tue.mpg.de/ and
+    https://smpl-x.is.tue.mpg.de/).
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 SMPLH_JOINTS: tuple[str, ...] = (
     "Pelvis", "L_Hip", "R_Hip", "Spine1", "L_Knee", "R_Knee", "Spine2", "L_Ankle",
@@ -49,10 +54,24 @@ def axis_angle_to_matrix(aa: np.ndarray) -> np.ndarray:
     )
     s, c = np.sin(theta)[..., None], np.cos(theta)[..., None]
     R = np.eye(3) + s * K + (1 - c) * (K @ K)
-    # second-order expansion near zero keeps the derivative right
     Ks = np.stack([zero, -aa[..., 2], aa[..., 1], aa[..., 2], zero, -aa[..., 0],
                    -aa[..., 1], aa[..., 0], zero], -1).reshape(*aa.shape[:-1], 3, 3)  # fmt: skip
     return np.where(small[..., None], np.eye(3) + Ks + 0.5 * Ks @ Ks, R)
+
+
+def matrix_to_axis_angle(rot: np.ndarray) -> np.ndarray:
+    """Inverse Rodrigues: ``(..., 3, 3)`` rotation matrices to ``(..., 3)`` axis-angles."""
+    r_arr = np.asarray(rot, dtype=np.float64)
+    shape = r_arr.shape[:-2]
+    return Rotation.from_matrix(r_arr.reshape(-1, 3, 3)).as_rotvec().reshape(*shape, 3)
+
+
+def adapt_smplx_poses_to_smplh(poses: np.ndarray) -> np.ndarray:
+    """Map ``(T, 165)`` SMPL-X poses to ``(T, 156)`` SMPL+H layout (drops jaw and eyes)."""
+    poses = np.asarray(poses, np.float64)
+    if poses.ndim != 2 or poses.shape[1] != 165:
+        raise ValueError(f"Expected (T, 165) SMPL-X poses, got {poses.shape}.")
+    return np.concatenate([poses[:, :66], poses[:, 75:165]], axis=1)
 
 
 @dataclass
@@ -73,20 +92,34 @@ class SMPLHPose:
 
 
 class SMPLH:
-    """An SMPL+H body model (``model.npz`` of the AMASS SMPL+H release).
+    """An SMPL / SMPL+H / SMPL-X body model (``.npz`` or chumpy ``.pkl``).
 
     Args:
-        path: The ``model.npz`` (e.g. ``body_models/smplh/female/model.npz``).
+        path: Path to ``model.npz`` or ``*.pkl`` (e.g. ``SMPLH_FEMALE.pkl``).
     """
 
     def __init__(self, path: str | Path) -> None:
-        with np.load(path, allow_pickle=False) as d:
+        model_path = Path(path)
+        if model_path.suffix.lower() == ".pkl":
+            from myosuite.biomechanics.chumpy_pickle import load_body_model_pkl
+
+            d = load_body_model_pkl(model_path)
             self.v_template = np.asarray(d["v_template"], np.float64)
             self.shapedirs = np.asarray(d["shapedirs"], np.float64)
             self.posedirs = np.asarray(d["posedirs"], np.float64)
             self.J_regressor = np.asarray(d["J_regressor"], np.float64)
             self.weights = np.asarray(d["weights"], np.float64)
-            parents = np.asarray(d["kintree_table"][0], np.int64)
+            parents = np.asarray(d["kintree_table"][0], np.int64).copy()
+        else:
+            with np.load(model_path, allow_pickle=False) as z:
+                self.v_template = np.asarray(z["v_template"], np.float64)
+                self.shapedirs = np.asarray(z["shapedirs"], np.float64)
+                self.posedirs = np.asarray(z["posedirs"], np.float64)
+                self.J_regressor = np.asarray(z["J_regressor"], np.float64)
+                self.weights = np.asarray(z["weights"], np.float64)
+                parents = np.asarray(z["kintree_table"][0], np.int64).copy()
+        if self.posedirs.ndim == 2:
+            self.posedirs = self.posedirs.T.reshape(len(self.v_template), 3, -1)
         parents[0] = -1
         self.parents = parents
         self.num_joints = len(parents)
@@ -111,7 +144,8 @@ class SMPLH:
 
         Args:
             poses: ``(T, 3 * J')`` axis-angle per joint (AMASS ``poses``: root, 21 body,
-                30 hand joints); missing trailing joints are zero (default hands).
+                30 hand joints; 165-d SMPL-X ``poses`` are mapped automatically when
+                running on a 52-joint SMPL+H model); missing trailing joints are zero.
             betas: Shape coefficients (up to ``num_betas``).
             trans: ``(T, 3)`` root translation (zero if ``None``).
             vertex_ids: Vertices to skin, by name (default: none).
@@ -120,13 +154,14 @@ class SMPLH:
             The posed joints, joint orientations and requested vertices.
         """
         poses = np.asarray(poses, np.float64)
+        if poses.ndim == 2 and poses.shape[1] == 165 and self.num_joints == 52:
+            poses = adapt_smplx_poses_to_smplh(poses)
         T = len(poses)
         aa = np.zeros((T, self.num_joints, 3))
         n = min(poses.shape[1] // 3, self.num_joints)
         aa[:, :n] = poses[:, : 3 * n].reshape(T, n, 3)
         R_local = axis_angle_to_matrix(aa)
         v_rest, J = self.shaped(betas)
-        # rigid transforms along the tree (parents precede children)
         R = np.empty_like(R_local)
         P = np.empty((T, self.num_joints, 3))
         R[:, 0], P[:, 0] = R_local[:, 0], J[0]
@@ -141,7 +176,6 @@ class SMPLH:
             ids = np.array([vertex_ids[k] for k in names])
             feat = (R_local[:, 1:] - np.eye(3)).reshape(T, -1)
             v = v_rest[ids][None] + np.einsum("vcp,tp->tvc", self.posedirs[ids], feat)
-            # skinning: sum_j w_vj (R_j (v - J_j) + P_j)
             w = self.weights[ids]
             loc = v[:, :, None, :] - J[None, None]
             moved = np.einsum("tjab,tvjb->tvja", R, loc) + P[:, None]
@@ -150,16 +184,17 @@ class SMPLH:
 
 
 def load_amass(path: str | Path) -> dict[str, np.ndarray | str | float]:
-    """An AMASS SMPL+H ``*_poses.npz``: ``poses``, ``betas``, ``trans``, ``gender``, ``fps``."""
+    """Load an AMASS SMPL+H or SMPL-X ``.npz``: ``poses``, ``betas``, ``trans``, ``gender``, ``fps``."""
     with np.load(path, allow_pickle=False) as d:
-        g = d["gender"].item()
+        g = d["gender"].item() if "gender" in d else "neutral"
         gender = g.decode() if isinstance(g, bytes) else str(g)
+        fps_key = "mocap_framerate" if "mocap_framerate" in d else "mocap_frame_rate"
         return {
             "poses": np.asarray(d["poses"], np.float64),
             "betas": np.asarray(d["betas"], np.float64),
             "trans": np.asarray(d["trans"], np.float64),
             "gender": gender.strip().lower(),
-            "fps": float(d["mocap_framerate"]),
+            "fps": float(d[fps_key]),
         }
 
 
@@ -168,6 +203,8 @@ __all__ = [
     "SMPLH_JOINTS",
     "SMPLH_VERTICES",
     "SMPLHPose",
+    "adapt_smplx_poses_to_smplh",
     "axis_angle_to_matrix",
     "load_amass",
+    "matrix_to_axis_angle",
 ]
