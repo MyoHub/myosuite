@@ -25,6 +25,7 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* CEINMS-style multi-trial EMG neuromusculoskeletal calibration and C3D pipeline (`myosuite.biomechanics.muscle_calibration`), calibrating muscle strength scales, operating-range shifts/spans, nonlinear shape factor `A`, and electromechanical delay across trials before running hybrid EMG-assisted static optimization.
 
 ### Fixed
 
