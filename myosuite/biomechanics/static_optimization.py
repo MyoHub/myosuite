@@ -140,6 +140,7 @@ class StaticOptimizationConfig:
     contact_forces: bool = False
     contact_distance: float = 0.01
     contact_optimal_force: float | None = None
+    contact_smooth_weight: float = 0.0
     residual_optimal_force: float | None = None
     emg_weight: float = 10.0
     emg_effort_weight: float = 0.0
@@ -261,6 +262,11 @@ class StaticOptimizer:
             raise ValueError(
                 f"emg_effort_weight must be finite and nonnegative: {cfg.emg_effort_weight!r}"
             )
+        if not np.isfinite(cfg.contact_smooth_weight) or cfg.contact_smooth_weight < 0:
+            raise ValueError(
+                "contact_smooth_weight must be finite and nonnegative: "
+                f"{cfg.contact_smooth_weight!r}"
+            )
         unsupported = [
             m.actuator(i).name
             for i in range(m.nu)
@@ -345,6 +351,8 @@ class StaticOptimizer:
         self._pattern: np.ndarray | None = None
         self._warm_start: tuple[np.ndarray, np.ndarray] | None = None
         self._linear: np.ndarray | None = None
+        self._prev_contact_edges: dict[tuple[int, int, int], float] = {}
+        self._has_prev_contact_frame: bool = False
         full_names = [m.actuator(i).name for i in range(m.nu)]
         leaf_counts = Counter(n.split("/")[-1] for n in full_names if n)
         self._actuator_index: dict[str, int] = {}
@@ -562,13 +570,30 @@ class StaticOptimizer:
         lower = np.r_[rhs, lo, np.zeros(n_c)]
         upper = np.r_[rhs, hi, np.full(n_c, np.inf)]
         act_w, act_q = self._resolve_emg_frame(emg_activation)
+        edge_keys = (
+            self._contact_edge_keys(rows)
+            if self.config.contact_forces and self.config.contact_smooth_weight > 0.0
+            else []
+        )
+        if edge_keys and self._has_prev_contact_frame:
+            s_c = capacity / self._contact_force
+            prev_c = np.array(
+                [self._prev_contact_edges.get(k, 0.0) for k in edge_keys],
+                dtype=np.float64,
+            )
+            w_sm = self.config.contact_smooth_weight
+            contact_w = 1.0 + w_sm * (s_c * s_c)
+            contact_q = -2.0 * w_sm * s_c * prev_c
+        else:
+            contact_w = np.ones(n_c)
+            contact_q = np.zeros(n_c)
         weight = np.r_[
             act_w,
             self._reserve_weight,
             np.full(n_eq, _CONSTRAINT_WEIGHT),
-            np.ones(n_c),
+            contact_w,
         ]
-        self._linear = np.r_[act_q, np.zeros(nv + n_eq + n_c)]
+        self._linear = np.r_[act_q, np.zeros(nv + n_eq), contact_q]
         try:
             x, solver = self._solve_qp(A, lower, upper, weight)
         finally:
@@ -596,6 +621,15 @@ class StaticOptimizer:
 
         a = np.clip(x[:nu], lo, hi)
         f = capacity * np.maximum(x[nu + nv + n_eq :], 0.0)
+        if (
+            str(status) == "solved"
+            and self.config.contact_forces
+            and self.config.contact_smooth_weight > 0.0
+        ):
+            self._prev_contact_edges = {
+                k: float(fi) / self._contact_force for k, fi in zip(edge_keys, f)
+            }
+            self._has_prev_contact_frame = True
         contact_qfrc = efc_J[rows].T @ f
         result = StaticOptimizationResult(
             activation=a,
@@ -644,6 +678,22 @@ class StaticOptimizer:
                 if f.name not in kept
             },
         )
+
+    def reset_contact_history(self) -> None:
+        """Clear previous-frame contact edge forces used by ``contact_smooth_weight``."""
+        self._prev_contact_edges.clear()
+        self._has_prev_contact_frame = False
+
+    def _contact_edge_keys(self, rows: np.ndarray) -> list[tuple[int, int, int]]:
+        d = self.data
+        counts: dict[int, int] = {}
+        keys: list[tuple[int, int, int]] = []
+        for r in rows:
+            c = int(d.efc_id[r])
+            idx = counts.get(c, 0)
+            counts[c] = idx + 1
+            keys.append((int(d.contact.geom1[c]), int(d.contact.geom2[c]), idx))
+        return keys
 
     def _contact_rows(self) -> tuple[np.ndarray, np.ndarray]:
         """Pyramid rows of contacts with world-fixed bodies and each row's capacity [N]."""
