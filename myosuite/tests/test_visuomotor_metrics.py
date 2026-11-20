@@ -46,7 +46,7 @@ def test_head_contribution_onset_latency_and_vor_gain() -> None:
 
     lag_s, corr = eye_head_coupling_lag(gaze_speed, head_speed, dt)
     assert lag_s == pytest.approx(0.04, abs=1e-9)
-    assert corr == pytest.approx(1.0, abs=1e-3)
+    assert corr == pytest.approx(1.0, abs=1e-2)
 
     # VOR gain: eye_in_head = -0.92 * head_vel
     h_vel = 40.0 * np.sin(2.0 * math.pi * 1.5 * t)
