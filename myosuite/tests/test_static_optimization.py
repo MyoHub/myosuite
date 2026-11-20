@@ -487,3 +487,63 @@ def test_unsolved_frames_raise_or_become_nan(arm_motion) -> None:
     assert np.isfinite(out.joint_torque).all()
     with pytest.raises(ValueError, match="on_failure"):
         StaticOptimizer(model, replace(config, on_failure="ignore"))
+
+
+def test_hybrid_emg_assisted_tracks_cocontraction_and_synthesizes_deep_muscles() -> (
+    None
+):
+    env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        model = env.unwrapped.model
+        names = [model.actuator(i).name for i in range(model.nu)]
+        tri_idx = names.index("TRIlong")
+        bic_idx = names.index("BIClong")
+        bra_idx = names.index("BRA")
+
+        qpos, zero = np.array([1.0]), np.zeros(1)
+        so = StaticOptimizer(model, StaticOptimizationConfig(emg_weight=25.0))
+        pure = so.solve(qpos, zero, zero)
+        assert pure.activation[tri_idx] < 1e-4
+
+        # Command antagonist TRIlong co-contraction; unmeasured BRA increases to balance torque.
+        hybrid = so.solve(
+            qpos, zero, zero, emg_activation={"TRIlong": 0.35, "BIClong": 0.05}
+        )
+        assert hybrid.status == "solved"
+        assert hybrid.activation[tri_idx] == pytest.approx(0.35, abs=0.03)
+        assert hybrid.activation[bic_idx] == pytest.approx(0.05, abs=0.03)
+        assert hybrid.activation[bra_idx] > pure.activation[bra_idx] + 0.05
+        qfrc = _qfrc_actuator(model, qpos, zero, hybrid.activation)
+        np.testing.assert_allclose(
+            qfrc + hybrid.reserve + hybrid.constraint_force,
+            hybrid.joint_torque,
+            atol=1e-4,
+        )
+
+        # Clip solve with mid-clip NaN dropout falls back cleanly to minimum effort on frame 1.
+        q_clip = np.tile(qpos, (3, 1))
+        z_clip = np.zeros((3, 1))
+        clip_res = static_optimization(
+            model,
+            q_clip,
+            z_clip,
+            z_clip,
+            emg_activation={
+                "TRIlong": np.array([0.35, np.nan, 0.25]),
+                "BIClong": np.array([0.05, np.nan, 0.05]),
+            },
+            config=StaticOptimizationConfig(emg_weight=25.0),
+        )
+        assert (clip_res.status == "solved").all()
+        assert clip_res.activation[0, tri_idx] == pytest.approx(0.35, abs=0.03)
+        np.testing.assert_allclose(clip_res.activation[1], pure.activation, atol=1e-6)
+        assert clip_res.activation[2, tri_idx] == pytest.approx(0.25, abs=0.03)
+
+        with pytest.raises(KeyError, match="Unknown actuator"):
+            so.solve(qpos, zero, zero, emg_activation={"nonexistent": 0.2})
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            so.solve(qpos, zero, zero, emg_activation={"TRIlong": 1.5})
+        with pytest.raises(ValueError, match="emg_weight"):
+            StaticOptimizer(model, StaticOptimizationConfig(emg_weight=0.0))
+    finally:
+        env.close()
