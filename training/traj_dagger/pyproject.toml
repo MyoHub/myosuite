@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-traj-dagger"
+version = "0.1.0"
+description = "Multi-teacher trajectory-swap DAgger distillation for MyoSuite"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = ["myosuite", "mujoco", "numpy", "torch"]
+
+[project.optional-dependencies]
+mjlab = ["myosuite[mjlab]", "tyro"]
+rl = ["myosuite[rl]"]
+test = ["pytest"]
+
+[project.scripts]
+traj-dagger-mjlab = "myosuite_traj_dagger.train_mjlab:main"
+traj-dagger-bench = "myosuite_traj_dagger.benchmark:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_traj_dagger*"]
