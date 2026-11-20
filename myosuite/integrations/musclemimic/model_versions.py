@@ -162,7 +162,10 @@ def uses_musclemimic_models(env_id: str) -> bool:
         return False
     if isinstance(spec.entry_point, str) and spec.entry_point in _MODELS_ENTRY_POINTS:
         return True
-    if spec.entry_point == "myosuite.envs.waypoint:WaypointEnv":
+    if spec.entry_point in (
+        "myosuite.envs.myo.tasks.basic.full_body.waypoint:WaypointEnv",
+        "myosuite.envs.waypoint:WaypointEnv",
+    ):
         return (
             spec.kwargs.get("model") is None
             and spec.kwargs.get("model_path") is None
