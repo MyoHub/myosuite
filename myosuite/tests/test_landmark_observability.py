@@ -12,7 +12,12 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.biomechanics.observability import independent_dofs, landmark_observability
+from myosuite.biomechanics.camera import PinholeCamera
+from myosuite.biomechanics.observability import (
+    camera_landmark_observability,
+    independent_dofs,
+    landmark_observability,
+)
 from myosuite.biomechanics.retarget import Landmark
 
 pytestmark = pytest.mark.tier1
@@ -199,3 +204,89 @@ def test_malformed_landmark_mapping_does_not_silently_fall_back() -> None:
         landmark_observability(model, np.zeros(3), _sites("missing_site"))
     with pytest.raises(ValueError, match="unique names"):
         landmark_observability(model, np.zeros(3), _sites("axial", "axial"))
+
+
+def test_camera_observability_monocular_depth_nullspace_stereo_and_finite_diff() -> (
+    None
+):
+    model = mujoco.MjModel.from_xml_string(
+        "<mujoco><worldbody><body>"
+        '<joint name="tx" type="slide" axis="1 0 0"/>'
+        '<joint name="ty" type="slide" axis="0 1 0"/>'
+        '<joint name="tz" type="slide" axis="0 0 1"/>'
+        '<geom size="0.05" mass="1"/><site name="pt" pos="0 0 0"/>'
+        "</body></worldbody></mujoco>"
+    )
+    q = np.array([0.1, -0.2, 3.0])
+    k = np.array([[800.0, 0.0, 640.0], [0.0, 800.0, 360.0], [0.0, 0.0, 1.0]])
+    cam0 = PinholeCamera(k, np.eye(3), np.zeros(3), "cam0")
+    cam1 = PinholeCamera(k, np.eye(3), np.array([-0.8, 0.0, 0.0]), "cam1")
+
+    # One camera sees 2 pixel equations -> blind along the optical ray (rank 2 < 3).
+    mono = camera_landmark_observability(model, q, _sites("pt"), [cam0])
+    assert mono.observability.rank == 2
+    assert "tz" in mono.observability.ambiguous_dofs
+    assert mono.views_per_landmark.tolist() == [1]
+
+    # Stereo parallax requires min_views=2: cam0 alone gives rank 0; cam0 + cam1 gives rank 3.
+    stereo_blocked = camera_landmark_observability(
+        model, q, _sites("pt"), [cam0], min_views=2
+    )
+    assert (
+        stereo_blocked.observability.rank == 0 and stereo_blocked.active_landmarks == ()
+    )
+
+    stereo = camera_landmark_observability(
+        model, q, _sites("pt"), [cam0, cam1], min_views=2
+    )
+    assert stereo.observability.rank == 3
+    assert stereo.observability.ambiguous_dofs == ()
+
+    # Verify analytic pixel Jacobian matches central finite differences of project().
+    eps = 1e-6
+    for col in range(3):
+        dq = np.zeros(3)
+        dq[col] = eps
+        uv_vals = []
+        for sign in (-1.0, 1.0):
+            d = mujoco.MjData(model)
+            d.qpos[:] = q + sign * dq
+            mujoco.mj_kinematics(model, d)
+            uv_vals.append(
+                np.concatenate([c.project(d.site_xpos[0]) for c in (cam0, cam1)])
+            )
+        fd = (uv_vals[1] - uv_vals[0]) / (2.0 * eps)
+        np.testing.assert_allclose(stereo.observability.jacobian[:, col], fd, atol=1e-7)
+    json.dumps(stereo.record(include_matrices=True), allow_nan=False)
+
+
+def test_camera_observability_detects_mj_ray_occlusion_and_frustum_bounds() -> None:
+    model = mujoco.MjModel.from_xml_string(
+        "<mujoco><worldbody>"
+        '<geom name="pillar" type="sphere" pos="0 0 1.5" size="0.35"/>'
+        '<body name="seg" pos="0 0 3.0">'
+        '<joint name="slide_x" type="slide" axis="1 0 0"/>'
+        '<geom type="sphere" size="0.06" mass="1"/>'
+        '<site name="marker" pos="0 0 -0.06"/>'
+        "</body></worldbody></mujoco>"
+    )
+    k = np.array([[800.0, 0.0, 640.0], [0.0, 800.0, 360.0], [0.0, 0.0, 1.0]])
+    blocked_cam = PinholeCamera(k, np.eye(3), np.zeros(3), "blocked")
+    side_cam = PinholeCamera(k, np.eye(3), np.array([-1.2, 0.0, 0.0]), "clear")
+
+    res = camera_landmark_observability(
+        model, np.zeros(1), _sites("marker"), [blocked_cam, side_cam]
+    )
+    assert res.visibility.tolist() == [[False], [True]]
+    assert res.observability.rank == 1
+
+    # Ignoring occlusion restores visibility in blocked_cam, unless cropped by image_sizes.
+    no_occ = camera_landmark_observability(
+        model,
+        np.zeros(1),
+        _sites("marker"),
+        [blocked_cam, side_cam],
+        check_occlusion=False,
+        image_sizes=[(1280, 720), (300, 300)],
+    )
+    assert no_occ.visibility.tolist() == [[True], [False]]
