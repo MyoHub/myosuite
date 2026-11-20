@@ -201,18 +201,27 @@ class IndexMapping:
         src_to_conv_qpos = np.argsort(conv_to_src_qpos)
         src_to_conv_qvel = np.argsort(conv_to_src_qvel)
 
-        act_labels = newton_model.mujoco.actuator_label
-        act_indices = solver.mjc_actuator_to_newton_actuator_idx.numpy()
-        if act_indices.ndim > 1:
-            act_indices = act_indices[0]
-        conv_to_src_ctrl = np.array(
-            [
-                reference.actuator(act_labels[int(idx)].rsplit("/", 1)[-1]).id
-                for idx in act_indices[: converted.nu]
-            ],
-            dtype=np.intp,
-        )
-        src_to_conv_ctrl = np.argsort(conv_to_src_ctrl)
+        if converted.nu == 0:
+            conv_to_src_ctrl = np.empty(0, dtype=np.intp)
+            src_to_conv_ctrl = np.empty(0, dtype=np.intp)
+        else:
+            act_labels = newton_model.mujoco.actuator_label
+            act_map = getattr(
+                solver,
+                "mjc_actuator_to_newton_actuator",
+                solver.mjc_actuator_to_newton_actuator_idx,
+            )
+            act_indices = act_map.numpy()
+            if act_indices.ndim > 1:
+                act_indices = act_indices[0]
+            conv_to_src_ctrl = np.array(
+                [
+                    reference.actuator(act_labels[int(idx)].rsplit("/", 1)[-1]).id
+                    for idx in act_indices[: converted.nu]
+                ],
+                dtype=np.intp,
+            )
+            src_to_conv_ctrl = np.argsort(conv_to_src_ctrl)
 
         src_to_conv_act = np.full(reference.na, -1, dtype=np.intp)
         for conv_u, src_u in enumerate(conv_to_src_ctrl):
@@ -224,15 +233,21 @@ class IndexMapping:
                     conv_adr, conv_adr + num
                 )
 
-        site_shapes = solver._mjc_site_to_newton_shape.numpy()[0]
-        conv_to_src_site = np.array(
-            [
-                reference.site(newton_model.shape_label[int(s)].rsplit("/", 1)[-1]).id
-                for s in site_shapes[: converted.nsite]
-            ],
-            dtype=np.intp,
-        )
-        src_to_conv_site = np.argsort(conv_to_src_site)
+        if converted.nsite == 0:
+            conv_to_src_site = np.empty(0, dtype=np.intp)
+            src_to_conv_site = np.empty(0, dtype=np.intp)
+        else:
+            site_shapes = solver._mjc_site_to_newton_shape.numpy()[0]
+            conv_to_src_site = np.array(
+                [
+                    reference.site(
+                        newton_model.shape_label[int(s)].rsplit("/", 1)[-1]
+                    ).id
+                    for s in site_shapes[: converted.nsite]
+                ],
+                dtype=np.intp,
+            )
+            src_to_conv_site = np.argsort(conv_to_src_site)
 
         return cls(
             conv_to_src_qpos=conv_to_src_qpos,
