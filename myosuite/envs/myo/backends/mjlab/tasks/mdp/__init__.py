@@ -11,6 +11,7 @@ from .commands import (  # noqa: F401
     site_position_command_cfg,
 )
 from .events import (  # noqa: F401
+    apply_base_excitation,
     randomize_carry_weight,
     reset_joints_uniform_in_range,
     reset_to_cpu_state,
