@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -92,15 +92,22 @@ def _read_trc(path: Path) -> _MarkerData:
     return _MarkerData(names, positions, rate)
 
 
-def _read_c3d(path: Path) -> _MarkerData:
-    """C3D points through the optional ``ezc3d``; negative residuals mark gaps."""
+def _open_c3d(path: str | Path, *, extract_forceplat_data: bool = False) -> Any:
+    """Open a C3D archive via optional ``ezc3d`` (`myosuite[capture]`)."""
     try:
         import ezc3d
     except ImportError as exc:
         raise ImportError(
             "Reading .c3d files needs ezc3d: pip install 'myosuite[capture]'."
         ) from exc
-    capture = ezc3d.c3d(str(path))
+    if extract_forceplat_data:
+        return ezc3d.c3d(str(path), extract_forceplat_data=True)
+    return ezc3d.c3d(str(path))
+
+
+def _read_c3d(path: Path) -> _MarkerData:
+    """C3D points through the optional ``ezc3d``; negative residuals mark gaps."""
+    capture = _open_c3d(path)
     point = capture["parameters"]["POINT"]
     labels = list(point["LABELS"]["value"])
     if "LABELS2" in point:  # C3D stores labels beyond the 255th here
