@@ -180,7 +180,7 @@ class HeightField:
 
     @property
     def size(self):
-        return int(self.hfield.size)
+        return int(self.hfield.data.size)
 
     @property
     def nrow(self):
@@ -222,8 +222,8 @@ class ChaseTagField(HeightField):
         """
         Turn terrain in the patch around the agent to flat.
         """
-        # convert position to map position
-        pos = self.cart2map(qpos[0].reshape(1, -1), qpos[1].reshape(1, -1))
+        # convert position to map position (cart2map expects y, x like _compute_heightmap_obs)
+        pos = self.cart2map(qpos[1].reshape(1, -1), qpos[0].reshape(1, -1))
         # get patch that belongs to the position
         i = pos[0].squeeze() // self.patch_size
         j = pos[1].squeeze() // self.patch_size

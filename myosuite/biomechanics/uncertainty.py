@@ -43,6 +43,7 @@ from myosuite.biomechanics.static_optimization import (
     StaticOptimizationConfig,
     StaticOptimizationResult,
     StaticOptimizer,
+    _solve_clip,
     static_optimization,
 )
 
@@ -288,8 +289,13 @@ def static_optimization_bands(
     # Reserve, residual and contact weights stay the nominal model's in every sample.
     optimization = StaticOptimizer(model, optimization).config
 
-    def analyse(m: mujoco.MjModel, q: np.ndarray) -> StaticOptimizationResult:
+    def analyse(
+        m: mujoco.MjModel, q: np.ndarray, *, owned: bool = False
+    ) -> StaticOptimizationResult:
         kin = clip_kinematics(m, q, dt, lowpass_hz=lowpass_hz)
+        if owned:
+            optimizer = StaticOptimizer._from_owned_model(m, optimization)
+            return _solve_clip(optimizer, kin.qpos, kin.qvel, kin.qacc)
         return static_optimization(m, kin.qpos, kin.qvel, kin.qacc, config=optimization)
 
     nominal = analyse(model, qpos)
@@ -299,7 +305,7 @@ def static_optimization_bands(
         m = perturbed_model(model, rng, cfg)
         q = np.array(qpos, dtype=np.float64)
         q[:, hinges] += joint_noise(rng, len(q), len(hinges), dt, lowpass_hz, cfg)
-        result = analyse(m, q)
+        result = analyse(m, q, owned=True)
         _check_solve(result, len(samples), cfg.allow_inaccurate)
         samples.append(result)
     bands = {
