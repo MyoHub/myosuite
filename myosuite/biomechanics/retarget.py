@@ -1611,9 +1611,11 @@ def collect_clip_files(
     *,
     default_dataset: str = "",
     limit: int = 0,
+    suffix: str = ".npz",
     skip_suffixes: tuple[str, ...] = (".tmp.npz", "_muscles.npz"),
 ) -> tuple[list[Path], Path, str]:
-    """Resolve a single ``.npz`` clip, directory or ``.txt`` list to ``(files, base, dataset)``."""
+    """Resolve a single clip, directory or ``.txt`` list to ``(files, base, dataset)``."""
+    sfx = suffix if suffix.startswith(".") else f".{suffix}"
     src = Path(input_path).expanduser()
     if src.is_file() and src.suffix == ".txt":
         files = [
@@ -1623,12 +1625,14 @@ def collect_clip_files(
         ]
         base = Path(os.path.commonpath([str(f.parent) for f in files]))
         dataset = default_dataset or base.name
-    elif src.is_file() and src.suffix == ".npz":
+    elif src.is_file() and src.suffix.lower() == sfx.lower():
         files, base = [src], src.parent
         dataset = default_dataset or base.name
     elif src.is_dir():
         files = [
-            f for f in sorted(src.rglob("*.npz")) if not f.name.endswith(skip_suffixes)
+            f
+            for f in sorted(src.rglob(f"*{sfx}"))
+            if not f.name.endswith(skip_suffixes)
         ]
         base = src
         dataset = default_dataset or src.name
