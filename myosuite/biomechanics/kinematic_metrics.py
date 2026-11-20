@@ -15,15 +15,19 @@ speed profiles ``(T,)``, complementing the muscle-effort metrics in
 - :func:`fitts_index_of_difficulty` and :func:`fitts_throughput`: speed-accuracy index and throughput.
 - :func:`energy_distance` and :func:`compare_against_reference_cohorts`: multivariate Energy Distance
   (Székely & Rizzo, 2013), 1D Wasserstein distances, and split-half inter-subject reference ceiling.
+- :func:`discrete_frechet_alignment`, :func:`discrete_frechet_distance`, and
+  :func:`compare_rollout_trajectories`: phase-free Discrete Fréchet bottleneck alignment
+  (Eiter & Mannila, 1994) and multi-quantity rollout-to-reference trajectory comparison.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 import numpy as np
+from scipy.spatial.distance import cdist
 from scipy.stats import wasserstein_distance
 
 
@@ -527,11 +531,264 @@ def compare_against_reference_cohorts(
     )
 
 
+@dataclass(frozen=True)
+class FrechetAlignment:
+    """Discrete Fréchet bottleneck distance and monotonic coupling path.
+
+    Attributes:
+        distance: Discrete Fréchet bottleneck distance (maximum Euclidean
+            distance along the optimal monotonic coupling).
+        coupling: Integer index pairs of shape ``(K, 2)`` (``int64``)
+            monotonically mapping ``seq_x`` (``0..T1-1``) to ``seq_y``
+            (``0..T2-1``) from ``(0, 0)`` to ``(T1 - 1, T2 - 1)``.
+    """
+
+    distance: float
+    coupling: np.ndarray
+
+
+@dataclass(frozen=True)
+class EntityTrajectoryMetrics:
+    """Phase-aligned and phase-free comparison metrics for one trajectory quantity.
+
+    Attributes:
+        euclidean_mean: Mean per-step Euclidean distance when ``T1 == T2``,
+            otherwise ``nan``.
+        interpolated_euclidean_mean: Mean Euclidean distance after linearly
+            resampling ``seq_x`` onto ``seq_y``'s normalized ``[0, 1]`` timeline
+            (``T2`` samples; exact match to ``euclidean_mean`` when ``T1 == T2``).
+        discrete_frechet: Phase-free Discrete Fréchet bottleneck distance.
+        extra: Additional scalar metrics returned by caller-supplied
+            ``custom_measures``.
+    """
+
+    euclidean_mean: float
+    interpolated_euclidean_mean: float
+    discrete_frechet: float
+    extra: dict[str, float] = field(default_factory=dict)
+
+
+def _validate_trajectory_pair(
+    seq_x: np.ndarray, seq_y: np.ndarray, *, zero_start: bool
+) -> tuple[np.ndarray, np.ndarray]:
+    x = _as_trajectory_2d(seq_x)
+    y = _as_trajectory_2d(seq_y)
+    if x.shape[0] == 0 or y.shape[0] == 0 or x.shape[1] == 0 or y.shape[1] == 0:
+        raise ValueError(
+            f"Trajectories must be non-empty, got shapes {x.shape} and {y.shape}"
+        )
+    if x.shape[1] != y.shape[1]:
+        raise ValueError(
+            f"Trajectory feature dimension mismatch: {x.shape[1]} vs {y.shape[1]}"
+        )
+    if not (np.all(np.isfinite(x)) and np.all(np.isfinite(y))):
+        raise ValueError("Trajectories must contain only finite values.")
+    if zero_start:
+        x = x - x[:1]
+        y = y - y[:1]
+    return x, y
+
+
+def _compute_frechet_ca_table(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    ca = np.ascontiguousarray(cdist(x, y, metric="euclidean"), dtype=np.float64)
+    t1, t2 = ca.shape
+    np.maximum.accumulate(ca[0, :], out=ca[0, :])
+    np.maximum.accumulate(ca[:, 0], out=ca[:, 0])
+    if t1 > 1 and t2 > 1:
+        ca_flat = ca.ravel()
+        stride = t2 - 1
+        for s in range(2, t1 + t2 - 1):
+            i_start = 1 if s < t2 else s - t2 + 1
+            i_end = t1 - 1 if s >= t1 else s - 1
+            start = i_start * t2 + (s - i_start)
+            stop = i_end * t2 + (s - i_end) + 1
+            prev_min = np.minimum(
+                ca_flat[start - t2 - 1 : stop - t2 - 1 : stride],
+                np.minimum(
+                    ca_flat[start - t2 : stop - t2 : stride],
+                    ca_flat[start - 1 : stop - 1 : stride],
+                ),
+            )
+            ca_flat[start:stop:stride] = np.maximum(
+                ca_flat[start:stop:stride], prev_min
+            )
+    return ca
+
+
+def discrete_frechet_alignment(
+    seq_x: np.ndarray,
+    seq_y: np.ndarray,
+    *,
+    zero_start: bool = False,
+) -> FrechetAlignment:
+    """Compute exact Discrete Fréchet distance and coupling path (Eiter & Mannila, 1994).
+
+    Args:
+        seq_x: First trajectory of shape ``(T1, D)`` or ``(T1,)``.
+        seq_y: Second trajectory of shape ``(T2, D)`` or ``(T2,)``.
+        zero_start: If ``True``, subtract each trajectory's initial sample
+            (``seq_x[:1]`` and ``seq_y[:1]``) prior to distance evaluation.
+
+    Returns:
+        :class:`FrechetAlignment` with bottleneck ``distance`` and optimal
+        monotonic ``coupling`` index array of shape ``(K, 2)`` (``int64``).
+    """
+    x, y = _validate_trajectory_pair(seq_x, seq_y, zero_start=zero_start)
+    ca = _compute_frechet_ca_table(x, y)
+    t1, t2 = ca.shape
+
+    buf = np.empty((t1 + t2 - 1, 2), dtype=np.int64)
+    pos = t1 + t2 - 2
+    i = t1 - 1
+    j = t2 - 1
+    buf[pos, 0] = i
+    buf[pos, 1] = j
+
+    while i > 0 or j > 0:
+        if i == 0:
+            j -= 1
+        elif j == 0:
+            i -= 1
+        else:
+            c_diag = ca[i - 1, j - 1]
+            c_up = ca[i - 1, j]
+            c_left = ca[i, j - 1]
+            if c_diag <= c_up and c_diag <= c_left:
+                i -= 1
+                j -= 1
+            elif c_up <= c_left:
+                i -= 1
+            else:
+                j -= 1
+        pos -= 1
+        buf[pos, 0] = i
+        buf[pos, 1] = j
+
+    return FrechetAlignment(
+        distance=float(ca[-1, -1]),
+        coupling=buf[pos:].copy(),
+    )
+
+
+def discrete_frechet_distance(
+    seq_x: np.ndarray,
+    seq_y: np.ndarray,
+    *,
+    zero_start: bool = False,
+) -> float:
+    """Compute phase-free Discrete Fréchet bottleneck distance (Eiter & Mannila, 1994).
+
+    Args:
+        seq_x: First trajectory of shape ``(T1, D)`` or ``(T1,)``.
+        seq_y: Second trajectory of shape ``(T2, D)`` or ``(T2,)``.
+        zero_start: If ``True``, subtract each trajectory's initial sample
+            prior to distance evaluation.
+
+    Returns:
+        Non-negative Discrete Fréchet distance scalar.
+    """
+    x, y = _validate_trajectory_pair(seq_x, seq_y, zero_start=zero_start)
+    return float(_compute_frechet_ca_table(x, y)[-1, -1])
+
+
+def _resample_trajectory_linear(x: np.ndarray, target_len: int) -> np.ndarray:
+    t1 = x.shape[0]
+    if t1 == target_len:
+        return x
+    if t1 == 1:
+        return np.broadcast_to(x, (target_len, x.shape[1]))
+    pos = np.linspace(0.0, float(t1 - 1), target_len)
+    idx_lo = np.clip(np.floor(pos).astype(np.int64), 0, t1 - 2)
+    alpha = (pos - idx_lo)[:, None]
+    return (1.0 - alpha) * x[idx_lo] + alpha * x[idx_lo + 1]
+
+
+def compare_rollout_trajectories(
+    rollout: Mapping[str, np.ndarray],
+    reference: Mapping[str, np.ndarray],
+    *,
+    zero_start_keys: Sequence[str] = (),
+    custom_measures: Mapping[str, Callable[[np.ndarray, np.ndarray], float]]
+    | None = None,
+) -> dict[str, EntityTrajectoryMetrics]:
+    """Compare named rollout trajectories against reference trajectories.
+
+    Evaluates synchronous ``euclidean_mean`` (when lengths match), timeline-
+    normalized ``interpolated_euclidean_mean``, phase-free ``discrete_frechet``,
+    and any caller-provided ``custom_measures`` across quantities such as
+    ``qpos``, ``qvel``, ``site_rpos``, or ``body_rotvec``.
+
+    Args:
+        rollout: Non-empty mapping from quantity name to ``(T1, D)`` or ``(T1,)``
+            rollout trajectory array.
+        reference: Non-empty mapping with the exact same keys as ``rollout``,
+            mapping each quantity name to a ``(T2, D)`` or ``(T2,)`` reference
+            trajectory array.
+        zero_start_keys: Quantity names whose initial sample is subtracted from
+            both ``rollout[key]`` and ``reference[key]`` before computing
+            metrics.
+        custom_measures: Optional mapping from metric name to callable
+            ``fn(seq_x, seq_y) -> float`` invoked on the validated 2D
+            ``(T1, D)`` and ``(T2, D)`` trajectories.
+
+    Returns:
+        Dictionary mapping each quantity key to its
+        :class:`EntityTrajectoryMetrics`.
+    """
+    if not rollout or not reference:
+        raise ValueError("rollout and reference must be non-empty mappings.")
+    rollout_keys = set(rollout.keys())
+    reference_keys = set(reference.keys())
+    if rollout_keys != reference_keys:
+        only_rollout = sorted(rollout_keys - reference_keys)
+        only_reference = sorted(reference_keys - rollout_keys)
+        raise ValueError(
+            "rollout and reference keys must match; "
+            f"only in rollout: {only_rollout}, only in reference: {only_reference}"
+        )
+
+    zero_keys = set(zero_start_keys)
+    measures = dict(custom_measures) if custom_measures is not None else {}
+    summary: dict[str, EntityTrajectoryMetrics] = {}
+
+    for key, rollout_seq in rollout.items():
+        try:
+            x, y = _validate_trajectory_pair(
+                rollout_seq, reference[key], zero_start=(key in zero_keys)
+            )
+        except ValueError as exc:
+            raise ValueError(f"Invalid trajectory pair for key {key!r}: {exc}") from exc
+
+        if x.shape[0] == y.shape[0]:
+            euclid = float(np.mean(np.linalg.norm(x - y, axis=-1)))
+            interp_euclid = euclid
+        else:
+            euclid = float("nan")
+            x_resampled = _resample_trajectory_linear(x, y.shape[0])
+            interp_euclid = float(np.mean(np.linalg.norm(x_resampled - y, axis=-1)))
+
+        frechet = float(_compute_frechet_ca_table(x, y)[-1, -1])
+        extra_vals = {m_name: float(m_fn(x, y)) for m_name, m_fn in measures.items()}
+        summary[key] = EntityTrajectoryMetrics(
+            euclidean_mean=euclid,
+            interpolated_euclidean_mean=interp_euclid,
+            discrete_frechet=frechet,
+            extra=extra_vals,
+        )
+
+    return summary
+
+
 __all__ = [
     "CohortComparison",
+    "EntityTrajectoryMetrics",
+    "FrechetAlignment",
     "KinematicTrialSummary",
     "compare_against_reference_cohorts",
+    "compare_rollout_trajectories",
     "dimensionless_squared_jerk",
+    "discrete_frechet_alignment",
+    "discrete_frechet_distance",
     "endpoint_error",
     "energy_distance",
     "fitts_index_of_difficulty",
