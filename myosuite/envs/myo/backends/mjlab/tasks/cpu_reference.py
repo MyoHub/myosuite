@@ -189,12 +189,22 @@ def cpu_task_spec(env_id: str) -> CpuTaskSpec:
             class that does not run them (the twin would not match).
     """
     import myosuite  # noqa: F401, PLC0415  (registers the CPU envs)
+    from myosuite.core.registry import _ENV_REGISTRY  # noqa: PLC0415
 
     spec = gym.spec(env_id)
+    max_steps = (
+        spec.max_episode_steps
+        if spec.max_episode_steps is not None
+        else _ENV_REGISTRY.get(env_id, {}).get("max_episode_steps")
+    )
+    if max_steps is None:
+        raise ValueError(
+            f"{env_id} has no max_episode_steps in either gymnasium or _ENV_REGISTRY."
+        )
     task = CpuTaskSpec(
         env_id=env_id,
         kwargs={**spec.kwargs, **_KWARGS.get()},
-        max_episode_steps=int(spec.max_episode_steps),
+        max_episode_steps=int(max_steps),
         wrappers=_with_features(tuple(spec.additional_wrappers or ()), env_id),
     )
     if any(task.wrapper_kwargs(name) is not None for name in _MUSCLE_WRAPPERS):
