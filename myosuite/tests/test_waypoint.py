@@ -291,7 +291,7 @@ def test_registered_scene_override_and_seed(tmp_path) -> None:
 
 def test_registered_default_recipe_is_owned_by_env(monkeypatch, model) -> None:
     from myosuite import make_env
-    from myosuite.envs import waypoint
+    from myosuite.envs.myo.tasks.basic.full_body import waypoint
 
     recipes = []
 
@@ -306,3 +306,24 @@ def test_registered_default_recipe_is_owned_by_env(monkeypatch, model) -> None:
         assert recipes == [waypoint.DEFAULT_MODEL_RECIPE]
     finally:
         env.close()
+
+
+def test_waypoint_canonical_home_and_shim_parity() -> None:
+    import myosuite
+    from myosuite.envs import waypoint as legacy_shim
+    from myosuite.envs.myo.tasks import mimic as mimic_pkg
+    from myosuite.envs.myo.tasks.basic import full_body as fb_pkg
+    from myosuite.envs.myo.tasks.basic.full_body import waypoint as canonical
+
+    myosuite.register_all_envs()
+    spec = gym.spec("myoFullBodyWaypoint-v0")
+    assert (
+        spec.entry_point
+        == "myosuite.envs.myo.tasks.basic.full_body.waypoint:WaypointEnv"
+    )
+    assert "myoFullBodyWaypoint-v0" in myosuite.myosuite_myobase_suite
+    assert "myoFullBodyWaypoint-v0" not in myosuite.myosuite_myomimic_suite
+    assert legacy_shim.WaypointEnv is canonical.WaypointEnv
+    assert legacy_shim.WaypointTaskCfg is canonical.WaypointTaskCfg
+    assert legacy_shim.RootLayout is canonical.RootLayout
+    assert mimic_pkg.FULLBODY_WAYPOINT_TASK is fb_pkg.FULLBODY_WAYPOINT_TASK

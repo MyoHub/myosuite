@@ -282,6 +282,12 @@ def test_manifest_refuses_the_myo_sim_fallback(monkeypatch: pytest.MonkeyPatch) 
     [
         ("myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv", {}, True),
         ("myosuite.envs.myo.tasks.mimic.tracking.env:MimicEnv", {}, False),
+        ("myosuite.envs.myo.tasks.basic.full_body.waypoint:WaypointEnv", {}, True),
+        (
+            "myosuite.envs.myo.tasks.basic.full_body.waypoint:WaypointEnv",
+            {"model_recipe": "myofullbody"},
+            False,
+        ),
         ("myosuite.envs.waypoint:WaypointEnv", {}, True),
         ("myosuite.envs.waypoint:WaypointEnv", {"model_recipe": None}, True),
         ("myosuite.envs.waypoint:WaypointEnv", {"model_recipe": "myofullbody"}, False),
