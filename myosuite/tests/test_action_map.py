@@ -545,3 +545,72 @@ def test_lambda_hold_numpy_torch_parity_manifest_and_cpu_wrapper_latch() -> None
         np.testing.assert_array_equal(step_a, step_b)
     finally:
         base_env.close()
+
+
+def test_lambda_hold_curriculum_schedule_and_zero_host_sync() -> None:
+    from myosuite import make_env
+    from myosuite.tests.support.host_sync import HostSyncCounter
+    from myosuite.utils.action_map import action_map_from_manifest
+
+    base_env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        model = base_env.unwrapped.model
+        sched = LambdaHold.from_model(
+            model,
+            kp=2.5,
+            damping_s=0.04,
+            hold_steps=3,
+            end_hold_steps=1,
+            start_steps=100.0,
+            ramp_steps=200.0,
+            end_reflex_weight=0.0,
+        )
+        restored = action_map_from_manifest(sched.to_manifest())
+        assert restored == sched
+        assert sched.current_hold_steps(0.0) == 3
+        assert sched.current_hold_steps(200.0) == 2
+        assert sched.current_hold_steps(300.0) == 1
+        assert sched.reflex_weight(0.0) == pytest.approx(1.0)
+        assert sched.reflex_weight(200.0) == pytest.approx(0.5)
+        assert sched.reflex_weight(300.0) == pytest.approx(0.0)
+
+        rng = np.random.default_rng(11)
+        z = rng.uniform(-1.0, 1.0, size=(2, model.nu)).astype(np.float32)
+        lengths = np.mean([sched.length_min, sched.length_max], axis=0) + rng.normal(
+            0, 0.01, (2, model.nu)
+        )
+        vels = rng.normal(0.0, 0.05, size=(2, model.nu))
+        state_mid = {
+            "env_steps": 200.0,
+            "actuator_length": lengths,
+            "actuator_velocity": vels,
+        }
+        out_mid = sched.forward(z, state_mid)
+        # At env_steps >= 300, reflex_weight == 0 -> exact pass-through of clipped z.
+        state_end = {**state_mid, "env_steps": 300.0}
+        np.testing.assert_allclose(sched.forward(z, state_end), z, atol=1e-6)
+
+        torch = pytest.importorskip("torch")
+        z_t = torch.tensor(z)
+        state_t = {
+            "env_steps": 200.0,
+            "actuator_length": torch.tensor(lengths, dtype=torch.float32),
+            "actuator_velocity": torch.tensor(vels, dtype=torch.float32),
+        }
+        out_t = sched.forward_torch(z_t, state_t)
+        np.testing.assert_allclose(out_mid, out_t.numpy(), atol=1e-5)
+
+        # Warm cached bounds must trigger zero host-device syncs on step calls.
+        with HostSyncCounter(package_only=True) as syncs:
+            _ = sched.forward_torch(z_t, state_t)
+        assert syncs.total == 0, syncs.report()
+
+        # Wrapper transitions from hold_steps=3 at step_offset=0 to single-step at step_offset=300.
+        wrapped = ActionMapWrapper(base_env, sched, step_offset=300.0, frozen=True)
+        wrapped.reset(seed=5)
+        z_hi = np.ones(model.nu, dtype=np.float32)
+        z_lo = -np.ones(model.nu, dtype=np.float32)
+        wrapped.step(z_hi)
+        assert np.allclose(wrapped.action(z_lo), -1.0, atol=1e-6)
+    finally:
+        base_env.close()

@@ -61,23 +61,44 @@ class BenchmarkSummary:
 def _make_single(
     env_id: str,
     seed: int,
-    use_lambda_hold: bool,
+    mode: str,
     kp: float,
     damping_s: float,
     hold_steps: int,
+    *,
+    num_envs: int = 1,
+    step_offset: float = 0.0,
+    frozen: bool = False,
+    total_steps: int = 65_536,
+    end_reflex_weight: float = 0.0,
 ) -> gym.Env:
     env = make_env(env_id)
-    if use_lambda_hold:
+    if mode in ("lambda_hold", "curriculum"):
         model = env.unwrapped.model
         sigmoid = bool(getattr(env.unwrapped, "normalize_act", True))
-        amap = LambdaHold.from_model(
-            model,
-            kp=kp,
-            damping_s=damping_s,
-            hold_steps=hold_steps,
-            muscle_sigmoid=sigmoid,
+        if mode == "curriculum":
+            amap = LambdaHold.from_model(
+                model,
+                kp=kp,
+                damping_s=damping_s,
+                hold_steps=hold_steps,
+                muscle_sigmoid=sigmoid,
+                end_hold_steps=1,
+                start_steps=0.15 * total_steps,
+                ramp_steps=0.55 * total_steps,
+                end_reflex_weight=end_reflex_weight,
+            )
+        else:
+            amap = LambdaHold.from_model(
+                model,
+                kp=kp,
+                damping_s=damping_s,
+                hold_steps=hold_steps,
+                muscle_sigmoid=sigmoid,
+            )
+        env = ActionMapWrapper(
+            env, amap, num_envs=num_envs, step_offset=step_offset, frozen=frozen
         )
-        env = ActionMapWrapper(env, amap)
     env.reset(seed=seed)
     return env
 
@@ -85,13 +106,28 @@ def _make_single(
 def _evaluate(
     model: PPO,
     env_id: str,
-    use_lambda_hold: bool,
+    mode: str,
     kp: float,
     damping_s: float,
     hold_steps: int,
     n_episodes: int,
+    *,
+    eval_steps: float = 0.0,
+    total_steps: int = 65_536,
+    end_reflex_weight: float = 0.0,
 ) -> tuple[float, float]:
-    env = _make_single(env_id, 10_000, use_lambda_hold, kp, damping_s, hold_steps)
+    env = _make_single(
+        env_id,
+        10_000,
+        mode,
+        kp,
+        damping_s,
+        hold_steps,
+        step_offset=eval_steps,
+        frozen=True,
+        total_steps=total_steps,
+        end_reflex_weight=end_reflex_weight,
+    )
     returns: list[float] = []
     solved: list[float] = []
     try:
@@ -124,13 +160,18 @@ def run_ppo_comparison(
     kp: float = 2.5,
     damping_s: float = 0.04,
     hold_steps: int = 2,
+    include_curriculum: bool = True,
+    end_reflex_weight: float = 0.0,
 ) -> BenchmarkSummary:
-    """Run PPO vs. LambdaHold+PPO across identical envs, seeds, and step budgets."""
+    """Run PPO, LambdaHold+PPO, and CurriculumLambdaHold+PPO across identical seeds and budgets."""
     hw = f"{platform.system()} {platform.release()} | {platform.processor()} | Python {platform.python_version()}"
     summaries: list[ArmSummary] = []
+    arms_spec = [("ppo", "PPO"), ("lambda_hold", "LambdaHold+PPO")]
+    if include_curriculum:
+        arms_spec.append(("curriculum", "CurriculumLambdaHold+PPO"))
 
     for env_id in env_ids:
-        for use_lh, label in ((False, "PPO"), (True, "LambdaHold+PPO")):
+        for mode, label in arms_spec:
             tracemalloc.start()
             seed_returns, seed_solved, seed_times = [], [], []
             n_chunks = max(1, total_steps // eval_interval)
@@ -141,8 +182,16 @@ def run_ppo_comparison(
                 vec = DummyVecEnv(
                     [
                         (
-                            lambda rank=r, s=seed, lh=use_lh: _make_single(
-                                env_id, s * 100 + rank, lh, kp, damping_s, hold_steps
+                            lambda rank=r, s=seed, m_mode=mode: _make_single(
+                                env_id,
+                                s * 100 + rank,
+                                m_mode,
+                                kp,
+                                damping_s,
+                                hold_steps,
+                                num_envs=n_envs,
+                                total_steps=total_steps,
+                                end_reflex_weight=end_reflex_weight,
                             )
                         )
                         for r in range(n_envs)
@@ -162,7 +211,16 @@ def run_ppo_comparison(
                     )
                     curve: list[CurvePoint] = []
                     r0, s0 = _evaluate(
-                        ppo, env_id, use_lh, kp, damping_s, hold_steps, n_eval_episodes
+                        ppo,
+                        env_id,
+                        mode,
+                        kp,
+                        damping_s,
+                        hold_steps,
+                        n_eval_episodes,
+                        eval_steps=0.0,
+                        total_steps=total_steps,
+                        end_reflex_weight=end_reflex_weight,
                     )
                     curve.append(CurvePoint(0, 0.0, r0, s0))
                     elapsed = 0.0
@@ -177,11 +235,14 @@ def run_ppo_comparison(
                         rm, sm = _evaluate(
                             ppo,
                             env_id,
-                            use_lh,
+                            mode,
                             kp,
                             damping_s,
                             hold_steps,
                             n_eval_episodes,
+                            eval_steps=float(done_steps),
+                            total_steps=total_steps,
+                            end_reflex_weight=end_reflex_weight,
                         )
                         curve.append(CurvePoint(done_steps, elapsed, rm, sm))
                     seed_returns.append(curve[-1].mean_return)

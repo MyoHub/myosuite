@@ -125,9 +125,20 @@ class ActionMapAction(ActionTerm):
             saved_counter=int(self._env.common_step_counter),
         )
 
+    def set_hold_steps(self, hold_steps: int) -> None:
+        """Override ``action_map.hold_steps`` at runtime."""
+        if hold_steps < 1:
+            raise ValueError(f"hold_steps must be >= 1, got {hold_steps}")
+        if hasattr(self.action_map, "hold_steps"):
+            self.action_map.hold_steps = int(hold_steps)
+
     def process_actions(self, actions: torch.Tensor) -> None:
         self._raw[:] = actions.to(self._raw.device)
-        hold = max(1, int(getattr(self.action_map, "hold_steps", 1)))
+        cur_steps = self.env_steps
+        if hasattr(self.action_map, "current_hold_steps"):
+            hold = int(self.action_map.current_hold_steps(cur_steps))
+        else:
+            hold = max(1, int(getattr(self.action_map, "hold_steps", 1)))
         if hold > 1:
             mask = (self._hold_step % hold) == 0
             self._latched = torch.where(mask[:, None], self._raw, self._latched)
@@ -137,7 +148,7 @@ class ActionMapAction(ActionTerm):
             z = self._raw
         data = self._env.scene[self.cfg.entity_name].data.data
         state = {
-            "env_steps": self.env_steps,
+            "env_steps": cur_steps,
             "actuator_length": data.actuator_length[:, self._ctrl_ids],
             "actuator_velocity": data.actuator_velocity[:, self._ctrl_ids],
         }

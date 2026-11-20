@@ -25,6 +25,7 @@ Changes since **v3.1.0** (2026-11-11).
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
 * Equilibrium-point stretch-reflex action map (`LambdaHold` in `myosuite.utils.action_map` and `myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map`, plus `training/lambda_hold`), mapping policy threshold lengths and live actuator length/velocity feedback onto muscle commands with optional intermittent phase holding.
+* Curriculum `LambdaHold` scheduling (`end_hold_steps`, `start_steps`, `ramp_steps`, `end_reflex_weight` on `LambdaHold`, zero-sync device caching in `forward_torch`, and runtime hold setters on `ActionMapWrapper` / `ActionMapAction`), annealing intermittent stretch-reflex holding into single-step precision.
 
 ### Fixed
 
