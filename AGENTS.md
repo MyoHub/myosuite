@@ -90,6 +90,7 @@ The ownership (`myo_sim` vs MyoSuite) and minimum-change rules live in [REVIEW.m
 
 - **Search before writing.** Follow the ownership and minimum-change rules in REVIEW.md: search both repositories and compare existing behavior and constraints before extending or importing a primitive.
 - **Don't duplicate across task variants.** When writing multiple variants of the same task (e.g. different host models, difficulty tiers, or agent counts), factor shared model-builder/config logic into one parameterized function or base class before duplicating a file — don't write near-identical sibling files side by side in the same change. (Flagged in PR #101 review: `chase_tag_vs_fullbody_model.py` / `chase_tag_vs_model.py` duplicated their model builders and `ModelMeta` classes wholesale instead of parameterizing one implementation.)
+- **One CPU home and one mjlab home per task family.** Place CPU tasks under `myosuite/envs/myo/tasks/<collection>/<family>/` (`basic`, `challenge`, or `mimic` — do not add new task collections) and mjlab tasks under `myosuite/envs/myo/backends/mjlab/tasks/<family>/` (do not add new `register_mjlab_*.py` files or duplicate `mjlab.tasks.registry` in a separate task list). Keep `myosuite/integrations/` strictly for third-party adapters, and let registration errors raise instead of catching and warning.
 - **Use the library.** Check `docs/wiki/library-usage.md` before writing any helper.
 - No commented-out dead code, unused imports, or silent `except: pass`.
 - Type hints on all signatures. Google-style docstrings on all public APIs.

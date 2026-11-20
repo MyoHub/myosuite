@@ -6,7 +6,7 @@
 
 .. note::
     This is the **supported GPU training path**. MJX (JAX) is experimental.
-    Task IDs share the CPU ``env_id`` (see ``REGISTERED_TASKS``).
+    Task IDs share the CPU ``env_id`` (see :func:`list_mjlab_tasks`).
 
 This module is the entry-point for mjlab's auto-discovery mechanism, registered
 in ``pyproject.toml`` as::
@@ -14,19 +14,21 @@ in ``pyproject.toml`` as::
     [project.entry-points."mjlab.tasks"]
     myosuite = "myosuite.envs.myo.backends.mjlab"
 
-When mjlab is installed it imports this module and consults ``REGISTERED_TASKS``
-to discover which task configs MyoSuite exposes.  Each value in the dict is a
-config dataclass that mjlab's ``envs.make()`` can instantiate.
+When mjlab is installed, importing this module registers all MyoSuite mjlab
+tasks into ``mjlab.tasks.registry``. Any registration failure raises immediately.
 
 Public API::
 
-    REGISTERED_TASKS  — mapping env_id → task config class
+    list_mjlab_tasks  — sorted MyoSuite task IDs registered in mjlab.tasks.registry
     MjlabEnvAccessor  — EnvAccessor implementation returning torch.Tensor
 """
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 import warnings
+from typing import Any
 
 from myosuite.envs.myo.backends.mjlab.configs.baoding_cfg import BaodingCfg
 from myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
@@ -44,47 +46,14 @@ from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTenni
 from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
 
-# ---------------------------------------------------------------------------
-# Task registry — mjlab discovers tasks by reading this dict.
-# ---------------------------------------------------------------------------
 
-REGISTERED_TASKS: dict[str, type] = {
-    "myoElbowPose1D6MRandom-v0": ElbowPoseCfg,
-    "myoElbowPose1D6MFixed-v0": ElbowPoseCfg,
-    "myoFingerPoseFixed-v0": FingerPoseCfg,
-    "myoFingerPoseRandom-v0": FingerPoseCfg,
-    "myoFingerReachRandom-v0": FingerReachCfg,
-    "myoHandPoseRandom-v0": HandPoseCfg,
-    "myoHandReachRandom-v0": HandReachCfg,
-    "myoLegWalk-v0": WalkCfg,
-    "myoSarcLegWalk-v0": WalkCfg,
-    "myoChallengeBaodingP2-v1": BaodingCfg,
-    "myoChallengeTableTennisP0-v0": TableTennisCfg,
-    "myoChallengeTableTennisP1-v0": TableTennisCfg,
-    "myoChallengeTableTennisP2-v0": TableTennisCfg,
-    "myoMimicBimanual-v0": MuscleMimicBimanualCfg,
-    "myoMimicFullbody-v0": MuscleMimicFullbodyCfg,
-    "myoMuscleMimicBimanual-v0": MuscleMimicBimanualCfg,
-    "myoMuscleMimicFullbody-v0": MuscleMimicFullbodyCfg,
-}
+def _is_mjlab_installed() -> bool:
+    """Return True when a real ``mjlab`` distribution (not a test stub) is installed."""
+    existing = sys.modules.get("mjlab")
+    if existing is not None:
+        return getattr(existing, "__spec__", None) is not None
+    return importlib.util.find_spec("mjlab") is not None
 
-# Register with mjlab.tasks.registry when mjlab loads this package (entry point).
-try:
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
-        bootstrap_myosuite_mjlab_registry,
-    )
-
-    bootstrap_myosuite_mjlab_registry()
-except ImportError:
-    # Package import must work on systems without a full mjlab installation.
-    pass
-except Exception:
-    import logging
-
-    logging.getLogger(__name__).warning(
-        "myosuite mjlab backend: error during task registration",
-        exc_info=True,
-    )
 
 # mjlab attaches each entity spec to its scene: the entity's own <option> is dropped (the
 # physics options come from MujocoCfg) and attach reports differing compiler/visual settings.
@@ -95,8 +64,45 @@ for _message in (
 ):
     warnings.filterwarnings("ignore", message=_message, category=UserWarning)
 
+# Register with mjlab.tasks.registry when mjlab is installed. Failures raise so broken
+# registrations never drop tasks silently.
+if _is_mjlab_installed():
+    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
+        bootstrap_myosuite_mjlab_registry,
+    )
+
+    bootstrap_myosuite_mjlab_registry()
+
+
+def list_mjlab_tasks() -> list[str]:
+    """Return sorted MyoSuite task IDs registered in ``mjlab.tasks.registry``."""
+    if not _is_mjlab_installed():
+        return []
+    from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+        list_mjlab_tasks as _list_mjlab_tasks,
+    )
+
+    return _list_mjlab_tasks()
+
+
+def __getattr__(name: str) -> Any:
+    if name == "REGISTERED_TASKS":
+        warnings.warn(
+            "myosuite.envs.myo.backends.mjlab.REGISTERED_TASKS is deprecated; "
+            "use list_mjlab_tasks() or mjlab.tasks.registry.list_tasks().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if not _is_mjlab_installed():
+            return {}
+        from mjlab.tasks.registry import load_env_cfg
+
+        return {task_id: type(load_env_cfg(task_id)) for task_id in list_mjlab_tasks()}
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
-    "REGISTERED_TASKS",
+    "list_mjlab_tasks",
     "MjlabEnvAccessor",
     "ElbowPoseCfg",
     "FingerPoseCfg",
