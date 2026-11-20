@@ -19,8 +19,12 @@ _PACKAGE = Path(__file__).parents[1]
 # NumPy, SciPy and MuJoCo; OSQP (a core dependency) solves the static-optimization QPs,
 # and absl comes with MuJoCo (inverse kinematics logs through it).
 _METHOD_DEPENDENCIES = {"numpy", "scipy", "mujoco", "osqp", "absl", "myosuite"}
-# Canonical differential IK uses the explicitly declared core Mink dependency.
-_MODULE_DEPENDENCIES = {"inverse_kinematics.py": {"mink"}}
+# Canonical differential IK uses the explicitly declared core Mink dependency;
+# camera.py reads Pose2Sim TOMLs via stdlib tomllib (with tomli on Python 3.10).
+_MODULE_DEPENDENCIES = {
+    "inverse_kinematics.py": {"mink"},
+    "camera.py": {"tomllib", "tomli"},
+}
 
 
 def _imports(path: Path) -> set[str]:
