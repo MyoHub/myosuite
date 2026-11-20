@@ -202,6 +202,17 @@ class ActionMapWrapper(RecordConstructorArgs, gym.ActionWrapper):
         steps = 0 if self.frozen else self._steps * self.num_envs
         return self.step_offset + steps
 
+    def set_step_offset(self, step_offset: float) -> None:
+        """Update the step offset seen by scheduled action maps."""
+        self.step_offset = float(step_offset)
+
+    def set_hold_steps(self, hold_steps: int) -> None:
+        """Override ``action_map.hold_steps`` at runtime."""
+        if hold_steps < 1:
+            raise ValueError(f"hold_steps must be >= 1, got {hold_steps}")
+        if hasattr(self.action_map, "hold_steps"):
+            self.action_map.hold_steps = int(hold_steps)
+
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple:
@@ -210,7 +221,11 @@ class ActionMapWrapper(RecordConstructorArgs, gym.ActionWrapper):
         return super().reset(seed=seed, options=options)
 
     def action(self, action: np.ndarray) -> np.ndarray:
-        hold = max(1, int(getattr(self.action_map, "hold_steps", 1)))
+        cur_steps = self.env_steps
+        if hasattr(self.action_map, "current_hold_steps"):
+            hold = int(self.action_map.current_hold_steps(cur_steps))
+        else:
+            hold = max(1, int(getattr(self.action_map, "hold_steps", 1)))
         if hold > 1:
             if self._latched_z is None or (self._hold_counter % hold) == 0:
                 self._latched_z = np.array(action, copy=True)
@@ -221,7 +236,7 @@ class ActionMapWrapper(RecordConstructorArgs, gym.ActionWrapper):
         return self.action_map.forward(
             z,
             {
-                "env_steps": self.env_steps,
+                "env_steps": cur_steps,
                 "actuator_length": data.actuator_length,
                 "actuator_velocity": data.actuator_velocity,
             },
@@ -420,17 +435,24 @@ def _lambda_hold_actions(
     damping_s: float,
     margin_fraction: float,
     muscle_sigmoid: bool,
+    reflex_weight: float,
     xp: Any,
 ) -> Any:
     span = xp.clip(l_max - l_min, 1e-3, None)
     l_mid = 0.5 * (l_min + l_max)
-    threshold = l_mid - (0.5 + margin_fraction) * span * xp.clip(z, -1.0, 1.0)
+    z_clip = xp.clip(z, -1.0, 1.0)
+    threshold = l_mid - (0.5 + margin_fraction) * span * z_clip
     stretch = (length - threshold + damping_s * velocity) / span
     u = xp.clip(kp * stretch, 0.0, 1.0)
     if not muscle_sigmoid:
-        return u
+        if reflex_weight >= 1.0:
+            return u
+        return reflex_weight * u + (1.0 - reflex_weight) * xp.clip(z, 0.0, 1.0)
     u_safe = xp.clip(u, _SIGMOID_LO, _SIGMOID_HI)
-    return 0.5 - 0.2 * xp.log(1.0 / u_safe - 1.0)
+    a_ref = 0.5 - 0.2 * xp.log(1.0 / u_safe - 1.0)
+    if reflex_weight >= 1.0:
+        return a_ref
+    return reflex_weight * a_ref + (1.0 - reflex_weight) * z_clip
 
 
 @register_action_map
@@ -440,7 +462,8 @@ class LambdaHold(ActionMap):
 
     Policy actions ``z`` in ``[-1, 1]`` set per-muscle threshold lengths ``lambda_i``
     around each actuator's operating ``lengthrange``; a stretch-reflex law computes
-    excitations from live actuator length and velocity.
+    excitations from live actuator length and velocity, with optional curriculum
+    annealing of ``hold_steps`` and ``reflex_weight`` over ``[start_steps, start_steps + ramp_steps]``.
     """
 
     kind: ClassVar[str] = "lambda_hold"
@@ -452,6 +475,13 @@ class LambdaHold(ActionMap):
     margin_fraction: float = 0.35
     hold_steps: int = 1
     muscle_sigmoid: bool = True
+    end_hold_steps: int | None = None
+    start_steps: float = 0.0
+    ramp_steps: float = 0.0
+    end_reflex_weight: float = 1.0
+    _torch_cache: dict[Any, tuple[Any, Any]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         n = len(self.muscles)
@@ -464,8 +494,14 @@ class LambdaHold(ActionMap):
             or self.damping_s < 0
             or self.margin_fraction < 0
             or self.hold_steps < 1
+            or (self.end_hold_steps is not None and self.end_hold_steps < 1)
+            or self.start_steps < 0
+            or self.ramp_steps < 0
+            or not 0.0 <= self.end_reflex_weight <= 1.0
         ):
-            raise ValueError("Invalid LambdaHold gain, damping, margin or hold_steps")
+            raise ValueError(
+                "Invalid LambdaHold gain, damping, margin, hold_steps or curriculum schedule"
+            )
 
     @classmethod
     def from_model(
@@ -478,6 +514,10 @@ class LambdaHold(ActionMap):
         margin_fraction: float = 0.35,
         hold_steps: int = 1,
         muscle_sigmoid: bool = True,
+        end_hold_steps: int | None = None,
+        start_steps: float = 0.0,
+        ramp_steps: float = 0.0,
+        end_reflex_weight: float = 1.0,
     ) -> LambdaHold:
         """Build a :class:`LambdaHold` map from a compiled ``MjModel``."""
         ids = range(model.nu) if actuator_ids is None else actuator_ids
@@ -494,6 +534,10 @@ class LambdaHold(ActionMap):
             margin_fraction=margin_fraction,
             hold_steps=hold_steps,
             muscle_sigmoid=muscle_sigmoid,
+            end_hold_steps=end_hold_steps,
+            start_steps=start_steps,
+            ramp_steps=ramp_steps,
+            end_reflex_weight=end_reflex_weight,
         )
 
     @property
@@ -504,12 +548,36 @@ class LambdaHold(ActionMap):
     def action_dim(self) -> int:
         return len(self.muscles)
 
+    def _schedule_alpha(self, env_steps: float) -> float:
+        scheduled = (
+            self.end_hold_steps is not None and self.end_hold_steps != self.hold_steps
+        ) or self.end_reflex_weight != 1.0
+        if not scheduled:
+            return 0.0
+        if self.ramp_steps <= 0.0:
+            return 1.0 if env_steps >= self.start_steps else 0.0
+        return float(
+            min(max((env_steps - self.start_steps) / self.ramp_steps, 0.0), 1.0)
+        )
+
+    def current_hold_steps(self, env_steps: float = 0.0) -> int:
+        """Effective integer ``hold_steps`` at ``env_steps`` along the curriculum."""
+        target = self.hold_steps if self.end_hold_steps is None else self.end_hold_steps
+        alpha = self._schedule_alpha(env_steps)
+        return max(1, int(round(self.hold_steps + alpha * (target - self.hold_steps))))
+
+    def reflex_weight(self, env_steps: float = 0.0) -> float:
+        """Stretch-reflex blend weight in ``[0, 1]`` at ``env_steps``."""
+        alpha = self._schedule_alpha(env_steps)
+        return float(1.0 + alpha * (self.end_reflex_weight - 1.0))
+
     def forward(self, z: np.ndarray, state: Mapping[str, Any]) -> np.ndarray:
         z_arr = np.asarray(z)
         l_min = np.asarray(self.length_min, dtype=np.float64)
         l_max = np.asarray(self.length_max, dtype=np.float64)
         length = np.asarray(state["actuator_length"], dtype=np.float64)
         velocity = np.asarray(state["actuator_velocity"], dtype=np.float64)
+        w_ref = self.reflex_weight(float(state.get("env_steps", 0.0)))
         return _lambda_hold_actions(
             z_arr.astype(np.float64),
             length,
@@ -520,16 +588,25 @@ class LambdaHold(ActionMap):
             self.damping_s,
             self.margin_fraction,
             self.muscle_sigmoid,
+            w_ref,
             np,
         ).astype(z_arr.dtype)
 
     def forward_torch(self, z: Any, state: Mapping[str, Any]) -> Any:
         import torch  # noqa: PLC0415
 
-        l_min = torch.as_tensor(self.length_min, dtype=z.dtype, device=z.device)
-        l_max = torch.as_tensor(self.length_max, dtype=z.dtype, device=z.device)
+        key = (z.device, z.dtype)
+        bounds = self._torch_cache.get(key)
+        if bounds is None:
+            bounds = (
+                torch.tensor(self.length_min, dtype=z.dtype, device=z.device),
+                torch.tensor(self.length_max, dtype=z.dtype, device=z.device),
+            )
+            self._torch_cache[key] = bounds
+        l_min, l_max = bounds
         length = state["actuator_length"].to(dtype=z.dtype, device=z.device)
         velocity = state["actuator_velocity"].to(dtype=z.dtype, device=z.device)
+        w_ref = self.reflex_weight(float(state.get("env_steps", 0.0)))
         return _lambda_hold_actions(
             z,
             length,
@@ -540,11 +617,12 @@ class LambdaHold(ActionMap):
             self.damping_s,
             self.margin_fraction,
             self.muscle_sigmoid,
+            w_ref,
             torch,
         )
 
     def to_manifest(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "kind": self.kind,
             "muscles": list(self.muscles),
             "length_min": list(self.length_min),
@@ -555,9 +633,19 @@ class LambdaHold(ActionMap):
             "hold_steps": self.hold_steps,
             "muscle_sigmoid": self.muscle_sigmoid,
         }
+        if self.end_hold_steps is not None:
+            out["end_hold_steps"] = self.end_hold_steps
+        if self.start_steps != 0.0:
+            out["start_steps"] = self.start_steps
+        if self.ramp_steps != 0.0:
+            out["ramp_steps"] = self.ramp_steps
+        if self.end_reflex_weight != 1.0:
+            out["end_reflex_weight"] = self.end_reflex_weight
+        return out
 
     @classmethod
     def from_manifest(cls, manifest: Mapping[str, Any]) -> LambdaHold:
+        end_hold = manifest.get("end_hold_steps")
         return cls(
             muscles=list(manifest["muscles"]),
             length_min=tuple(float(v) for v in manifest["length_min"]),
@@ -567,6 +655,10 @@ class LambdaHold(ActionMap):
             margin_fraction=float(manifest["margin_fraction"]),
             hold_steps=int(manifest.get("hold_steps", 1)),
             muscle_sigmoid=bool(manifest.get("muscle_sigmoid", True)),
+            end_hold_steps=None if end_hold is None else int(end_hold),
+            start_steps=float(manifest.get("start_steps", 0.0)),
+            ramp_steps=float(manifest.get("ramp_steps", 0.0)),
+            end_reflex_weight=float(manifest.get("end_reflex_weight", 1.0)),
         )
 
 
