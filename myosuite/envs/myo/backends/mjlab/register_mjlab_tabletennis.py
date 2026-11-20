@@ -36,7 +36,7 @@ from mjlab.rl import (
 )
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
-from mjlab.tasks.registry import register_mjlab_task
+from mjlab.tasks.registry import list_tasks
 from scipy.spatial.transform import Rotation as R
 
 from myosuite.core.model_builder import build_from_recipe, cached_spec
@@ -50,6 +50,9 @@ from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTenni
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
     episode_length_s as _cpu_episode_length_s,
     mujoco_cfg_from_model,
+)
+from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+    register_myosuite_mjlab_task,
 )
 from myosuite.envs.myo.backends.mjlab.tasks.rl import (
     MUSCLE_ENTROPY_COEF,
@@ -964,38 +967,24 @@ def make_table_tennis_mjlab_env_cfg(tt_cfg: TableTennisCfg) -> ManagerBasedRlEnv
 
 def register_table_tennis_mjlab_tasks() -> None:
     """Register ``myoChallengeTableTennisP{0,1,2}-v0`` with mjlab (idempotent)."""
-    try:
-        _reference_model()
-    except Exception as exc:
-        logger = logging.getLogger(__name__)
-        if isinstance(exc, FileNotFoundError) or "Error opening file" in str(exc):
-            logger.info("mjlab: skipping optional table tennis registration: %s", exc)
-        else:
-            logger.warning(
-                "mjlab: skipping optional table tennis registration: %s", exc
-            )
-        return
-
-    rl_cfg = _table_tennis_ppo_runner_cfg()
+    existing = set(list_tasks())
     tasks: tuple[tuple[str, TableTennisCfg], ...] = (
         ("myoChallengeTableTennisP0-v0", TableTennisCfg.p0()),
         ("myoChallengeTableTennisP1-v0", TableTennisCfg.p1()),
         ("myoChallengeTableTennisP2-v0", TableTennisCfg.p2()),
     )
-    for task_id, cfg in tasks:
-        try:
-            env_cfg = make_table_tennis_mjlab_env_cfg(cfg)
-            play_cfg = make_table_tennis_mjlab_env_cfg(cfg)
-            register_mjlab_task(
-                task_id=task_id,
-                env_cfg=env_cfg,
-                play_env_cfg=play_cfg,
-                rl_cfg=rl_cfg,
-                runner_cls=None,
-            )
-        except ValueError:
-            pass
-        except Exception as exc:
-            logging.getLogger(__name__).warning(
-                "Table tennis mjlab: skip %s: %s", task_id, exc
-            )
+    pending = [(task_id, cfg) for task_id, cfg in tasks if task_id not in existing]
+    if not pending:
+        return
+    _reference_model()
+    rl_cfg = _table_tennis_ppo_runner_cfg()
+    for task_id, cfg in pending:
+        env_cfg = make_table_tennis_mjlab_env_cfg(cfg)
+        play_cfg = make_table_tennis_mjlab_env_cfg(cfg)
+        register_myosuite_mjlab_task(
+            task_id=task_id,
+            env_cfg=env_cfg,
+            play_env_cfg=play_cfg,
+            rl_cfg=rl_cfg,
+            runner_cls=None,
+        )
