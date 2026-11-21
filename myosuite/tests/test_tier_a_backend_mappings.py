@@ -13,25 +13,29 @@ pytestmark = pytest.mark.tier2
 
 
 def test_mjlab_mapping_for_finger_hand_targets() -> None:
-    """MJLab registry should expose expected task config mappings."""
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
-    from myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg import FingerPoseCfg
-    from myosuite.envs.myo.backends.mjlab.configs.finger_reach_cfg import FingerReachCfg
-    from myosuite.envs.myo.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
+    """MJLab registry should expose expected finger and hand task IDs."""
+    pytest.importorskip("mjlab")
+    from myosuite.envs.myo.backends.mjlab import list_mjlab_tasks
 
-    assert REGISTERED_TASKS["myoFingerPoseFixed-v0"] is FingerPoseCfg
-    assert REGISTERED_TASKS["myoFingerPoseRandom-v0"] is FingerPoseCfg
-    assert REGISTERED_TASKS["myoFingerReachRandom-v0"] is FingerReachCfg
-    assert REGISTERED_TASKS["myoHandPoseRandom-v0"] is HandPoseCfg
+    registered = set(list_mjlab_tasks())
+    for env_id in (
+        "myoFingerPoseFixed-v0",
+        "myoFingerPoseRandom-v0",
+        "myoFingerReachRandom-v0",
+        "myoHandPoseRandom-v0",
+        "myoHandReachRandom-v0",
+    ):
+        assert env_id in registered
 
 
 def test_mjlab_mapping_for_leg_walk_sarc_variant() -> None:
     """MJLab registry should include leg walk and sarcopenia variant IDs."""
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
-    from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
+    pytest.importorskip("mjlab")
+    from myosuite.envs.myo.backends.mjlab import list_mjlab_tasks
 
-    assert REGISTERED_TASKS["myoLegWalk-v0"] is WalkCfg
-    assert REGISTERED_TASKS["myoSarcLegWalk-v0"] is WalkCfg
+    registered = set(list_mjlab_tasks())
+    assert "myoLegWalk-v0" in registered
+    assert "myoSarcLegWalk-v0" in registered
 
 
 def test_mjx_mapping_for_finger_hand_targets() -> None:

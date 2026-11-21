@@ -54,7 +54,7 @@ def test_musclemimic_mjx_ids_registered() -> None:
 def test_musclemimic_cross_backend_tier_a_target() -> None:
     """Gate: canonical Mimic IDs exist on CPU, MJX, and mjlab registries."""
     import myosuite
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
+    from myosuite.envs.myo.backends.mjlab import list_mjlab_tasks
 
     try:
         from myosuite.envs.myo.backends.mjx import ALL_ENVS
@@ -63,7 +63,7 @@ def test_musclemimic_cross_backend_tier_a_target() -> None:
 
     gym_ids = set(myosuite.gym_registry_specs().keys())
     mjx_ids = set(ALL_ENVS)
-    mjlab_ids = set(REGISTERED_TASKS)
+    mjlab_ids = set(list_mjlab_tasks())
     want_cpu = {"myoMimicBimanual-v0", "myoMimicFullbody-v0"}
     want_mjx = {"MjxMimicBimanual-v0", "MjxMimicFullbody-v0"}
     want_mjlab = {"myoMimicBimanual-v0", "myoMimicFullbody-v0"}

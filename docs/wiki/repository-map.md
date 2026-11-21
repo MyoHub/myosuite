@@ -9,9 +9,8 @@ myosuite/          # core package (see below)
 docs/source/       # Sphinx documentation (quickstarts, environment reference, API)
 docs/wiki/         # this developer wiki
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
-training/          # method projects with their own pyproject.toml, outside the package (chasetag_teacher, dynsyn); see training-guidelines.md
+training/          # self-contained training projects with their own pyproject.toml, outside the package (chasetag_teacher/, dynsyn/, supermimic/); see training-guidelines.md
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
-training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, supermimic/)
 tools/             # standalone data/perception CLIs with isolated dependencies (instanthmr/)
 .github/           # CI and release workflows
 ```
@@ -30,7 +29,7 @@ tools/             # standalone data/perception CLIs with isolated dependencies 
 | `envs/myo/myoedits/` | Model-editing helpers and the registered edit variants |
 | `utils/` | Generic helpers — dict, xml, path, tensor, onnx export, plotting. No domain math. Checkpoint playback: `rslrl_policy.py`, `checkpoint_manifest.py`, `action_map.py` (action maps such as DynSyn: policy actions -> per-muscle actions, CPU wrapper, checkpoint reading) |
 | `viz/` | Rendering and visualization; `blender_render.py` (USD export and Blender studio scene), `muscle_tubes.py` (volumetric muscle geometry) and `skin.py` (`.skn` body skin; bundled skin in `assets/`) |
-| `integrations/` | Third-party integrations (musclemimic) |
+| `integrations/` | Third-party adapters only (musclemimic, capture); task-specific scenes, controllers and observations live with their task |
 | `logger/` | Rollout logging / grouped datasets |
 | `scenes/` | Scene assembly helpers |
 | `tests/` | Test suites (tiers 1–3, see pyproject markers); `tests/benchmarks/` holds the throughput benchmarks |
@@ -57,10 +56,12 @@ envs/myo/backends/       # GPU implementations (same env_id as the CPU task)
 └── mjx/                  # JAX/brax env classes (experimental; not guaranteed long-term)
 ```
 
-A task's **CPU** env (`tasks/`) and its supported **GPU** implementation
-(`backends/mjlab/`) share one `env_id` and the cross-backend contract — see
-[engineering-standards.md](engineering-standards.md). Tasks hand-write the CPU `MyoGymnasiumEnv`; the mjlab
-twin of the basic envs is built from the CPU registration (`backends/mjlab/tasks/cpu_reference.py`), so
+A task family has **one CPU home** (`envs/myo/tasks/<collection>/<family>/`) and **one mjlab home**
+(`envs/myo/backends/mjlab/tasks/<family>/`), sharing one `env_id` and the cross-backend contract — see
+[engineering-standards.md](engineering-standards.md). Do not add new task collections, new `register_mjlab_*.py`
+files, or a separate mjlab task list alongside `mjlab.tasks.registry` (`list_mjlab_tasks()` reads the registry
+directly, and registration failures must raise rather than warn). Tasks hand-write the CPU `MyoGymnasiumEnv`; the
+mjlab twin of the basic envs is built from the CPU registration (`backends/mjlab/tasks/cpu_reference.py`), so
 parameters live in one place. (An experimental `TaskConfig` route can instead generate a data-driven CPU env
 plus an MJX backend from one dataclass — the elbow pose and leg directional references; MJX is not
 guaranteed long-term.)

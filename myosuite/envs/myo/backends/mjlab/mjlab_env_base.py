@@ -397,20 +397,27 @@ class MjlabEntityAccessor(EnvAccessor):
         return torch
 
 
-try:
-    from mjlab.envs.mdp.events import resolve_env_ids as normalize_mjlab_env_ids
-except ImportError:
+_resolve_env_ids: Any = None
 
-    def normalize_mjlab_env_ids(env: Any, env_ids: Any) -> torch.Tensor:  # type: ignore[misc]
-        """Normalise env_ids to a 1-D long tensor (mjlab < 1.4 fallback)."""
-        import torch as _torch
 
-        if env_ids is None:
-            return _torch.arange(env.num_envs, device=env.device, dtype=_torch.long)
-        if isinstance(env_ids, slice):
-            return _torch.arange(env.num_envs, device=env.device, dtype=_torch.long)[
-                env_ids
-            ]
-        return _torch.as_tensor(env_ids, device=env.device, dtype=_torch.long).reshape(
-            -1
-        )
+def normalize_mjlab_env_ids(env: Any, env_ids: Any) -> torch.Tensor:
+    """Normalise *env_ids* to a 1-D long tensor on ``env.device``."""
+    global _resolve_env_ids
+    if _resolve_env_ids is None:
+        try:
+            from mjlab.envs.mdp.events import resolve_env_ids
+
+            _resolve_env_ids = resolve_env_ids
+        except ImportError:
+            _resolve_env_ids = False
+    if _resolve_env_ids is not False:
+        return _resolve_env_ids(env, env_ids)
+    import torch as _torch
+
+    if env_ids is None:
+        return _torch.arange(env.num_envs, device=env.device, dtype=_torch.long)
+    if isinstance(env_ids, slice):
+        return _torch.arange(env.num_envs, device=env.device, dtype=_torch.long)[
+            env_ids
+        ]
+    return _torch.as_tensor(env_ids, device=env.device, dtype=_torch.long).reshape(-1)

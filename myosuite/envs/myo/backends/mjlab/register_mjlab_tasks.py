@@ -44,7 +44,7 @@ from mjlab.rl import (
 )
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
-from mjlab.tasks.registry import register_mjlab_task
+from mjlab.tasks.registry import list_tasks
 
 from myosuite.core.config import TaskConfig
 from myosuite.physics.joint_coupling import JointCouplings
@@ -52,6 +52,9 @@ from myosuite.physics.quat import quat_yaw
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
+from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+    register_myosuite_mjlab_task,
+)
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
     mjlab_env_cfg_from_task_config,
@@ -814,21 +817,15 @@ def register_mjlab_tasks() -> None:
     register_table_tennis_mjlab_tasks()
 
     # --- ChaseTag full-body vs. scripted opponent (mjlab half of CPU FBP2) ---
-    try:
+    if _CHASETAG_ENV_ID not in list_tasks():
         chasetag_env_cfg = _make_chasetag_fbp2_env_cfg()
         chasetag_rl_cfg = _chasetag_ppo_runner_cfg()
-        register_mjlab_task(
+        register_myosuite_mjlab_task(
             task_id=_CHASETAG_ENV_ID,
             env_cfg=chasetag_env_cfg,
             play_env_cfg=chasetag_env_cfg,
             rl_cfg=chasetag_rl_cfg,
             runner_cls=None,
-        )
-    except ValueError:
-        pass  # already registered
-    except Exception:
-        logging.getLogger(__name__).warning(
-            "mjlab: failed to register myoChallengeChaseTagFBP2-v0", exc_info=True
         )
 
 
@@ -884,7 +881,7 @@ def bootstrap_myosuite_mjlab_registry(
     clip = load_motion_clip(p, expected_nq=89, expected_nv=88)
     try:
         register_mimic_mjlab_tasks_with_clip(
-            register_mjlab_task=register_mjlab_task,
+            register_mjlab_task=register_myosuite_mjlab_task,
             rl_cfg_fn=cfg_fn,
             clip=clip,
             use_lookahead=use_lookahead,

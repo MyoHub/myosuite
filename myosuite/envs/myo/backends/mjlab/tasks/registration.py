@@ -6,18 +6,15 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Iterable
 from typing import Any
 
 import gymnasium as gym
 from mjlab.envs import ManagerBasedRlEnvCfg
-from mjlab.rl import RslRlOnPolicyRunnerCfg
-from mjlab.tasks.registry import register_mjlab_task
+from mjlab.rl import RslRlBaseRunnerCfg, RslRlOnPolicyRunnerCfg
+from mjlab.tasks.registry import list_tasks, register_mjlab_task
 
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import feature_overrides
-
-_log = logging.getLogger(__name__)
 
 # Suffixes the CPU registry uses for muscle-condition variants (see _register_task_variants).
 _CONDITION_SUFFIXES = ("Sarc", "Fati", "Reaf")
@@ -40,6 +37,30 @@ def condition_variants(env_id: str) -> list[str]:
 
 
 _CFG_FACTORIES: dict[str, Callable[..., ManagerBasedRlEnvCfg]] = {}
+_REGISTERED_TASK_IDS: set[str] = set()
+
+
+def register_myosuite_mjlab_task(
+    task_id: str,
+    env_cfg: ManagerBasedRlEnvCfg,
+    play_env_cfg: ManagerBasedRlEnvCfg,
+    rl_cfg: RslRlBaseRunnerCfg,
+    runner_cls: type | None = None,
+) -> None:
+    """Register a MyoSuite task with ``mjlab.tasks.registry`` and record its ID."""
+    register_mjlab_task(
+        task_id=task_id,
+        env_cfg=env_cfg,
+        play_env_cfg=play_env_cfg,
+        rl_cfg=rl_cfg,
+        runner_cls=runner_cls,
+    )
+    _REGISTERED_TASK_IDS.add(task_id)
+
+
+def list_mjlab_tasks() -> list[str]:
+    """Return sorted MyoSuite task IDs registered in ``mjlab.tasks.registry``."""
+    return [task_id for task_id in list_tasks() if task_id in _REGISTERED_TASK_IDS]
 
 
 def rebuild_twin_cfg(
@@ -79,8 +100,8 @@ def register_cpu_twins(
 ) -> None:
     """Register each id in *env_ids* and its muscle-condition variants.
 
-    A task whose config cannot be built (e.g. a model asset missing from the
-    installed ``myo_sim``) is skipped with a warning so the others stay usable.
+    Idempotent: already-registered task IDs are skipped, while any model or
+    config failure raises immediately instead of dropping the task silently.
 
     Args:
         env_ids: Base CPU env ids.
@@ -88,20 +109,19 @@ def register_cpu_twins(
             from the CPU registration of ``env_id``.
         rl_cfg_fn: Builds the PPO runner config.
     """
+    existing = set(list_tasks())
     for base_id in env_ids:
         for env_id in (base_id, *condition_variants(base_id)):
-            try:
-                env_cfg = env_cfg_fn(env_id)
-                play_cfg = env_cfg_fn(env_id, play=True)
-            except Exception:  # noqa: BLE001  (any model/config failure)
-                _log.warning(
-                    "mjlab: skipping %s (config failed)", env_id, exc_info=True
-                )
-                continue
             _CFG_FACTORIES[env_id] = env_cfg_fn
-            register_mjlab_task(
+            if env_id in existing:
+                _REGISTERED_TASK_IDS.add(env_id)
+                continue
+            env_cfg = env_cfg_fn(env_id)
+            play_cfg = env_cfg_fn(env_id, play=True)
+            register_myosuite_mjlab_task(
                 task_id=env_id,
                 env_cfg=env_cfg,
                 play_env_cfg=play_cfg,
                 rl_cfg=rl_cfg_fn(),
             )
+            existing.add(env_id)

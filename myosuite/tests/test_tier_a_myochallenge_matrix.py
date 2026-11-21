@@ -54,11 +54,11 @@ def test_challenge_cross_backend_tier_a_target() -> None:
     except (ImportError, AttributeError) as exc:
         pytest.skip(f"MJX not importable on this setup: {exc}")
 
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
+    from myosuite.envs.myo.backends.mjlab import list_mjlab_tasks
 
     # Canonical target rule for migration: each challenge family must have at
     # least one MJX and one MJLab representation before promotion to Tier A.
-    challenge_mjlab = [k for k in REGISTERED_TASKS if k.startswith("myoChallenge")]
+    challenge_mjlab = [k for k in list_mjlab_tasks() if k.startswith("myoChallenge")]
     challenge_mjx = [k for k in ALL_ENVS if "Challenge" in k]
     if not challenge_mjlab or not challenge_mjx:
         pytest.skip("MyoChallenge cross-backend mappings are not complete yet.")
