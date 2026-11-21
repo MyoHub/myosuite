@@ -24,4 +24,5 @@
 - :mod:`.emg`: EMG filtering, muscle activation dynamics and tendon-node projection.
 - :mod:`.hand_retarget`: MANO-to-wrist frame calibration, presets, and DexPilot SLSQP hand retargeting.
 - :mod:`.hoi_retarget`: Hand-object interaction clip transforms and contact-aware MuJoCo IK.
+- :mod:`.emg_validation`: model-data EMG comparison and musculoskeletal validation modes.
 """
