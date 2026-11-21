@@ -9,11 +9,13 @@ from __future__ import annotations
 from myosuite.envs.myo.tasks.basic.full_body.waypoint_reference import (
     GaitParameters,
     compose_waypoint_reference,
+    gait_cycle,
     plan_waypoint_reference,
 )
 
 __all__ = [
     "GaitParameters",
     "compose_waypoint_reference",
+    "gait_cycle",
     "plan_waypoint_reference",
 ]

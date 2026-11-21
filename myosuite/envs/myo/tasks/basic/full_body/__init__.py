@@ -44,7 +44,12 @@ _registry.register_env(
 )
 
 _LAZY_REFERENCE_EXPORTS = frozenset(
-    {"GaitParameters", "compose_waypoint_reference", "plan_waypoint_reference"}
+    {
+        "GaitParameters",
+        "compose_waypoint_reference",
+        "gait_cycle",
+        "plan_waypoint_reference",
+    }
 )
 
 
@@ -64,5 +69,6 @@ __all__ = [
     "WaypointEnv",
     "WaypointTaskCfg",
     "compose_waypoint_reference",
+    "gait_cycle",
     "plan_waypoint_reference",
 ]

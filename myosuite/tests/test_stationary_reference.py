@@ -68,17 +68,58 @@ def test_single_lateral_step_has_no_periodic_foot_cycle() -> None:
 
 def test_waypoint_reference_canonical_home_and_shim_parity() -> None:
     """Waypoint reference planners live in ``tasks/basic/full_body`` with musclemimic shims."""
+    import pickle
+
     import myosuite.integrations.musclemimic as mm_pkg
     from myosuite.envs.myo.tasks.basic import full_body as fb_pkg
+    from myosuite.envs.myo.tasks.basic.full_body import waypoint as wp_canonical
     from myosuite.envs.myo.tasks.basic.full_body import waypoint_reference as canonical
     from myosuite.integrations.musclemimic import reference_motion as shim
 
     for name in (
         "GaitParameters",
         "compose_waypoint_reference",
+        "gait_cycle",
         "plan_waypoint_reference",
     ):
         obj = getattr(canonical, name)
         assert getattr(fb_pkg, name) is obj
         assert getattr(shim, name) is obj
-        assert getattr(mm_pkg, name) is obj
+        if name != "gait_cycle":
+            assert getattr(mm_pkg, name) is obj
+
+    legacy_ref_payload = pickle.dumps(
+        (
+            canonical.GaitParameters(speed=1.3),
+            canonical.gait_cycle,
+            canonical.compose_waypoint_reference,
+            canonical.plan_waypoint_reference,
+        ),
+        protocol=0,
+    ).replace(
+        b"myosuite.envs.myo.tasks.basic.full_body.waypoint_reference",
+        b"myosuite.integrations.musclemimic.reference_motion",
+    )
+    gp, gc_fn, comp_fn, plan_fn = pickle.loads(legacy_ref_payload)
+    assert isinstance(gp, canonical.GaitParameters) and gp.speed == 1.3
+    assert gc_fn is canonical.gait_cycle
+    assert comp_fn is canonical.compose_waypoint_reference
+    assert plan_fn is canonical.plan_waypoint_reference
+
+    legacy_wp_payload = pickle.dumps(
+        (
+            wp_canonical.WaypointTaskCfg(arrival_radius=0.45),
+            wp_canonical.WaypointEnv,
+            wp_canonical.build_model,
+            wp_canonical.initial_state,
+        ),
+        protocol=0,
+    ).replace(
+        b"myosuite.envs.myo.tasks.basic.full_body.waypoint",
+        b"myosuite.envs.waypoint",
+    )
+    cfg, env_cls, bm_fn, init_fn = pickle.loads(legacy_wp_payload)
+    assert isinstance(cfg, wp_canonical.WaypointTaskCfg) and cfg.arrival_radius == 0.45
+    assert env_cls is wp_canonical.WaypointEnv
+    assert bm_fn is wp_canonical.build_model
+    assert init_fn is wp_canonical.initial_state
