@@ -37,13 +37,22 @@ from typing import Any
 
 from myosuite.physics.fatigue import CumulativeFatigue
 
-__all__ = ["CumulativeFatigue", "CumulativeFatigueJax"]
+__all__ = [
+    "CumulativeFatigue",
+    "CumulativeFatigueJax",
+    "HillMuscleModel",
+    "strip_muscles_for_joint_torque_sim",
+]
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy-export JAX fatigue model (requires ``myosuite[mjx]`` / JAX)."""
+    """Lazy-export optional physics utilities."""
     if name == "CumulativeFatigueJax":
         from myosuite.physics.fatigue_jax import CumulativeFatigue
 
         return CumulativeFatigue
+    if name in ("HillMuscleModel", "strip_muscles_for_joint_torque_sim"):
+        from myosuite.physics import hill_muscle
+
+        return getattr(hill_muscle, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
