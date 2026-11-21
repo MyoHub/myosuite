@@ -474,6 +474,7 @@ def test_export_mm_evalkit_rollout_contracts(tmp_path: Path) -> None:
     )
 
 
+@needs_myo_sim_fingerprint
 def test_emg_trial_supported_dofs_roundtrip_and_auto_forwarding(
     tmp_path: Path,
 ) -> None:
