@@ -69,7 +69,7 @@ def run_path(judge, path, right_only=False, grounded=None):
     return out
 
 
-def ballistic(x_off, vx, vz, line, t_run=1.0, t_after=1.0):
+def ballistic(x_off, vx, vz, line, t_run=1.0, t_after=1.5):
     """Run at vx on the ground until fwd = x_off, then a ballistic flight, then stand still where it lands."""
     path = []
     x = x_off - vx * t_run
@@ -99,7 +99,9 @@ def test_long_jump_mark_matches_ballistic_flight():
     r = j.finalize(0)
     assert r["outcome"] == "jump" and r["valid"]
     # take-off frame = last contact (one step before the first airborne step)
-    assert r["takeoff_toe_fwd"] == pytest.approx(x0 - 8.0 * DT, abs=1e-6)
+    assert r["takeoff_toe_fwd"] == pytest.approx(
+        x0 - 8.0 * DT + 0.03, abs=1e-6
+    )  # foot front surface
     assert r["mark_m"] == pytest.approx(land - spec.line_fwd, abs=1e-6)
     # airborne control steps x dt: the landing frame is not airborne, so one step under the sampled flight
     assert r["flight_time_s"] == pytest.approx(t_flight - DT, abs=1e-9)
@@ -141,7 +143,7 @@ def test_long_jump_nearest_break_counts():
     j = JumpJudge(LONG_JUMP, 1, FOOT)
     j.reset(0)
     path, x0, land, _ = ballistic(19.8, 8.0, 3.0, LONG_JUMP.line_fwd, t_after=0.0)
-    path += [((land - 0.4, 0.0, COM_UP), (0.0, 0.0, 0.0))] * 20
+    path += [((land - 0.4, 0.0, COM_UP), (0.0, 0.0, 0.0))] * 40
     run_path(j, path)
     r = j.finalize(0)
     assert r["mark_m"] == pytest.approx(land - 0.4 - LONG_JUMP.line_fwd, abs=1e-6)
@@ -228,3 +230,93 @@ def test_high_jump_ducking_under_through_a_collider_gap_is_not_a_clearance():
             break
     r = j.finalize(0)
     assert r["outcome"] in ("under", "through") and not r["cleared"]
+
+
+# regression cases from the review (judge v2) ---------------------------------------------------------------
+
+
+def _one(spec, a, b, rad, com, vel=(5.0, 0.0, 0.0), foot=(1,), judge=None):
+    j = judge or JumpJudge(
+        spec, 1, np.array(foot), names=[f"c{i}" for i in range(len(foot))]
+    )
+    out = j.update(
+        DT,
+        a[None],
+        b[None],
+        np.asarray(rad, float),
+        np.array([com]),
+        np.array([vel]),
+        np.array([com[2]]),
+        0.3,
+    )
+    return j, out
+
+
+def test_long_jump_foul_on_foot_front_surface():
+    """A grounded 3 cm foot sphere centred 1 cm behind the line reaches 2 cm past it: foul (TR 30.1.1)."""
+    p = np.array([[19.99, 0.0, 0.029]])
+    j = JumpJudge(LONG_JUMP, 1, np.array([1]))
+    j.reset(0)
+    j, out = _one(LONG_JUMP, p, p, [0.03], (19.9, 0.0, 1.0), judge=j)
+    assert out["done"][0] and j.finalize(0)["outcome"] == "foul"
+
+
+def test_high_jump_swept_bar_contact_between_samples():
+    """A 3 cm sphere moving from 14.9 to 15.1 m at 1.02 m passes through the 1 m bar between two samples."""
+    j = JumpJudge(HIGH_JUMP, 1, np.array([0]), names=["s"])
+    j.reset(0)
+    for x in (14.9, 15.1):
+        p = np.array([[x, 0.0, 1.02]])
+        out = j.update(
+            DT,
+            p[None],
+            p[None],
+            np.array([0.03]),
+            np.array([[x, 0, 1.02]]),
+            np.array([[6.0, 0, 0]]),
+            np.array([1.02]),
+            0.3,
+        )
+        if out["done"][0]:
+            break
+    assert j.finalize(0)["outcome"] == "knocked"
+
+
+def test_long_jump_lane_rules_suspended_in_flight():
+    j = JumpJudge(LONG_JUMP, 1, FOOT)
+    j.reset(0)
+    path, *_ = ballistic(19.8, 8.0, 3.0, LONG_JUMP.line_fwd)
+    flags = []
+    for com, vel in path:
+        a, b = body(com)
+        if com[2] <= COM_UP + 1e-9:
+            a[:2, 2] -= 0.001
+            b[:2, 2] -= 0.001
+        out = j.update(
+            DT,
+            a[None],
+            b[None],
+            R,
+            np.array([com]),
+            np.array([vel]),
+            np.array([com[2]]),
+            0.6,
+        )
+        flags.append((com[2] > COM_UP + 1e-9, bool(out["suspend_lane_rules"][0])))
+        if out["done"][0]:
+            break
+    assert all(s for air, s in flags if air)
+
+
+def test_long_jump_delayed_backward_contact_inside_window():
+    j = JumpJudge(LONG_JUMP, 1, FOOT)
+    j.reset(0)
+    path, x0, land, _ = ballistic(19.8, 8.0, 3.0, LONG_JUMP.line_fwd, t_after=0.0)
+    path += [
+        ((land, 0.0, COM_UP), (0.0, 0.0, 0.0))
+    ] * 26  # 0.87 s standing, then falls back 0.5 m
+    path += [((land - 0.5, 0.0, COM_UP), (0.0, 0.0, 0.0))] * 10
+    run_path(j, path)
+    assert j.finalize(0)["mark_m"] == pytest.approx(
+        land - 0.5 - LONG_JUMP.line_fwd, abs=1e-6
+    )
