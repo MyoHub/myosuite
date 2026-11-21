@@ -935,6 +935,11 @@ def _start_pose(
 ) -> np.ndarray:
     """Place the calibration pose onto the first frame's pelvis position and orientation."""
     q = cal_qpos.copy()
+    free_jnts = [
+        j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+    ]
+    if not free_jnts:
+        return q
     k = [o.body for o in lmap.orientations].index("pelvis")
     d = mujoco.MjData(m)
     d.qpos[:] = q
@@ -942,9 +947,7 @@ def _start_pose(
     Rp = np.empty(9)
     mujoco.mju_quat2Mat(Rp, quat0[k])
     R_delta = Rp.reshape(3, 3) @ d.xmat[m.body("pelvis").id].reshape(3, 3).T
-    root_jnt = next(
-        j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
-    )
+    root_jnt = free_jnts[0]
     root_body = int(m.jnt_bodyid[root_jnt])
     qr = np.empty(4)
     mujoco.mju_mat2Quat(qr, (R_delta @ d.xmat[root_body].reshape(3, 3)).ravel())
@@ -963,6 +966,11 @@ def _ground_clip(
     ground_sigma: float,
 ) -> tuple[np.ndarray, ClipTargets, np.ndarray]:
     """Shift free-joint root height and target ``z`` so standing feet touch ``z = 0``."""
+    free_jnts = [
+        j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+    ]
+    if not free_jnts or (not lmap.feet[0] and not lmap.feet[1]):
+        return qpos.copy(), targets, np.zeros(len(qpos))
     low, _ = _foot_kinematics(m, lmap, qpos)
     if not np.isfinite(low).any():
         dz = np.zeros(len(qpos))
@@ -980,9 +988,7 @@ def _ground_clip(
         dz = np.maximum(
             _smooth(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
         )
-    root_jnt = next(
-        j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
-    )
+    root_jnt = free_jnts[0]
     qpos_out = qpos.copy()
     qpos_out[:, int(m.jnt_qposadr[root_jnt]) + 2] += dz
     pos_out = targets.pos.copy()
