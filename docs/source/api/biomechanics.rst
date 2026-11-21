@@ -80,3 +80,9 @@ Muscle mesh reconstruction
 
 .. automodule:: myosuite.viz.muscle_meshes
    :members:
+
+Streaming kinematics
+--------------------
+
+.. automodule:: myosuite.biomechanics.streaming_kinematics
+   :members:

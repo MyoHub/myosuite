@@ -24,6 +24,7 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **Live joint kinematics** (`myosuite.biomechanics.streaming_kinematics`): `StreamingKinematics.push(time, qpos)` estimates positions, velocities and accelerations of a pose stream a fixed number of frames behind the newest pose, with a local polynomial (Savitzky-Golay) fit on the poses' own timestamps (jitter and dropped frames are fine) in the tangent space of free and ball joints, coupled joints projected. It feeds inverse dynamics and static optimization in a live shadow model. On myoArm reaches tracked at 90 Hz with 0.5 deg noise, the static-optimization activations' RMS error falls from 0.32 with no delay to 0.13 at 56 ms and 0.05 at 111 ms ([#656]).
 
 ### Fixed
 
@@ -383,6 +384,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
+[#656]: https://github.com/MyoHub/myosuite/pull/656
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#803]: https://github.com/MyoHub/myosuite/pull/803
