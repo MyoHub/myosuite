@@ -46,6 +46,15 @@ warm, so the same code serves offline clips and a live stream::
     frame = so.solve(qpos, qvel, qacc)  # one state
     result = static_optimization(model, kin.qpos, kin.qvel, kin.qacc)  # a clip
 
+With a ``grip`` (:class:`GripContactConfig`) the hand holds a handle, a mocap
+body that follows the hand: its contacts with the hand are unknowns too, on
+MuJoCo's friction pyramid. With a ``loaded_joint`` the handle transmits the
+external generalized force on that joint's coordinate (a dynamometer's torque):
+``s^T J_c^T f = s^T e``, ``s`` the coordinate's motion (couplings included) and
+``e`` the ``external_qfrc``, whose part on that coordinate is then dropped. The
+grip force follows from equilibrium and minimum effort: muscles that also flex
+the fingers (FDS, FDP) can help the wrist, as the handle takes their finger torques.
+
 Activations are a minimum-effort estimate: co-contraction and activation dynamics
 are not predicted.
 """
@@ -83,6 +92,35 @@ class StaticOptimizationWarning(UserWarning):
 
 class StaticOptimizationError(RuntimeError):
     """OSQP did not solve a frame of a static optimization (``on_failure="raise"``)."""
+
+
+@dataclass(frozen=True)
+class GripContactConfig:
+    """A handle held in the hand, with the hand-handle contact forces as unknowns.
+
+    Attributes:
+        handle_body: Mocap body carrying the handle geoms
+            (:class:`myosuite.biomechanics.grip.GripHandle`).
+        hand_body: Body the handle is held in; the handle follows its pose.
+        handle_pos: Handle position in the hand body's frame [m].
+        handle_quat: Handle orientation in the hand body's frame (w, x, y, z).
+        loaded_joint: Hinge or slide joint whose part of ``external_qfrc`` the
+            handle transmits (a dynamometer axis aligned with that joint);
+            ``None`` adds the contacts without a load.
+        contact_distance: Gap up to which a hand geom can push on the handle [m].
+        optimal_force: ``F_contact`` per pyramid edge [N], whose forces cost
+            ``(f / F_contact)**2``; ``None`` is ten times the weight of the
+            moving bodies (at least 1 N), so grip forces cost next to nothing
+            against muscle effort.
+    """
+
+    handle_body: str
+    hand_body: str
+    handle_pos: tuple[float, float, float]
+    handle_quat: tuple[float, float, float, float]
+    loaded_joint: str | None = None
+    contact_distance: float = 0.005
+    optimal_force: float | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +165,8 @@ class StaticOptimizationConfig:
             (a strap, a brace, a dynamometer). Their reserves cost nothing, as
             free-joint residuals do without contacts, so the muscles crossing
             them need not cancel their own torques there with antagonists.
+        grip: A handle held in the hand, whose contact forces are unknowns
+            (``None``: no handle).
     """
 
     reserve_optimal_force: float | tuple[float, ...] | None = None
@@ -140,6 +180,7 @@ class StaticOptimizationConfig:
     residual_optimal_force: float | None = None
     on_failure: OnFailure = "warn"
     supported_dofs: tuple[int, ...] = ()
+    grip: GripContactConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -266,14 +307,16 @@ class StaticOptimizer:
             & ~int(flags.mjDSBL_CONSTRAINT)
             & ~int(flags.mjDSBL_CONTACT)
         ) | int(flags.mjDSBL_CLAMPCTRL)
-        if cfg.contact_forces:
+        if cfg.contact_forces or cfg.grip is not None:
             m.opt.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
+        if cfg.contact_forces:
             m.geom_margin[:] = np.maximum(m.geom_margin, cfg.contact_distance)
             m.geom_gap[:] = 0.0
             m.pair_margin[:] = np.maximum(m.pair_margin, cfg.contact_distance)
             m.pair_gap[:] = 0.0
-        else:
+        elif cfg.grip is None:
             m.opt.disableflags |= int(flags.mjDSBL_CONTACT)
+        self._grip = self._prepare_grip(m, cfg.grip)
         self.model, self.data, self.config = m, mujoco.MjData(m), cfg
 
         self._stateful = m.actuator_actadr >= 0
@@ -333,6 +376,53 @@ class StaticOptimizer:
         self._solver: osqp.OSQP | None = None
         self._pattern: np.ndarray | None = None
         self._warm_start: tuple[np.ndarray, np.ndarray] | None = None
+
+    @staticmethod
+    def _prepare_grip(
+        m: mujoco.MjModel, grip: GripContactConfig | None
+    ) -> dict[str, Any] | None:
+        """Ids of the handle, check it is a mocap body, give its geoms their reach."""
+        if grip is None:
+            return None
+        handle = m.body(grip.handle_body).id
+        if m.body_mocapid[handle] < 0:
+            raise ValueError(f"grip handle {grip.handle_body!r} is not a mocap body")
+        geoms = np.flatnonzero(m.geom_bodyid == handle)
+        m.geom_margin[geoms] = grip.contact_distance
+        m.geom_gap[geoms] = 0.0
+        dof = -1
+        if grip.loaded_joint is not None:
+            j = m.joint(grip.loaded_joint).id
+            if int(m.jnt_type[j]) not in (
+                int(mujoco.mjtJoint.mjJNT_HINGE),
+                int(mujoco.mjtJoint.mjJNT_SLIDE),
+            ):
+                raise ValueError(f"loaded joint {grip.loaded_joint!r} is not 1-dof")
+            dof = int(m.jnt_dofadr[j])
+        # Edge forces are solved in units of the body weight (at least 1 N).
+        scale = max(
+            float(
+                m.body_mass[m.body_weldid != 0].sum() * np.linalg.norm(m.opt.gravity)
+            ),
+            1.0,
+        )
+        return {
+            "handle": handle,
+            "mocap": int(m.body_mocapid[handle]),
+            "hand": m.body(grip.hand_body).id,
+            "dof": dof,
+            "force": scale,
+            "weight": (scale / (grip.optimal_force or 10.0 * scale)) ** 2,
+        }
+
+    def _place_handle(self) -> None:
+        """Move the handle to its pose in the hand (after the kinematics)."""
+        g, cfg, d = self._grip, self.config.grip, self.data
+        rot = d.xmat[g["hand"]].reshape(3, 3)
+        d.mocap_pos[g["mocap"]] = d.xpos[g["hand"]] + rot @ np.asarray(cfg.handle_pos)
+        quat = np.zeros(4)
+        mujoco.mju_mulQuat(quat, d.xquat[g["hand"]], np.asarray(cfg.handle_quat))
+        d.mocap_quat[g["mocap"]] = quat
 
     def peak_actuator_qfrc(self) -> np.ndarray:
         """Per dof, ``sum_i |R_ij| F_i`` at ``qpos0`` and rest [N m or N].
@@ -458,9 +548,25 @@ class StaticOptimizer:
             lo = np.minimum(np.maximum(lo, min_activation), hi)
         m, d = self.model, self.data
         d.qpos[:], d.qvel[:] = qpos, qvel
+        if self._grip is not None:
+            mujoco.mj_kinematics(m, d)
+            self._place_handle()
         mujoco.mj_fwdPosition(m, d)
         mujoco.mj_fwdVelocity(m, d)
         tau = required_qfrc(m, d, qacc)
+        efc_J = d.efc_J[: d.nefc * m.nv].reshape(d.nefc, m.nv)
+        J_eq = efc_J[d.efc_type[: d.nefc] == mujoco.mjtConstraint.mjCNSTR_EQUALITY]
+        rows, capacity, n_grip = self._contact_rows()
+        # The handle transmits the external force on the loaded coordinate.
+        load_row = None
+        if n_grip and self._grip["dof"] >= 0 and external_qfrc is not None:
+            dof = self._grip["dof"]
+            lhs = np.vstack([J_eq, np.eye(m.nv)[dof]])
+            s = np.linalg.lstsq(lhs, np.eye(len(lhs))[-1], rcond=None)[0]
+            load = float(s @ external_qfrc)
+            external_qfrc = np.array(external_qfrc, dtype=np.float64)
+            external_qfrc[dof] -= load
+            load_row = (s @ efc_J[rows[:n_grip]].T * capacity[:n_grip], load)
         if external_qfrc is not None:
             tau -= external_qfrc
 
@@ -471,9 +577,6 @@ class StaticOptimizer:
         mujoco.mju_sparse2dense(
             moment, d.actuator_moment, d.moment_rownnz, d.moment_rowadr, d.moment_colind
         )
-        efc_J = d.efc_J[: d.nefc * m.nv].reshape(d.nefc, m.nv)
-        J_eq = efc_J[d.efc_type[: d.nefc] == mujoco.mjtConstraint.mjCNSTR_EQUALITY]
-        rows, capacity = self._contact_rows()
         nu, nv, n_eq, n_c = m.nu, m.nv, len(J_eq), len(rows)
 
         # Variables: activations, reserves, equality forces, contact edge forces
@@ -488,11 +591,17 @@ class StaticOptimizer:
         rhs = tau - moment.T @ bias
         lower = np.r_[rhs, lo, np.zeros(n_c)]
         upper = np.r_[rhs, hi, np.full(n_c, np.inf)]
+        if load_row is not None:
+            row = np.zeros((1, A.shape[1]))
+            row[0, nu + nv + n_eq : nu + nv + n_eq + n_grip] = load_row[0]
+            A = np.vstack([A, row])
+            lower, upper = np.r_[lower, load_row[1]], np.r_[upper, load_row[1]]
         weight = np.r_[
             np.ones(nu),
             self._reserve_weight,
             np.full(n_eq, _CONSTRAINT_WEIGHT),
-            np.ones(n_c),
+            np.full(n_grip, self._grip["weight"] if n_grip else 0.0),
+            np.ones(n_c - n_grip),
         ]
         x, solver = self._solve_qp(A, lower, upper, weight)
         status = solver if isinstance(solver, str) else solver.status
@@ -567,18 +676,33 @@ class StaticOptimizer:
             },
         )
 
-    def _contact_rows(self) -> tuple[np.ndarray, np.ndarray]:
-        """Pyramid rows of contacts with world-fixed bodies and each row's capacity [N]."""
+    def _contact_rows(self) -> tuple[np.ndarray, np.ndarray, int]:
+        """Pyramid rows of the handle's and then the ground's contacts with the body.
+
+        Returns the rows, each row's capacity [N] and the number of handle rows.
+        """
         m, d = self.model, self.data
-        if not self.config.contact_forces:
-            return np.zeros(0, dtype=int), np.zeros(0)
         rows = np.flatnonzero(np.isin(d.efc_type[: d.nefc], _CONTACT_ROWS))
         con = d.efc_id[rows]
-        weld = m.body_weldid[m.geom_bodyid]
-        ground = (weld[d.contact.geom1[con]] == 0) | (weld[d.contact.geom2[con]] == 0)
-        rows, con = rows[ground], con[ground]
-        reach = np.maximum(d.contact.dist[con], 0.0) / self.config.contact_distance
-        return rows, self._contact_force * np.clip(1.0 - reach, 1e-3, 1.0)
+        body1 = m.geom_bodyid[d.contact.geom1[con]]
+        body2 = m.geom_bodyid[d.contact.geom2[con]]
+        weld1, weld2 = m.body_weldid[body1], m.body_weldid[body2]
+        out_rows, out_cap = [np.zeros(0, dtype=int)], [np.zeros(0)]
+        n_grip = 0
+        if self._grip is not None:
+            h, g = self._grip["handle"], self.config.grip
+            held = ((body1 == h) & (weld2 != 0)) | ((body2 == h) & (weld1 != 0))
+            reach = np.maximum(d.contact.dist[con[held]], 0.0) / g.contact_distance
+            out_rows.append(rows[held])
+            out_cap.append(self._grip["force"] * np.clip(1.0 - reach, 1e-3, 1.0))
+            n_grip = int(held.sum())
+        if self.config.contact_forces:
+            ground = (weld1 == 0) | (weld2 == 0)
+            reach = np.maximum(d.contact.dist[con[ground]], 0.0)
+            reach = reach / self.config.contact_distance
+            out_rows.append(rows[ground])
+            out_cap.append(self._contact_force * np.clip(1.0 - reach, 1e-3, 1.0))
+        return np.concatenate(out_rows), np.concatenate(out_cap), n_grip
 
     def _body_contact_forces(self, rows: np.ndarray, f: np.ndarray) -> np.ndarray:
         """World-frame contact force on each body from the pyramid edge forces *f*."""
