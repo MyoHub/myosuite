@@ -21,7 +21,8 @@ the DynSyn grouping and its trainer) lives in ``training/dynsyn``.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import math
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, runtime_checkable
@@ -184,6 +185,8 @@ class ActionMapWrapper(RecordConstructorArgs, gym.ActionWrapper):
         self.action_map = action_map
         self.num_envs, self.step_offset, self.frozen = num_envs, step_offset, frozen
         self._steps = 0
+        self._latched_z: np.ndarray | None = None
+        self._hold_counter = 0
         box = env.action_space
         if action_map.action_dim != box.shape[0]:
             self.action_space = gym.spaces.Box(
@@ -199,12 +202,36 @@ class ActionMapWrapper(RecordConstructorArgs, gym.ActionWrapper):
         steps = 0 if self.frozen else self._steps * self.num_envs
         return self.step_offset + steps
 
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple:
+        self._latched_z = None
+        self._hold_counter = 0
+        return super().reset(seed=seed, options=options)
+
     def action(self, action: np.ndarray) -> np.ndarray:
-        return self.action_map.forward(action, {"env_steps": self.env_steps})
+        hold = max(1, int(getattr(self.action_map, "hold_steps", 1)))
+        if hold > 1:
+            if self._latched_z is None or (self._hold_counter % hold) == 0:
+                self._latched_z = np.array(action, copy=True)
+            z = self._latched_z
+        else:
+            z = action
+        data = self.env.unwrapped.data
+        return self.action_map.forward(
+            z,
+            {
+                "env_steps": self.env_steps,
+                "actuator_length": data.actuator_length,
+                "actuator_velocity": data.actuator_velocity,
+            },
+        )
 
     def step(self, action: np.ndarray) -> tuple:
         self._steps += 1
-        return super().step(action)
+        out = super().step(action)
+        self._hold_counter += 1
+        return out
 
 
 # --- DynSyn (He et al., ICML 2024, arXiv:2407.11472) ------------------------------
@@ -374,6 +401,172 @@ class DynSyn(ActionMap):
             start_steps=manifest["start_steps"],
             ramp_steps=manifest["ramp_steps"],
             max_amplitude=manifest["max_amplitude"],
+        )
+
+
+# --- LambdaHold (Lee et al., arXiv:2608.17030) -------------------------------------
+
+_SIGMOID_LO = 1.0 / (1.0 + math.exp(7.5))
+_SIGMOID_HI = 1.0 / (1.0 + math.exp(-2.5))
+
+
+def _lambda_hold_actions(
+    z: Any,
+    length: Any,
+    velocity: Any,
+    l_min: Any,
+    l_max: Any,
+    kp: float,
+    damping_s: float,
+    margin_fraction: float,
+    muscle_sigmoid: bool,
+    xp: Any,
+) -> Any:
+    span = xp.clip(l_max - l_min, 1e-3, None)
+    l_mid = 0.5 * (l_min + l_max)
+    threshold = l_mid - (0.5 + margin_fraction) * span * xp.clip(z, -1.0, 1.0)
+    stretch = (length - threshold + damping_s * velocity) / span
+    u = xp.clip(kp * stretch, 0.0, 1.0)
+    if not muscle_sigmoid:
+        return u
+    u_safe = xp.clip(u, _SIGMOID_LO, _SIGMOID_HI)
+    return 0.5 - 0.2 * xp.log(1.0 / u_safe - 1.0)
+
+
+@register_action_map
+@dataclass
+class LambdaHold(ActionMap):
+    """Equilibrium-point stretch-reflex action map (adapted from Lee et al., 2026).
+
+    Policy actions ``z`` in ``[-1, 1]`` set per-muscle threshold lengths ``lambda_i``
+    around each actuator's operating ``lengthrange``; a stretch-reflex law computes
+    excitations from live actuator length and velocity.
+    """
+
+    kind: ClassVar[str] = "lambda_hold"
+    muscles: list[str]
+    length_min: tuple[float, ...]
+    length_max: tuple[float, ...]
+    kp: float = 2.5
+    damping_s: float = 0.04
+    margin_fraction: float = 0.35
+    hold_steps: int = 1
+    muscle_sigmoid: bool = True
+
+    def __post_init__(self) -> None:
+        n = len(self.muscles)
+        if n == 0 or len(self.length_min) != n or len(self.length_max) != n:
+            raise ValueError(
+                "muscles, length_min and length_max must share non-zero length"
+            )
+        if (
+            self.kp <= 0
+            or self.damping_s < 0
+            or self.margin_fraction < 0
+            or self.hold_steps < 1
+        ):
+            raise ValueError("Invalid LambdaHold gain, damping, margin or hold_steps")
+
+    @classmethod
+    def from_model(
+        cls,
+        model: Any,
+        *,
+        actuator_ids: Sequence[int] | None = None,
+        kp: float = 2.5,
+        damping_s: float = 0.04,
+        margin_fraction: float = 0.35,
+        hold_steps: int = 1,
+        muscle_sigmoid: bool = True,
+    ) -> LambdaHold:
+        """Build a :class:`LambdaHold` map from a compiled ``MjModel``."""
+        ids = range(model.nu) if actuator_ids is None else actuator_ids
+        names = [model.actuator(i).name.split("/")[-1] for i in ids]
+        lr = np.asarray(model.actuator_lengthrange, dtype=float)[list(ids)]
+        lo = lr[:, 0].copy()
+        hi = np.where(lr[:, 1] > lr[:, 0] + 1e-6, lr[:, 1], lr[:, 0] + 1.0)
+        return cls(
+            muscles=names,
+            length_min=tuple(lo.tolist()),
+            length_max=tuple(hi.tolist()),
+            kp=kp,
+            damping_s=damping_s,
+            margin_fraction=margin_fraction,
+            hold_steps=hold_steps,
+            muscle_sigmoid=muscle_sigmoid,
+        )
+
+    @property
+    def muscle_names(self) -> list[str]:
+        return list(self.muscles)
+
+    @property
+    def action_dim(self) -> int:
+        return len(self.muscles)
+
+    def forward(self, z: np.ndarray, state: Mapping[str, Any]) -> np.ndarray:
+        z_arr = np.asarray(z)
+        l_min = np.asarray(self.length_min, dtype=np.float64)
+        l_max = np.asarray(self.length_max, dtype=np.float64)
+        length = np.asarray(state["actuator_length"], dtype=np.float64)
+        velocity = np.asarray(state["actuator_velocity"], dtype=np.float64)
+        return _lambda_hold_actions(
+            z_arr.astype(np.float64),
+            length,
+            velocity,
+            l_min,
+            l_max,
+            self.kp,
+            self.damping_s,
+            self.margin_fraction,
+            self.muscle_sigmoid,
+            np,
+        ).astype(z_arr.dtype)
+
+    def forward_torch(self, z: Any, state: Mapping[str, Any]) -> Any:
+        import torch  # noqa: PLC0415
+
+        l_min = torch.as_tensor(self.length_min, dtype=z.dtype, device=z.device)
+        l_max = torch.as_tensor(self.length_max, dtype=z.dtype, device=z.device)
+        length = state["actuator_length"].to(dtype=z.dtype, device=z.device)
+        velocity = state["actuator_velocity"].to(dtype=z.dtype, device=z.device)
+        return _lambda_hold_actions(
+            z,
+            length,
+            velocity,
+            l_min,
+            l_max,
+            self.kp,
+            self.damping_s,
+            self.margin_fraction,
+            self.muscle_sigmoid,
+            torch,
+        )
+
+    def to_manifest(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "muscles": list(self.muscles),
+            "length_min": list(self.length_min),
+            "length_max": list(self.length_max),
+            "kp": self.kp,
+            "damping_s": self.damping_s,
+            "margin_fraction": self.margin_fraction,
+            "hold_steps": self.hold_steps,
+            "muscle_sigmoid": self.muscle_sigmoid,
+        }
+
+    @classmethod
+    def from_manifest(cls, manifest: Mapping[str, Any]) -> LambdaHold:
+        return cls(
+            muscles=list(manifest["muscles"]),
+            length_min=tuple(float(v) for v in manifest["length_min"]),
+            length_max=tuple(float(v) for v in manifest["length_max"]),
+            kp=float(manifest["kp"]),
+            damping_s=float(manifest["damping_s"]),
+            margin_fraction=float(manifest["margin_fraction"]),
+            hold_steps=int(manifest.get("hold_steps", 1)),
+            muscle_sigmoid=bool(manifest.get("muscle_sigmoid", True)),
         )
 
 

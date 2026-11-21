@@ -24,6 +24,7 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* Equilibrium-point stretch-reflex action map (`LambdaHold` in `myosuite.utils.action_map` and `myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map`, plus `training/lambda_hold`), mapping policy threshold lengths and live actuator length/velocity feedback onto muscle commands with optional intermittent phase holding.
 
 ### Fixed
 
