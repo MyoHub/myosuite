@@ -97,6 +97,12 @@ Choose your path
 
 .. toctree::
    :maxdepth: 1
+   :caption: Developer Guide
+
+   developer/index
+
+.. toctree::
+   :maxdepth: 1
    :caption: Projects with MyoSuite
 
    projects
