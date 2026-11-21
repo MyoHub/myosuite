@@ -82,7 +82,7 @@ def test_repeated_partial_reset_preserves_initial_distance() -> None:
 
 
 def _t(x: np.ndarray) -> torch.Tensor:
-    return torch.as_tensor(np.asarray(x)[None], dtype=torch.float32)
+    return torch.tensor(np.asarray(x, dtype=np.float32)[None])
 
 
 @pytest.fixture(scope="module")

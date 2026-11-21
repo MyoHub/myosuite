@@ -223,6 +223,8 @@ def _make_mock_env(
     return types.SimpleNamespace(
         scene=scene,
         sim=_MockSim(),
+        num_envs=n_envs,
+        device=physics.qpos.device,
         physics_dt=0.002,
         cfg=types.SimpleNamespace(decimation=5),
         episode_length_buf=episode_length_buf,
@@ -379,6 +381,82 @@ def test_keyframe_reset_event_restores_aux_free_joints() -> None:
         qpos[3, 8:11].numpy(), np.array([-6.0, -8.0, -10.0]), atol=1e-6
     )
     assert env.sim.forward_calls == 1
+
+
+def test_keyframe_reset_event_uses_entity_write_api_and_caches_tensors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single-root floating entities reset via write_cpu_state without re-uploading."""
+    from myosuite.tests.support.optional_deps import require_mjlab
+
+    require_mjlab()
+    import mujoco
+
+    half = float(np.sqrt(0.5))
+    model = types.SimpleNamespace(
+        nkey=1,
+        nq=8,
+        nv=7,
+        njnt=2,
+        nu=2,
+        key_qpos=np.array(
+            [[1.0, 2.0, 3.0, half, 0.0, 0.0, half, -0.4]], dtype=np.float32
+        ),
+        key_qvel=np.array([[0.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.7]], dtype=np.float32),
+        key_act=np.array([[0.25, 0.75]], dtype=np.float32),
+        jnt_type=np.array(
+            [int(mujoco.mjtJoint.mjJNT_FREE), int(mujoco.mjtJoint.mjJNT_HINGE)],
+            dtype=np.int32,
+        ),
+        jnt_qposadr=np.array([0, 7], dtype=np.int32),
+    )
+    env = _make_mock_env(n_envs=3, nq=8, nv=7, na=2)
+    env.scene.env_origins = torch.tensor(
+        [[0.0, 0.0, 0.0], [10.0, 20.0, 30.0], [-1.0, -2.0, -3.0]],
+        dtype=torch.float32,
+    )
+    ent = env.scene["robot"]
+    ent.is_fixed_base = False
+    ent.is_articulated = True
+    writes: dict[str, Any] = {}
+    ent.write_root_state_to_sim = lambda state, env_ids=None: writes.update(
+        root=state.clone(), root_ids=env_ids.clone()
+    )
+    ent.write_joint_state_to_sim = lambda pos, vel, env_ids=None: writes.update(
+        joint_pos=pos.clone(), joint_vel=vel.clone(), joint_ids=env_ids.clone()
+    )
+
+    event = _mimic_keyframe_reset_event("robot", model)
+    event(env, None)
+
+    assert writes["root_ids"].tolist() == [0, 1, 2]
+    assert writes["joint_ids"].tolist() == [0, 1, 2]
+    np.testing.assert_allclose(
+        writes["root"][1, :3].numpy(), np.array([11.0, 22.0, 33.0]), atol=1e-6
+    )
+    np.testing.assert_allclose(
+        writes["root"][1, 10:13].numpy(), np.array([0.0, 1.0, 0.0]), atol=1e-6
+    )
+    np.testing.assert_allclose(
+        writes["joint_pos"][:, 0].numpy(), np.full(3, -0.4), atol=1e-6
+    )
+    np.testing.assert_allclose(
+        writes["joint_vel"][:, 0].numpy(), np.full(3, 0.7), atol=1e-6
+    )
+    np.testing.assert_allclose(
+        ent.data.data.act[1].numpy(), np.array([0.25, 0.75]), atol=1e-6
+    )
+
+    real_as_tensor = torch.as_tensor
+
+    def _forbid_numpy_upload(val: Any, *args: Any, **kwargs: Any) -> Any:
+        assert not isinstance(val, np.ndarray), "Unexpected per-reset host upload"
+        return real_as_tensor(val, *args, **kwargs)
+
+    monkeypatch.setattr(torch, "as_tensor", _forbid_numpy_upload)
+    event(env, slice(1, 3))
+    assert writes["root_ids"].tolist() == [1, 2]
+    assert env.sim.forward_calls == 2
 
 
 def _make_cache_with_source(
