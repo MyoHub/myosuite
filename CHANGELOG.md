@@ -24,6 +24,15 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **Body scaling:** `myosuite.core.body_scaling.scale_model(spec, scales, *, total_mass=None)` returns a copy of a model scaled to a subject with the rules of OpenSim's Scale Tool. `scales` is one of three forms:
+  - body -> one factor or three along the body's axes;
+  - the path of an OpenSim ScaleSet or scaled `.osim`. Its Rajagopal segments map onto MyoLeg or the MuscleMimic MyoFullBody, permuted onto each body's axes, since MyoLeg's root and torso are z-up;
+  - body -> `(model_points, measured_points)`, fitted per body. A marker pair, landmarks and vertices all take this form.
+
+  Muscle fibre and tendon slack lengths follow the muscle-tendon length in the default pose with every joint coupling assembled. Mass scales with volume, and `total_mass` rescales only the subject's trees. A free-floating subject keeps each pose's ground clearance. One factor is an exact similarity (tested on MyoLeg and MyoFullBody).
+  `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the same subject model on the CPU and on mjlab. Other tasks raise `NotImplementedError`, and envs without `scales` are unchanged. `write_manifest` and `check_contract` take `scales` and `total_mass`. The manifest then records them with a path-free model digest, and `strict=True` rejects a checkpoint for another body.
+  Skin influences support segment-local anisotropic scaling; `.skn`/GLB exports that cannot keep it need an approximation opt-in. Retargeting your own SMPL motion with GMR-Fit is documented, with the license rules ([#166], [#525]).
+* **Motion from video with FMPose3D:** `myosuite.integrations.fmpose3d.retarget_fmpose3d(spec, poses)` fits MyoLeg or the MuscleMimic MyoFullBody to the 17 Human3.6M joints that [FMPose3D](https://github.com/AdaptiveMotorControlLab/FMPose3D) estimates from video frames (its `Pose3DResult`, an array or a saved `.npz`) and returns a `MotionClip`. Each frame is rebuilt with the model's segment lengths along the estimated directions. Human3.6M's root and thorax are replaced by the hip and shoulder midpoints, the trunk is set upright from the median direction between them, and MyoFullBody is refitted with the trunk and shoulder lengths of its shoulder girdle; the feet, the wrists, forearm rotation and MyoFullBody's lumbar flexion keep the seed pose (`clip.metadata["fmpose3d"]["held"]` lists them), and the clip has no horizontal travel. FMPose3D is not a dependency (it needs `torch<2.11`). `retarget(..., ground_each_frame=True)` puts every frame's lowest sole point on the ground. See `docs/source/fmpose3d.rst` ([#590]).
 
 ### Fixed
 
@@ -381,6 +390,9 @@ Changes since **v3.1.0** (2026-11-11).
 * `RunTrackEnv` (`myoChallengeOslRunFixed/Random-v0`) stores `ACTUATOR_PARAM` and `OSL_PARAM_LIST` per environment instance rather than mutating shared class-level containers, and seeds `self.np_random` before constructing `TrackField`.
 * `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) perturbs and clips only `jnt_limited` coordinates instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset.
 
+[#166]: https://github.com/MyoHub/myosuite/issues/166
+[#525]: https://github.com/MyoHub/myosuite/pull/525
+[#590]: https://github.com/MyoHub/myosuite/pull/590
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672

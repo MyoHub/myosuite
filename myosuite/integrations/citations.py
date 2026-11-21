@@ -98,12 +98,26 @@ KINESIS_CITATION = IntegrationCitation(
 }""",
 )
 
+FMPOSE3D_CITATION = IntegrationCitation(
+    key="fmpose3d",
+    name="FMPose3D",
+    project_url="https://github.com/AdaptiveMotorControlLab/FMPose3D",
+    arxiv_url="https://arxiv.org/abs/2602.05755",
+    bibtex="""@inproceedings{Wang2026FMPose3D,
+  title={{FMPose3D}: monocular {3D} pose estimation via flow matching},
+  author={Wang, Ti and Yu, Xiaohang and Mathis, Mackenzie Weygandt},
+  booktitle={IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year={2026}
+}""",
+)
+
 INTEGRATION_CITATIONS = (
     MUSCLEMIMIC_CITATION,
     AMASS_CITATION,
     KIT_MOTION_DATABASE_CITATION,
     GMR_CITATION,
     KINESIS_CITATION,
+    FMPOSE3D_CITATION,
 )
 INTEGRATION_CITATIONS_BY_KEY = {
     citation.key: citation for citation in INTEGRATION_CITATIONS
@@ -121,6 +135,7 @@ def get_integration_citation(key: str) -> IntegrationCitation:
 
 __all__ = [
     "AMASS_CITATION",
+    "FMPOSE3D_CITATION",
     "GMR_CITATION",
     "INTEGRATION_CITATIONS",
     "INTEGRATION_CITATIONS_BY_KEY",

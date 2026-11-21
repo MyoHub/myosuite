@@ -40,6 +40,7 @@ def retarget(
     qpos: ArrayLike | None = None,
     rotation: ArrayLike | None = None,
     translation: ArrayLike | None = None,
+    ground_each_frame: bool = False,
 ) -> MotionClip:
     """Fit a model to marker trajectories, one frame at a time.
 
@@ -51,9 +52,10 @@ def retarget(
 
     The marker error and the sole height are recorded for every frame. With a
     free root joint, the whole clip is then shifted vertically by one offset so
-    that its lowest sole point touches ``z = 0``. The sole is the collision
-    geometry of the root's tree (the feet of a standing model) or, if given,
-    *ground_sites*. A fixed-base model is not shifted.
+    that its lowest sole point touches ``z = 0``, or each frame by its own with
+    *ground_each_frame*. The sole is the collision geometry of the root's tree
+    (the feet of a standing model) or, if given, *ground_sites*. A fixed-base
+    model is not shifted.
 
     Example::
 
@@ -79,6 +81,9 @@ def retarget(
             world frame, e.g. ``[[1, 0, 0], [0, 0, -1], [0, 1, 0]]`` for the
             Y-up frame of OpenSim files. Identity by default.
         translation: Offset ``(3,)`` in metres added after *rotation*.
+        ground_each_frame: Put every frame's lowest sole point on the ground,
+            for markers without a usable height, such as root-relative poses
+            from a single camera. This assumes a foot is down in every frame.
 
     Returns:
         A :class:`~myosuite.core.trajectory_io.MotionClip` with ``qpos``,
@@ -88,7 +93,8 @@ def retarget(
         ``marker_xpos`` ``(T, M, 3)`` (measured, in the model frame),
         ``marker_error`` ``(T, M)`` (metres, NaN where missing),
         ``sole_height`` ``(T,)`` (metres, ``None`` without a free root),
-        ``ground_offset`` (metres added to the root height), ``solved``
+        ``ground_offset`` (metres added to the root height; ``(T,)`` with
+        *ground_each_frame*), ``solved``
         ``(T,)`` (frames with markers) and ``source``.
 
     Raises:
@@ -135,13 +141,13 @@ def retarget(
     qpos_out[:first] = qpos_out[first]
     site_xpos[:first] = site_xpos[first]
     heights[:first] = heights[first]
-    offset = 0.0
+    offset: float | np.ndarray = 0.0
     if sole.place:
-        offset = -float(np.min(heights))
+        offset = -heights if ground_each_frame else -float(np.min(heights))
         for joint in roots:
             qpos_out[:, model.jnt_qposadr[joint] + 2] += offset
-        site_xpos[:, sole.in_roots(site_ids), 2] += offset
-        heights += offset
+        site_xpos[:, sole.in_roots(site_ids), 2] += np.reshape(offset, (-1, 1))
+        heights = heights + offset
     measured = positions[:, columns]
     metadata: dict[str, Any] = {
         "markers": list(mapping),
@@ -274,29 +280,6 @@ def _free_roots(model: mujoco.MjModel, site_ids: np.ndarray) -> list[int]:
     )
 
 
-def _geom_bottom(model: mujoco.MjModel, data: mujoco.MjData, index: int) -> float:
-    """World height of the lowest point of geom *index*, after kinematics."""
-    kind = int(model.geom_type[index])
-    size = model.geom_size[index]
-    up = data.geom_xmat[index].reshape(3, 3)[2]  # world z in the geom's frame
-    if kind == int(mujoco.mjtGeom.mjGEOM_MESH):
-        mesh = int(model.geom_dataid[index])
-        start, count = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
-        vertices = model.mesh_vert[start : start + count]
-        return float(data.geom_xpos[index, 2] + np.min(vertices @ up))
-    if kind == int(mujoco.mjtGeom.mjGEOM_SPHERE):
-        extent = size[0]
-    elif kind == int(mujoco.mjtGeom.mjGEOM_CAPSULE):
-        extent = size[0] + size[1] * abs(up[2])
-    elif kind == int(mujoco.mjtGeom.mjGEOM_CYLINDER):
-        extent = size[1] * abs(up[2]) + size[0] * np.hypot(up[0], up[1])
-    elif kind == int(mujoco.mjtGeom.mjGEOM_BOX):
-        extent = np.abs(up) @ size
-    else:  # ellipsoid
-        extent = np.linalg.norm(up * size)
-    return float(data.geom_xpos[index, 2] - extent)
-
-
 class _Sole:
     """Lowest point of the sole geometry (or of the ground sites) in a pose."""
 
@@ -323,6 +306,11 @@ class _Sole:
                     "ground_sites must belong to the tree of the free root."
                 )
         elif roots:
+            # Imported here: body_scaling re-exports retarget, so a module-level
+            # import would be circular.
+            from myosuite.core.body_scaling import _geom_bottom
+
+            self._bottom = _geom_bottom
             self._geoms = [
                 geom
                 for geom in range(model.ngeom)
@@ -350,7 +338,7 @@ class _Sole:
             return float(np.min(data.site_xpos[self._sites, 2]))
         if not self._geoms:
             return float("nan")
-        return min(_geom_bottom(self.model, data, geom) for geom in self._geoms)
+        return min(self._bottom(self.model, data, geom) for geom in self._geoms)
 
 
 def _velocities(
