@@ -61,7 +61,7 @@ def _init(model_name: str, version: str, scale: float, trim: int) -> None:
 
     warnings.filterwarnings("ignore")
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
-    from myosuite.biomechanics import retarget_bvh as rb  # noqa: PLC0415
+    from myosuite.integrations.capture import bvh as rb  # noqa: PLC0415
     from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
         compiled_body,
         kinematic_fingerprint,
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     import myo_sim  # noqa: PLC0415
 
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
-    from myosuite.biomechanics import retarget_bvh as rb  # noqa: PLC0415
+    from myosuite.integrations.capture import bvh as rb  # noqa: PLC0415
 
     version = str(myo_sim.__version__)
     files, base, dataset = rt.collect_clip_files(
