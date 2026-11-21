@@ -63,7 +63,7 @@ def test_ci_and_docs_default_to_python_311_and_test_310_to_315() -> None:
     pr_matrix, full_matrix = include_line.split("||", maxsplit=1)
     assert '"python-version":"3.11"' in pr_matrix
     assert '"python-version":"3.10"' not in pr_matrix
-    for ver in ("3.10", "3.11", "3.14", "3.15"):
+    for ver in ("3.10", "3.11", "3.13", "3.14", "3.15"):
         assert f'"python-version":"{ver}"' in full_matrix
     assert "matrix.python-version == '3.11'" in text
     assert 'python-version: "3.11"' in docs_wf.read_text(encoding="utf-8")
