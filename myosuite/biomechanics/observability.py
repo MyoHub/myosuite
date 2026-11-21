@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Local geometric observability of landmark positions, without posture priors.
+"""Local geometric and multi-camera observability of musculoskeletal landmarks.
 
 Rank and conditioning describe infinitesimal motion at one pose, not statistical
 uncertainty, tracking accuracy or global uniqueness. Omitted independent DOFs are
@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass
 import mujoco
 import numpy as np
 
+from myosuite.biomechanics.camera import PinholeCamera
 from myosuite.biomechanics.retarget import Landmark
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
@@ -33,15 +34,7 @@ class DofInfo:
 
 
 def independent_dofs(model: mujoco.MjModel) -> tuple[DofInfo, ...]:
-    """Describe tangent DOFs not driven or locked by active joint equalities.
-
-    Args:
-        model: Compiled model, unchanged.
-
-    Returns:
-        DOFs in model order. Free-root translations use world axes, while ball
-        and free-root angular velocities use MuJoCo's local tangent axes.
-    """
+    """Describe tangent DOFs not driven or locked by active joint equalities."""
     c = JointCouplings.from_model(model)
     driven = set(c.dep_dof.tolist() + c.locked_dof.tolist())
     result = []
@@ -69,14 +62,7 @@ def independent_dofs(model: mujoco.MjModel) -> tuple[DofInfo, ...]:
 
 @dataclass(frozen=True)
 class ObservabilityResult:
-    """Target observability after allowing free nuisance motion.
-
-    ``jacobian`` is the native position derivative in m per target DOF unit.
-    ``effective_jacobian`` is dimensionless: landmark weights, characteristic
-    DOF scales and landmark_scale_m are applied, then nuisance motion projected
-    out. Nullspace rows and their per-coordinate loadings use these scaled target
-    coordinates. Loadings indicate ambiguity, not probabilities or variances.
-    """
+    """Target observability after allowing free nuisance motion."""
 
     landmark_names: tuple[str, ...]
     target_dofs: tuple[DofInfo, ...]
@@ -134,6 +120,32 @@ class ObservabilityResult:
         return result
 
 
+@dataclass(frozen=True)
+class CameraObservabilityResult:
+    """Multi-camera pixel-ray and self-occlusion observability at one posture."""
+
+    observability: ObservabilityResult
+    camera_ids: tuple[str, ...]
+    visibility: np.ndarray
+    views_per_landmark: np.ndarray
+    active_landmarks: tuple[str, ...]
+    pixel_scale_px: float
+
+    def record(self, *, include_matrices: bool = False) -> dict:
+        """Return strict JSON-compatible camera and DOF observability diagnostics."""
+        out = self.observability.record(include_matrices=include_matrices)
+        out.update(
+            {
+                "camera_ids": self.camera_ids,
+                "visibility": self.visibility.tolist(),
+                "views_per_landmark": self.views_per_landmark.tolist(),
+                "active_landmarks": self.active_landmarks,
+                "pixel_scale_px": self.pixel_scale_px,
+            }
+        )
+        return out
+
+
 def _selection(values: Sequence[int], allowed: set[int], name: str) -> list[int]:
     if any(
         isinstance(i, (bool, np.bool_)) or not isinstance(i, (int, np.integer))
@@ -162,53 +174,20 @@ def _groups(projector: np.ndarray, names: tuple[str, ...], tol: float) -> tuple:
     return tuple(groups)
 
 
-def landmark_observability(
+def _prepare_state_and_landmarks(
     model: mujoco.MjModel,
     qpos: np.ndarray,
     landmarks: Sequence[Landmark],
-    *,
-    target_dofs: Sequence[int] | None = None,
-    fixed_dofs: Sequence[int] = (),
-    dof_scales: Mapping[int, float] | None = None,
-    translation_scale_m: float = 0.1,
-    rotation_scale_rad: float = 1.0,
-    landmark_scale_m: float = 1.0,
-    rtol: float = 1e-6,
-    atol: float = 1e-12,
-    ambiguity_tol: float = 1e-6,
-) -> ObservabilityResult:
-    """Analyse a coupled landmark position Jacobian at one posture.
-
-    Args:
-        model: Compiled model, unchanged. Joint equality couplings are projected.
-        qpos: Finite ``(nq,)`` pose; nonzero quaternions are normalized on a copy.
-        landmarks: Existing retarget landmarks, using sites or body-local offsets.
-            Named sites must exist. Weights are nonnegative relative multipliers.
-        target_dofs: Full-model independent tangent indices to assess; None selects
-            all independent DOFs except those explicitly fixed. Others are free
-            nuisance DOFs, not silently fixed assumptions.
-        fixed_dofs: Independent tangent indices explicitly assumed known/fixed.
-        dof_scales: Positive characteristic physical increments by full DOF index,
-            including any nuisance overrides (metres or radians, not precision).
-        translation_scale_m: Default characteristic translation increment [m].
-        rotation_scale_rad: Default characteristic angular increment [rad].
-        landmark_scale_m: Position normalization [m].
-        rtol, atol: Rank cutoff is max(atol, rtol * full scaled Jacobian norm).
-        ambiguity_tol: Null-projector loading/group threshold in (0, 1).
-
-    Returns:
-        SVD diagnostics of target motion after nuisance projection. Priors, joint
-        limits, orientations, temporal information and sensor noise are excluded.
-    """
-    limits = [translation_scale_m, rotation_scale_rad, landmark_scale_m]
-    if not np.all(np.isfinite(limits)) or min(limits) <= 0:
-        raise ValueError("characteristic scales must be positive and finite")
-    if (
-        not np.all(np.isfinite([rtol, atol, ambiguity_tol]))
-        or min(rtol, atol) < 0
-        or not 0 < ambiguity_tol < 1
-    ):
-        raise ValueError("invalid rank or ambiguity tolerances")
+) -> tuple[
+    mujoco.MjData,
+    tuple[DofInfo, ...],
+    np.ndarray,
+    list[str],
+    list[int],
+    list[np.ndarray],
+    list[np.ndarray],
+    list[float],
+]:
     q = np.array(qpos, dtype=float, copy=True)
     if q.shape != (model.nq,) or not np.isfinite(q).all():
         raise ValueError("qpos must be finite with shape (model.nq,)")
@@ -220,6 +199,68 @@ def landmark_observability(
                 raise ValueError("pose quaternions must be nonzero")
     mujoco.mj_normalizeQuat(model, q)
     infos = independent_dofs(model)
+    c = JointCouplings.from_model(model)
+    project_joint_couplings(c, q)
+    velocity = np.eye(model.nv)[[d.index for d in infos]]
+    poses = np.broadcast_to(q, (len(infos), model.nq)).copy()
+    project_joint_couplings(c, poses, velocity)
+    basis = velocity.T
+
+    data = mujoco.MjData(model)
+    data.qpos[:] = q
+    mujoco.mj_kinematics(model, data)
+    mujoco.mj_comPos(model, data)
+
+    names: list[str] = []
+    bodies: list[int] = []
+    points: list[np.ndarray] = []
+    jacs: list[np.ndarray] = []
+    lm_weights: list[float] = []
+    for lm in landmarks:
+        if (
+            not isinstance(lm.source, str)
+            or not lm.source
+            or lm.source in names
+            or not np.isfinite(lm.weight)
+            or lm.weight < 0
+        ):
+            raise ValueError(
+                "landmarks need unique names and finite nonnegative weights"
+            )
+        if lm.site is not None:
+            site = model.site(lm.site)
+            body, offset = int(site.bodyid[0]), site.pos
+        else:
+            body, offset = model.body(lm.body).id, np.asarray(lm.pos, dtype=float)
+        if np.shape(offset) != (3,) or not np.isfinite(offset).all():
+            raise ValueError("landmark offsets must be finite three-vectors")
+        point = data.xpos[body] + data.xmat[body].reshape(3, 3) @ offset
+        jac = np.zeros((3, model.nv))
+        mujoco.mj_jac(model, data, jac, None, point, body)
+        names.append(lm.source)
+        bodies.append(int(body))
+        points.append(point)
+        jacs.append(jac @ basis)
+        lm_weights.append(float(lm.weight))
+    return data, infos, basis, names, bodies, points, jacs, lm_weights
+
+
+def _solve_svd_observability(
+    infos: tuple[DofInfo, ...],
+    landmark_names: Sequence[str],
+    native_rows: np.ndarray,
+    row_weights: np.ndarray,
+    *,
+    target_dofs: Sequence[int] | None,
+    fixed_dofs: Sequence[int],
+    dof_scales: Mapping[int, float] | None,
+    translation_scale_m: float,
+    rotation_scale_rad: float,
+    obs_scale: float,
+    rtol: float,
+    atol: float,
+    ambiguity_tol: float,
+) -> ObservabilityResult:
     by_index = {d.index: d for d in infos}
     allowed = set(by_index)
     fixed = _selection(fixed_dofs, allowed, "fixed_dofs")
@@ -245,50 +286,13 @@ def landmark_observability(
     }
     if not all(np.isfinite(s) and s > 0 for s in scales.values()):
         raise ValueError("DOF scales must be positive and finite")
-    c = JointCouplings.from_model(model)
-    project_joint_couplings(c, q)
-    velocity = np.eye(model.nv)[[d.index for d in infos]]
-    poses = np.broadcast_to(q, (len(infos), model.nq)).copy()
-    project_joint_couplings(c, poses, velocity)
-    basis = velocity.T
-    data = mujoco.MjData(model)
-    data.qpos[:] = q
-    mujoco.mj_kinematics(model, data)
-    mujoco.mj_comPos(model, data)
-    names, rows, weights = [], [], []
-    for lm in landmarks:
-        if (
-            not isinstance(lm.source, str)
-            or not lm.source
-            or lm.source in names
-            or not np.isfinite(lm.weight)
-            or lm.weight < 0
-        ):
-            raise ValueError(
-                "landmarks need unique names and finite nonnegative weights"
-            )
-        if lm.site is not None:
-            site = model.site(lm.site)
-            body, offset = int(site.bodyid[0]), site.pos
-        else:
-            body, offset = model.body(lm.body).id, np.asarray(lm.pos, dtype=float)
-        if np.shape(offset) != (3,) or not np.isfinite(offset).all():
-            raise ValueError("landmark offsets must be finite three-vectors")
-        point = data.xpos[body] + data.xmat[body].reshape(3, 3) @ offset
-        jac = np.zeros((3, model.nv))
-        mujoco.mj_jac(model, data, jac, None, point, body)
-        rows.append(jac @ basis)
-        weights.extend([float(lm.weight)] * 3)
-        names.append(lm.source)
-    native = np.vstack(rows) if rows else np.zeros((0, len(infos)))
+
     columns = {d.index: i for i, d in enumerate(infos)}
     tc, nc = [columns[i] for i in target], [columns[i] for i in nuisance]
-    ts, ns = (
-        np.array([scales[i] for i in target]),
-        np.array([scales[i] for i in nuisance]),
-    )
-    factor = np.array(weights)[:, None] / landmark_scale_m
-    a, n = native[:, tc] * ts * factor, native[:, nc] * ns * factor
+    ts = np.array([scales[i] for i in target])
+    ns = np.array([scales[i] for i in nuisance])
+    factor = row_weights[:, None] / obs_scale
+    a, n = native_rows[:, tc] * ts * factor, native_rows[:, nc] * ns * factor
     combined = np.column_stack((a, n))
     if not np.isfinite(combined).all():
         raise ValueError("scaled landmark Jacobian is not finite")
@@ -313,14 +317,14 @@ def landmark_observability(
         else float(singular[0] / singular[-1])
     )
     return ObservabilityResult(
-        tuple(names),
+        tuple(landmark_names),
         tuple(by_index[i] for i in target),
         tuple(by_index[i] for i in nuisance),
         tuple(by_index[i] for i in fixed),
         ts,
         ns,
-        float(landmark_scale_m),
-        native[:, tc],
+        float(obs_scale),
+        native_rows[:, tc],
         effective,
         np.pad(singular, (0, len(target) - len(singular))),
         rank,
@@ -336,4 +340,247 @@ def landmark_observability(
             if value <= threshold
         ),
         _groups(projector, labels, ambiguity_tol),
+    )
+
+
+def landmark_observability(
+    model: mujoco.MjModel,
+    qpos: np.ndarray,
+    landmarks: Sequence[Landmark],
+    *,
+    target_dofs: Sequence[int] | None = None,
+    fixed_dofs: Sequence[int] = (),
+    dof_scales: Mapping[int, float] | None = None,
+    translation_scale_m: float = 0.1,
+    rotation_scale_rad: float = 1.0,
+    landmark_scale_m: float = 1.0,
+    rtol: float = 1e-6,
+    atol: float = 1e-12,
+    ambiguity_tol: float = 1e-6,
+) -> ObservabilityResult:
+    """Analyse a coupled 3D landmark position Jacobian at one posture."""
+    limits = [translation_scale_m, rotation_scale_rad, landmark_scale_m]
+    if not np.all(np.isfinite(limits)) or min(limits) <= 0:
+        raise ValueError("characteristic scales must be positive and finite")
+    if (
+        not np.all(np.isfinite([rtol, atol, ambiguity_tol]))
+        or min(rtol, atol) < 0
+        or not 0 < ambiguity_tol < 1
+    ):
+        raise ValueError("invalid rank or ambiguity tolerances")
+    _, infos, _, names, _, _, jacs, lm_weights = _prepare_state_and_landmarks(
+        model, qpos, landmarks
+    )
+    native = np.vstack(jacs) if jacs else np.zeros((0, len(infos)))
+    weights = np.repeat(np.array(lm_weights, dtype=float), 3)
+    return _solve_svd_observability(
+        infos,
+        names,
+        native,
+        weights,
+        target_dofs=target_dofs,
+        fixed_dofs=fixed_dofs,
+        dof_scales=dof_scales,
+        translation_scale_m=translation_scale_m,
+        rotation_scale_rad=rotation_scale_rad,
+        obs_scale=landmark_scale_m,
+        rtol=rtol,
+        atol=atol,
+        ambiguity_tol=ambiguity_tol,
+    )
+
+
+def _ray_occluded(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    origin: np.ndarray,
+    target: np.ndarray,
+    landmark_body: int,
+    geomgroup: np.ndarray | None,
+    margin_m: float,
+) -> bool:
+    vec = target - origin
+    total = float(np.linalg.norm(vec))
+    if total <= margin_m:
+        return False
+    direction = vec / total
+    weld_self = int(model.body_weldid[landmark_body])
+    travelled = 0.0
+    gid = np.array([-1], dtype=np.int32)
+    for _ in range(8):
+        start = origin + travelled * direction
+        dist = float(
+            mujoco.mj_ray(
+                model, data, start, direction, geomgroup, 1, landmark_body, gid
+            )
+        )
+        if dist < 0 or gid[0] < 0 or travelled + dist >= total - margin_m:
+            return False
+        hit_weld = int(model.body_weldid[model.geom_bodyid[int(gid[0])]])
+        if hit_weld != weld_self:
+            return True
+        travelled += dist + 1e-4
+    return False
+
+
+def camera_landmark_observability(
+    model: mujoco.MjModel,
+    qpos: np.ndarray,
+    landmarks: Sequence[Landmark],
+    cameras: Sequence[PinholeCamera],
+    *,
+    image_sizes: Sequence[tuple[int, int] | None] | None = None,
+    check_occlusion: bool = True,
+    occlusion_geomgroup: Sequence[int] | None = None,
+    occlusion_margin_m: float = 2e-3,
+    min_views: int = 1,
+    min_depth_m: float = 1e-3,
+    target_dofs: Sequence[int] | None = None,
+    fixed_dofs: Sequence[int] = (),
+    dof_scales: Mapping[int, float] | None = None,
+    translation_scale_m: float = 0.1,
+    rotation_scale_rad: float = 1.0,
+    pixel_scale_px: float = 1.0,
+    rtol: float = 1e-6,
+    atol: float = 1e-12,
+    ambiguity_tol: float = 1e-6,
+) -> CameraObservabilityResult:
+    """Analyse coupled musculoskeletal DOF observability through calibrated cameras.
+
+    Projects each landmark's coupled 3D Jacobian onto the 2D image planes of all
+    cameras that have an unoccluded, in-frustum view, inspired by markerless/marker
+    rig design in ``lab-camera-optimizer`` (Delaplace et al., 2026).
+
+    Args:
+        model: Compiled model, unchanged.
+        qpos: Finite ``(nq,)`` pose.
+        landmarks: Landmarks evaluated on ``model``.
+        cameras: One or more calibrated pinhole cameras.
+        image_sizes: Optional ``(width, height)`` bounds per camera; falls back to
+            ``camera.image_size`` when ``None``.
+        check_occlusion: Raycast with ``mujoco.mj_ray`` to drop self-occluded views.
+        occlusion_geomgroup: Optional 6-element ``mjNGROUP`` mask for ``mj_ray``.
+        occlusion_margin_m: Ray termination margin near the landmark surface [m].
+        min_views: Minimum cameras required for a landmark to contribute (`1` for
+            monocular/pixel-ray equations, `2` for stereo triangulation coverage).
+        min_depth_m: Minimum optical-axis depth ``z_c`` [m].
+        target_dofs: Independent DOF indices to assess; ``None`` assesses all non-fixed.
+        fixed_dofs: Independent DOF indices assumed known/fixed.
+        dof_scales: Characteristic DOF increments by index.
+        translation_scale_m: Default translational increment [m].
+        rotation_scale_rad: Default rotational increment [rad].
+        pixel_scale_px: Characteristic image-plane normalization [px].
+        rtol, atol: Singular-value rank tolerances.
+        ambiguity_tol: Nullspace loading threshold in ``(0, 1)``.
+
+    Returns:
+        Pixel-space :class:`ObservabilityResult` plus per-camera visibility matrices.
+    """
+    if not cameras:
+        raise ValueError("cameras must contain at least one PinholeCamera")
+    limits = [translation_scale_m, rotation_scale_rad, pixel_scale_px, min_depth_m]
+    if (
+        not np.all(np.isfinite(limits))
+        or min(limits) <= 0
+        or min_views < 1
+        or occlusion_margin_m < 0
+    ):
+        raise ValueError("invalid scales, min_views, min_depth_m or occlusion_margin_m")
+    if (
+        not np.all(np.isfinite([rtol, atol, ambiguity_tol]))
+        or min(rtol, atol) < 0
+        or not 0 < ambiguity_tol < 1
+    ):
+        raise ValueError("invalid rank or ambiguity tolerances")
+    if image_sizes is not None and len(image_sizes) != len(cameras):
+        raise ValueError("image_sizes must match len(cameras)")
+
+    ggroup = None
+    if occlusion_geomgroup is not None:
+        ggroup = np.asarray(occlusion_geomgroup, dtype=np.uint8)
+        if ggroup.shape != (mujoco.mjNGROUP,):
+            raise ValueError(f"occlusion_geomgroup must have length {mujoco.mjNGROUP}")
+
+    data, infos, _, names, bodies, points, jacs, lm_weights = (
+        _prepare_state_and_landmarks(model, qpos, landmarks)
+    )
+    n_cam, n_lm = len(cameras), len(names)
+    visibility = np.zeros((n_cam, n_lm), dtype=bool)
+    cam_jacs: dict[tuple[int, int], np.ndarray] = {}
+
+    for c_idx, cam in enumerate(cameras):
+        size = (
+            getattr(cam, "image_size", None)
+            if image_sizes is None
+            else image_sizes[c_idx]
+        )
+        k = cam.intrinsic
+        fx, skew, cx, fy, cy = k[0, 0], k[0, 1], k[0, 2], k[1, 1], k[1, 2]
+        origin = cam.center
+        for l_idx in range(n_lm):
+            pt = points[l_idx]
+            xc = cam.rotation @ pt + cam.translation
+            if xc[2] <= min_depth_m:
+                continue
+            inv_z = 1.0 / xc[2]
+            u = (fx * xc[0] + skew * xc[1]) * inv_z + cx
+            v = fy * xc[1] * inv_z + cy
+            if size is not None and not (0.0 <= u <= size[0] and 0.0 <= v <= size[1]):
+                continue
+            if check_occlusion and _ray_occluded(
+                model, data, origin, pt, bodies[l_idx], ggroup, occlusion_margin_m
+            ):
+                continue
+            visibility[c_idx, l_idx] = True
+            inv_z2 = inv_z * inv_z
+            j_proj = (
+                np.array(
+                    [
+                        [
+                            fx * inv_z,
+                            skew * inv_z,
+                            -(fx * xc[0] + skew * xc[1]) * inv_z2,
+                        ],
+                        [0.0, fy * inv_z, -fy * xc[1] * inv_z2],
+                    ]
+                )
+                @ cam.rotation
+            )
+            cam_jacs[c_idx, l_idx] = j_proj @ jacs[l_idx]
+
+    views = visibility.sum(axis=0)
+    rows: list[np.ndarray] = []
+    row_weights: list[float] = []
+    active: list[str] = []
+    for l_idx, name in enumerate(names):
+        if views[l_idx] < min_views:
+            continue
+        active.append(name)
+        for c_idx in np.flatnonzero(visibility[:, l_idx]):
+            rows.append(cam_jacs[int(c_idx), l_idx])
+            row_weights.extend([lm_weights[l_idx], lm_weights[l_idx]])
+
+    native = np.vstack(rows) if rows else np.zeros((0, len(infos)))
+    obs = _solve_svd_observability(
+        infos,
+        names,
+        native,
+        np.array(row_weights, dtype=float),
+        target_dofs=target_dofs,
+        fixed_dofs=fixed_dofs,
+        dof_scales=dof_scales,
+        translation_scale_m=translation_scale_m,
+        rotation_scale_rad=rotation_scale_rad,
+        obs_scale=pixel_scale_px,
+        rtol=rtol,
+        atol=atol,
+        ambiguity_tol=ambiguity_tol,
+    )
+    return CameraObservabilityResult(
+        obs,
+        tuple(c.calibration_id for c in cameras),
+        visibility,
+        views,
+        tuple(active),
+        float(pixel_scale_px),
     )
