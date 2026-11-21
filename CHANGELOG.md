@@ -401,6 +401,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
+[#649]: https://github.com/MyoHub/myosuite/pull/649
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#803]: https://github.com/MyoHub/myosuite/pull/803
