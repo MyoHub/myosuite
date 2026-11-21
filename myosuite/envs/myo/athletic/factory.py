@@ -410,6 +410,12 @@ def make_athletic_env(
 ) -> Any:
     """Instantiate an athletic environment via :func:`~myosuite.core.registry.make_env`."""
     ensure_tendons_applied(bundle)
+    if bundle.task.kind in ("long_jump", "high_jump"):
+        raise NotImplementedError(
+            f"{bundle.task.key}: jumps.JumpJudge (rules, rewards, endings) runs on the fullbody C-plugin env "
+            "(CFullbodySimpleTD3Env(task='long_jump' | 'high_jump_hXXX')); the ModularTaskEnv and mjlab "
+            "terms do not apply it yet."
+        )
     if backend not in ("cpu", "mjlab"):
         raise ValueError(f"Unknown athletic backend: {backend!r}")
     # Lazy import: catalog imports this module at load time.

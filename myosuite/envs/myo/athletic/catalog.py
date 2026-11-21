@@ -36,6 +36,12 @@ from myosuite.envs.myo.athletic.specs import (
     TermRef,
 )
 from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import AthleticSpec
+from myosuite.envs.myo.tasks.basic.full_body.jumps import (
+    HIGH_JUMP,
+    HIGH_JUMP_LADDER,
+    LONG_JUMP,
+    JumpSpec,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -101,6 +107,7 @@ PLANTS: dict[str, PlantSpec] = {
                 "carioca",
                 "locomotion",
                 "imitate",
+                "jumps",
             }
         ),
     ),
@@ -130,6 +137,7 @@ PLANTS: dict[str, PlantSpec] = {
                 "carioca",
                 "locomotion",
                 "imitate",
+                "jumps",
             }
         ),
     ),
@@ -332,7 +340,85 @@ TASKS: dict[str, TaskSpec] = {
         requires=frozenset({"lanes"}),
         extra={"ground_tilt_deg": 5.0},
     ),
+    # Field events (jumps.py): the sprint approach and lane rules, then World Athletics' event rules applied by
+    # jumps.JumpJudge, which also computes the benchmark metrics (mark / best height cleared and the take-off
+    # and flight quantities that explain them).
+    "long_jump": TaskSpec(
+        key="long_jump",
+        kind="long_jump",
+        athletic=_LANE,
+        heading_mode="forward",
+        reward_terms=(
+            *_lane_rewards(),
+            TermRef("rew_jump_mark", weight=LONG_JUMP.lambda_mark),
+        ),
+        terminations=(
+            "time_out",
+            "fallen",
+            "not_facing",
+            "toes_out",
+            "foul",
+            "mark_measured",
+        ),
+        obs_keys=(
+            "joint_pos",
+            "joint_vel",
+            "muscle_act",
+            "root_planar_vel",
+            "takeoff_line_distance",
+        ),
+        scene="long_jump",
+        pose_key="starting_pose_run",
+        episode_length_s=8.0,
+        requires=frozenset({"lanes", "jumps"}),
+        extra={"jump": LONG_JUMP},
+    ),
+    "high_jump": TaskSpec(
+        key="high_jump",
+        kind="high_jump",
+        athletic=_LANE,
+        heading_mode="forward",
+        reward_terms=(
+            *_lane_rewards(),
+            TermRef("rew_jump_rise", weight=HIGH_JUMP.lambda_rise),
+            TermRef("rew_bar_cleared", weight=HIGH_JUMP.lambda_clear),
+        ),
+        terminations=(
+            "time_out",
+            "fallen",
+            "not_facing",
+            "toes_out",
+            "bar_knocked",
+            "under_bar",
+            "run_out",
+            "two_foot_takeoff",
+            "bar_cleared",
+        ),
+        obs_keys=(
+            "joint_pos",
+            "joint_vel",
+            "muscle_act",
+            "root_planar_vel",
+            "bar_distance",
+            "bar_height",
+        ),
+        scene="high_jump",
+        pose_key="starting_pose_run",
+        episode_length_s=8.0,
+        requires=frozenset({"lanes", "jumps"}),
+        extra={"jump": HIGH_JUMP, "ladder": HIGH_JUMP_LADDER},
+    ),
 }
+
+# Events judged by jumps.JumpJudge. The judge runs on the fullbody C-plugin env (task="long_jump" / "high_jump*");
+# the generic CPU ModularTaskEnv and mjlab terms below do not apply it yet, so those backends refuse these tasks
+# rather than registering a sprint that only looks like a jump.
+JUDGED_EVENTS = frozenset({"long_jump", "high_jump"})
+
+
+def jump_spec(task: str) -> JumpSpec:
+    """The JumpSpec (event geometry, judge and reward weights) of a jump task."""
+    return TASKS[task].extra["jump"]
 
 
 def iter_bundles(
@@ -417,6 +503,12 @@ def register_athletic_matrix(
     registered: list[str] = []
     for bundle in iter_bundles(tasks=tasks, plants=plants, tendons=tendons):
         env_id = bundle.env_id()
+        if bundle.task.kind in JUDGED_EVENTS:
+            _LOG.info(
+                "athletic %s: the jump judge runs on the fullbody C env; not registered here",
+                env_id,
+            )
+            continue
         if "cpu" in backends and bundle.plant.model_recipe in _CPU_RECIPES:
             try:
                 from myosuite.core.registry import register_env

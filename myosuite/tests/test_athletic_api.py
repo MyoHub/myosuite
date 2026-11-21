@@ -29,6 +29,7 @@ from myosuite.envs.myo.athletic.catalog import (
     PLANTS,
     TASKS,
     athletic_bundle,
+    make_athletic,
     iter_bundles,
 )
 from myosuite.envs.myo.athletic.factory import (
@@ -262,3 +263,32 @@ def test_body_maps_expose_names_not_indices():
             assert isinstance(name, str) and name
             assert not name.isdigit()
     assert PLANTS["myofullbody"].body_map is FULLBODY_BODY_MAP
+
+
+def test_jump_events_in_catalog():
+    from myosuite.envs.myo.athletic.catalog import JUDGED_EVENTS, jump_spec
+    from myosuite.envs.myo.tasks.basic.full_body.jumps import HIGH_JUMP_LADDER
+
+    assert {"long_jump", "high_jump"} <= set(TASKS) and JUDGED_EVENTS == {
+        "long_jump",
+        "high_jump",
+    }
+    assert (
+        jump_spec("long_jump").event == "long"
+        and jump_spec("high_jump").event == "high"
+    )
+    assert TASKS["high_jump"].extra["ladder"] == HIGH_JUMP_LADDER
+    for key in ("long_jump", "high_jump"):
+        bundle = AthleticBundle(task=TASKS[key], plant=PLANTS["myofullbody_simple"])
+        assert bundle.env_id() == f"myoFullbodySimple{key.title().replace('_', '')}-v0"
+
+
+def test_jump_events_refuse_unjudged_backends():
+    from myosuite.envs.myo.athletic.catalog import register_athletic_matrix
+
+    with pytest.raises(NotImplementedError, match="JumpJudge"):
+        make_athletic("long_jump", model="myofullbody_simple", backend="cpu")
+    assert (
+        register_athletic_matrix(tasks=("long_jump", "high_jump"), backends={"cpu"})
+        == []
+    )

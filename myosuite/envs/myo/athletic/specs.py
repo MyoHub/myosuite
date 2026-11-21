@@ -45,6 +45,8 @@ TaskKind = Literal[
     "locomotion",
     "imitate",
     "uphill_sprint",
+    "long_jump",
+    "high_jump",
 ]
 
 
@@ -98,7 +100,9 @@ class TaskSpec:
             "root_planar_vel",
         )
     )
-    scene: str | None = None  # lanes | hurdles | blocks | curve | vertical | None
+    scene: str | None = (
+        None  # lanes | hurdles | blocks | curve | vertical | long_jump | high_jump | None
+    )
     pose_key: str = "starting_pose_run"
     episode_length_s: float = 10.0
     extra: Mapping[str, Any] = field(default_factory=dict)
@@ -142,6 +146,7 @@ class PlantSpec:
                 "carioca",
                 "locomotion",
                 "imitate",
+                "jumps",
             }
         )
     )
