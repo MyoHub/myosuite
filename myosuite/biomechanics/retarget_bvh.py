@@ -7,6 +7,22 @@
 Pure NumPy/MuJoCo ``.bvh`` parsing, vectorized forward kinematics, per-segment
 proportion scaling from each clip's rest hierarchy, elbow hinge-angle tables,
 and foot-contact grounding onto :class:`~.retarget.LandmarkIK`'s coupled solver.
+
+Conversion contracts:
+- **Units:** ``scale`` converts raw BVH ``OFFSET`` and ``*position`` channel values into
+  metres [m] (default ``0.01`` for centimetre datasets such as Ubisoft LAFAN1); Euler
+  ``*rotation`` channels are in degrees [deg], converted to radians internally.
+- **Timing:** Uniform sampling rate ``fps = 1 / Frame Time`` [Hz] (strictly positive).
+- **Coordinate frames:** ``parse_bvh`` outputs ``BVHClip`` positions and ``3x3`` rotation
+  matrices in the file's BVH world frame; ``BVHSource`` maps them into the MuJoCo world
+  frame (``+x`` forward, ``+y`` left, ``+z`` up) via proper ``3x3`` rotation
+  ``BVHMap.bvh_to_model`` (default :data:`BVH_TO_MODEL` for ``+x`` left, ``+y`` up,
+  ``+z`` forward BVH skeletons). Orientation targets in :class:`~.retarget.ClipTargets`
+  use MuJoCo ``wxyz`` unit quaternions.
+- **Channel order & missing data:** Arbitrary per-joint ``X/Y/Zposition`` and intrinsic
+  ``X/Y/Zrotation`` channel sequences are evaluated in exact declared ``CHANNELS`` order.
+  ``.bvh`` files are dense numeric tables; any ``NaN``/``Inf`` in ``OFFSET`` or ``MOTION``
+  is rejected with ``ValueError``.
 """
 
 from __future__ import annotations
@@ -23,21 +39,21 @@ from myosuite.biomechanics.retarget import (
     ClipTargets,
     LandmarkIK,
     LandmarkMap,
-    _body_landmarks,
-    _calibration_pose,
-    _foot_contacts,
-    _foot_kinematics,
-    _ground_clip,
-    _hinge_table,
-    _knee_flexion_meta,
-    _mat_to_quat,
-    _orientation_targets,
-    _segment_angle,
-    _smooth,
-    _smooth_quat,
-    _start_pose,
+    body_landmarks,
+    calibration_pose,
+    foot_contacts,
+    foot_kinematics,
+    ground_clip,
+    hinge_table,
+    knee_flexion_meta,
+    mat_to_quat,
+    orientation_targets,
+    rotation_between,
+    segment_angle,
+    smooth_quat,
+    smooth_signal,
+    start_pose,
 )
-from myosuite.biomechanics.retarget_smplh import _rotation_between
 
 BVH_TO_MODEL = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 """Standard BVH canonical frame (``+x`` left, ``+y`` up, ``+z`` forward) in a model
@@ -655,9 +671,20 @@ class BVHCalibration:
     hinge_table: tuple[np.ndarray, ...] = ()
 
 
+def _check_proper_rotation(rot: np.ndarray) -> np.ndarray:
+    r = np.asarray(rot, dtype=np.float64)
+    if (
+        r.shape != (3, 3)
+        or not np.allclose(r @ r.T, np.eye(3), atol=1e-6)
+        or not np.isclose(np.linalg.det(r), 1.0, atol=1e-6)
+    ):
+        raise ValueError("bvh_to_model must be a proper 3x3 rotation matrix")
+    return r
+
+
 def _lowest_sole(m: mujoco.MjModel, bmap: BVHMap, qpos: np.ndarray) -> float:
     proxy = LandmarkMap("", "", (), feet=bmap.feet)
-    return float(_foot_kinematics(m, proxy, qpos[None])[0].min())
+    return float(foot_kinematics(m, proxy, qpos[None])[0].min())
 
 
 def calibrate_bvh(
@@ -665,16 +692,16 @@ def calibrate_bvh(
 ) -> BVHCalibration:
     """Resolve *bmap* on *model* directly from *model*'s T-pose geometry."""
     m = model
-    d, q = _calibration_pose(m, bmap.calibration)
-    Rc = np.asarray(bmap.bvh_to_model, dtype=np.float64)
+    d, q = calibration_pose(m, bmap.calibration)
+    Rc = _check_proper_rotation(bmap.bvh_to_model)
     pos = np.stack(
         [np.mean([d.xpos[m.body(b).id] for b in p.model], axis=0) for p in bmap.points]
     )
-    landmarks = _body_landmarks(m, d, bmap.points, pos)
+    landmarks = body_landmarks(m, d, bmap.points, pos)
     rot = np.stack(
         [Rc.T @ d.xmat[m.body(o.body).id].reshape(3, 3) for o in bmap.orientations]
     )
-    orientations = _orientation_targets(m, d, bmap.orientations, source_attr="joint")
+    orientations = orientation_targets(m, d, bmap.orientations, source_attr="joint")
     lmap = LandmarkMap(
         name=bmap.name,
         version=bmap.version,
@@ -688,7 +715,7 @@ def calibrate_bvh(
         posture=bmap.posture + tuple((h.joint, 0.0, h.weight) for h in bmap.hinges),
     )
     hip = pos[0, 2] - _lowest_sole(m, bmap, q)
-    tables = tuple(_hinge_table(m, d, q, h) for h in bmap.hinges)
+    tables = tuple(hinge_table(m, d, q, h) for h in bmap.hinges)
     return BVHCalibration(lmap, pos, rot, q, float(hip), tables)
 
 
@@ -792,7 +819,7 @@ class BVHSource:
             )
         sl = slice(t0, n_total - t1)
 
-        Rc = np.asarray(bmap.bvh_to_model, dtype=np.float64)
+        Rc = _check_proper_rotation(bmap.bvh_to_model)
         pos_w = clip.positions[sl] @ Rc.T
         rest_w = clip.rest_positions @ Rc.T
         rot_bvh = clip.rotations[sl]
@@ -844,7 +871,7 @@ class BVHSource:
                 assert cid is not None
                 carried = rot_w[:, cid] @ (Rc.T @ edge)
                 if p.subject_direction:
-                    turn[p.name] = _rotation_between(carried, subject)
+                    turn[p.name] = rotation_between(carried, subject)
                     out[k] = out[par] + subject
                 else:
                     out[k] = out[par] + carried
@@ -862,12 +889,12 @@ class BVHSource:
         for i, o in enumerate(bmap.orientations):
             if o.align is not None:
                 R[:, i] = turn[o.align] @ R[:, i]
-        quat = _mat_to_quat(np.einsum("toab,obc->toac", R, c.rot_offset))
+        quat = mat_to_quat(np.einsum("toab,obc->toac", R, c.rot_offset))
 
         fps = clip.fps
         if self.target_sigma > 0 and T >= 2:
-            pos = _smooth(pos, self.target_sigma * fps)
-            quat = _smooth_quat(quat, self.target_sigma * fps)
+            pos = smooth_signal(pos, self.target_sigma * fps)
+            quat = smooth_quat(quat, self.target_sigma * fps)
 
         posture = None
         if bmap.hinges:
@@ -875,13 +902,13 @@ class BVHSource:
             for k, (h, tab) in enumerate(zip(bmap.hinges, c.hinge_table)):
                 h_ids = resolve_ids(h.bvh)
                 a, b_pt, e = (pos_w[:, i] for i in h_ids)
-                theta = _segment_angle(a, b_pt, e)
+                theta = segment_angle(a, b_pt, e)
                 if self.target_sigma > 0 and T >= 2:
-                    theta = _smooth(theta, self.target_sigma * fps)
+                    theta = smooth_signal(theta, self.target_sigma * fps)
                 posture[:, len(bmap.posture) + k] = np.interp(theta, tab[1], tab[0])
 
         if T >= 2 and all_c:
-            contact = _foot_contacts(
+            contact = foot_contacts(
                 sole,
                 sole_floor,
                 fps,
@@ -892,7 +919,7 @@ class BVHSource:
         else:
             contact = np.ones((T, 2), dtype=bool)
 
-        seed = _start_pose(model, c.qpos, c.model_pos[0], pos[0, 0], quat[0], lmap)
+        seed = start_pose(model, c.qpos, c.model_pos[0], pos[0, 0], quat[0], lmap)
         self._last = {
             "floor": floor,
             "s_root": float(s_root),
@@ -910,7 +937,7 @@ class BVHSource:
         info = self._last
         contact = info["contact"]
         sigma = self.ground_sigma if len(qpos) >= 2 else 0.0
-        qpos, targets, dz = _ground_clip(
+        qpos, targets, dz = ground_clip(
             ik.model, ik.lmap, targets, qpos, contact, sigma
         )
         meta = {
@@ -928,7 +955,7 @@ class BVHSource:
                 "max": float(dz.max()),
             },
             "contact_fraction": [float(x) for x in contact.mean(0)],
-            "source_knee_flexion_deg": _knee_flexion_meta(info["knee_flexion"]),
+            "source_knee_flexion_deg": knee_flexion_meta(info["knee_flexion"]),
         }
         return qpos, targets, meta
 

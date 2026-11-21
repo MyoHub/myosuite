@@ -65,6 +65,7 @@ from myosuite.biomechanics.retarget import (
     _smooth,
     _smooth_quat,
     _start_pose,
+    rotation_between,
 )
 from myosuite.biomechanics.smplh import (
     SMPLH,
@@ -414,35 +415,7 @@ def _resolve_body_model_path(body_models: str | Path, gender: str) -> str:
     return str(candidates[0])
 
 
-def _rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """``(T, 3, 3)`` shortest rotations taking the directions *a* onto *b*."""
-    orig_shape = np.shape(a)[:-1]
-    a_flat = np.asarray(a, dtype=np.float64).reshape(-1, 3)
-    b_flat = np.asarray(b, dtype=np.float64).reshape(-1, 3)
-    na = np.linalg.norm(a_flat, axis=-1, keepdims=True)
-    nb = np.linalg.norm(b_flat, axis=-1, keepdims=True)
-    valid = (na[:, 0] > 1e-12) & (nb[:, 0] > 1e-12)
-    ex = np.array([1.0, 0.0, 0.0])
-    ey = np.array([0.0, 1.0, 0.0])
-    a_u = np.where(na > 1e-12, a_flat / np.where(na > 1e-12, na, 1.0), ex)
-    b_u = np.where(nb > 1e-12, b_flat / np.where(nb > 1e-12, nb, 1.0), ex)
-    v = np.cross(a_u, b_u)
-    cos = (a_u * b_u).sum(-1)
-    zero = np.zeros_like(cos)
-    K = np.stack(
-        [zero, -v[:, 2], v[:, 1], v[:, 2], zero, -v[:, 0], -v[:, 1], v[:, 0], zero], -1
-    ).reshape(-1, 3, 3)
-    regular = (1.0 + cos) > 1e-8
-    denom = np.where(regular, 1.0 + cos, 1.0)
-    R_rod = np.eye(3) + K + (K @ K) / denom[:, None, None]
-    ref_axis = np.where(np.abs(a_u[:, :1]) < 0.9, ex, ey)
-    ortho = np.cross(a_u, ref_axis)
-    ortho_norm = np.linalg.norm(ortho, axis=-1, keepdims=True)
-    u = ortho / np.where(ortho_norm > 1e-12, ortho_norm, 1.0)
-    R_180 = 2.0 * (u[:, :, None] * u[:, None, :]) - np.eye(3)
-    R = np.where(regular[:, None, None], R_rod, R_180)
-    R = np.where(valid[:, None, None], R, np.eye(3))
-    return R.reshape(*orig_shape, 3, 3)
+_rotation_between = rotation_between
 
 
 def knee_flexion(rotations: np.ndarray) -> dict[str, np.ndarray]:
