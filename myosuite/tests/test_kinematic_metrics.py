@@ -12,9 +12,12 @@ import pytest
 
 from myosuite.biomechanics.kinematic_metrics import (
     CohortComparison,
+    DTWAlignment,
     KinematicTrialSummary,
     compare_against_reference_cohorts,
     dimensionless_squared_jerk,
+    dtw_alignment,
+    dtw_distance,
     endpoint_error,
     energy_distance,
     fitts_index_of_difficulty,
@@ -138,3 +141,29 @@ def test_compare_against_reference_cohorts_split_half_ceiling() -> None:
 
     with pytest.raises(ValueError, match="at least 2 cohorts"):
         compare_against_reference_cohorts(in_dist, [cohorts[0]])
+
+
+def test_dtw_alignment_time_warped_reaches_and_sakoe_chiba_band() -> None:
+    fast = _min_jerk_reach(amplitude=0.30, duration=0.40, dt=0.01)
+    slow = _min_jerk_reach(amplitude=0.30, duration=0.80, dt=0.01)
+
+    assert dtw_distance(fast, fast) == pytest.approx(0.0, abs=1e-12)
+
+    align = dtw_alignment(fast, slow)
+    assert isinstance(align, DTWAlignment)
+    assert tuple(align.path[0]) == (0, 0)
+    assert tuple(align.path[-1]) == (len(fast) - 1, len(slow) - 1)
+    assert np.all(np.diff(align.path, axis=0) >= 0)
+    # Time-stretched identical spatial path has near-zero DTW distance vs large shifted path.
+    shifted = slow + np.array([0.0, 0.20, 0.0])
+    assert align.normalized_distance < 0.01
+    assert dtw_distance(fast, shifted) > 0.18
+    assert dtw_distance(fast, shifted, zero_start=True) == pytest.approx(
+        align.normalized_distance, abs=1e-12
+    )
+
+    banded = dtw_distance(fast, slow, window=10)
+    assert banded >= align.normalized_distance - 1e-12
+
+    with pytest.raises(ValueError, match="non-negative"):
+        dtw_distance(fast, slow, window=-1)
