@@ -24,6 +24,17 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **Steering a myoSuperMimic tracker on directional walking and ChaseTag (CPU,
+  `training/supermimic/scripts/eval_steering.py`, [#638]).** The tracker follows a
+  looped walking clip toward a commanded heading: its observation is in world axes, so
+  the robot's observed state is turned into the clip's frame, not the clip. One
+  checkpoint, or every checkpoint of a run as training curves, is scored on
+  `myoFullBodyDirectional-v0` with tutorial 5.4's protocol (plus mid-episode turns) and
+  in `myoChallengeChaseTagFBVs-v0` matches against a player that does nothing, against
+  itself and against the published ONNX baseline. `--track` first checks CPU tracking
+  of held-out clips against `evaluate.py`'s GPU numbers. Joints and muscles are matched
+  by name (`myosuite.core.model_names` aliases), so the same tracker drives both full
+  bodies.
 
 ### Fixed
 
@@ -382,6 +393,7 @@ Changes since **v3.1.0** (2026-11-11).
 * `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) perturbs and clips only `jnt_limited` coordinates instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
+[#638]: https://github.com/MyoHub/myosuite/pull/638
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
