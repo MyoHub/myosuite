@@ -10,6 +10,7 @@
 - :mod:`.computed_muscle_control`: excitations that make a forward simulation track a motion.
 - :mod:`.uncertainty`: Monte Carlo uncertainty bands for muscle estimates.
 - :mod:`.opensim_motion`: OpenSim ``.mot`` / ``.sto`` motions on MyoSuite models.
+- :mod:`.opensim_grf`: OpenSim 4 state-path normalization and force-plate ``ExternalLoads`` conversion.
 - :mod:`.retarget`: landmark IK of motion onto a body model, on its couplings.
 - :mod:`.observability`: local landmark geometry, rank and motion ambiguity.
 - :mod:`.smplh`: SMPL+H forward kinematics (AMASS motions) in NumPy.
@@ -19,4 +20,8 @@
 - :mod:`.kinematic_metrics`: smoothness, velocity symmetry, curvature-velocity power law, Fitts throughput and cohort distances of recorded motions.
 - :mod:`.external_loads`: Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 - :mod:`.camera`: Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+- :mod:`.chumpy_pickle`: Chumpy-free ``.pkl`` unpickler for legacy SMPL, SMPL+H, SMPL-X and MANO body models.
+- :mod:`.emg`: EMG filtering, muscle activation dynamics and tendon-node projection.
+- :mod:`.hand_retarget`: MANO-to-wrist frame calibration, presets, and DexPilot SLSQP hand retargeting.
+- :mod:`.hoi_retarget`: Hand-object interaction clip transforms and contact-aware MuJoCo IK.
 """

@@ -372,10 +372,21 @@ Changes since **v3.1.0** (2026-11-11).
   at their compiled positions, up to 1e-16 away before).
 * Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
+* **Pure joint-limit terms, batched term shapes and ChaseTag-vs EVADE scoring ([#803]).** `joint_penalty` and `joint_limit_violation` now read `EnvAccessor.joint_limits()` (`jnt_range` on limited hinge/slide coordinates) instead of `actuator_ctrlrange`, which mismatched `qpos` whenever `nq != nu` or muscles had `[0, 1]` control ranges. `MuscleActionTerm` scopes fatigue muscle counts to the entity's indexed muscle actuators and writes through `write_ctrl_to_sim`; pure observation, reward and termination terms preserve leading batch dimensions and target devices; `reset_random_pose` requires an explicit seeded `rng`; and `ChaseTagVs` `compute_damage` / `get_score` route tag damage according to the active `CHASE`/`EVADE` role and clamp scores to `[0, 1]` (`docs/baseline_checkpoints.md`).
+* `DictObservationWrapper` and `PerturbationWrapper` forward public unwrapped environment attributes (`model`, `data`, `mj_render`), `DictObservationWrapper` accepts `obs_keys` / `filter_obs_keys=True` to expose only `env.unwrapped.obs_keys`, and `ModularMultiAgentSingleAgentWrapper` draws default random opponent actions from `env.unwrapped.np_random` instead of an unseeded `action_space.sample()` ([#805]).
+* `HeightField.size` reads `hfield.data.size`, `ChaseTagField.flatten_agent_patch` passes `(y, x)` to `cart2map` matching `_compute_heightmap_obs`, and `ChaseTagEnv` seeds `self.np_random` before building terrain and opponents, clamps keyframe indices on single-keyframe models (`myoChallengeChaseTagFBP2-v0`), and handles exact-equilibrium repeller offsets and sub-unit probability sums.
+* `myoChallengeBimanual-v0` (and its `myoSarc` / `myoFati` variants) updates `touch_history`, `max_force` and `goal_touch` in `reset()` and `step()` rather than inside `_get_obs_dict` / `get_reward_dict`, and keeps `obs_dict["time"]` as a 1-element array on drop termination.
+* `myoChallengeTableTennisP{0,1,2}-v0` (and variants) updates `contact_trajectory` and multi-rally `relaunch_ball()` inside `reset()` / `step()` instead of `_get_obs_dict` / `get_reward_dict`, calls `mj_forward` and refreshes `obs_dict` after a ball relaunch, and samples `cal_ball_qvel` when `ball_qvel=True` even without `ball_xyz_range`.
+* `myoChallengeSoccerP1/P2-v0` (and variants) sets `rwd_dict["sparse"] = float(goal_scored)` instead of `float(done)` so falls no longer award sparse points, enforces `min_agent_spawn_distance` between the root and the ball at reset, and defaults `goalkeeper_policy` to `"stationary"` when goalkeeper probabilities sum below 1.
+* `RunTrackEnv` (`myoChallengeOslRunFixed/Random-v0`) stores `ACTUATOR_PARAM` and `OSL_PARAM_LIST` per environment instance rather than mutating shared class-level containers, and seeds `self.np_random` before constructing `TrackField`.
+* `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) perturbs and clips only `jnt_limited` coordinates instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset.
+
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
+[#803]: https://github.com/MyoHub/myosuite/pull/803
+[#805]: https://github.com/MyoHub/myosuite/pull/805
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
 ## [3.1.0] - 2026-11-11
