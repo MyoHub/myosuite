@@ -129,13 +129,15 @@ in one environment is tracked in `MyoSuite issue 818 <https://github.com/MyoHub/
 
 **Batched rollout probe (experimental).** For external compatibility probes requiring
 multi-world rollouts on ``newton>=1.8.0``, :mod:`myosuite.integrations.newton` provides
-the experimental ``NewtonBatchSim`` and ``NewtonAccessor`` (an
-:class:`~myosuite.core.protocols.EnvAccessor` adapter). It replicates a MyoSuite MJCF
-across ``N`` worlds with ``SolverMuJoCo``, remaps merged-joint coordinates, controls,
-activations, and sites back into authored MuJoCo order, runs MyoSuite's sigmoid
-normalization and portable ``ExcitationStage`` pipeline, and evaluates pure
-:mod:`myosuite.terms` observation and reward functions without registering a third
-``make_env`` backend.
+the experimental ``NewtonBatchSim``, ``NewtonAccessor`` / ``TorchNewtonAccessor``
+(:class:`~myosuite.core.protocols.EnvAccessor` adapters), ``NewtonActionPipeline``
+(mirroring ``FatigueWrapper``, ``SarcopeniaWrapper`` via ``ModelFlags.ACTUATOR_PROPERTIES``,
+``ReafferentationWrapper``, and ``MotorNoiseWrapper``), and ``NewtonTaskEnv`` /
+``NewtonRslRlVecEnv`` for ``PoseEnvV0``, ``ReachEnvV0``, and ``LegWalkEnvV0`` tasks.
+It replicates a MyoSuite MJCF across ``N`` worlds with ``SolverMuJoCo``, remaps
+merged-joint coordinates, controls, activations, bodies, sites, and ``nacon``-masked
+contacts into authored MuJoCo order, and evaluates pure :mod:`myosuite.terms`
+observation and reward functions without registering a third ``make_env`` backend.
 
 Historical baseline: 2026-10-23 (PR 4903)
 -----------------------------------------

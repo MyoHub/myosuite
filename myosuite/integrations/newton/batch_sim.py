@@ -20,6 +20,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
+from myosuite.core.muscle_conditions import apply_sarcopenia_to_model
 from myosuite.core.protocols import EnvAccessor
 from myosuite.envs.muscle_stages import ExcitationStage, muscle_mask
 from myosuite.integrations.newton.accessor import (
@@ -81,11 +82,23 @@ class NewtonBatchSim:
         self.num_envs = int(num_envs)
         self.device = device
         self.reference_model = mujoco.MjModel.from_xml_path(str(xml_path))
+        if meta.get("hide_terrain"):
+            try:
+                tid = self.reference_model.geom("terrain").id
+                self.reference_model.geom_rgba[tid, 3] = 0.0
+                self.reference_model.geom_pos[tid] = np.array([0.0, 0.0, -10.0])
+            except KeyError:
+                pass
         self.frame_skip = int(
             meta.get("frame_skip", 1) if frame_skip is None else frame_skip
         )
         self.normalize_act = bool(
             meta.get("normalize_act", True) if normalize_act is None else normalize_act
+        )
+        self.muscle_sigmoid = bool(
+            meta.get("muscle_sigmoid", True)
+            if action_cfg is None
+            else getattr(action_cfg, "muscle_sigmoid", True)
         )
         self.max_episode_steps = (
             meta.get("max_episode_steps")
@@ -100,6 +113,13 @@ class NewtonBatchSim:
         newton.solvers.SolverMuJoCo.register_custom_attributes(template)
         template.default_shape_cfg.gap = 0.0
         template.add_mjcf(str(xml_path), ctrl_direct=True)
+        if meta.get("hide_terrain"):
+            for s_idx, lbl in enumerate(template.shape_label):
+                if lbl.rsplit("/", 1)[-1] == "terrain":
+                    xf = template.shape_transform[s_idx]
+                    template.shape_transform[s_idx] = wp.transform(
+                        (0.0, 0.0, -10.0), xf.q
+                    )
         if self.num_envs == 1:
             builder = template
         else:
@@ -151,7 +171,14 @@ class NewtonBatchSim:
         self._reward_fn = reward_fn
         self._terminated_fn = terminated_fn
         self.step_count = np.zeros(self.num_envs, dtype=np.int32)
-        self._refresh_derived()
+        self._sarcopenia_applied = False
+        sarc_scale = getattr(action_cfg, "sarcopenia_force_scale", None)
+        if sarc_scale is None:
+            sarc_scale = meta.get("sarcopenia_force_scale")
+        if sarc_scale is not None:
+            self.apply_sarcopenia(float(sarc_scale))
+        else:
+            self._refresh_derived()
 
     @property
     def nu(self) -> int:
@@ -201,7 +228,7 @@ class NewtonBatchSim:
                 f"Expected actions of shape ({self.num_envs}, {self.nu}), got {ctrl.shape}."
             )
         ctrl = ctrl.copy()
-        if self.normalize_act and np.any(self._muscle_ind):
+        if self.normalize_act and self.muscle_sigmoid and np.any(self._muscle_ind):
             ctrl[:, self._muscle_ind] = sigmoid_muscle_activation(
                 ctrl[:, self._muscle_ind], np
             )
@@ -295,7 +322,7 @@ class NewtonBatchSim:
     def torch_accessor(self) -> Any:
         """Lazily constructed zero-copy PyTorch :class:`TorchNewtonAccessor`."""
         if self._torch_accessor is None:
-            from myosuite.integrations.newton.torch_pipeline import (  # noqa: PLC0415
+            from myosuite.integrations.newton.torch_pipeline import (
                 TorchNewtonAccessor,
             )
 
@@ -306,9 +333,9 @@ class NewtonBatchSim:
     def action_pipeline(self) -> Any:
         """Lazily constructed PyTorch :class:`NewtonActionPipeline`."""
         if self._action_pipeline is None:
-            import torch  # noqa: PLC0415
+            import torch
 
-            from myosuite.integrations.newton.torch_pipeline import (  # noqa: PLC0415
+            from myosuite.integrations.newton.torch_pipeline import (
                 NewtonActionCfg,
                 NewtonActionPipeline,
             )
@@ -385,8 +412,38 @@ class NewtonBatchSim:
             self.solver.mjw_data.mocap_quat.assign(mquat)
         self._refresh_derived()
 
+    def apply_sarcopenia(self, force_scale: float = 0.5) -> None:
+        """Scale active and passive muscle peak forces via ``ModelFlags.ACTUATOR_PROPERTIES``."""
+        if self._sarcopenia_applied:
+            raise ValueError(
+                "Sarcopenia is already applied to this simulation; applying it again would scale forces twice."
+            )
+        apply_sarcopenia_to_model(self.reference_model, force_scale=force_scale)
+        self._sarcopenia_applied = True
+        if self.nu > 0:
+            act_map = getattr(
+                self.solver,
+                "mjc_actuator_to_newton_actuator",
+                self.solver.mjc_actuator_to_newton_actuator_idx,
+            )
+            act_indices = act_map.numpy()
+            if act_indices.ndim == 1:
+                act_indices = act_indices[None, :]
+            act_indices = act_indices[:, : self.solver.mj_model.nu]
+            src_cols = self.mapping.conv_to_src_ctrl
+            gain_np = self.model.mujoco.actuator_gainprm.numpy().copy()
+            bias_np = self.model.mujoco.actuator_biasprm.numpy().copy()
+            gain_np[act_indices, 2] = self.reference_model.actuator_gainprm[src_cols, 2]
+            bias_np[act_indices, 2] = self.reference_model.actuator_biasprm[src_cols, 2]
+            self.model.mujoco.actuator_gainprm.assign(gain_np)
+            self.model.mujoco.actuator_biasprm.assign(bias_np)
+            self.solver.notify_model_changed(
+                self._newton.ModelFlags.ACTUATOR_PROPERTIES
+            )
+        self._refresh_derived()
+
     def _compute_obs_torch(self) -> Any:
-        import torch  # noqa: PLC0415
+        import torch
 
         t_acc = self.torch_accessor
         parts = [term(t_acc).reshape(self.num_envs, -1) for term in self._obs_terms]
@@ -398,7 +455,7 @@ class NewtonBatchSim:
 
     def step_torch(self, actions: Any) -> tuple[Any, Any, Any, Any, dict[str, Any]]:
         """Advance ``frame_skip`` substeps using zero-copy PyTorch tensors on device."""
-        import torch  # noqa: PLC0415
+        import torch
 
         pipeline = self.action_pipeline
         t_acc = self.torch_accessor
