@@ -309,6 +309,23 @@ def _dense_rows(
     return dense
 
 
+class _EqualityTask(mink.EqualityConstraintTask):
+    """mink < 1.3 indexed ``_cost`` by raw ``efc_id`` instead of position in ``_eq_ids``."""
+
+    def _update_active_constraints(self, configuration: mink.Configuration) -> None:
+        if hasattr(self, "_eq_id_to_pos"):
+            super()._update_active_constraints(configuration)
+            return
+        nefc = configuration.data.nefc
+        mask = np.zeros(len(configuration.data.efc_type), dtype=bool)
+        mask[:nefc] = (configuration.data.efc_type[:nefc] == _EQUALITY) & np.isin(
+            configuration.data.efc_id[:nefc], self._eq_ids
+        )
+        self._mask = mask
+        pos = np.searchsorted(self._eq_ids, configuration.data.efc_id[mask])
+        self.cost = self._cost[pos]
+
+
 class _IKProblem:
     """The mink tasks, bounds and held joints of one :func:`solve_ik` call."""
 
@@ -502,7 +519,7 @@ class _IKProblem:
         )
         if not self._equality_ids:
             return None
-        return mink.EqualityConstraintTask(
+        return _EqualityTask(
             model, cost=self.equality_weight, equalities=self._equality_ids
         )
 
