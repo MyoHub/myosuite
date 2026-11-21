@@ -14,22 +14,30 @@ import mujoco
 import numpy as np
 import pytest
 
+import myosuite.biomechanics.emg_validation as emg_validation_mod
 from myosuite.biomechanics.emg_validation import (
     ChannelBinding,
     EMGChannelMap,
     EMGTrial,
     actuator_pose_sensitivity,
     compare_emg_validation_reports,
-    export_mm_evalkit_rollout,
-    load_emg_trial,
     musculoskeletal_fingerprint,
-    save_emg_trial,
     spatial_site_channel_map,
     summarize_emg_validation,
     validate_trial,
-    write_mm_evalkit_policy_config,
 )
 from myosuite.biomechanics.uncertainty import UncertaintyConfig
+from myosuite.integrations.emg import (
+    EMG_TRIAL_META_KEY,
+    NpzDirectoryEMGSource,
+    load_emg_trial,
+    save_emg_trial,
+)
+from myosuite.integrations.mm_evalkit import (
+    compare_emg_reports_mm_evalkit,
+    export_mm_evalkit_rollout,
+    write_mm_evalkit_policy_config,
+)
 
 pytestmark = pytest.mark.tier1
 
@@ -133,6 +141,19 @@ def test_channel_map_cross_version_resolution_and_npz_roundtrip(tmp_path: Path) 
         and np.allclose(loaded.qpos, trial.qpos)
     )
     assert loaded.meta["subject"] == "S01"
+
+    assert emg_validation_mod.EMG_TRIAL_META_KEY is EMG_TRIAL_META_KEY
+    assert emg_validation_mod.save_emg_trial is save_emg_trial
+    assert emg_validation_mod.load_emg_trial is load_emg_trial
+    assert emg_validation_mod.export_mm_evalkit_rollout is export_mm_evalkit_rollout
+    assert (
+        emg_validation_mod.write_mm_evalkit_policy_config
+        is write_mm_evalkit_policy_config
+    )
+
+    dir_src = NpzDirectoryEMGSource(tmp_path)
+    assert dir_src.trial_ids() == ("unit_clip",)
+    assert dir_src.get_trial("unit_clip").trial_id == "unit_clip"
 
 
 def test_musculoskeletal_fingerprint_detects_ligament_and_muscle_mutations() -> None:
@@ -322,6 +343,10 @@ def test_rsa_and_paired_wilcoxon_comparison() -> None:
     assert "r_opt_lag" in metrics_tested
     assert "emg_bounded_reserve_ratio_p95" in metrics_tested
     assert len(comp["per_channel_rows"]) == 3
+    comp_bridge = compare_emg_reports_mm_evalkit(
+        reports_a, reports_b, label_a="nominal", label_b="weakened"
+    )
+    assert comp_bridge["shared_units"] == 6
 
 
 def test_export_mm_evalkit_rollout_contracts(tmp_path: Path) -> None:

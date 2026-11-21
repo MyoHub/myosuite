@@ -9,21 +9,17 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib
 import json
 import re
 import warnings
-from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Any, Literal, Protocol, runtime_checkable
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
 
 import mujoco
 import numpy as np
 
-from myosuite.biomechanics.computed_muscle_control import (
-    ComputedMuscleControlConfig,
-    computed_muscle_control,
-)
 from myosuite.biomechanics.effort import (
     cocontraction_index,
     muscle_saturation,
@@ -54,7 +50,6 @@ from myosuite.biomechanics.uncertainty import (
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.core.muscle_groups import FUNCTIONAL_MUSCLE_GROUPS, MUSCLE_FMG
 
-EMG_TRIAL_META_KEY = "emg_trial_meta_json"
 _SIGNAL_KINDS = ("raw", "peak_normalized", "mvc_normalized")
 
 
@@ -432,73 +427,6 @@ class EMGSource(Protocol):
         """Default :class:`EMGChannelMap` for *model*, or ``None`` for unmapped arrays."""
 
 
-def save_emg_trial(path: str | Path, trial: EMGTrial) -> None:
-    """Write an :class:`EMGTrial` to a compressed pickle-free ``.npz`` archive."""
-    dst = Path(path)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    arrays: dict[str, np.ndarray] = {
-        "time": np.asarray(trial.time, dtype=np.float64),
-        "signals": np.asarray(trial.signals, dtype=np.float64),
-    }
-    for attr in (
-        "qpos",
-        "kinematics_time",
-        "external_qfrc",
-        "cycle_events",
-        "mvc_peaks",
-    ):
-        val = getattr(trial, attr)
-        if val is not None:
-            arrays[attr] = np.asarray(val, dtype=np.float64)
-    header = {
-        "trial_id": trial.trial_id,
-        "channel_names": list(trial.channel_names),
-        "signal_kind": trial.signal_kind,
-        "filter_config": None
-        if trial.filter_config is None
-        else asdict(trial.filter_config),
-        "meta": dict(trial.meta),
-    }
-    arrays[EMG_TRIAL_META_KEY] = np.array(json.dumps(header, sort_keys=True))
-    np.savez_compressed(dst, allow_pickle=True, **arrays)
-
-
-def load_emg_trial(path: str | Path) -> EMGTrial:
-    """Load an :class:`EMGTrial` saved with :func:`save_emg_trial`."""
-    with np.load(Path(path), allow_pickle=False) as d:
-        if EMG_TRIAL_META_KEY not in d.files:
-            raise ValueError(f"{path}: missing {EMG_TRIAL_META_KEY}")
-        header = json.loads(str(d[EMG_TRIAL_META_KEY].item()))
-        fcfg_raw = header.get("filter_config")
-        fcfg = None
-        if fcfg_raw is not None:
-            bp = fcfg_raw.get("bandpass_hz")
-            fcfg = EMGFilterConfig(
-                bandpass_hz=None if bp is None else (float(bp[0]), float(bp[1])),
-                notch_hz=fcfg_raw.get("notch_hz"),
-                notch_q=float(fcfg_raw.get("notch_q", 30.0)),
-                lowpass_hz=fcfg_raw.get("lowpass_hz"),
-                order=int(fcfg_raw.get("order", 2)),
-                normalize=str(fcfg_raw.get("normalize", "peak")),
-            )
-        return EMGTrial(
-            trial_id=str(header["trial_id"]),
-            time=d["time"],
-            signals=d["signals"],
-            channel_names=tuple(str(c) for c in header["channel_names"]),
-            signal_kind=str(header.get("signal_kind", "peak_normalized")),
-            qpos=d["qpos"] if "qpos" in d.files else None,
-            kinematics_time=d["kinematics_time"]
-            if "kinematics_time" in d.files
-            else None,
-            external_qfrc=d["external_qfrc"] if "external_qfrc" in d.files else None,
-            cycle_events=d["cycle_events"] if "cycle_events" in d.files else None,
-            mvc_peaks=d["mvc_peaks"] if "mvc_peaks" in d.files else None,
-            filter_config=fcfg,
-            meta=header.get("meta", {}),
-        )
-
-
 def musculoskeletal_fingerprint(model: mujoco.MjModel) -> str:
     """16-hex SHA-256 of kinematics, inertias, equalities, contacts, tendons and muscles."""
 
@@ -669,9 +597,12 @@ def _cosine_sim(x: np.ndarray, y: np.ndarray) -> float:
 
 
 def _compute_rsm_and_rsa(
-    pred_ch: np.ndarray, exp_ch: np.ndarray
+    pred_ch: np.ndarray,
+    exp_ch: np.ndarray,
+    *,
+    rsm_rsa_fn: Callable[[np.ndarray, np.ndarray], tuple[float, float]] | None = None,
 ) -> tuple[float, float]:
-    """Compute RSM coordination similarity, delegating to ``mm_evalkit.stats.rsa`` when installed."""
+    """Compute RSM coordination similarity (Spearman and Pearson over lower triangle)."""
     if pred_ch.ndim != 2 or exp_ch.shape != pred_ch.shape:
         raise ValueError(
             f"pred_ch {pred_ch.shape} and exp_ch {exp_ch.shape} must have matching 2D shape"
@@ -679,24 +610,21 @@ def _compute_rsm_and_rsa(
     n_steps, n_channels = pred_ch.shape
     if n_channels < 3 or n_steps < 2:
         return float("nan"), float("nan")
-    try:
-        from myosuite.integrations.mm_evalkit.stats_and_config import compute_rsm_rsa
+    if rsm_rsa_fn is not None:
+        return rsm_rsa_fn(pred_ch, exp_ch)
+    from scipy.stats import spearmanr
 
-        return compute_rsm_rsa(pred_ch, exp_ch)
-    except ImportError:
-        from scipy.stats import spearmanr
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            rsm_a = np.corrcoef(pred_ch.T)
-            rsm_b = np.corrcoef(exp_ch.T)
-        idx = np.tril_indices(n_channels, k=-1)
-        a, b = rsm_a[idx], rsm_b[idx]
-        keep = np.isfinite(a) & np.isfinite(b)
-        a, b = a[keep], b[keep]
-        if a.size < 2 or np.std(a) <= 1e-12 or np.std(b) <= 1e-12:
-            return float("nan"), float("nan")
-        return float(spearmanr(a, b).statistic), float(np.corrcoef(a, b)[0, 1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        rsm_a = np.corrcoef(pred_ch.T)
+        rsm_b = np.corrcoef(exp_ch.T)
+    idx = np.tril_indices(n_channels, k=-1)
+    a, b = rsm_a[idx], rsm_b[idx]
+    keep = np.isfinite(a) & np.isfinite(b)
+    a, b = a[keep], b[keep]
+    if a.size < 2 or np.std(a) <= 1e-12 or np.std(b) <= 1e-12:
+        return float("nan"), float("nan")
+    return float(spearmanr(a, b).statistic), float(np.corrcoef(a, b)[0, 1])
 
 
 def _onset_f1(pred: np.ndarray, exp: np.ndarray) -> float:
@@ -1883,8 +1811,9 @@ def compare_emg_validation_reports(
     *,
     label_a: str = "model_a",
     label_b: str = "model_b",
+    stats_backend: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Paired Wilcoxon + Holm A/B comparison, delegating to ``mm_evalkit.stats.wilcoxon`` when installed."""
+    """Paired Wilcoxon signed-rank + Holm A/B comparison across shared subjects or trials."""
     subjects_a = {
         str(r.get("meta", {}).get("subject"))
         for r in reports_a
@@ -1989,18 +1918,14 @@ def compare_emg_validation_reports(
         ("open_loop_mae_deg", (("open_loop_drift", "open_loop_mae_deg"),)),
     )
 
-    try:
-        from myosuite.integrations.mm_evalkit.stats_and_config import (
-            compute_wilcoxon_comparison,
-        )
-
+    if stats_backend is not None:
         scalar_vectors = []
         for metric_name, paths in scalar_specs:
             va = _unit_vector(reports_a, paths)
             vb = _unit_vector(reports_b, paths)
             if any(np.isfinite(va)) and any(np.isfinite(vb)):
                 scalar_vectors.append((metric_name, va, vb))
-        return compute_wilcoxon_comparison(
+        return stats_backend(
             label_a=label_a,
             label_b=label_b,
             shared_units=shared_units,
@@ -2011,387 +1936,124 @@ def compare_emg_validation_reports(
             unit_name=unit_name,
             clean_json_fn=_clean_json_value,
         )
-    except ImportError:
-        from scipy.stats import rankdata, wilcoxon
 
-        def _paired_fallback(
-            a_vec: Sequence[float] | np.ndarray,
-            b_vec: Sequence[float] | np.ndarray,
-        ) -> dict[str, Any]:
-            a_arr = np.asarray(a_vec, dtype=float)
-            b_arr = np.asarray(b_vec, dtype=float)
-            keep = np.isfinite(a_arr) & np.isfinite(b_arr)
-            a_arr, b_arr = a_arr[keep], b_arr[keep]
-            if a_arr.size == 0:
-                return {
-                    "n": 0,
-                    "n_nonzero": 0,
-                    "median_a": None,
-                    "median_b": None,
-                    "median_diff": None,
-                    "p": None,
-                    "effect_size": None,
-                }
-            diff = a_arr - b_arr
-            nz = diff[diff != 0.0]
-            if nz.size == 0:
-                return {
-                    "n": int(a_arr.size),
-                    "n_nonzero": 0,
-                    "median_a": float(np.median(a_arr)),
-                    "median_b": float(np.median(b_arr)),
-                    "median_diff": 0.0,
-                    "p": None,
-                    "effect_size": None,
-                }
-            ranks = rankdata(np.abs(nz))
-            wp = float(ranks[nz > 0].sum())
-            wm = float(ranks[nz < 0].sum())
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                _, p_val = wilcoxon(a_arr, b_arr, zero_method="wilcox")
+    from scipy.stats import rankdata, wilcoxon
+
+    def _paired_fallback(
+        a_vec: Sequence[float] | np.ndarray,
+        b_vec: Sequence[float] | np.ndarray,
+    ) -> dict[str, Any]:
+        a_arr = np.asarray(a_vec, dtype=float)
+        b_arr = np.asarray(b_vec, dtype=float)
+        keep = np.isfinite(a_arr) & np.isfinite(b_arr)
+        a_arr, b_arr = a_arr[keep], b_arr[keep]
+        if a_arr.size == 0:
+            return {
+                "n": 0,
+                "n_nonzero": 0,
+                "median_a": None,
+                "median_b": None,
+                "median_diff": None,
+                "p": None,
+                "effect_size": None,
+            }
+        diff = a_arr - b_arr
+        nz = diff[diff != 0.0]
+        if nz.size == 0:
             return {
                 "n": int(a_arr.size),
-                "n_nonzero": int(nz.size),
+                "n_nonzero": 0,
                 "median_a": float(np.median(a_arr)),
                 "median_b": float(np.median(b_arr)),
-                "median_diff": float(np.median(diff)),
-                "p": float(p_val),
-                "effect_size": (wp - wm) / (wp + wm),
+                "median_diff": 0.0,
+                "p": None,
+                "effect_size": None,
             }
+        ranks = rankdata(np.abs(nz))
+        wp = float(ranks[nz > 0].sum())
+        wm = float(ranks[nz < 0].sum())
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _, p_val = wilcoxon(a_arr, b_arr, zero_method="wilcox")
+        return {
+            "n": int(a_arr.size),
+            "n_nonzero": int(nz.size),
+            "median_a": float(np.median(a_arr)),
+            "median_b": float(np.median(b_arr)),
+            "median_diff": float(np.median(diff)),
+            "p": float(p_val),
+            "effect_size": (wp - wm) / (wp + wm),
+        }
 
-        summary_rows = []
-        per_channel_rows = []
-        if channels_all:
-            pca = _per_channel_dict(reports_a)
-            pcb = _per_channel_dict(reports_b)
-            mat_a = np.column_stack([pca[c] for c in channels_all])
-            mat_b = np.column_stack([pcb[c] for c in channels_all])
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                res_u = _paired_fallback(
-                    np.nanmean(mat_a, axis=1), np.nanmean(mat_b, axis=1)
-                )
-            summary_rows.append(
+    summary_rows = []
+    per_channel_rows = []
+    if channels_all:
+        pca = _per_channel_dict(reports_a)
+        pcb = _per_channel_dict(reports_b)
+        mat_a = np.column_stack([pca[c] for c in channels_all])
+        mat_b = np.column_stack([pcb[c] for c in channels_all])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            res_u = _paired_fallback(
+                np.nanmean(mat_a, axis=1), np.nanmean(mat_b, axis=1)
+            )
+        summary_rows.append(
+            {
+                "metric": "r_opt_lag",
+                "condition_a": label_a,
+                "condition_b": label_b,
+                **res_u,
+            }
+        )
+        if len(channels_all) >= 2:
+            raw_ch = [
                 {
                     "metric": "r_opt_lag",
+                    "channel": c,
+                    **_paired_fallback(pca[c], pcb[c]),
+                }
+                for c in channels_all
+            ]
+            corr_p = _fallback_holm(
+                [float("nan") if r["p"] is None else float(r["p"]) for r in raw_ch]
+            )
+            for row, cp in zip(raw_ch, corr_p, strict=True):
+                row["p_holm"] = _clean_json_value(cp)
+                row["significant"] = bool(np.isfinite(cp) and cp < 0.05)
+                per_channel_rows.append(row)
+    for metric_name, paths in scalar_specs:
+        va = _unit_vector(reports_a, paths)
+        vb = _unit_vector(reports_b, paths)
+        if any(np.isfinite(va)) and any(np.isfinite(vb)):
+            summary_rows.append(
+                {
+                    "metric": metric_name,
                     "condition_a": label_a,
                     "condition_b": label_b,
-                    **res_u,
+                    **_paired_fallback(va, vb),
                 }
             )
-            if len(channels_all) >= 2:
-                raw_ch = [
-                    {
-                        "metric": "r_opt_lag",
-                        "channel": c,
-                        **_paired_fallback(pca[c], pcb[c]),
-                    }
-                    for c in channels_all
-                ]
-                corr_p = _fallback_holm(
-                    [float("nan") if r["p"] is None else float(r["p"]) for r in raw_ch]
-                )
-                for row, cp in zip(raw_ch, corr_p, strict=True):
-                    row["p_holm"] = _clean_json_value(cp)
-                    row["significant"] = bool(np.isfinite(cp) and cp < 0.05)
-                    per_channel_rows.append(row)
-        for metric_name, paths in scalar_specs:
-            va = _unit_vector(reports_a, paths)
-            vb = _unit_vector(reports_b, paths)
-            if any(np.isfinite(va)) and any(np.isfinite(vb)):
-                summary_rows.append(
-                    {
-                        "metric": metric_name,
-                        "condition_a": label_a,
-                        "condition_b": label_b,
-                        **_paired_fallback(va, vb),
-                    }
-                )
-        for row in summary_rows:
-            row["p_holm"] = row["p"]
-            row["significant"] = bool(row["p"] is not None and row["p"] < 0.05)
-        return {
-            "backend": "scipy.stats.wilcoxon",
-            "unit_name": unit_name,
-            "shared_units": len(shared_units),
-            "summary_rows": summary_rows,
-            "per_channel_rows": per_channel_rows,
-        }
-
-
-def _resample_trial_for_rollout(
-    model: mujoco.MjModel,
-    trial: EMGTrial,
-    dt: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-    """Resample ``trial.qpos`` (and optional ``external_qfrc``) onto a uniform ``dt`` grid."""
-    if trial.qpos is None:
-        raise ValueError(
-            f"trial {trial.trial_id!r} requires qpos for export_mm_evalkit_rollout"
-        )
-    src_t = trial.resolved_kinematics_time()
-    t0, t1 = float(src_t[0]), float(src_t[-1])
-    n_frames = max(4, round((t1 - t0) / dt) + 1)
-    t_grid = t0 + np.arange(n_frames, dtype=np.float64) * dt
-    t_clip = np.clip(t_grid, t0, t1)
-
-    q_src = np.asarray(trial.qpos, dtype=np.float64)
-    q_out = np.column_stack(
-        [np.interp(t_clip, src_t, q_src[:, col]) for col in range(model.nq)]
-    )
-    for jnt in range(model.njnt):
-        jtype = int(model.jnt_type[jnt])
-        adr = int(model.jnt_qposadr[jnt])
-        if jtype == int(mujoco.mjtJoint.mjJNT_FREE):
-            q_quat = q_out[:, adr + 3 : adr + 7]
-            norms = np.linalg.norm(q_quat, axis=1, keepdims=True)
-            q_out[:, adr + 3 : adr + 7] = np.where(
-                norms > 1e-12, q_quat / norms, [1, 0, 0, 0]
-            )
-        elif jtype == int(mujoco.mjtJoint.mjJNT_BALL):
-            q_quat = q_out[:, adr : adr + 4]
-            norms = np.linalg.norm(q_quat, axis=1, keepdims=True)
-            q_out[:, adr : adr + 4] = np.where(
-                norms > 1e-12, q_quat / norms, [1, 0, 0, 0]
-            )
-    q_out = project_tendon_nodes(model, q_out)
-
-    ext_out: np.ndarray | None = None
-    if trial.external_qfrc is not None:
-        ext_src = np.asarray(trial.external_qfrc, dtype=np.float64)
-        ext_out = np.column_stack(
-            [np.interp(t_clip, src_t, ext_src[:, col]) for col in range(model.nv)]
-        )
-    return t_grid, q_out, ext_out
-
-
-def _estimate_touch_observations(
-    model: mujoco.MjModel,
-    qpos_seq: np.ndarray,
-    trial: EMGTrial,
-    t_grid: np.ndarray,
-) -> np.ndarray:
-    """Compute 4-column ``[r_heel, r_toe, l_heel, l_toe]`` foot-contact observations."""
-    n_steps = len(qpos_seq)
-    touch = np.zeros((n_steps, 4), dtype=np.float64)
-
-    sensor_names = ("r_foot", "r_toes", "l_foot", "l_toes")
-    sensor_ids = [
-        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, s) for s in sensor_names
-    ]
-    data = mujoco.MjData(model)
-    if all(sid >= 0 for sid in sensor_ids):
-        adrs = [int(model.sensor_adr[sid]) for sid in sensor_ids]
-        for t in range(n_steps):
-            data.qpos[:] = qpos_seq[t]
-            mujoco.mj_forward(model, data)
-            for col, adr in enumerate(adrs):
-                touch[t, col] = max(0.0, float(data.sensordata[adr]))
-        if np.any(touch > 0.0):
-            return touch
-
-    foot_geom_cols: dict[int, int] = {}
-    for gid in range(model.ngeom):
-        gname = (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, gid) or "").lower()
-        if "foot" not in gname and "calcn" not in gname and "toes" not in gname:
-            continue
-        is_left = gname.endswith("_l") or gname.startswith("l_")
-        is_fore = "bofoot" in gname or "toe" in gname
-        base = 2 if is_left else 0
-        foot_geom_cols[gid] = base + (1 if is_fore else 0)
-
-    if foot_geom_cols:
-        frc = np.zeros(6, dtype=np.float64)
-        for t in range(n_steps):
-            data.qpos[:] = qpos_seq[t]
-            mujoco.mj_forward(model, data)
-            for c_idx in range(data.ncon):
-                con = data.contact[c_idx]
-                c1 = foot_geom_cols.get(int(con.geom[0]))
-                c2 = foot_geom_cols.get(int(con.geom[1]))
-                foot_col = c1 if c1 is not None else c2
-                if foot_col is not None:
-                    mujoco.mj_contactForce(model, data, c_idx, frc)
-                    touch[t, foot_col] += max(0.0, float(frc[0]))
-        if np.any(touch > 0.0):
-            return touch
-
-    if trial.cycle_events is not None and len(trial.cycle_events) > 0:
-        for ev_start, ev_end in np.asarray(trial.cycle_events, dtype=np.float64):
-            dur = float(ev_end - ev_start)
-            if dur <= 1e-6:
-                continue
-            phase = (t_grid - float(ev_start)) / dur
-            in_cycle = (phase >= 0.0) & (phase <= 1.0)
-            r_stance = in_cycle & (phase < 0.60)
-            l_stance = in_cycle & ((phase < 0.10) | (phase >= 0.50))
-            touch[r_stance, 0] = 1.0
-            touch[r_stance, 1] = 1.0
-            touch[l_stance, 2] = 1.0
-            touch[l_stance, 3] = 1.0
-    return touch
-
-
-def export_mm_evalkit_rollout(
-    model: mujoco.MjModel,
-    trials: Sequence[EMGTrial],
-    out_path: str | Path,
-    *,
-    dt: float = 0.01,
-    solver: Literal["static_optimization", "cmc"] = "static_optimization",
-    traj_ids: Sequence[int] | None = None,
-    motion_group: str | None = None,
-    kinematics_lowpass_hz: float | None = 6.0,
-    optimization: StaticOptimizationConfig | None = None,
-    cmc_config: ComputedMuscleControlConfig | None = None,
-) -> Path:
-    """Export policy-free solved trajectories in ``mm-evalkit``'s rollout ``.npz`` contract.
-
-    The exported archive satisfies both ``mm_evalkit.workflows.bimanual.rollout.validate_rollout``
-    (fixed-base models) and ``mm_evalkit.workflows.gait.rollout_validation.validate_rollout_archive``
-    (free-root full-body models) at ``dt=0.01`` s (100 Hz) with ``activation_sample_phase='pre_step'``.
-    """
-    if not trials:
-        raise ValueError("trials must contain at least one EMGTrial")
-    if solver not in ("static_optimization", "cmc"):
-        raise ValueError(
-            f"solver must be 'static_optimization' or 'cmc', got {solver!r}"
-        )
-    if traj_ids is not None and len(traj_ids) != len(trials):
-        raise ValueError(
-            f"traj_ids length {len(traj_ids)} must match trials length {len(trials)}"
-        )
-
-    joint_names = [
-        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j) or f"joint_{j}"
-        for j in range(model.njnt)
-    ]
-    archive: dict[str, Any] = {
-        "n_episodes": np.int64(len(trials)),
-        "dt": np.float64(dt),
-        "joint_names": np.asarray(joint_names, dtype=str),
-        "activation_sample_phase": np.asarray("pre_step"),
+    for row in summary_rows:
+        row["p_holm"] = row["p"]
+        row["significant"] = bool(row["p"] is not None and row["p"] < 0.05)
+    return {
+        "backend": "scipy.stats.wilcoxon",
+        "unit_name": unit_name,
+        "shared_units": len(shared_units),
+        "summary_rows": summary_rows,
+        "per_channel_rows": per_channel_rows,
     }
-    if motion_group is not None and motion_group.strip():
-        archive["motion_group"] = np.asarray(motion_group.strip())
-
-    for ep_idx, trial in enumerate(trials):
-        tid = int(ep_idx if traj_ids is None else traj_ids[ep_idx])
-        if tid < 0:
-            raise ValueError(f"traj_id must be non-negative, got {tid}")
-        t_grid, q_res, ext_res = _resample_trial_for_rollout(model, trial, dt)
-        kin = clip_kinematics(model, q_res, dt, lowpass_hz=kinematics_lowpass_hz)
-        if solver == "static_optimization":
-            so_res = static_optimization(
-                model,
-                kin.qpos,
-                kin.qvel,
-                kin.qacc,
-                external_qfrc=ext_res,
-                config=optimization,
-            )
-            policy_qpos = kin.qpos
-            activations = np.clip(so_res.activation, 0.0, 1.0)
-        else:
-            cfg = cmc_config or ComputedMuscleControlConfig(
-                optimization=optimization or StaticOptimizationConfig()
-            )
-            cmc_res = computed_muscle_control(
-                model,
-                kin.qpos,
-                kin.qvel,
-                kin.qacc,
-                dt,
-                external_qfrc=ext_res,
-                config=cfg,
-            )
-            policy_qpos = np.vstack([kin.qpos[:1], cmc_res.qpos])
-            activations = np.clip(
-                np.vstack([cmc_res.optimization.activation[:1], cmc_res.activation]),
-                0.0,
-                1.0,
-            )
-
-        touch_obs = _estimate_touch_observations(model, policy_qpos, trial, t_grid)
-        prefix = f"episode_{ep_idx}"
-        archive[f"{prefix}_traj_id"] = np.int64(tid)
-        archive[f"{prefix}_traj_length"] = np.int64(len(kin.qpos))
-        archive[f"{prefix}_joint_positions"] = np.asarray(policy_qpos, dtype=np.float64)
-        archive[f"{prefix}_muscle_activations"] = np.asarray(
-            activations, dtype=np.float64
-        )
-        archive[f"{prefix}_traj_qpos"] = np.asarray(kin.qpos, dtype=np.float64)
-        archive[f"{prefix}_touch_observations"] = np.asarray(
-            touch_obs, dtype=np.float64
-        )
-
-    dst = Path(out_path)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(dst, **archive)
-    return dst
 
 
-def _slugify_policy_id(raw: str, index: int) -> str:
-    slug = re.sub(r"[^a-z0-9_-]+", "-", raw.strip().casefold()).strip("-_")
-    if not slug or not slug[0].isalnum():
-        slug = f"model-{index}"
-    return slug
-
-
-def write_mm_evalkit_policy_config(
-    path: str | Path,
-    policies: Sequence[Mapping[str, Any]],
-) -> Path:
-    """Write a ``policies.yaml`` file conforming to ``mm_evalkit.policies.load_policy_specs``."""
-    if not policies:
-        raise ValueError("policies must be non-empty")
-    seen_ids: set[str] = set()
-    normalized: list[dict[str, Any]] = []
-    for idx, entry in enumerate(policies):
-        label = str(entry.get("label") or entry.get("id") or f"model-{idx}").strip()
-        raw_id = str(entry.get("id") or label)
-        pid = _slugify_policy_id(raw_id, idx)
-        if pid in seen_ids:
-            pid = f"{pid}-{idx}"
-        seen_ids.add(pid)
-        traj_path = str(Path(entry["trajectory_data_path"]).as_posix())
-        item: dict[str, Any] = {
-            "id": pid,
-            "label": label,
-            "trajectory_data_path": traj_path,
-        }
-        for opt_key in ("color", "linestyle"):
-            if entry.get(opt_key):
-                item[opt_key] = str(entry[opt_key])
-        normalized.append(item)
-
-    dst = Path(path)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        from myosuite.integrations.mm_evalkit.stats_and_config import (
-            dump_policies_yaml,
-        )
-
-        text = dump_policies_yaml(normalized)
-    except ImportError:
-        lines = ["policies:"]
-        for item in normalized:
-            lines.append(f"  - id: {json.dumps(item['id'])}")
-            lines.append(f"    label: {json.dumps(item['label'])}")
-            lines.append(
-                f"    trajectory_data_path: {json.dumps(item['trajectory_data_path'])}"
-            )
-            for opt_key in ("color", "linestyle"):
-                if opt_key in item:
-                    lines.append(f"    {opt_key}: {json.dumps(item[opt_key])}")
-        text = "\n".join(lines) + "\n"
-    dst.write_text(text, encoding="utf-8")
-    return dst
-
+_COMPAT_INTEGRATION_EXPORTS: dict[str, str] = {
+    "EMG_TRIAL_META_KEY": "myosuite.integrations.emg.trial_io",
+    "load_emg_trial": "myosuite.integrations.emg.trial_io",
+    "save_emg_trial": "myosuite.integrations.emg.trial_io",
+    "export_mm_evalkit_rollout": "myosuite.integrations.mm_evalkit.rollout_export",
+    "write_mm_evalkit_policy_config": "myosuite.integrations.mm_evalkit.rollout_export",
+}
 
 __all__ = [
-    "EMG_TRIAL_META_KEY",
     "ChannelBinding",
     "EMGChannelMap",
     "EMGSource",
@@ -2400,16 +2062,23 @@ __all__ = [
     "ResolvedChannelMap",
     "actuator_pose_sensitivity",
     "compare_emg_validation_reports",
-    "export_mm_evalkit_rollout",
-    "load_emg_trial",
     "musculoskeletal_fingerprint",
     "open_loop_pose_drift",
-    "save_emg_trial",
     "spatial_site_channel_map",
     "summarize_emg_validation",
     "synergy_subspace_metrics",
     "validate_emg_feasibility",
     "validate_inverse_emg",
     "validate_trial",
-    "write_mm_evalkit_policy_config",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in _COMPAT_INTEGRATION_EXPORTS:
+        mod = importlib.import_module(_COMPAT_INTEGRATION_EXPORTS[name])
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__) | set(_COMPAT_INTEGRATION_EXPORTS))

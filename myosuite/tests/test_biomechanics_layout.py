@@ -21,6 +21,9 @@ _PACKAGE = Path(__file__).parents[1]
 _METHOD_DEPENDENCIES = {"numpy", "scipy", "mujoco", "osqp", "absl", "myosuite"}
 # Canonical differential IK uses the explicitly declared core Mink dependency.
 _MODULE_DEPENDENCIES = {"inverse_kinematics.py": {"mink"}}
+# Internal subpackages allowed inside myosuite/biomechanics/ (#895): no integrations/ or envs/.
+_INTERNAL_SUBPACKAGES = {"biomechanics", "core", "physics"}
+_MODULE_INTERNAL_SUBPACKAGES = {"retarget_instanthmr.py": {"viz"}}
 
 
 def _imports(path: Path) -> set[str]:
@@ -38,9 +41,23 @@ def test_biomechanics_depends_only_on_approved_runtime_libraries() -> None:
     allowed = _METHOD_DEPENDENCIES | set(sys.stdlib_module_names)
     for path in sorted((_PACKAGE / "biomechanics").rglob("*.py")):
         module = path.relative_to(_PACKAGE / "biomechanics").as_posix()
+        imports = _imports(path)
         dependencies = allowed | _MODULE_DEPENDENCIES.get(module, set())
-        extra = {n for n in _imports(path) if n.split(".")[0] not in dependencies}
+        extra = {n for n in imports if n.split(".")[0] not in dependencies}
         assert not extra, f"{path.relative_to(_PACKAGE)} imports {sorted(extra)}"
+
+        allowed_internal = _INTERNAL_SUBPACKAGES | _MODULE_INTERNAL_SUBPACKAGES.get(
+            module, set()
+        )
+        bad_internal = {
+            n
+            for n in imports
+            if n.startswith("myosuite.") and n.split(".")[1] not in allowed_internal
+        }
+        assert not bad_internal, (
+            f"{path.relative_to(_PACKAGE)} imports disallowed internal packages "
+            f"{sorted(bad_internal)}"
+        )
 
 
 def test_inverse_kinematics_keeps_its_physics_path() -> None:

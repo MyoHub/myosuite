@@ -97,3 +97,28 @@ def dump_policies_yaml(normalized: Sequence[Mapping[str, Any]]) -> str:
             {"policies": list(normalized)}, sort_keys=False, allow_unicode=True
         )
     )
+
+
+def compare_emg_reports_mm_evalkit(
+    reports_a: Sequence[Mapping[str, Any]],
+    reports_b: Sequence[Mapping[str, Any]],
+    *,
+    label_a: str = "model_a",
+    label_b: str = "model_b",
+) -> dict[str, Any]:
+    """Compare EMG reports via ``mm_evalkit.stats.wilcoxon`` when installed, else SciPy."""
+    from myosuite.biomechanics.emg_validation import compare_emg_validation_reports
+
+    try:
+        import mm_evalkit.stats.wilcoxon  # noqa: F401
+    except ImportError:
+        return compare_emg_validation_reports(
+            reports_a, reports_b, label_a=label_a, label_b=label_b
+        )
+    return compare_emg_validation_reports(
+        reports_a,
+        reports_b,
+        label_a=label_a,
+        label_b=label_b,
+        stats_backend=compute_wilcoxon_comparison,
+    )
