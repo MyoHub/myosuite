@@ -1005,3 +1005,39 @@ def test_a_partial_edit_fn_hits_the_recipe_cache() -> None:
     info = model_builder._recipe_spec.cache_info()
     assert (info.hits, info.misses) == (2, 2)
     assert model.geom_rgba[0][3] == pytest.approx(0.5)
+
+
+@_REQUIRES_MYO_SIM
+def test_empty_prefix_attach_warning_is_suppressed_without_hiding_others(
+    tmp_path: Path,
+) -> None:
+    """Intentional empty-prefix fragment builds suppress only MuJoCo's prefix warning."""
+    import warnings
+
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import (
+        ModelBuilder,
+        build_from_recipe,
+        clear_spec_caches,
+        suppress_empty_prefix_attach_warning,
+    )
+    from myosuite.core.model_recipes import materialize_recipe_xml
+
+    clear_spec_caches()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ModelBuilder().attach_fragment("elbow").build()
+        build_from_recipe("elbow_sarcopenia")
+        materialize_recipe_xml("hand_pose", tmp_path / "hand_pose.xml")
+        with suppress_empty_prefix_attach_warning():
+            warnings.warn(
+                "Attaching a spec with an empty prefix may prevent the model from "
+                "being saved correctly.",
+                UserWarning,
+                stacklevel=1,
+            )
+            warnings.warn("Unrelated compiler warning", UserWarning, stacklevel=1)
+
+    messages = [str(w.message) for w in caught]
+    assert not any("empty prefix" in m for m in messages), messages
+    assert any("Unrelated compiler warning" in m for m in messages), messages

@@ -65,6 +65,7 @@ from myosuite.core.model_builder import (
     build_from_recipe,
     model_recipe,
     register_spec_recipe,
+    suppress_empty_prefix_attach_warning,
 )
 
 # Root of the myosuite package — used to locate asset files.
@@ -114,8 +115,10 @@ def materialize_recipe_xml(
     from myosuite.utils.asset_path_resolver import write_atomic
 
     model, spec = build_from_recipe(name, edit_fn=edit_fn)
+    with suppress_empty_prefix_attach_warning():
+        raw_xml = spec.to_xml()
     data = sanitize_spec_xml(
-        spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
+        raw_xml, asset_dir=str(myo_sim.MODELS_DIR), model=model
     ).encode("utf-8")
 
     out = dest
