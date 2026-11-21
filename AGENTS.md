@@ -94,6 +94,27 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 - Python 3.10+. PEP 8. `pathlib.Path` over `os.path`.
 - No `myo_` prefix on new modules or classes inside the package — it's redundant.
 
+### Package Boundaries and Motion Analysis
+
+Use these boundaries for new code and incremental refactors. `motion/` is the target home for motion data and fitting; it is not yet implemented. Reuse existing APIs until the relevant migration lands; do not create a parallel implementation or move unrelated files as part of a feature.
+
+| Location | Responsibility |
+|---|---|
+| `core/` | Environment configuration, registration and model composition (`make_env`, `ModelBuilder`, recipes). |
+| `physics/` | Shared numerical and physical primitives: quaternion operations, joint couplings and muscle mechanics. |
+| `motion/` (target) | Motion containers, file formats, transforms and source-independent retargeting. Reuse `MotionClip` for model-coordinate trajectories. |
+| `biomechanics/` | Scientific analysis and control: inverse dynamics, static optimization, CMC, EMG, effort, uncertainty and diagnostics. |
+| `integrations/` | Source-specific adapters and calibration (e.g. InstantHMR, GVHMR, SMPL+H, MANO); keep reusable fitting in the motion layer. |
+| `viz/` | Rendering and visual reconstruction, including muscle meshes, skin and Blender. |
+| `scripts/`, `tools/` | Thin workflows, batch execution, worker selection and reports; isolate perception inference dependencies in standalone tools. |
+
+- **Separate algorithms from workflows.** Numerical solvers must not own dataset traversal, caches, report writing or rendering. Compose load → normalize → retarget → analyze → render in a thin workflow; do not import visualization or environment implementations into reusable motion/analysis algorithms.
+- **Explicit data contracts.** Document units, timing, coordinate frames, quaternion order, joint ordering and missing-data masks at conversion boundaries. Keep marker observations and source body-model poses distinct from model-coordinate trajectories. Return structured convergence/residual/quality diagnostics alongside results; document model mutation and failure policy.
+- **Preserve numerical intent.** Site IK and coupling-aware landmark fitting have different objectives. Do not merge solvers solely because both perform IK; prove equivalent constraint handling and numerical behavior before consolidation.
+- **Small, compatible migrations.** Extract workflow code first, consolidate motion ownership next, and address import/dependency costs separately. Keep compatibility imports for moved public APIs, update callers and documentation, and verify serialization, public imports and numerical behavior.
+- **Dependencies and public APIs.** Avoid new eager heavyweight imports and private cross-package imports; expose a deliberate shared API instead. Audit actual runtime use before changing dependency extras. Test allowed internal dependencies, not just third-party import roots.
+- Preserve the CPU/mjlab contract and existing `ModelBuilder`/term abstractions. Do not introduce another registration mechanism, deep package hierarchy or plugin framework for this reorganization.
+
 ### Workflow
 
 - Plan non-trivial tasks in `tasks/todo.md` before implementing.
