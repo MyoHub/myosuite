@@ -64,3 +64,21 @@ def test_single_lateral_step_has_no_periodic_foot_cycle() -> None:
     np.testing.assert_allclose(feet[350:], np.broadcast_to(feet[350], feet[350:].shape))
     assert feet[-1, 0, 0] - feet[0, 0, 0] > 0.25
     assert feet[-1, 1, 0] - feet[0, 1, 0] > 0.25
+
+
+def test_waypoint_reference_canonical_home_and_shim_parity() -> None:
+    """Waypoint reference planners live in ``tasks/basic/full_body`` with musclemimic shims."""
+    import myosuite.integrations.musclemimic as mm_pkg
+    from myosuite.envs.myo.tasks.basic import full_body as fb_pkg
+    from myosuite.envs.myo.tasks.basic.full_body import waypoint_reference as canonical
+    from myosuite.integrations.musclemimic import reference_motion as shim
+
+    for name in (
+        "GaitParameters",
+        "compose_waypoint_reference",
+        "plan_waypoint_reference",
+    ):
+        obj = getattr(canonical, name)
+        assert getattr(fb_pkg, name) is obj
+        assert getattr(shim, name) is obj
+        assert getattr(mm_pkg, name) is obj
