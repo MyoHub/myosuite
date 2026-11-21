@@ -24,6 +24,7 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **Memory-lean mjlab clip bank for large motion datasets.** Unchanged results by default: clips upload one at a time (no host copy of the whole bank), a new env count and `make_init_state_fn` reuse the uploaded bank, and `load_motion_clip(..., dtype=np.float32)` halves the host memory. Opt-in with `MotionClipBank(clips, ClipBankCfg(...))`: `store_qvel=False` derives the reference qvel from the previous qpos frame (`mj_differentiatePos`; validate its difference from stored velocities with `qvel_derivation_error`), and `dtype="float16"` stores the sites around a float32 centroid with a measured `storage_error`. Both together (qpos stays float32 under a derived qvel) bring the full-body bank from 912 to 470 bytes per frame (29 to 15 GiB for 95 h at 100 Hz) with exact qpos. Derived velocities are approximate: the pinned walking clip differs from stored qvel by max 5.431122 rad/s, RMS 0.079889 rad/s ([#509]).
 
 ### Fixed
 
@@ -381,6 +382,7 @@ Changes since **v3.1.0** (2026-11-11).
 * `RunTrackEnv` (`myoChallengeOslRunFixed/Random-v0`) stores `ACTUATOR_PARAM` and `OSL_PARAM_LIST` per environment instance rather than mutating shared class-level containers, and seeds `self.np_random` before constructing `TrackField`.
 * `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) perturbs and clips only `jnt_limited` coordinates instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset.
 
+[#509]: https://github.com/MyoHub/myosuite/pull/509
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
