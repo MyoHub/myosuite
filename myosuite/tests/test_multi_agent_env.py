@@ -11,6 +11,7 @@ so they run in < 1 s without any MuscleMimic dependency.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import gymnasium as gym
 import mujoco
@@ -328,3 +329,107 @@ def test_single_agent_wrapper_reaches_the_step_limit():
         assert (terminated, truncated) == (False, True)
         assert isinstance(reward, float)
     env.close()
+
+
+@dataclass
+class _TagAtOriginConfig(DummyMultiAgentConfig):
+    """Agents start 1 m apart; both at ``qpos0`` (MuJoCo's auto-reset) reads as a tag."""
+
+    max_episode_steps: int = 50
+
+    def on_reset(self, model, data, meta, np_random) -> None:
+        data.qpos[:] = [0.5, -0.5]
+        mujoco.mj_forward(model, data)
+
+    def compute_damage(self, model, data, meta) -> dict[str, float]:
+        tagged = abs(data.qpos[0] - data.qpos[1]) < 0.1
+        return {"agent_0": self.ko_threshold if tagged else 0.0, "agent_1": 0.0}
+
+    def compute_reward(
+        self, data, meta, agent_id, damage_delivered, health, actions, fell, ko
+    ) -> float:
+        return 100.0 if ko["agent_1"] else 0.5
+
+    def get_info(self, data, meta, health, damage_delivered, fell, ko, step_count):
+        return {"tagged": bool(ko["agent_1"])}
+
+
+def _diverge(env: ModularMultiAgentTaskEnv) -> tuple[tuple[Any, ...], list[dict]]:
+    """Two normal steps, then a step from a NaN velocity (MuJoCo resets to qpos0)."""
+    env.reset(seed=0)
+    hold = {a: np.zeros(1, np.float32) for a in env._agents}
+    infos = []
+    for _ in range(2):
+        _, _, terminated, _, info = env.step(hold)
+        assert not any(terminated.values())
+        infos.append(info)
+    env.data.qvel[0] = np.nan
+    return env.step(hold), infos
+
+
+def test_a_diverged_step_terminates_both_agents() -> None:
+    env = ModularMultiAgentTaskEnv(DummyMultiAgentConfig(max_episode_steps=50))
+    (_, _, terminated, truncated, info), _ = _diverge(env)
+    assert terminated == {"agent_0": True, "agent_1": True}
+    assert truncated == {"agent_0": False, "agent_1": False}
+    assert info["mj_unstable"] is True
+    env.close()
+
+
+def test_a_diverged_step_ends_the_episode_for_both_agents_without_a_win() -> None:
+    env = ModularMultiAgentTaskEnv(_TagAtOriginConfig())
+    (_, rewards, terminated, truncated, info), before = _diverge(env)
+    assert np.allclose(env.data.qpos, 0.0)  # the auto-reset state, agents together
+    assert terminated == {"agent_0": True, "agent_1": True}
+    assert truncated == {"agent_0": False, "agent_1": False}
+    assert max(rewards.values()) <= 0.0
+    assert info["tagged"] is False
+    assert info["mj_unstable"] is True
+    assert [i["mj_unstable"] for i in before] == [False, False]
+    env.close()
+
+
+def test_the_divergence_check_can_be_switched_off() -> None:
+    env = ModularMultiAgentTaskEnv(_TagAtOriginConfig())
+    env.mj_instability_termination = False
+    (_, rewards, terminated, _, info), _ = _diverge(env)
+    assert info["tagged"] is True and info.get("mj_unstable") is False
+    assert rewards["agent_0"] == 100.0 and all(terminated.values())
+    env.close()
+
+
+def test_divergence_on_final_step_voids_evade_timeout_score() -> None:
+    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
+        ChaseTagVsTaskConfig,
+    )
+
+    cfg = ChaseTagVsTaskConfig(
+        task_choice="EVADE", maxTime=0.03, ctrl_dt=0.01, agent_separation_m=2.0
+    )
+    env = ModularMultiAgentTaskEnv(cfg)
+    try:
+        hold = {a: np.zeros(env.action_space[a].shape, np.float32) for a in env._agents}
+
+        env.reset(seed=0)
+        for _ in range(3):
+            _, _, terminated, truncated, clean_info = env.step(hold)
+        assert clean_info["mj_unstable"] is False
+        assert clean_info["score"] == pytest.approx(1.0)
+        assert truncated == {"agent_0": True, "agent_1": True}
+
+        env.reset(seed=0)
+        for _ in range(2):
+            _, _, terminated, _, _ = env.step(hold)
+            assert not any(terminated.values())
+        env.data.qvel[0] = np.nan
+        _, rewards, terminated, truncated, info = env.step(hold)
+        assert env._step_count == env.max_episode_steps == 3
+        assert info["mj_unstable"] is True
+        assert info["tagged"] is False
+        assert info["chaser_fell"] is False
+        assert info["score"] == 0.0
+        assert max(rewards.values()) <= 0.0
+        assert terminated == {"agent_0": True, "agent_1": True}
+        assert truncated == {"agent_0": False, "agent_1": False}
+    finally:
+        env.close()

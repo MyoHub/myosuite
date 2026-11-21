@@ -370,6 +370,13 @@ Changes since **v3.1.0** (2026-11-11).
   the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
   instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
   at their compiled positions, up to 1e-16 away before).
+* **The two-agent env ends a diverged episode.** `ModularMultiAgentTaskEnv` (`myoChallengeChaseTagFBVs-v0`) had no
+  divergence check, and `MjInstabilityTerminationWrapper` found none to call, so after MuJoCo reset a diverged
+  simulation to `qpos0` the match went on from that state and could be scored as a tag. Its `step` now uses the same
+  check as `MyoGymnasiumEnv` (`mj_diverged`): the diverged step deals no damage, sees no falls, pays no positive
+  reward or `info["score"]` (even on the final time-limit step of an `EVADE` bout) to either agent and terminates
+  both; `info["mj_unstable"]` is on every step so evaluators can record diverged bouts as void/draw, and
+  `env.unwrapped.mj_instability_termination = False` switches it off.
 * Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
 * **Pure joint-limit terms, batched term shapes and ChaseTag-vs EVADE scoring ([#803]).** `joint_penalty` and `joint_limit_violation` now read `EnvAccessor.joint_limits()` (`jnt_range` on limited hinge/slide coordinates) instead of `actuator_ctrlrange`, which mismatched `qpos` whenever `nq != nu` or muscles had `[0, 1]` control ranges. `MuscleActionTerm` scopes fatigue muscle counts to the entity's indexed muscle actuators and writes through `write_ctrl_to_sim`; pure observation, reward and termination terms preserve leading batch dimensions and target devices; `reset_random_pose` requires an explicit seeded `rng`; and `ChaseTagVs` `compute_damage` / `get_score` route tag damage according to the active `CHASE`/`EVADE` role and clamp scores to `[0, 1]` (`docs/baseline_checkpoints.md`).
