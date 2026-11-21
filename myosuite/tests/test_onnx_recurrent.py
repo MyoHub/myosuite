@@ -105,3 +105,86 @@ def test_recurrent_gru_and_lstm_onnx_export_and_cpu_playback(tmp_path: Path) -> 
         "h_out",
         "c_out",
     ]
+
+
+def test_recurrent_parity_checks_state_outputs_and_missing_onnxruntime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+
+    from myosuite.utils import onnxruntime_utils
+    from myosuite.utils.export_onnx import verify_onnx_parity
+
+    class _LSTMActor(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.lstm = torch.nn.LSTM(input_size=6, hidden_size=8, num_layers=1)
+            self.head = torch.nn.Linear(8, 3)
+
+        def forward(
+            self, obs: torch.Tensor, h_in: torch.Tensor, c_in: torch.Tensor
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            y, (h_out, c_out) = self.lstm(obs.unsqueeze(0), (h_in, c_in))
+            return torch.tanh(self.head(y.squeeze(0))), h_out, c_out
+
+    base = _LSTMActor().eval()
+    onnx_path = tmp_path / "lstm.onnx"
+    export_recurrent_to_onnx(
+        base,
+        onnx_path,
+        obs_dim=6,
+        act_dim=3,
+        hidden_dim=8,
+        num_layers=1,
+        rnn_type="lstm",
+        verify=True,
+        write_spec=True,
+    )
+
+    class _PerturbedCellState(torch.nn.Module):
+        """Matches action on step 0 while perturbing c_out so state parity must catch it."""
+
+        def __init__(self, inner: torch.nn.Module) -> None:
+            super().__init__()
+            self.inner = inner
+
+        def forward(
+            self, obs: torch.Tensor, h_in: torch.Tensor, c_in: torch.Tensor
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            action, h_out, c_out = self.inner(obs, h_in, c_in)
+            return action, h_out, c_out + 0.5
+
+    with pytest.raises(RuntimeError, match="c_out"):
+        verify_onnx_parity(
+            _PerturbedCellState(base).eval(),
+            onnx_path,
+            obs_dim=6,
+            recurrent_shapes=((1, 8), (1, 8)),
+            steps=1,
+        )
+
+    prev_onnx = onnx_path.read_bytes()
+    prev_spec = onnx_path.with_suffix(".policy_spec.json").read_bytes()
+    monkeypatch.setattr(
+        onnxruntime_utils,
+        "require_onnxruntime",
+        lambda: (_ for _ in ()).throw(
+            ImportError("ONNX inference requires onnxruntime.")
+        ),
+    )
+    with pytest.raises(ImportError, match="--no-verify"):
+        export_recurrent_to_onnx(
+            base,
+            onnx_path,
+            obs_dim=6,
+            act_dim=3,
+            hidden_dim=8,
+            num_layers=1,
+            rnn_type="lstm",
+            verify=True,
+            write_spec=True,
+        )
+    assert onnx_path.read_bytes() == prev_onnx
+    assert onnx_path.with_suffix(".policy_spec.json").read_bytes() == prev_spec

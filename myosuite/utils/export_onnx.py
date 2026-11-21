@@ -174,6 +174,11 @@ def verify_onnx_parity(
 
         batch = 3
         state_names = ["h_in"] if len(recurrent_shapes) == 1 else ["h_in", "c_in"]
+        out_names = (
+            ["action", "h_out"]
+            if len(recurrent_shapes) == 1
+            else ["action", "h_out", "c_out"]
+        )
         pt_states = [
             _torch.zeros(nl, batch, hd, dtype=_torch.float32)
             for nl, hd in recurrent_shapes
@@ -185,27 +190,35 @@ def verify_onnx_parity(
         for step in range(steps):
             obs_t = _torch.randn(batch, obs_dim, generator=gen, dtype=_torch.float32)
             pt_out = policy_cpu(obs_t, *pt_states)
-            want = pt_out[0].detach().cpu().numpy()
+            want_tensors = [t.detach().cpu().numpy() for t in pt_out]
             pt_states = [s.detach() for s in pt_out[1:]]
 
-            ort_out = sess.run(None, {"obs": obs_t.numpy(), **ort_states})
-            got = ort_out[0]
+            ort_out = sess.run(out_names, {"obs": obs_t.numpy(), **ort_states})
+            if len(ort_out) != len(want_tensors):
+                raise RuntimeError(
+                    f"Exported recurrent ONNX graph ({Path(onnx_path).name}) returned "
+                    f"{len(ort_out)} outputs, expected {len(want_tensors)} ({out_names})."
+                )
+            for out_name, got_arr, want_arr in zip(
+                out_names, ort_out, want_tensors, strict=True
+            ):
+                if got_arr.shape != want_arr.shape or not np.allclose(
+                    got_arr, want_arr, atol=atol, rtol=rtol
+                ):
+                    diff = (
+                        float(np.max(np.abs(got_arr - want_arr)))
+                        if got_arr.shape == want_arr.shape
+                        else float("inf")
+                    )
+                    raise RuntimeError(
+                        f"Exported recurrent ONNX graph ({Path(onnx_path).name}) failed parity "
+                        f"on {out_name!r} at step {step}: max_abs_diff={diff:.3e} "
+                        f"(atol={atol}, rtol={rtol})."
+                    )
+                max_diff = max(max_diff, float(np.max(np.abs(got_arr - want_arr))))
             ort_states = {
                 name: val for name, val in zip(state_names, ort_out[1:], strict=True)
             }
-            if got.shape != want.shape or not np.allclose(
-                got, want, atol=atol, rtol=rtol
-            ):
-                diff = (
-                    float(np.max(np.abs(got - want)))
-                    if got.shape == want.shape
-                    else float("inf")
-                )
-                raise RuntimeError(
-                    f"Exported recurrent ONNX graph ({Path(onnx_path).name}) failed parity "
-                    f"at step {step}: max_abs_diff={diff:.3e} (atol={atol}, rtol={rtol})."
-                )
-            max_diff = max(max_diff, float(np.max(np.abs(got - want))))
     return max_diff
 
 
@@ -394,6 +407,7 @@ def export_recurrent_to_onnx(
 
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_dest = output_path.with_suffix(".policy_spec.json")
     staging = Path(
         tempfile.mkdtemp(prefix=".onnx-export-", dir=str(output_path.parent))
     )
@@ -425,15 +439,21 @@ def export_recurrent_to_onnx(
             verify_onnx_parity(
                 policy_eval, staged_onnx, obs_dim, recurrent_shapes=rec_shapes
             )
-        staged_onnx.replace(output_path)
+        replacements: list[tuple[Path, Path]] = [(staged_onnx, output_path)]
+        stale: tuple[Path, ...] = ()
         if write_spec:
-            _write_policy_spec(
-                output_path,
+            staged_spec = _write_policy_spec(
+                staged_onnx,
                 obs_dim,
                 act_dim,
                 recurrent_shapes=rec_shapes,
                 framework=f"recurrent_{kind}",
+                dest=staging / spec_dest.name,
             )
+            replacements.append((staged_spec, spec_dest))
+        else:
+            stale = (spec_dest,)
+        _commit_staged_artifacts(staging, replacements, stale=stale)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
