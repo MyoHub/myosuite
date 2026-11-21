@@ -1,6 +1,14 @@
 # Agent Instructions (AGENTS.md; CLAUDE.md imports this file)
 
-## Review guidelines
+## Code Review Rules
+
+### Repository ownership and reuse checks
+
+- Apply the ownership and minimum-change review below to the actual diff, not just the PR description. For each new model transform or abstraction, search the existing primitives and cite the canonical symbol/path when flagging duplication or the wrong owner. Model scaling, mass/inertia and muscle/tendon transforms belong in `myo_sim`; source processing, subject-fitting workflows, task wiring and provenance may remain in MyoSuite. A thin compatibility facade is allowed; a copied algorithm behind a fallback is not a second canonical implementation.
+- Check whether configuration, composition or a small extension can replace new code, and whether superseded code/callers are removed within a compatible migration. Flag unnecessary parallel solvers, wrappers or frameworks only with concrete equivalent behavior/constraints; do not demand consolidation of different numerical objectives or use line count alone as a defect.
+- Check all applicable contracts and validation rules in this file and the linked engineering guides: dependency/version gates, public imports/serialization/checkpoint compatibility, scientific provenance and diagnostics, supported-backend parity, and method-specific training/artifact requirements. Inspect the implementation and evidence; passing lint or absent CI does not prove compliance. If another repository or experiment is unavailable, say that it is unverified rather than assuming it passed.
+- Keep defect findings actionable with the affected code, existing primitive or violated contract, consequence and safe correction. Separate optional simplification from defects; use severity based on impact, never inflate it to force visibility. In a review summary, when supported, state ownership/reuse, compatibility and checks run/not run; do not treat a bot's clean review as human design or implementation approval.
+
 
 - Automated code review covers defects in the proposed source, tests and documentation. **Do not emit findings about commit Author, Committer, AI attribution or CLA identity, and do not request attribution rewrites.** Those checks belong to the commit-creation hooks and maintainer verification of GitHub's PR commit list, not the code-review sandbox.
 - A review service may reconstruct a patch as a new local commit with a different SHA and service identity. Even `git show --format=fuller` on that object proves only the reconstructed object's metadata, not the submitted PR's authorship. Never treat local `HEAD`, a synthetic merge or a SHA absent from GitHub's PR commit list as the contributor's commit.
@@ -84,9 +92,18 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 - `MjSpec` → `MjModel`: always call `.compile()` before passing a spec to functions that expect a `MjModel` (e.g. `_muscle_tendon_names`, `_init_state_from_model`).
 - `wp_data` attribute names: verify they exist in mujoco-warp before use — do not assume by analogy with mujoco-py (e.g. `site_xvelp` does not exist; derive from `cvel`).
 
+### Ownership and minimum-change review
+
+- Decide the owner before adding code. `myo_sim` owns reusable model construction and anatomical/physical transforms: geometry and segment scaling, mass/inertia, muscle/tendon parameters and model-only calibration. MyoSuite owns measurement/source adapters, scientific analysis and experiment workflows, task configuration and CPU/mjlab wiring. A workflow estimating subject parameters may stay in MyoSuite; reusable anatomical/physical model transformations must use the canonical `myo_sim` API. Task settings, sensor calibration and experimental control parameters remain with their workflow.
+- Search both repositories and the relevant dependency APIs before adding a helper, class, wrapper or solver. Record the existing symbols considered and why configuration, composition or a small extension does not suffice. Review behavior and constraints, not a guessed similarity percentage.
+- Prefer the smallest compatible change. Reuse the current composition/physics primitives and public APIs; remove superseded code and update callers within the compatible migration; document any staged compatibility period. Keep only deliberate compatibility facades, not a second algorithm hidden behind a fallback. Preserve distinct numerical objectives when equivalence has not been demonstrated.
+- If the required library API is not released, link the prerequisite `myo_sim` PR and gate the consumer on a version that provides it. Do not copy the implementation into MyoSuite to bypass that dependency.
+- Every code PR and updated review summary must state the owner, reused primitives, necessary new logic and code removed/simplified (or why none can be removed), with compatibility and validation evidence. Missing evidence needs revision before approval. Added/deleted line counts inform review; they are not a correctness quota.
+- Reviewers must check the actual diff and imports against that evidence. Existing lint/tests do not establish absence of duplication or correct ownership; do not describe them as enforcing this semantic review gate.
+
 ### Code Quality
 
-- **Search before writing.** `grep` the repo first. If a similar implementation exists (≥ 80%), extend or import it.
+- **Search before writing.** Follow the ownership and minimum-change review above: search both repositories and compare existing behavior and constraints before extending or importing a primitive.
 - **Don't duplicate across task variants.** When writing multiple variants of the same task (e.g. different host models, difficulty tiers, or agent counts), factor shared model-builder/config logic into one parameterized function or base class before duplicating a file — don't write near-identical sibling files side by side in the same change. (Flagged in PR #101 review: `chase_tag_vs_fullbody_model.py` / `chase_tag_vs_model.py` duplicated their model builders and `ModelMeta` classes wholesale instead of parameterizing one implementation.)
 - **Use the library.** Check `docs/wiki/library-usage.md` before writing any helper.
 - No commented-out dead code, unused imports, or silent `except: pass`.
