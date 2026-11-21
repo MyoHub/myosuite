@@ -280,3 +280,22 @@ def test_align_walk_frame_cancels_trunk_lean_scales_stature_and_updates_cameras(
         scale_method="segments",
     )
     assert seg_aligned.scale == pytest.approx(1.0 / arbitrary_scale, rel=1e-5)
+
+
+def test_pose2sim_adapter_boundary_and_stdlib_fallback(tmp_path: Path) -> None:
+    import myosuite.biomechanics.camera as camera_mod
+    from myosuite.integrations.capture import (
+        load_pose2sim_cameras as cap_load,
+        save_pose2sim_cameras as cap_save,
+    )
+    from myosuite.integrations.capture.pose2sim import _parse_pose2sim_toml_fallback
+
+    assert camera_mod.load_pose2sim_cameras is cap_load
+    assert camera_mod.save_pose2sim_cameras is cap_save
+
+    out = cap_save(tmp_path / "Calib_scene.toml", cameras())
+    parsed_fallback = _parse_pose2sim_toml_fallback(out.read_text(encoding="utf-8"))
+    assert "cal0.0" in parsed_fallback
+    assert parsed_fallback["cal0.0"]["fisheye"] is False
+    reloaded = cap_load(out)
+    assert [c.calibration_id for c in reloaded] == ["cal0.0", "cal-0.7", "cal0.5"]

@@ -42,7 +42,6 @@ dependencies = [
     "filelock>=4.2.5; python_version >= '3.11'",
     "colorednoise>=2.2.0",
     "packaging",
-    "tomli>=2.0.0; python_version < '3.11'",
     "ml-collections>=0.1.1",
     "myo-sim==0.2.5",
     # onnxruntime <=1.23.2 is the last line shipping cp310 wheels and >=1.24.1 the

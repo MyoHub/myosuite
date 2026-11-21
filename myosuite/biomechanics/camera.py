@@ -2,22 +2,16 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Metric reconstruction, Pose2Sim calibration I/O, undistortion and walk-frame scaling."""
+"""Metric camera projection, undistortion, triangulation and walk-frame scaling."""
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
-from scipy.spatial.transform import Rotation
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    import tomli as tomllib  # type: ignore[no-redef]
 
 LEG_STATURE_RATIO = 0.245 + 0.246
 TRUNK_STATURE_RATIO = 0.288
@@ -225,79 +219,6 @@ class PinholeCamera:
         if self.fisheye:
             out["fisheye"] = True
         return out
-
-
-def load_pose2sim_cameras(
-    path: str | Path, *, camera_names: Sequence[str] | None = None
-) -> list[PinholeCamera]:
-    """Load calibrated or intrinsics-only cameras from a Pose2Sim ``.toml`` file."""
-    data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
-    keys = (
-        list(camera_names)
-        if camera_names is not None
-        else [k for k, v in data.items() if isinstance(v, dict) and "matrix" in v]
-    )
-    if not keys:
-        raise ValueError(f"No camera sections with 'matrix' found in {path}")
-    cameras: list[PinholeCamera] = []
-    for key in keys:
-        sec = data[key]
-        raw_rot = sec.get("rotation")
-        arr = None if raw_rot is None else np.asarray(raw_rot, dtype=float)
-        rot = (
-            np.eye(3)
-            if arr is None
-            else (Rotation.from_rotvec(arr).as_matrix() if arr.shape == (3,) else arr)
-        )
-        sz = sec.get("size")
-        cameras.append(
-            PinholeCamera(
-                intrinsic=np.asarray(sec["matrix"], dtype=float),
-                rotation=rot,
-                translation=np.asarray(
-                    sec.get("translation", [0.0, 0.0, 0.0]), dtype=float
-                ),
-                calibration_id=str(sec.get("name") or key),
-                distortion=tuple(float(c) for c in sec.get("distortions", ())),
-                image_size=(int(round(sz[0])), int(round(sz[1])))
-                if sz is not None
-                else None,
-                fisheye=bool(sec.get("fisheye", False)),
-            )
-        )
-    return cameras
-
-
-def save_pose2sim_cameras(path: str | Path, cameras: Sequence[PinholeCamera]) -> Path:
-    """Write ``cameras`` in Pose2Sim ``Calib_scene.toml`` format."""
-    if not cameras:
-        raise ValueError("cameras must be non-empty")
-    blocks: list[str] = []
-    for cam in cameras:
-        rvec = Rotation.from_matrix(cam.rotation).as_rotvec().tolist()
-        dist = list(cam.distortion) if cam.distortion else [0.0, 0.0, 0.0, 0.0]
-        sz = (
-            list(cam.image_size)
-            if cam.image_size is not None
-            else [
-                int(round(2 * cam.intrinsic[0, 2])),
-                int(round(2 * cam.intrinsic[1, 2])),
-            ]
-        )
-        rows = ", ".join(
-            "[" + ", ".join(f"{v:.10g}" for v in row) + "]" for row in cam.intrinsic
-        )
-        blocks.append(
-            f'[{cam.calibration_id}]\nname = "{cam.calibration_id}"\n'
-            f"size = [{float(sz[0]):.1f}, {float(sz[1]):.1f}]\nmatrix = [{rows}]\n"
-            f"distortions = [{', '.join(f'{v:.10g}' for v in dist)}]\n"
-            f"rotation = [{', '.join(f'{v:.10g}' for v in rvec)}]\n"
-            f"translation = [{', '.join(f'{v:.10g}' for v in cam.translation)}]\n"
-            f"fisheye = {'true' if cam.fisheye else 'false'}\n"
-        )
-    out = Path(path)
-    out.write_text("\n".join(blocks), encoding="utf-8")
-    return out
 
 
 @dataclass(frozen=True)
@@ -634,3 +555,13 @@ def align_walk_frame(
         ref_xy,
         transform_cameras(cameras, scale=scale, rotation=rot, origin=ref_xy),
     )
+
+
+_COMPAT_POSE2SIM_EXPORTS = ("load_pose2sim_cameras", "save_pose2sim_cameras")
+
+
+def __getattr__(name: str) -> Any:
+    if name in _COMPAT_POSE2SIM_EXPORTS:
+        mod = importlib.import_module("myosuite.integrations.capture.pose2sim")
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
