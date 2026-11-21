@@ -23,7 +23,7 @@ from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import (
     torch_joint_couplings,
     write_cpu_state,
 )
-from myosuite.envs.waypoint import WaypointTaskCfg
+from myosuite.envs.myo.tasks.basic.full_body.waypoint import WaypointTaskCfg
 from myosuite.physics.joint_coupling import project_joint_couplings
 from myosuite.terms.base_obs import joint_vel_obs, muscle_act_obs
 from myosuite.terms.waypoint import (
@@ -221,7 +221,7 @@ class reset_pose(ManagerTermBase):  # noqa: N801  (mjlab term style)
     coupled joints put back on their polynomials (``MyoGymnasiumEnv.reset``).
 
     Params: ``asset_cfg``, ``qpos``/``qvel`` (CPU layout), ``noise``/``low``/``high``
-    (per ``qpos`` coordinate, see :class:`~myosuite.envs.waypoint.RootLayout`) and
+    (per ``qpos`` coordinate, see :class:`~myosuite.envs.myo.tasks.basic.full_body.waypoint.RootLayout`) and
     ``couplings`` (:class:`~myosuite.physics.joint_coupling.JointCouplings` of the CPU model).
     """
 
