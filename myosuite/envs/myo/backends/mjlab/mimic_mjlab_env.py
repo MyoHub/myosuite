@@ -74,6 +74,7 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
 )
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2mat
+from myosuite.terms.cocontraction import WastedTorqueCfg
 from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
 from myosuite.utils.reach_workspace import reachable_postures
 
@@ -1608,6 +1609,31 @@ def mimic_viewer_cfg(
     return ViewerConfig(**kwargs)
 
 
+def _wasted_torque_terms(
+    entity_name: str, ctrl_dt: float, cost: WastedTorqueCfg, *, per_second: bool = False
+) -> tuple[Any, Any]:
+    """Reward and metric terms of the co-contraction cost (:mod:`myosuite.terms.cocontraction`).
+
+    By default the reward weight is ``-cost.weight / ctrl_dt``: mjlab scales rewards
+    by ``ctrl_dt``, preserving the CPU/Mimic penalty per control step. With
+    ``per_second=True`` (directional SAR), the weight is ``-cost.weight``, a reward
+    rate per N·m/kg, and the step penalty is ``cost.weight * metric * ctrl_dt``.
+    With weight 0 the reward is skipped; the metric is logged either way.
+    """
+    from mjlab.managers.metrics_manager import MetricsTermCfg
+    from mjlab.managers.reward_manager import RewardTermCfg
+
+    from myosuite.envs.myo.backends.mjlab.tasks.mdp.rewards import wasted_torque
+
+    params = {"entity_name": entity_name, "cfg": cost}
+    reward = RewardTermCfg(
+        func=wasted_torque,
+        weight=-float(cost.weight) / (1.0 if per_second else ctrl_dt),
+        params=params,
+    )
+    return reward, MetricsTermCfg(func=wasted_torque, params=dict(params))
+
+
 def _make_mimic_env_cfg(
     *,
     _task_id: str,
@@ -1629,6 +1655,7 @@ def _make_mimic_env_cfg(
     enable_clip_state_terms: bool = True,
     reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
     mimic_reward_weight: float = 5.0,
+    wasted_torque: WastedTorqueCfg | None = None,
 ) -> Any:
     """Build :class:`~mjlab.envs.ManagerBasedRlEnvCfg` for one Mimic task.
 
@@ -1655,6 +1682,9 @@ def _make_mimic_env_cfg(
             match the model but ``site_xpos`` remains usable.
         reward_mode: Reward composition mode.  Only ``"mimic"`` (the
             clip-tracking objective) is implemented.
+        wasted_torque: Co-contraction cost. The full body always gets the
+            ``wasted_torque`` metric and reward term (weight 0 unless this sets one);
+            other variants only when it is given, with joints of their model.
         action_mode: Muscle action interpretation. ``"sigmoid"`` keeps the
             training path's canonical action normalisation; ``"direct"``
             preserves checkpoint playback by clipping incoming values to
@@ -1818,6 +1848,11 @@ def _make_mimic_env_cfg(
     )
 
     rewards = {"tracking": RewardTermCfg(func=reward_fn, weight=reward_weight)}
+    metrics: dict[str, Any] = {}
+    if variant == "fullbody" or wasted_torque is not None:
+        rewards["wasted_torque"], metrics["wasted_torque"] = _wasted_torque_terms(
+            entity_name, ctrl_dt, wasted_torque or WastedTorqueCfg()
+        )
     decimation = max(1, int(round(ctrl_dt / sim_dt)))
     episode_length_s = _cpu_episode_length_s(
         int(max_episode_steps), decimation * sim_dt
@@ -1839,6 +1874,8 @@ def _make_mimic_env_cfg(
     )
     if events:
         env_cfg_kwargs["events"] = events
+    if metrics:
+        env_cfg_kwargs["metrics"] = metrics
     if variant == "fullbody":  # the bimanual body has no pelvis: keep mjlab's camera
         env_cfg_kwargs["viewer"] = mimic_viewer_cfg(entity_name)
     return ManagerBasedRlEnvCfg(**env_cfg_kwargs)
@@ -1852,6 +1889,7 @@ def _make_mimic_env_cfg(
 def register_mimic_mjlab_tasks(
     register_mjlab_task: Callable[..., None],
     rl_cfg_fn: Callable[[], Any],
+    wasted_torque: WastedTorqueCfg | None = None,
 ) -> None:
     """Register Mimic tasks in random-target mode (original behaviour).
 
@@ -1861,11 +1899,13 @@ def register_mimic_mjlab_tasks(
     Args:
         register_mjlab_task: mjlab task registry function.
         rl_cfg_fn: Callable returning a default RL runner config.
+        wasted_torque: Co-contraction cost of the full body (weight 0, metric only, if unset).
     """
     _register_mimic_tasks(
         register_mjlab_task=register_mjlab_task,
         rl_cfg_fn=rl_cfg_fn,
         clip=None,
+        wasted_torque=wasted_torque,
     )
 
 
@@ -1880,6 +1920,7 @@ def register_mimic_mjlab_tasks_with_clip(
     reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
     mimic_reward_weight: float = 5.0,
     env_reward_weight: float = 1.0,
+    wasted_torque: WastedTorqueCfg | None = None,
 ) -> None:
     """Register Mimic tasks in trajectory mode.
 
@@ -1907,6 +1948,7 @@ def register_mimic_mjlab_tasks_with_clip(
         mimic_reward_weight: Weight of the clip-tracking reward.
         env_reward_weight: Weight of the native task reward; must stay
             ``1.0`` since the Mimic tasks define none.
+        wasted_torque: Co-contraction cost of the full body (weight 0, metric only, if unset).
 
     Raises:
         ValueError: If ``clip.site_xpos`` is ``None`` or *reward_mode* is
@@ -1935,6 +1977,7 @@ def register_mimic_mjlab_tasks_with_clip(
         action_mode=action_mode,
         reward_mode=reward_mode,
         mimic_reward_weight=mimic_reward_weight,
+        wasted_torque=wasted_torque,
     )
     from mjlab.tasks.registry import list_tasks
 
@@ -1956,6 +1999,7 @@ def _register_mimic_tasks(
     action_mode: str = "sigmoid",
     reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
     mimic_reward_weight: float = 1.0,
+    wasted_torque: WastedTorqueCfg | None = None,
 ) -> None:
     """Internal implementation shared by both registration entry points."""
     import importlib.util
@@ -2079,6 +2123,7 @@ def _register_mimic_tasks(
         mj_model=f_mj,
         reward_mode=reward_mode,
         mimic_reward_weight=mimic_reward_weight,
+        wasted_torque=wasted_torque,
     )
     f_train_env = _make_mimic_env_cfg(
         _task_id="myoMimicFullbody-v0",
@@ -2682,6 +2727,7 @@ def _make_directional_sar_env_cfg(
     act_reg_weight: float = 0.001,
     num_envs: int = 1,
     mj_model: Any = None,
+    wasted_torque: WastedTorqueCfg | None = None,
 ) -> Any:
     """Build :class:`~mjlab.envs.ManagerBasedRlEnvCfg` for the directional SAR walk task.
 
@@ -2705,6 +2751,9 @@ def _make_directional_sar_env_cfg(
         mj_model: Optional compiled :class:`mujoco.MjModel` (e.g. from ``spec.compile()``)
             with keyframes, used to seed :class:`~mjlab.entity.EntityCfg.InitialStateCfg`.
             If ``None``, mjlab's default initial state is used.
+        wasted_torque: Optional co-contraction cost, in reward per second per N·m/kg.
+            Adds its dt-scaled reward, metric and ``sync_forward`` (the term reads
+            actuator forces and moments).
 
     Returns:
         A fully configured :class:`~mjlab.envs.ManagerBasedRlEnvCfg`.
@@ -2792,6 +2841,20 @@ def _make_directional_sar_env_cfg(
             time_out=True,
         ),
     }
+    metrics: dict[str, Any] = {}
+    if wasted_torque is not None:
+        from myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations import (
+            SYNC_TERM,
+            sync_forward,
+        )
+
+        terminations = {
+            SYNC_TERM: TerminationTermCfg(func=sync_forward),
+            **terminations,
+        }
+        rewards["wasted_torque"], metrics["wasted_torque"] = _wasted_torque_terms(
+            entity_name, ctrl_dt, wasted_torque, per_second=True
+        )
 
     from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: PLC0415
         episode_length_s as _cpu_episode_length_s,
@@ -2807,6 +2870,7 @@ def _make_directional_sar_env_cfg(
         actions=actions,
         terminations=terminations,
         rewards=rewards,
+        metrics=metrics,
         sim=SimulationCfg(mujoco=musclemimic_mujoco_cfg("fullbody", timestep=sim_dt)),
         viewer=mimic_viewer_cfg(entity_name),
     )
@@ -2820,6 +2884,7 @@ def register_directional_walk_sar(
     target_vel: float = 1.2,
     alive_bonus: float = 0.2,
     act_reg_weight: float = 0.001,
+    wasted_torque: WastedTorqueCfg | None = None,
 ) -> None:
     """Register ``myoFullBodyWalkSAR-v0``: directional forward walk in synergy space.
 
@@ -2837,6 +2902,8 @@ def register_directional_walk_sar(
         target_vel: Target forward walking speed in m/s (default 1.2).
         alive_bonus: Weight for the alive reward term (default 0.2).
         act_reg_weight: Weight for the activation L2 penalty (default 0.001).
+        wasted_torque: Optional co-contraction cost, in reward per second per N·m/kg
+            (off by default); each step subtracts ``weight * metric * ctrl_dt``.
 
     Raises:
         FileNotFoundError: If *sar_dir* does not exist.
@@ -2900,6 +2967,7 @@ def register_directional_walk_sar(
             alive_bonus=alive_bonus,
             act_reg_weight=act_reg_weight,
             mj_model=f_mj,
+            wasted_torque=wasted_torque,
         )
         register_mjlab_task(
             task_id="myoFullBodyWalkSAR-v0",

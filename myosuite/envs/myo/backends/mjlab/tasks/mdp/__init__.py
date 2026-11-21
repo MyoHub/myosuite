@@ -18,4 +18,5 @@ from .events import (  # noqa: F401
     write_cpu_state,
 )
 from .observations import act, qpos, qpos_chains, qvel, qvel_chains  # noqa: F401
+from .rewards import wasted_torque  # noqa: F401
 from .terminations import SYNC_TERM, sync_forward  # noqa: F401
