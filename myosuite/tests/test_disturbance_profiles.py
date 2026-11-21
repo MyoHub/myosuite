@@ -12,9 +12,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.signal import welch
 
 from myosuite import make_env
 from myosuite.envs.wrappers import BaseExcitationWrapper
+from myosuite.integrations.capture.imu import load_imu_base_profile
 from myosuite.physics import (
     BaseExcitationProfile,
     BoundedJerkProfile,
@@ -23,32 +25,68 @@ from myosuite.physics import (
     DrydenTurbulenceProfile,
     GaitOscillationProfile,
     RoadRoughnessProfile,
-    load_imu_base_profile,
 )
 
 pytestmark = pytest.mark.tier1
 
 
-def test_dryden_turbulence_stationary_variance_and_reproducibility() -> None:
+def test_dryden_turbulence_matches_mil_f_8785c_velocity_and_acceleration_psd() -> None:
     prof = DrydenTurbulenceProfile(
         airspeed_mps=20.0,
-        sigma_vel=(2.0, 1.0, 1.5),
-        scale_lengths_m=(40.0, 40.0, 30.0),
+        sigma_vel=(2.0, 2.0, 1.5),
+        scale_lengths_m=(10.0, 10.0, 8.0),
+        accel_lag_s=0.05,
         sigma_ang_vel=(0.05, 0.0, 0.02),
         ang_scale_lengths_m=(20.0, 20.0, 20.0),
     )
     assert isinstance(prof, BaseExcitationProfile)
 
-    dt = 0.02
+    dt = 0.01
+    n_steps = 40000
     s1 = prof.reset(np.random.default_rng(42), dt)
     s2 = prof.reset(np.random.default_rng(42), dt)
-    samples1 = np.array([prof.sample(k * dt, s1).lin_acc for k in range(3000)])
-    samples2 = np.array([prof.sample(k * dt, s2).lin_acc for k in range(3000)])
-    np.testing.assert_allclose(samples1, samples2)
 
-    # Analytical stationary acceleration std is sigma_vel / (L / V) = [1.0, 0.5, 1.0].
-    emp_std = np.std(samples1, axis=0)
-    np.testing.assert_allclose(emp_std, [1.0, 0.5, 1.0], rtol=0.18)
+    vel1 = np.empty((n_steps, 3), dtype=np.float64)
+    acc1 = np.empty((n_steps, 3), dtype=np.float64)
+    for k in range(n_steps):
+        acc1[k] = prof.sample(k * dt, s1).lin_acc
+        vel1[k] = s1.lin_vel
+    acc2 = np.array([prof.sample(k * dt, s2).lin_acc for k in range(200)])
+    np.testing.assert_allclose(acc1[:200], acc2)
+
+    # Stationary velocity std matches sigma_vel = [2.0, 2.0, 1.5].
+    np.testing.assert_allclose(np.std(vel1, axis=0), [2.0, 2.0, 1.5], rtol=0.08)
+
+    # Welch PSD on velocity and acceleration matches analytical MIL-F-8785C spectra.
+    freqs, psd_vel = welch(vel1, fs=1.0 / dt, nperseg=2048, axis=0)
+    _, psd_acc = welch(acc1, fs=1.0 / dt, nperseg=2048, axis=0)
+    ref_vel = prof.velocity_psd(freqs)
+    ref_acc = prof.acceleration_psd(freqs)
+
+    # Compare log10 PSD over the core Dryden passband [0.15 Hz, 4.0 Hz] (~55 frequency bins).
+    band = (freqs >= 0.15) & (freqs <= 4.0)
+    log_err_vel = np.sqrt(
+        np.mean((np.log10(psd_vel[band]) - np.log10(ref_vel[band])) ** 2, axis=0)
+    )
+    log_err_acc = np.sqrt(
+        np.mean((np.log10(psd_acc[band]) - np.log10(ref_acc[band])) ** 2, axis=0)
+    )
+    assert np.all(
+        log_err_vel < 0.09
+    ), f"Velocity PSD log10 RMSE too high: {log_err_vel}"
+    assert np.all(log_err_acc < 0.09), f"Accel PSD log10 RMSE too high: {log_err_acc}"
+
+    # MIL-F-8785C lateral vs longitudinal shape check at equal (sigma=2, tau=0.5 s):
+    # At low freq (f -> 0), G_u(0) = 4*sigma^2*tau = 2 * G_v(0); above corner (f ~ 1 Hz),
+    # lateral (1 + 3*(w*tau)^2)/(1 + (w*tau)^2)^2 exceeds longitudinal 1/(1 + (w*tau)^2).
+    low_band = (freqs > 0.03) & (freqs < 0.10)
+    high_band = (freqs >= 0.8) & (freqs <= 2.5)
+    assert float(np.mean(psd_vel[low_band, 0])) > 1.4 * float(
+        np.mean(psd_vel[low_band, 1])
+    )
+    assert float(np.mean(psd_vel[high_band, 1])) > 1.2 * float(
+        np.mean(psd_vel[high_band, 0])
+    )
 
 
 def test_discrete_gust_velocity_integral_and_recovery() -> None:
@@ -62,7 +100,6 @@ def test_discrete_gust_velocity_integral_and_recovery() -> None:
     assert isinstance(gust, BaseExcitationProfile)
     st = gust.reset(np.random.default_rng(0), 0.001)
 
-    # Half duration H/V = 2.0 s; full duration = 4.0 s (active on [0.5, 4.5]).
     np.testing.assert_allclose(gust.sample(0.2, st).lin_acc, [0.0, 0.0, 0.0])
     np.testing.assert_allclose(gust.sample(4.8, st).lin_acc, [0.0, 0.0, 0.0])
 
@@ -89,7 +126,6 @@ def test_road_roughness_iso_classes_and_bounded_jerk() -> None:
         rms_by_class.append(float(np.sqrt(np.mean(az**2))))
 
     assert rms_by_class[0] < rms_by_class[1] < rms_by_class[2]
-    # Each step of two ISO classes scales Gd(n0) by 16x -> amplitude scales by 4x.
     assert rms_by_class[1] / rms_by_class[0] == pytest.approx(4.0, rel=1e-6)
 
     maneuver = BoundedJerkProfile(
@@ -116,8 +152,6 @@ def test_gait_oscillation_harmonics_and_angular_derivative() -> None:
         pitch_vel_amp=0.05,
     )
     st = gait.reset(np.random.default_rng(11), 0.005)
-    # At step period T_step = 0.5 s, vertical cosine repeats every 0.5 s while
-    # mediolateral sway (stride period 1.0 s) flips sign at t + 0.5 s.
     k0 = gait.sample(0.1, st)
     k_step = gait.sample(0.6, st)
     assert k_step.lin_acc[2] == pytest.approx(k0.lin_acc[2], abs=1e-9)
@@ -131,15 +165,17 @@ def test_gait_oscillation_harmonics_and_angular_derivative() -> None:
     np.testing.assert_allclose(k_mid.ang_acc, fd_alpha, atol=1e-6)
 
 
-def test_load_imu_base_profile_csv_npz_and_wrapper(tmp_path: Path) -> None:
+def test_load_imu_base_profile_csv_npz_conventions_and_wrapper(tmp_path: Path) -> None:
     csv_path = tmp_path / "imu_trace.csv"
-    # Sensor pitched 90 deg nose-up? Use identity quat (w=1) so g_body = [0, 0, -9.81].
-    # Specific force a_meas = a_kin - g_body = [1.5, 0.0, +9.81] for level [1.5, 0, 0] acc.
+    # Support pitched +90 deg about +Y: q_wxyz = [cos(45), 0, sin(45), 0].
+    # World +Z maps to support -X (R^T @ [0, 0, -9.81] = [+9.81, 0, 0]), so at rest
+    # specific force a_meas = -g_body = [-9.81, 0, 0] -> kinematic lin_acc = [0, 0, 0].
+    s = math.sqrt(0.5)
     csv_lines = [
         "time,ax,ay,az,gx,gy,gz,qw,qx,qy,qz",
-        "10.0,1.5,0.0,9.81,0.0,0.0,0.0,1.0,0.0,0.0,0.0",
-        "10.1,1.5,0.0,9.81,0.0,0.0,18.0,1.0,0.0,0.0,0.0",
-        "10.2,1.5,0.0,9.81,0.0,0.0,36.0,1.0,0.0,0.0,0.0",
+        f"10.0,-8.31,0.0,0.0,0.0,0.0,0.0,{s},0.0,{s},0.0",
+        f"10.1,-8.31,0.0,0.0,0.0,0.0,18.0,{s},0.0,{s},0.0",
+        f"10.2,-8.31,0.0,0.0,0.0,0.0,36.0,{s},0.0,{s},0.0",
     ]
     csv_path.write_text("\n".join(csv_lines) + "\n", encoding="utf-8")
 
@@ -162,6 +198,17 @@ def test_load_imu_base_profile_csv_npz_and_wrapper(tmp_path: Path) -> None:
     )
     prof_npz = load_imu_base_profile(npz_path, subtract_initial_samples=2)
     np.testing.assert_allclose(prof_npz.sample(0.10, None).lin_acc, [2.0, 0.0, 0.0])
+
+    # Non-monotonic timestamps are rejected explicitly.
+    bad_npz = tmp_path / "bad_time.npz"
+    np.savez(
+        bad_npz,
+        time=np.array([0.0, 0.10, 0.10]),
+        lin_acc=np.zeros((3, 3)),
+        ang_vel=np.zeros((3, 3)),
+    )
+    with pytest.raises(ValueError, match="strictly increasing"):
+        load_imu_base_profile(bad_npz)
 
     combo = CompositeBaseProfile((prof_npz, GaitOscillationProfile(random_phase=True)))
     env = BaseExcitationWrapper(make_env("myoElbowPose1D6MFixed-v0"), profile=combo)

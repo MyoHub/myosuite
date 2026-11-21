@@ -51,7 +51,6 @@ from myosuite.physics.disturbance_profiles import (
     DrydenTurbulenceProfile,
     GaitOscillationProfile,
     RoadRoughnessProfile,
-    load_imu_base_profile,
 )
 from myosuite.physics.fatigue import CumulativeFatigue
 
@@ -71,14 +70,17 @@ __all__ = [
     "RoadRoughnessProfile",
     "StochasticBaseProfile",
     "inertial_body_wrenches",
-    "load_imu_base_profile",
 ]
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy-export JAX fatigue model (requires ``myosuite[mjx]`` / JAX)."""
+    """Lazy-export optional JAX fatigue model and capture IMU trace adapter."""
     if name == "CumulativeFatigueJax":
         from myosuite.physics.fatigue_jax import CumulativeFatigue
 
         return CumulativeFatigue
+    if name == "load_imu_base_profile":
+        from myosuite.integrations.capture.imu import load_imu_base_profile
+
+        return load_imu_base_profile
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

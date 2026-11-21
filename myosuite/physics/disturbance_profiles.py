@@ -3,20 +3,19 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Parameterized physical disturbance spectra and 6-axis IMU trace loaders."""
+"""Parameterized physical disturbance spectra profiles for base-excitation mechanics."""
 
 from __future__ import annotations
 
-import csv
+import importlib
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 
-from myosuite.physics.base_excitation import BaseKinematics, RecordedBaseProfile
+from myosuite.physics.base_excitation import BaseKinematics
 
 
 def _vec3_nonneg(value: Sequence[float] | np.ndarray, name: str) -> np.ndarray:
@@ -43,22 +42,32 @@ def _vec3_finite(value: Sequence[float] | np.ndarray, name: str) -> np.ndarray:
 
 
 @dataclass
-class _SecondOrderTurbulenceState:
+class _DrydenTurbulenceState:
     dt: float
     last_step: int
     rng: np.random.Generator
-    phi: np.ndarray
-    chol: np.ndarray
-    lin_state: np.ndarray
+    lin_phi: list[np.ndarray]
+    lin_chol: list[np.ndarray]
+    lin_c_vel: list[np.ndarray]
+    lin_c_acc: list[np.ndarray]
+    lin_x: list[np.ndarray]
     ang_phi: np.ndarray
     ang_chol: np.ndarray
     ang_state: np.ndarray
+
+    @property
+    def lin_vel(self) -> np.ndarray:
+        """Instantaneous MIL-F-8785C Dryden turbulence velocity ``(u, v, w)`` [m/s]."""
+        return np.array(
+            [float(c @ x) for c, x in zip(self.lin_c_vel, self.lin_x, strict=True)],
+            dtype=np.float64,
+        )
 
 
 def _discretize_critically_damped_sde(
     sigma: np.ndarray, tau: np.ndarray, dt: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Exact discrete transition and innovation Cholesky for ``(1 + tau*s)^2`` filters."""
+    """Exact discrete transition and innovation Cholesky for ``(1 + tau*s)^2`` angular filters."""
     phi = np.zeros((3, 2, 2), dtype=np.float64)
     chol = np.zeros((3, 2, 2), dtype=np.float64)
     p_inf = np.zeros((3, 2, 2), dtype=np.float64)
@@ -80,25 +89,81 @@ def _discretize_critically_damped_sde(
     return phi, chol, p_inf
 
 
+def _discretize_mil8785c_dryden_axis(
+    axis: int, sigma: float, tau: float, tau_a: float, dt: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Exact discrete-time state-space realization of one MIL-F-8785C Dryden axis.
+
+    Axis ``0`` (longitudinal ``u``) uses first-order ``H_u(s) = sigma*sqrt(2*tau)/(1+tau*s)``;
+    axes ``1`` and ``2`` (lateral ``v``, vertical ``w``) use second-order
+    ``H_{v,w}(s) = sigma*sqrt(tau)*(1 + sqrt(3)*tau*s)/(1 + tau*s)^2``. Because both
+    MIL-F-8785C velocity spectra have relative degree 1, linear acceleration is read
+    through a first-order penetration/differentiator lag ``s / (1 + tau_a*s)`` so
+    continuous-time acceleration remains finite-variance while ``lin_vel`` matches the
+    exact MIL-F-8785C velocity spectrum at every ``dt > 0``.
+    """
+    from scipy.linalg import expm, solve_continuous_lyapunov  # noqa: PLC0415
+
+    if axis == 0:
+        A = np.array([[-1.0 / tau, 0.0], [1.0 / tau_a, -1.0 / tau_a]], dtype=np.float64)
+        B = np.array([[sigma * math.sqrt(2.0 / tau)], [0.0]], dtype=np.float64)
+        c_vel = np.array([1.0, 0.0], dtype=np.float64)
+        c_acc = np.array([1.0 / tau_a, -1.0 / tau_a], dtype=np.float64)
+    else:
+        c0 = (1.0 - math.sqrt(3.0)) * sigma / (tau**1.5)
+        c1 = math.sqrt(3.0) * sigma / math.sqrt(tau)
+        A = np.array(
+            [
+                [-1.0 / tau, 1.0, 0.0],
+                [0.0, -1.0 / tau, 0.0],
+                [c0 / tau_a, c1 / tau_a, -1.0 / tau_a],
+            ],
+            dtype=np.float64,
+        )
+        B = np.array([[0.0], [1.0], [0.0]], dtype=np.float64)
+        c_vel = np.array([c0, c1, 0.0], dtype=np.float64)
+        c_acc = np.array([c0 / tau_a, c1 / tau_a, -1.0 / tau_a], dtype=np.float64)
+
+    phi = np.asarray(expm(A * dt), dtype=np.float64)
+    n = A.shape[0]
+    if sigma <= 0.0:
+        z = np.zeros((n, n), dtype=np.float64)
+        return phi, z, z, c_vel, c_acc
+
+    p_inf = np.asarray(solve_continuous_lyapunov(A, -(B @ B.T)), dtype=np.float64)
+    p_inf = 0.5 * (p_inf + p_inf.T)
+    q_d = p_inf - phi @ p_inf @ phi.T
+    q_d = 0.5 * (q_d + q_d.T)
+    eigvals, eigvecs = np.linalg.eigh(q_d)
+    eigvals_clamped = np.maximum(eigvals, 0.0)
+    chol = eigvecs @ np.diag(np.sqrt(eigvals_clamped))
+    return phi, chol, p_inf, c_vel, c_acc
+
+
 @dataclass(frozen=True)
 class DrydenTurbulenceProfile:
-    """Continuous atmospheric turbulence forming-filter base excitation.
+    """MIL-F-8785C / MIL-HDBK-1797 continuous Dryden atmospheric turbulence excitation.
 
-    Propagates exact discrete-time 2nd-order forming filters parameterized by
-    airspeed ``airspeed_mps``, turbulence velocity intensities ``sigma_vel`` [m/s],
-    spatial scale lengths ``scale_lengths_m`` [m], and optional rotational rate
-    intensities ``sigma_ang_vel`` [rad/s].
+    Propagates exact discrete-time realizations of the canonical MIL-F-8785C Dryden
+    velocity forming filters (first-order longitudinal ``x``; second-order ``(1 + sqrt(3)*tau*s)
+    / (1 + tau*s)^2`` lateral ``y`` and vertical ``z``) with ``tau = L / V``, cascaded
+    with a high-frequency penetration roll-off ``accel_lag_s`` so continuous-time
+    ``lin_acc`` has bounded stationary variance while ``state.lin_vel`` obeys the exact
+    analytical Dryden power spectral density.
     """
 
     airspeed_mps: float = 25.0
     sigma_vel: tuple[float, float, float] | np.ndarray = (1.5, 1.5, 1.2)
     scale_lengths_m: tuple[float, float, float] | np.ndarray = (200.0, 200.0, 100.0)
+    accel_lag_s: float = 0.05
     sigma_ang_vel: tuple[float, float, float] | np.ndarray = (0.04, 0.04, 0.03)
     ang_scale_lengths_m: tuple[float, float, float] | np.ndarray = (80.0, 80.0, 80.0)
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.airspeed_mps) and self.airspeed_mps > 0.0):
             raise ValueError("airspeed_mps must be finite and positive")
+        if not (math.isfinite(self.accel_lag_s) and self.accel_lag_s > 0.0):
+            raise ValueError("accel_lag_s must be finite and positive")
         object.__setattr__(self, "sigma_vel", _vec3_nonneg(self.sigma_vel, "sigma_vel"))
         object.__setattr__(
             self,
@@ -114,58 +179,109 @@ class DrydenTurbulenceProfile:
             _vec3_pos(self.ang_scale_lengths_m, "ang_scale_lengths_m"),
         )
 
-    def reset(self, rng: np.random.Generator, dt: float) -> _SecondOrderTurbulenceState:
+    def velocity_psd(self, freqs_hz: np.ndarray) -> np.ndarray:
+        """Analytical one-sided MIL-F-8785C velocity PSD ``(F, 3)`` in ``(m/s)^2 / Hz``."""
+        f = np.asarray(freqs_hz, dtype=np.float64)
+        if f.ndim != 1 or np.any(~np.isfinite(f)) or np.any(f < 0.0):
+            raise ValueError("freqs_hz must be a 1D non-negative finite array")
+        w = 2.0 * np.pi * f
+        tau = np.asarray(self.scale_lengths_m, dtype=np.float64) / float(
+            self.airspeed_mps
+        )
+        sig = np.asarray(self.sigma_vel, dtype=np.float64)
+        wt0 = w * tau[0]
+        g_u = 4.0 * (sig[0] ** 2) * tau[0] / (1.0 + wt0**2)
+        wt1 = w * tau[1]
+        g_v = (
+            2.0 * (sig[1] ** 2) * tau[1] * (1.0 + 3.0 * wt1**2) / ((1.0 + wt1**2) ** 2)
+        )
+        wt2 = w * tau[2]
+        g_w = (
+            2.0 * (sig[2] ** 2) * tau[2] * (1.0 + 3.0 * wt2**2) / ((1.0 + wt2**2) ** 2)
+        )
+        return np.column_stack([g_u, g_v, g_w])
+
+    def acceleration_psd(self, freqs_hz: np.ndarray) -> np.ndarray:
+        """Analytical one-sided linear acceleration PSD ``(F, 3)`` in ``(m/s^2)^2 / Hz``."""
+        f = np.asarray(freqs_hz, dtype=np.float64)
+        w = 2.0 * np.pi * f
+        transfer = (w**2) / (1.0 + (w * float(self.accel_lag_s)) ** 2)
+        return self.velocity_psd(f) * transfer[:, None]
+
+    def reset(self, rng: np.random.Generator, dt: float) -> _DrydenTurbulenceState:
         if not (math.isfinite(dt) and dt > 0.0):
             raise ValueError("dt must be finite and positive")
         v = float(self.airspeed_mps)
         tau_lin = np.asarray(self.scale_lengths_m, dtype=np.float64) / v
         tau_ang = np.asarray(self.ang_scale_lengths_m, dtype=np.float64) / v
+        sig_lin = np.asarray(self.sigma_vel, dtype=np.float64)
+        tau_a = float(self.accel_lag_s)
 
-        phi, chol, p_inf = _discretize_critically_damped_sde(
-            np.asarray(self.sigma_vel), tau_lin, dt
-        )
+        lin_phi: list[np.ndarray] = []
+        lin_chol: list[np.ndarray] = []
+        lin_c_vel: list[np.ndarray] = []
+        lin_c_acc: list[np.ndarray] = []
+        lin_x: list[np.ndarray] = []
+
+        for i in range(3):
+            phi_i, chol_i, p_inf_i, cv_i, ca_i = _discretize_mil8785c_dryden_axis(
+                i, float(sig_lin[i]), float(tau_lin[i]), tau_a, float(dt)
+            )
+            lin_phi.append(phi_i)
+            lin_chol.append(chol_i)
+            lin_c_vel.append(cv_i)
+            lin_c_acc.append(ca_i)
+            if sig_lin[i] > 0.0:
+                eigvals, eigvecs = np.linalg.eigh(p_inf_i)
+                root_p = eigvecs @ np.diag(np.sqrt(np.maximum(eigvals, 0.0)))
+                lin_x.append(root_p @ rng.standard_normal(phi_i.shape[0]))
+            else:
+                lin_x.append(np.zeros(phi_i.shape[0], dtype=np.float64))
+
         ang_phi, ang_chol, ang_p_inf = _discretize_critically_damped_sde(
             np.asarray(self.sigma_ang_vel), tau_ang, dt
         )
-
-        lin_state = np.zeros((3, 2), dtype=np.float64)
         ang_state = np.zeros((3, 2), dtype=np.float64)
         for i in range(3):
-            if p_inf[i, 0, 0] > 0.0:
-                lin_state[i, 0] = rng.normal(0.0, math.sqrt(p_inf[i, 0, 0]))
-                lin_state[i, 1] = rng.normal(0.0, math.sqrt(p_inf[i, 1, 1]))
             if ang_p_inf[i, 0, 0] > 0.0:
                 ang_state[i, 0] = rng.normal(0.0, math.sqrt(ang_p_inf[i, 0, 0]))
                 ang_state[i, 1] = rng.normal(0.0, math.sqrt(ang_p_inf[i, 1, 1]))
 
-        return _SecondOrderTurbulenceState(
+        return _DrydenTurbulenceState(
             dt=float(dt),
             last_step=0,
             rng=rng,
-            phi=phi,
-            chol=chol,
-            lin_state=lin_state,
+            lin_phi=lin_phi,
+            lin_chol=lin_chol,
+            lin_c_vel=lin_c_vel,
+            lin_c_acc=lin_c_acc,
+            lin_x=lin_x,
             ang_phi=ang_phi,
             ang_chol=ang_chol,
             ang_state=ang_state,
         )
 
-    def sample(self, t: float, state: _SecondOrderTurbulenceState) -> BaseKinematics:
+    def sample(self, t: float, state: _DrydenTurbulenceState) -> BaseKinematics:
         target_step = max(0, int(round(float(t) / state.dt)))
         while state.last_step < target_step:
-            z_lin = state.rng.standard_normal((3, 2))
+            for i in range(3):
+                z_i = state.rng.standard_normal(state.lin_x[i].shape[0])
+                state.lin_x[i] = (
+                    state.lin_phi[i] @ state.lin_x[i] + state.lin_chol[i] @ z_i
+                )
             z_ang = state.rng.standard_normal((3, 2))
             for i in range(3):
-                state.lin_state[i] = (
-                    state.phi[i] @ state.lin_state[i] + state.chol[i] @ z_lin[i]
-                )
                 state.ang_state[i] = (
                     state.ang_phi[i] @ state.ang_state[i] + state.ang_chol[i] @ z_ang[i]
                 )
             state.last_step += 1
 
+        lin_acc = np.array(
+            [float(ca @ x) for ca, x in zip(state.lin_c_acc, state.lin_x, strict=True)],
+            dtype=np.float64,
+        )
         return BaseKinematics(
-            lin_acc=state.lin_state[:, 1].copy(),
+            lin_acc=lin_acc,
             ang_vel=state.ang_state[:, 0].copy(),
             ang_acc=state.ang_state[:, 1].copy(),
         )
@@ -274,7 +390,6 @@ class RoadRoughnessProfile:
 
         gd_n0 = self.ISO_GD_N0[self.iso_class]
         n0 = 0.1
-        # ISO 8608 displacement PSD: Gd(n) = Gd(n0) * (n / n0)^(-2)
         gd = gd_n0 * (n_mid / n0) ** (-2.0)
         disp_amp = np.sqrt(2.0 * gd * dn)
 
@@ -283,7 +398,6 @@ class RoadRoughnessProfile:
         wn = 2.0 * math.pi * float(self.suspension_freq_hz)
         zeta = float(self.suspension_damping)
         r = omega / wn
-        # Base-excited Kelvin-Voigt transmissibility |H(jw)|
         trans = np.sqrt(
             (1.0 + (2.0 * zeta * r) ** 2) / ((1.0 - r * r) ** 2 + (2.0 * zeta * r) ** 2)
         )
@@ -416,111 +530,11 @@ class GaitOscillationProfile:
         )
 
 
-def _quat_rotate_inverse(quats_wxyz: np.ndarray, world_vec: np.ndarray) -> np.ndarray:
-    q = np.asarray(quats_wxyz, dtype=np.float64)
-    norm = np.linalg.norm(q, axis=-1, keepdims=True)
-    if np.any(norm <= 1e-12):
-        raise ValueError("Quaternion entries must be non-zero")
-    q = q / norm
-    w = q[:, 0:1]
-    xyz = -q[:, 1:4]
-    v = np.broadcast_to(np.asarray(world_vec, dtype=np.float64), (q.shape[0], 3))
-    uv = np.cross(xyz, v)
-    uuv = np.cross(xyz, uv)
-    return v + 2.0 * (w * uv + uuv)
-
-
-def load_imu_base_profile(
-    path: str | Path,
-    *,
-    time_col: str = "time",
-    acc_cols: tuple[str, str, str] = ("ax", "ay", "az"),
-    gyro_cols: tuple[str, str, str] = ("gx", "gy", "gz"),
-    quat_cols: tuple[str, str, str, str] | None = None,
-    acc_scale: float = 1.0,
-    gyro_in_degrees: bool = False,
-    world_gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
-    subtract_initial_samples: int = 0,
-    loop: bool = False,
-) -> RecordedBaseProfile:
-    """Load a 6-axis IMU recording (``.npz`` or ``.csv``) into a :class:`RecordedBaseProfile`."""
-    file_path = Path(path)
-    if not file_path.is_file():
-        raise FileNotFoundError(f"IMU trace file not found: {file_path}")
-    if not (math.isfinite(acc_scale) and acc_scale > 0.0):
-        raise ValueError("acc_scale must be finite and positive")
-    if subtract_initial_samples < 0:
-        raise ValueError("subtract_initial_samples must be >= 0")
-
-    suffix = file_path.suffix.lower()
-    if suffix == ".npz":
-        with np.load(file_path, allow_pickle=False) as archive:
-            times = np.asarray(archive[time_col], dtype=np.float64)
-            if "lin_acc" in archive and all(c not in archive for c in acc_cols):
-                lin_acc = np.asarray(archive["lin_acc"], dtype=np.float64)
-            else:
-                lin_acc = np.column_stack(
-                    [np.asarray(archive[c], dtype=np.float64) for c in acc_cols]
-                )
-            if "ang_vel" in archive and all(c not in archive for c in gyro_cols):
-                ang_vel = np.asarray(archive["ang_vel"], dtype=np.float64)
-            else:
-                ang_vel = np.column_stack(
-                    [np.asarray(archive[c], dtype=np.float64) for c in gyro_cols]
-                )
-            quats = (
-                np.column_stack(
-                    [np.asarray(archive[c], dtype=np.float64) for c in quat_cols]
-                )
-                if quat_cols is not None
-                else None
-            )
-    elif suffix == ".csv":
-        with file_path.open("r", encoding="utf-8", newline="") as fh:
-            reader = csv.DictReader(fh)
-            rows = list(reader)
-        if len(rows) < 2:
-            raise ValueError("CSV IMU recording must contain at least 2 rows")
-        times = np.array([float(r[time_col]) for r in rows], dtype=np.float64)
-        lin_acc = np.array(
-            [[float(r[c]) for c in acc_cols] for r in rows], dtype=np.float64
-        )
-        ang_vel = np.array(
-            [[float(r[c]) for c in gyro_cols] for r in rows], dtype=np.float64
-        )
-        quats = (
-            np.array([[float(r[c]) for c in quat_cols] for r in rows], dtype=np.float64)
-            if quat_cols is not None
-            else None
-        )
-    else:
-        raise ValueError(
-            f"Unsupported IMU file extension {suffix!r}; expected '.npz' or '.csv'."
-        )
-
-    times = times - float(times[0])
-    lin_acc = lin_acc * float(acc_scale)
-    if gyro_in_degrees:
-        ang_vel = np.radians(ang_vel)
-
-    if quats is not None:
-        # Accelerometer specific force measures a_kin - g_body => a_kin = a_meas + g_body.
-        g_body = _quat_rotate_inverse(
-            quats, np.asarray(world_gravity, dtype=np.float64)
-        )
-        lin_acc = lin_acc + g_body
-    elif subtract_initial_samples > 0:
-        n_bias = min(int(subtract_initial_samples), lin_acc.shape[0])
-        lin_acc = lin_acc - np.mean(lin_acc[:n_bias], axis=0, keepdims=True)
-
-    ang_acc = np.asarray(np.gradient(ang_vel, times, axis=0), dtype=np.float64)
-    return RecordedBaseProfile(
-        times=times,
-        lin_acc=lin_acc,
-        ang_vel=ang_vel,
-        ang_acc=ang_acc,
-        loop=loop,
-    )
+def __getattr__(name: str) -> Any:
+    if name == "load_imu_base_profile":
+        mod = importlib.import_module("myosuite.integrations.capture.imu")
+        return mod.load_imu_base_profile
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
@@ -529,5 +543,4 @@ __all__ = [
     "DrydenTurbulenceProfile",
     "GaitOscillationProfile",
     "RoadRoughnessProfile",
-    "load_imu_base_profile",
 ]
