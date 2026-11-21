@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0.0"]
+onnx = ["onnx>=1.15.0", "onnxruntime>=1.17.0"]
+test = ["pytest>=8.0.0", "onnx>=1.15.0", "onnxruntime>=1.17.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["newton_shac"]

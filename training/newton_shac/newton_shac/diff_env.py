@@ -32,6 +32,12 @@ except ImportError:  # pragma: no cover
 _GRAD_FIELDS = ("qpos", "qvel", "act", "ctrl", "qacc", "act_dot")
 
 
+@wp.kernel
+def _add_2d_kernel(dst: wp.array2d(dtype=float), src: wp.array2d(dtype=float)):  # type: ignore[valid-type]
+    i, j = wp.tid()
+    dst[i, j] = dst[i, j] + src[i, j]
+
+
 class _MuscleStepFn(torch.autograd.Function):
     """Differentiable ``frame_skip``-substep musculoskeletal transition."""
 
@@ -82,6 +88,7 @@ class DifferentiablePoseEnv:
         naconmax: int = 128,
         njmax: int = 256,
         bonus_smooth_temp: float = 0.05,
+        use_cuda_graph: bool = True,
     ) -> None:
         cpu_env = make_env(env_id)
         try:
@@ -207,12 +214,122 @@ class DifferentiablePoseEnv:
         )
         obs0 = self.reset(seed=seed)
         self.num_obs = int(obs0.shape[-1])
+        self._fwd_graph: Any = None
+        self._bwd_graph: Any = None
+        self._ctrl_wp: Any = None
+        self._cot_q_wp: Any = None
+        self._cot_v_wp: Any = None
+        self._cot_a_wp: Any = None
+        self._gu_accum: Any = None
+        if use_cuda_graph and self._dlpack and self.wp_device.startswith("cuda"):
+            self._init_cuda_graphs()
+        self.uses_cuda_graph = self._fwd_graph is not None
+
+    def _mjw_step_pair(self, d_in: Any, d_out: Any) -> None:
+        if self.has_analytic_grad:
+            mjw.step(self.mjw_model, d_in, d_out)
+        else:
+            wp.copy(d_out.qpos, d_in.qpos)
+            wp.copy(d_out.qvel, d_in.qvel)
+            if self.na > 0:
+                wp.copy(d_out.act, d_in.act)
+            if self.nu > 0:
+                wp.copy(d_out.ctrl, d_in.ctrl)
+            mjw.step(self.mjw_model, d_out)
+
+    def _run_fwd_kernels(self) -> None:
+        for k in range(self.frame_skip):
+            if k > 0:
+                wp.copy(self._d_in[k].qpos, self._d_out[k - 1].qpos)
+                wp.copy(self._d_in[k].qvel, self._d_out[k - 1].qvel)
+                if self.na > 0:
+                    wp.copy(self._d_in[k].act, self._d_out[k - 1].act)
+            if self.nu > 0:
+                wp.copy(self._d_in[k].ctrl, self._ctrl_wp)
+            self._mjw_step_pair(self._d_in[k], self._d_out[k])
+
+    def _run_bwd_kernels(self) -> None:
+        self._run_fwd_kernels()
+        for buf in self._d_in + self._d_out:
+            for fname in _GRAD_FIELDS:
+                arr = getattr(buf, fname)
+                if arr.grad is not None and arr.size > 0:
+                    arr.grad.zero_()
+        if self.nu > 0:
+            self._gu_accum.zero_()
+        last_out = self._d_out[-1]
+        wp.copy(last_out.qpos.grad, self._cot_q_wp)
+        wp.copy(last_out.qvel.grad, self._cot_v_wp)
+        if self.na > 0:
+            wp.copy(last_out.act.grad, self._cot_a_wp)
+        for k in range(self.frame_skip - 1, -1, -1):
+            _mjw_adjoint.step_backward(
+                self.mjw_model, self._d_in[k], self._d_out[k], self._bc
+            )
+            if self.nu > 0:
+                wp.launch(
+                    _add_2d_kernel,
+                    dim=(self.num_envs, self.nu),
+                    inputs=[self._gu_accum, self._d_in[k].ctrl.grad],
+                    device=self.wp_device,
+                )
+            if k > 0:
+                wp.copy(self._d_out[k - 1].qpos.grad, self._d_in[k].qpos.grad)
+                wp.copy(self._d_out[k - 1].qvel.grad, self._d_in[k].qvel.grad)
+                if self.na > 0:
+                    wp.copy(self._d_out[k - 1].act.grad, self._d_in[k].act.grad)
+
+    def _init_cuda_graphs(self) -> None:
+        with wp.ScopedDevice(self.wp_device):
+            self._ctrl_wp = wp.zeros(
+                (self.num_envs, max(self.nu, 1)),
+                dtype=wp.float32,
+                device=self.wp_device,
+            )
+            self._cot_q_wp = wp.zeros(
+                (self.num_envs, self.nq), dtype=wp.float32, device=self.wp_device
+            )
+            self._cot_v_wp = wp.zeros(
+                (self.num_envs, self.nv), dtype=wp.float32, device=self.wp_device
+            )
+            self._cot_a_wp = wp.zeros(
+                (self.num_envs, max(self.na, 1)),
+                dtype=wp.float32,
+                device=self.wp_device,
+            )
+            self._gu_accum = wp.zeros(
+                (self.num_envs, max(self.nu, 1)),
+                dtype=wp.float32,
+                device=self.wp_device,
+            )
+            self._copy_to_wp(self._d_in[0].qpos, self.qpos)
+            self._copy_to_wp(self._d_in[0].qvel, self.qvel)
+            if self.na > 0:
+                self._copy_to_wp(self._d_in[0].act, self.act)
+            self._graph_stream = wp.Stream(self.wp_device)
+            self._graph_stream.wait_stream(wp.stream_from_torch(self.device))
+            with wp.ScopedStream(self._graph_stream):
+                self._run_fwd_kernels()
+                if self.has_analytic_grad:
+                    self._run_bwd_kernels()
+                with wp.ScopedCapture(
+                    device=self.wp_device, stream=self._graph_stream
+                ) as cap_fwd:
+                    self._run_fwd_kernels()
+                self._fwd_graph = cap_fwd.graph
+                if self.has_analytic_grad:
+                    with wp.ScopedCapture(
+                        device=self.wp_device, stream=self._graph_stream
+                    ) as cap_bwd:
+                        self._run_bwd_kernels()
+                    self._bwd_graph = cap_bwd.graph
+            wp.stream_from_torch(self.device).wait_stream(self._graph_stream)
 
     def _copy_to_wp(self, wp_arr: Any, t: torch.Tensor) -> None:
         if wp_arr.size == 0:
             return
         if self._dlpack:
-            wp.to_torch(wp_arr).copy_(t.detach())
+            wp.to_torch(wp_arr, requires_grad=False).copy_(t.detach())
         else:
             wp_arr.assign(t.detach().cpu().numpy().astype(np.float32))
 
@@ -237,14 +354,22 @@ class DifferentiablePoseEnv:
             self._copy_to_wp(self._d_in[0].qvel, qvel)
             if self.na > 0:
                 self._copy_to_wp(self._d_in[0].act, act)
-            for k in range(self.frame_skip):
-                if k > 0:
-                    wp.copy(self._d_in[k].qpos, self._d_out[k - 1].qpos)
-                    wp.copy(self._d_in[k].qvel, self._d_out[k - 1].qvel)
-                    if self.na > 0:
-                        wp.copy(self._d_in[k].act, self._d_out[k - 1].act)
-                self._copy_to_wp(self._d_in[k].ctrl, ctrl)
-                mjw.step(self.mjw_model, self._d_in[k], self._d_out[k])
+            if self._fwd_graph is not None:
+                if self.nu > 0:
+                    self._copy_to_wp(self._ctrl_wp, ctrl)
+                t_stream = wp.stream_from_torch(self.device)
+                self._graph_stream.wait_stream(t_stream)
+                wp.capture_launch(self._fwd_graph, stream=self._graph_stream)
+                t_stream.wait_stream(self._graph_stream)
+            else:
+                for k in range(self.frame_skip):
+                    if k > 0:
+                        wp.copy(self._d_in[k].qpos, self._d_out[k - 1].qpos)
+                        wp.copy(self._d_in[k].qvel, self._d_out[k - 1].qvel)
+                        if self.na > 0:
+                            wp.copy(self._d_in[k].act, self._d_out[k - 1].act)
+                    self._copy_to_wp(self._d_in[k].ctrl, ctrl)
+                    self._mjw_step_pair(self._d_in[k], self._d_out[k])
             last = self._d_out[-1]
             return (
                 self._read_wp(last.qpos),
@@ -263,6 +388,38 @@ class DifferentiablePoseEnv:
         grad_act: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.has_analytic_grad:
+            if self._bwd_graph is not None:
+                with wp.ScopedDevice(self.wp_device):
+                    self._copy_to_wp(self._d_in[0].qpos, qpos)
+                    self._copy_to_wp(self._d_in[0].qvel, qvel)
+                    if self.na > 0:
+                        self._copy_to_wp(self._d_in[0].act, act)
+                    if self.nu > 0:
+                        self._copy_to_wp(self._ctrl_wp, ctrl)
+                    self._copy_to_wp(self._cot_q_wp, grad_qpos.contiguous())
+                    self._copy_to_wp(self._cot_v_wp, grad_qvel.contiguous())
+                    if self.na > 0:
+                        self._copy_to_wp(self._cot_a_wp, grad_act.contiguous())
+                    t_stream = wp.stream_from_torch(self.device)
+                    self._graph_stream.wait_stream(t_stream)
+                    wp.capture_launch(self._bwd_graph, stream=self._graph_stream)
+                    t_stream.wait_stream(self._graph_stream)
+                    gq = torch.nan_to_num(
+                        self._read_wp(self._d_in[0].qpos.grad), nan=0.0
+                    )
+                    gv = torch.nan_to_num(
+                        self._read_wp(self._d_in[0].qvel.grad), nan=0.0
+                    )
+                    ga = torch.nan_to_num(
+                        self._read_wp(self._d_in[0].act.grad), nan=0.0
+                    )
+                    gu = (
+                        torch.nan_to_num(self._read_wp(self._gu_accum), nan=0.0)
+                        if self.nu > 0
+                        else torch.zeros_like(ctrl)
+                    )
+                    return gq, gv, ga, gu
+
             self._forward_substeps(qpos, qvel, act, ctrl)
             with wp.ScopedDevice(self.wp_device):
                 for buf in self._d_in + self._d_out:

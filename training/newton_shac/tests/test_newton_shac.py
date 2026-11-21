@@ -2,9 +2,11 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Tests for differentiable musculoskeletal PoseEnv, SHAC, and matched PPO."""
+"""Tests for differentiable musculoskeletal PoseEnv, CUDA-graph capture, SHAC, and ONNX export."""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import mujoco
 import numpy as np
@@ -14,13 +16,14 @@ import torch
 pytest.importorskip("mujoco_warp")
 pytest.importorskip("warp")
 
-from newton_shac import (  # noqa: E402
+from newton_shac import (
     DifferentiablePoseEnv,
-    PpoConfig,
     ShacConfig,
-    train_ppo,
+    export_shac_onnx,
     train_shac,
 )
+
+from myosuite import make_env
 
 
 def test_differentiable_muscle_step_matches_finite_differences() -> None:
@@ -73,7 +76,6 @@ def test_differentiable_muscle_step_matches_finite_differences() -> None:
 
     np.testing.assert_allclose(grad_analytic, grad_fd, atol=2e-3, rtol=2e-2)
 
-    # Verify forward trajectory matches CPU MuJoCo over frame_skip substeps.
     d_cpu = mujoco.MjData(env.mj_model)
     d_cpu.qpos[:] = q0[0].detach().cpu().numpy()
     d_cpu.qvel[:] = v0[0].detach().cpu().numpy()
@@ -89,7 +91,49 @@ def test_differentiable_muscle_step_matches_finite_differences() -> None:
     np.testing.assert_allclose(q_w[0].cpu().numpy(), d_cpu.qpos, atol=1e-4)
 
 
-def test_shac_and_ppo_smoke_and_cpu_playback() -> None:
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="CUDA required for graph capture"
+)
+def test_cuda_graph_matches_eager_forward_and_backward() -> None:
+    env_graph = DifferentiablePoseEnv(
+        "myoElbowPose1D6MRandom-v0", num_envs=8, seed=7, use_cuda_graph=True
+    )
+    env_eager = DifferentiablePoseEnv(
+        "myoElbowPose1D6MRandom-v0", num_envs=8, seed=7, use_cuda_graph=False
+    )
+    assert env_graph.uses_cuda_graph
+    assert not env_eager.uses_cuda_graph
+
+    obs_g = env_graph.reset(seed=7)
+    obs_e = env_eager.reset(seed=7)
+    np.testing.assert_allclose(obs_g.cpu().numpy(), obs_e.cpu().numpy(), atol=1e-6)
+
+    act_g = (
+        torch.linspace(
+            -0.5, 0.7, 8 * env_graph.nu, dtype=torch.float32, device=env_graph.device
+        )
+        .reshape(8, env_graph.nu)
+        .requires_grad_(True)
+    )
+    act_e = act_g.detach().clone().requires_grad_(True)
+
+    next_g, rwd_g, _, _ = env_graph.step_diff(act_g)
+    next_e, rwd_e, _, _ = env_eager.step_diff(act_e)
+    np.testing.assert_allclose(
+        next_g.detach().cpu().numpy(), next_e.detach().cpu().numpy(), atol=1e-5
+    )
+    np.testing.assert_allclose(
+        rwd_g.detach().cpu().numpy(), rwd_e.detach().cpu().numpy(), atol=1e-5
+    )
+
+    (-rwd_g.sum()).backward()
+    (-rwd_e.sum()).backward()
+    np.testing.assert_allclose(
+        act_g.grad.detach().cpu().numpy(), act_e.grad.detach().cpu().numpy(), atol=1e-5
+    )
+
+
+def test_shac_smoke_cpu_playback_and_onnx_export(tmp_path: Path) -> None:
     shac_cfg = ShacConfig(
         num_envs=16,
         horizon=4,
@@ -97,23 +141,43 @@ def test_shac_and_ppo_smoke_and_cpu_playback() -> None:
         eval_interval_steps=64,
         eval_episodes=8,
     )
-    shac_model, shac_metrics = train_shac("myoElbowPose1D6MRandom-v0", shac_cfg, seed=0)
-    assert len(shac_metrics.eval_return_mean) == 3
-    assert np.isfinite(shac_metrics.eval_return_mean).all()
-    assert np.isfinite(shac_metrics.cpu_eval_return)
-    for p in shac_model.parameters():
+    model, metrics = train_shac("myoElbowPose1D6MRandom-v0", shac_cfg, seed=0)
+    assert len(metrics.eval_return_mean) == 3
+    assert np.isfinite(metrics.eval_return_mean).all()
+    assert np.isfinite(metrics.cpu_eval_return)
+    for p in model.parameters():
         assert torch.isfinite(p).all()
 
-    ppo_cfg = PpoConfig(
-        num_envs=16,
-        horizon=4,
-        total_env_steps=128,
-        eval_interval_steps=64,
-        eval_episodes=8,
-    )
-    ppo_model, ppo_metrics = train_ppo("myoElbowPose1D6MRandom-v0", ppo_cfg, seed=0)
-    assert len(ppo_metrics.eval_return_mean) == 3
-    assert np.isfinite(ppo_metrics.eval_return_mean).all()
-    assert np.isfinite(ppo_metrics.cpu_eval_return)
-    for p in ppo_model.parameters():
-        assert torch.isfinite(p).all()
+    ort = pytest.importorskip("onnxruntime")
+    onnx_path = export_shac_onnx(model, tmp_path / "shac_policy.onnx")
+    assert onnx_path.is_file()
+
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    cpu_env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        obs_np, _ = cpu_env.reset(seed=42)
+        obs_batch = obs_np.astype(np.float32)[None, :]
+        onnx_act = sess.run(["action"], {"obs": obs_batch})[0]
+        with torch.no_grad():
+            dev = next(model.parameters()).device
+            ref_act = (
+                torch.clamp(
+                    model.act_deterministic(torch.as_tensor(obs_batch, device=dev)),
+                    -1.0,
+                    1.0,
+                )
+                .cpu()
+                .numpy()
+            )
+        np.testing.assert_allclose(onnx_act, ref_act, atol=1e-6)
+        next_obs, rwd, _, _, _ = cpu_env.step(onnx_act[0])
+        assert np.isfinite(next_obs).all()
+        assert np.isfinite(rwd)
+    finally:
+        cpu_env.close()
+
+    from myosuite.utils.export_onnx import verify_onnx_on_cpu
+
+    ver = verify_onnx_on_cpu(onnx_path, n_steps=5, env_id="myoElbowPose1D6MRandom-v0")
+    assert ver["n_steps"] == 5
+    assert np.isfinite(ver["total_reward"])

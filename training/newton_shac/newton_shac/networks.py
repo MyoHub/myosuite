@@ -2,13 +2,15 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Shared observation normalizer and Actor-Critic networks for SHAC and PPO."""
+"""Observation normalizer, Actor-Critic networks, and ONNX export for SHAC."""
 
 from __future__ import annotations
 
+import copy
+from pathlib import Path
+
 import torch
 from torch import nn
-from torch.distributions import Normal
 
 
 class RunningMeanStd(nn.Module):
@@ -62,7 +64,7 @@ def _make_mlp(
 
 
 class ActorCritic(nn.Module):
-    """Matched Gaussian actor and scalar value critic shared by SHAC and PPO."""
+    """Reparameterized Gaussian actor and scalar value critic for SHAC."""
 
     def __init__(
         self,
@@ -91,17 +93,32 @@ class ActorCritic(nn.Module):
     ) -> torch.Tensor:
         norm_obs = self.obs_norm(obs, update=update_norm)
         mu = self.actor_net(norm_obs)
-        std = self.action_std()
-        return mu + std * torch.randn_like(mu)
+        return mu + self.action_std() * torch.randn_like(mu)
 
     def act_deterministic(self, obs: torch.Tensor) -> torch.Tensor:
-        norm_obs = self.obs_norm(obs, update=False)
-        return self.actor_net(norm_obs)
-
-    def distribution(self, norm_obs: torch.Tensor) -> Normal:
-        mu = self.actor_net(norm_obs)
-        return Normal(mu, self.action_std().expand_as(mu))
+        return self.actor_net(self.obs_norm(obs, update=False))
 
     def value(self, obs: torch.Tensor) -> torch.Tensor:
-        norm_obs = self.obs_norm(obs, update=False)
-        return self.critic_net(norm_obs).squeeze(-1)
+        return self.critic_net(self.obs_norm(obs, update=False)).squeeze(-1)
+
+
+class _FoldedShacActor(nn.Module):
+    def __init__(self, model: ActorCritic) -> None:
+        super().__init__()
+        self.obs_norm = copy.deepcopy(model.obs_norm).cpu().eval()
+        self.actor_net = copy.deepcopy(model.actor_net).cpu().eval()
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        return torch.clamp(self.actor_net(self.obs_norm(obs, update=False)), -1.0, 1.0)
+
+
+def export_shac_onnx(
+    model: ActorCritic, output: str | Path, *, opset: int = 17
+) -> Path:
+    """Export deterministic SHAC actor with folded normalizer to a single .onnx file."""
+    from myosuite.utils.export_onnx import _export_policy
+
+    out_path = Path(output)
+    obs_dim = int(model.obs_norm.mean.shape[-1])
+    _export_policy(_FoldedShacActor(model), obs_dim, out_path, opset)
+    return out_path

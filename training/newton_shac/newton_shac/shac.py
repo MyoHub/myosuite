@@ -12,9 +12,13 @@ Algorithm reference:
 
 from __future__ import annotations
 
+import argparse
 import copy
+import dataclasses
+import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -22,7 +26,7 @@ from torch import nn
 
 from myosuite import make_env
 from newton_shac.diff_env import DifferentiablePoseEnv
-from newton_shac.networks import ActorCritic
+from newton_shac.networks import ActorCritic, export_shac_onnx
 
 
 @dataclass(frozen=True)
@@ -31,7 +35,7 @@ class ShacConfig:
 
     num_envs: int = 256
     horizon: int = 16
-    total_env_steps: int = 102_400
+    total_env_steps: int = 98_304
     hidden_dims: tuple[int, int] = (128, 128)
     actor_lr: float = 2e-3
     critic_lr: float = 2e-3
@@ -42,7 +46,7 @@ class ShacConfig:
     critic_minibatches: int = 4
     init_std: float = 0.35
     max_grad_norm: float = 1.0
-    eval_interval_steps: int = 25_600
+    eval_interval_steps: int = 32_768
     eval_episodes: int = 64
 
 
@@ -371,3 +375,58 @@ def train_shac(
         total_wall_time_s=total_time,
         peak_gpu_mem_mb=peak_mb,
     )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--envs",
+        nargs="+",
+        default=["myoElbowPose1D6MRandom-v0", "myoHandPoseRandom-v0"],
+    )
+    parser.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
+    parser.add_argument("--num-envs", type=int, default=256)
+    parser.add_argument("--horizon", type=int, default=16)
+    parser.add_argument("--total-steps", type=int, default=98_304)
+    parser.add_argument("--eval-interval", type=int, default=32_768)
+    parser.add_argument(
+        "--device", default="cuda:0" if torch.cuda.is_available() else "cpu"
+    )
+    parser.add_argument("--export-onnx-dir", type=Path, default=None)
+    parser.add_argument("--json-out", type=Path, default=None)
+    args = parser.parse_args()
+
+    cfg = ShacConfig(
+        num_envs=args.num_envs,
+        horizon=args.horizon,
+        total_env_steps=args.total_steps,
+        eval_interval_steps=args.eval_interval,
+    )
+    runs: list[dict[str, object]] = []
+    for env_id in args.envs:
+        eval_env = DifferentiablePoseEnv(
+            env_id, num_envs=cfg.eval_episodes, device=args.device, seed=9999
+        )
+        warmup = dataclasses.replace(
+            cfg,
+            total_env_steps=args.num_envs * args.horizon,
+            eval_interval_steps=args.num_envs * args.horizon,
+        )
+        train_shac(env_id, warmup, seed=999, device=args.device, eval_env=eval_env)
+        for s in args.seeds:
+            model, m = train_shac(
+                env_id, cfg, seed=int(s), device=args.device, eval_env=eval_env
+            )
+            if args.export_onnx_dir is not None:
+                export_shac_onnx(model, args.export_onnx_dir / f"{env_id}_seed{s}.onnx")
+            runs.append(dataclasses.asdict(m))
+
+    payload = json.dumps({"runs": runs}, indent=2)
+    if args.json_out is not None:
+        args.json_out.write_text(payload, encoding="utf-8")
+    else:
+        print(payload)
+
+
+if __name__ == "__main__":
+    main()
