@@ -135,7 +135,7 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
         "TerrainController",
         "download_terrain_checkpoint",
     ),
-    "myosuite.integrations.musclemimic.reference_motion": (
+    "myosuite.envs.myo.tasks.basic.full_body.waypoint_reference": (
         "compose_waypoint_reference",
         "plan_waypoint_reference",
         "GaitParameters",
