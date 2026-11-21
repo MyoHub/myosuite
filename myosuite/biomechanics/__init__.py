@@ -20,6 +20,7 @@
 - :mod:`.kinematic_metrics`: smoothness, velocity symmetry, curvature-velocity power law, Fitts throughput and cohort distances of recorded motions.
 - :mod:`.external_loads`: Measured body/site wrenches and held-mass gravity loads mapped to generalized forces.
 - :mod:`.camera`: Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
+- :mod:`.foveation`: Calibrated eccentricity-dependent retinal acuity blur and foveal patch sampling.
 - :mod:`.chumpy_pickle`: Chumpy-free ``.pkl`` unpickler for legacy SMPL, SMPL+H, SMPL-X and MANO body models.
 - :mod:`.emg`: EMG filtering, muscle activation dynamics and tendon-node projection.
 - :mod:`.hand_retarget`: MANO-to-wrist frame calibration, presets, and DexPilot SLSQP hand retargeting.
