@@ -12,8 +12,16 @@ from typing import Any
 
 _EXPORTS: dict[str, str] = {
     "BaseEMGSource": "myosuite.integrations.emg.trial_io",
+    "CAMARGO_CHANNELS": "myosuite.integrations.emg.gait_sources",
+    "Camargo2021Source": "myosuite.integrations.emg.gait_sources",
+    "DIMITROV_SHANK_ACTUATORS": "myosuite.integrations.emg.gait_sources",
+    "Dimitrov2023Source": "myosuite.integrations.emg.gait_sources",
     "EMG_TRIAL_META_KEY": "myosuite.integrations.emg.trial_io",
+    "LENCIONI_CHANNELS": "myosuite.integrations.emg.gait_sources",
+    "Lencioni2019Source": "myosuite.integrations.emg.gait_sources",
+    "ManifestEMGSource": "myosuite.integrations.emg.gait_sources",
     "NpzDirectoryEMGSource": "myosuite.integrations.emg.trial_io",
+    "RajagopalWalkingSource": "myosuite.integrations.emg.gait_sources",
     "load_emg_trial": "myosuite.integrations.emg.trial_io",
     "resolve_stem_channel_map": "myosuite.integrations.emg.trial_io",
     "save_emg_trial": "myosuite.integrations.emg.trial_io",

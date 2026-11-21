@@ -163,7 +163,20 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
             with open_rollout(spec.trajectory_path) as (_, ro_summary):
                 assert ro_summary.n_episodes == 1
 
-    from myosuite.integrations.mm_evalkit.plugin import _wheel_npz_main, custom_emg_main
+    from myosuite.integrations.emg import Camargo2021Source as IntegratedCamargo
+    from myosuite.integrations.mm_evalkit import CheckoutCapabilityError
+    from myosuite.integrations.mm_evalkit.plugin import (
+        _wheel_npz_main,
+        custom_emg_main,
+    )
+    from myosuite.integrations.mm_evalkit.workflow import load_target_model
+
+    assert Camargo2021Source is IntegratedCamargo
+
+    empty_wt = tmp_path / "not_a_myosim_checkout"
+    empty_wt.mkdir()
+    with pytest.raises(CheckoutCapabilityError, match="myo_sim source checkout"):
+        load_target_model(f"{empty_wt}:myoleg")
 
     wheel_out = tmp_path / "wheel_report"
     assert (
@@ -382,3 +395,23 @@ def test_camargo2021_source_synthetic(tmp_path: Path) -> None:
     assert trial.qpos is not None and trial.external_qfrc is not None
     assert trial.meta["force_plates_matched"] is True
     assert 0.9 <= float(trial.time[-1]) <= 1.1
+
+    from myosuite.integrations.mm_evalkit.plugin import camargo2021_main
+
+    leg_xml_path = tmp_path / "mini_leg.xml"
+    leg_xml_path.write_text(leg_xml, encoding="utf-8")
+    plugin_camargo_out = tmp_path / "camargo_plugin_out"
+    assert (
+        camargo2021_main(
+            [
+                "--data-root",
+                str(tmp_path),
+                "--model",
+                str(leg_xml_path),
+                "--out-dir",
+                str(plugin_camargo_out),
+            ]
+        )
+        == 0
+    )
+    assert (plugin_camargo_out / "emg_validation_summary.json").exists()
