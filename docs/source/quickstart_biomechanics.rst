@@ -289,7 +289,7 @@ Variant environments model common clinical conditions:
 
 Each variant is the base env registered with the matching wrapper, so the same conditions (and motor
 noise) can be applied to any other env, with your own parameters, through ``EnvConfig(env_id, features=...)``;
-see :doc:`quickstart_neuroscience` for examples and ``docs/wiki/cross-backend-contract.md`` for which envs
+see :doc:`quickstart_neuroscience` for examples and ``docs/source/developer/cross-backend-contract.md`` for which envs
 take which features.
 
 

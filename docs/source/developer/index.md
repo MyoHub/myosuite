@@ -1,4 +1,4 @@
-# Wiki Index
+# Developer Guide
 
 | Page | When to read |
 |---|---|
@@ -12,8 +12,28 @@
 | [writing-term-functions.md](writing-term-functions.md) | Writing obs/reward/action term functions |
 | [training-guidelines.md](training-guidelines.md) | Before adding training/learning methods or dependencies |
 | [performance-cards.md](performance-cards.md) | Reporting measured timing, memory and quality across independent training seeds |
-| [training/supermimic/README.md](../../training/supermimic/README.md) | Training, evaluating and fine-tuning with myoSuperMimic (a training project, not in the package) |
+| [training/supermimic/README.md](https://github.com/MyoHub/myosuite/blob/dev/training/supermimic/README.md) | Training, evaluating and fine-tuning with myoSuperMimic (a training project, not in the package) |
 | [agent-workflow.md](agent-workflow.md) | Required agent workflow and subagent strategy |
 | [log.md](log.md) | Append-only log of PRs to `dev` with new features / critical changes |
 
-**Source of truth priority:** code and tests → [CLAUDE.md](../../CLAUDE.md) → this wiki.
+**Source of truth priority:** code and tests → [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md) → this guide.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+getting-started
+repository-map
+engineering-standards
+adding-a-new-task
+library-usage
+mjlab-design-guide
+cross-backend-contract
+writing-term-functions
+training-guidelines
+performance-cards
+deployment-manifests
+paired-push-evaluation
+agent-workflow
+log
+```

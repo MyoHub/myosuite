@@ -2,17 +2,17 @@
 
 ## Before Starting
 
-1. Read [docs/wiki/index.md](index.md), then the relevant thematic page(s).
+1. Read [docs/source/developer/index.md](index.md), then the relevant thematic page(s).
 2. **Search before writing** — `grep -r "keyword" myosuite/` and check [library-usage.md](library-usage.md). If something similar exists (≥ 80%), extend or import it.
 3. For tasks with 3+ steps or architectural decisions: write a plan to `tasks/todo.md` and confirm with the user.
 
 ## Work Loop
 
 1. Implement following [engineering-standards.md](engineering-standards.md).
-2. Verify correctness (tests, diffs). Run the commands in [CLAUDE.md](../../CLAUDE.md).
-3. Update any wiki page affected by the change.
+2. Verify correctness (tests, diffs). Run the commands in [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md).
+3. Update any developer-guide page affected by the change.
 4. If this change is going into a PR to `dev` introducing a new feature or a
-   critical/breaking change, append an entry to [docs/wiki/log.md](log.md). Routine
+   critical/breaking change, append an entry to [docs/source/developer/log.md](log.md). Routine
    fixes, refactors, and doc edits don't need a log entry.
 
 ## After a User Correction
@@ -25,6 +25,6 @@ Update `tasks/lessons.md` with the pattern to avoid repeating it.
 - Always scope subagent prompts with: *"Search for existing implementations of X before writing anything new."*
 - Use subagents for research, exploration, and parallel analysis to keep the main context clean.
 
-## Wiki Maintenance
+## Developer Guide Maintenance
 
-Update wiki pages when a change affects: repository structure, architecture contracts, coding standards, or agent operating assumptions. Keep edits factual and incremental.
+Update developer-guide pages when a change affects: repository structure, architecture contracts, coding standards, or agent operating assumptions. Keep edits factual and incremental.

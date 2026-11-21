@@ -34,6 +34,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
+    "myst_parser",  # developer guide pages are Markdown
 ]
 
 try:
@@ -91,7 +92,10 @@ def setup(app):
 
 
 # Exclude build artifacts only (no legacy source/ subdir)
-exclude_patterns = []
+exclude_patterns = ["images/**/*.md"]  # asset READMEs, not pages
+
+# GitHub-style #heading anchors in the Markdown developer guide.
+myst_heading_anchors = 3
 
 templates_path = (
     ["_templates"] if os.path.isdir(os.path.join(_docs_dir, "_templates")) else []

@@ -148,6 +148,8 @@ docs = [
     "sphinx-rtd-theme>=2.0",
     "sphinx-autodoc-typehints>=2.0",
     "sphinx-autoapi>=2.0",
+    # Markdown pages of the developer guide (docs/source/developer/).
+    "myst-parser>=2.0",
 ]
 
 musclemimic = [
