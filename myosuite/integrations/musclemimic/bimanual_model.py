@@ -29,6 +29,7 @@ from myosuite.integrations.musclemimic.model_versions import (
     resolve_models_version,
 )
 from myosuite.terms.mimic_reward import MimicTrackingConfig
+from myosuite.utils.spec_processing import delete_joint, delete_tendon
 
 BODY2SITES_FOR_MIMIC = {
     "thorax": "upper_body_mimic",
@@ -183,27 +184,111 @@ def resolve_mimic_bimanual_xml(config: config_dict.ConfigDict) -> str:
     return get_xml_path("bimanual").as_posix()
 
 
-def _translate_finger_token(name: str, pool: frozenset[str]) -> str:
+def _translate_finger_token(name: str, pool: frozenset[str]) -> str | None:
     """Translate a musclemimic_models finger joint/muscle name to myo_sim's convention.
 
-    myo_sim leaves the right side unmarked (``cmc_flexion``) where
-    musclemimic_models suffixes it (``cmc_flexion_r``), and uses ``_l`` where
+    Older myo_sim releases leave the right side unmarked (``cmc_flexion``)
+    where musclemimic_models suffixes it (``cmc_flexion_r``); newer ones
+    suffix right-side muscles (``FDS2_r``). The left side is ``_l`` where
     musclemimic_models uses ``_left`` (``FDS2_l`` vs. ``FDS2_left``).
 
-    Raises:
-        KeyError: If no variant of *name* resolves in *pool*, so a naming
-            drift between myo_sim releases surfaces immediately instead of
-            silently leaving a finger joint/muscle un-disabled.
+    Returns:
+        The name in *pool*, or ``None`` if no variant of *name* is in it.
     """
     if name in pool:
         return name
-    if name.endswith("_r") and name[:-2] in pool:
-        return name[:-2]
-    if name.endswith("_left") and (name[:-5] + "_l") in pool:
-        return name[:-5] + "_l"
-    raise KeyError(
-        f"Could not translate finger token {name!r} to myo_sim's naming convention"
-    )
+    if name.endswith("_left"):
+        candidates = [name[:-5] + "_l"]
+    elif name.endswith("_r"):
+        candidates = [name[:-2]]
+    elif name.endswith("_l"):
+        candidates = []
+    else:
+        candidates = [name + "_r"]
+    return next((c for c in candidates if c in pool), None)
+
+
+def _inert_tendon_actuators(
+    spec: mujoco.MjSpec, removed_joints: tuple[str, ...], min_moment: float
+) -> list[str]:
+    """Tendon actuators of a copy of *spec* without *removed_joints* that have no moment arm."""
+    tmp = spec.copy()
+    for key in list(tmp.keys):
+        tmp.delete(key)
+    for name in removed_joints:
+        delete_joint(tmp, tmp.joint(name))
+    model = tmp.compile()
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    inert = []
+    for i in range(model.nu):
+        if model.actuator_trntype[i] != mujoco.mjtTrn.mjTRN_TENDON:
+            continue
+        t = model.actuator_trnid[i, 0]
+        adr, nnz = model.ten_J_rowadr[t], model.ten_J_rownnz[t]
+        if abs(data.ten_J[adr : adr + nnz]).sum() < min_moment:
+            inert.append(model.actuator(i).name)
+    return inert
+
+
+def native_finger_names(
+    spec: mujoco.MjSpec, min_moment: float = 1e-10
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Finger joint and muscle names of a myo_sim spec, for ``disable_fingers``.
+
+    Joints are :data:`FINGER_JOINT_TOKENS` in *spec*'s naming plus every other
+    joint in the subtree of each named joint's parent body,
+    e.g. metacarpal joints or tendon-tied nodes of newer hands. Muscles are the
+    :data:`FINGER_MUSCLE_TOKENS` present in *spec* plus every tendon actuator
+    that loses all its moment arms once those joints are gone (intrinsic hand
+    muscles, whatever their names).
+
+    Args:
+        spec: Uncompiled myo_sim spec; not modified.
+        min_moment: Tendon Jacobian norm below which a muscle counts as inert.
+
+    Returns:
+        ``(joint_names, muscle_names)``, exact names in *spec*.
+
+    Raises:
+        KeyError: If a finger joint token has no variant in *spec*, so a naming
+            drift between myo_sim releases surfaces instead of silently leaving
+            a finger joint in place.
+    """
+    joint_pool = frozenset(j.name for j in spec.joints)
+    named = []
+    for token in FINGER_JOINT_TOKENS:
+        name = _translate_finger_token(token, joint_pool)
+        if name is None:
+            raise KeyError(
+                f"Could not translate finger token {token!r} to myo_sim's naming convention"
+            )
+        named.append(name)
+
+    chain_roots = {spec.joint(n).parent.parent.name for n in named}
+    chain_bodies: set[str] = set()
+    stack = [spec.body(n) for n in chain_roots]
+    while stack:
+        body = stack.pop()
+        chain_bodies.add(body.name)
+        stack.extend(body.bodies)
+    joints = tuple(j.name for j in spec.joints if j.parent.name in chain_bodies)
+
+    actuator_pool = frozenset(a.name for a in spec.actuators)
+    muscles = [
+        n
+        for n in (
+            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
+        )
+        if n is not None
+    ]
+
+    # Muscles the finger joints' removal leaves inert (but that moved something before).
+    inert_before = _inert_tendon_actuators(spec, (), min_moment)
+    for name in _inert_tendon_actuators(spec, joints, min_moment):
+        if name not in inert_before and name not in muscles:
+            muscles.append(name)
+    return joints, tuple(muscles)
 
 
 def apply_mimic_bimanual_spec_edits(
@@ -241,8 +326,9 @@ def apply_mimic_bimanual_spec_edits(
         for joint in spec.joints:
             if any(token in joint.name for token in finger_joint_tokens):
                 joints_to_remove.append(joint)
+        # With the tendons/equalities that use them (passive limits, tied nodes).
         for joint in joints_to_remove:
-            spec.delete(joint)
+            delete_joint(spec, joint)
 
         actuators_to_remove = []
         for actuator in spec.actuators:
@@ -256,7 +342,7 @@ def apply_mimic_bimanual_spec_edits(
             if any(token in tendon.name for token in finger_muscle_tokens):
                 tendons_to_remove.append(tendon)
         for tendon in tendons_to_remove:
-            spec.delete(tendon)
+            delete_tendon(spec, tendon)
 
     for body_name, site_name in body2sites.items():
         body = spec.body(body_name)
@@ -343,21 +429,7 @@ def _build_native_mimic_bimanual_spec(
     spec = myo_sim.load_spec("myoarms")
 
     if config.disable_fingers:
-        model = spec.compile()
-        joint_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
-            for i in range(model.njnt)
-        )
-        actuator_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
-            for i in range(model.nu)
-        )
-        joint_tokens = tuple(
-            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
-        )
-        muscle_tokens = tuple(
-            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
-        )
+        joint_tokens, muscle_tokens = native_finger_names(spec)
     else:
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS

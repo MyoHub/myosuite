@@ -38,9 +38,9 @@ from myosuite.integrations.musclemimic.bimanual_model import (
     BODY2SITES_FOR_MIMIC,
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
-    _translate_finger_token,
     apply_mimic_bimanual_spec_edits,
     default_mimic_config,
+    native_finger_names,
 )
 from myosuite.integrations.musclemimic.model_versions import (
     apply_models_version,
@@ -369,21 +369,7 @@ def build_native_myotorso_bimanual_mimic_spec(
     spec.attach(legs_spec, prefix="", suffix="", frame=legs_frame)
 
     if config.disable_fingers:
-        model = spec.compile()
-        joint_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
-            for i in range(model.njnt)
-        )
-        actuator_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
-            for i in range(model.nu)
-        )
-        joint_tokens = tuple(
-            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
-        )
-        muscle_tokens = tuple(
-            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
-        )
+        joint_tokens, muscle_tokens = native_finger_names(spec)
     else:
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS

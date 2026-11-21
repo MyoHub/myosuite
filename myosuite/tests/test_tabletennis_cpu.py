@@ -14,6 +14,7 @@ import pytest
 
 import myosuite  # noqa: F401  (registers the envs)
 from myosuite.core.muscle_conditions import _peak_force
+from myosuite.envs.muscle_stages import resolve_right_name
 from myosuite.envs.wrappers import ReafferentationWrapper
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
@@ -156,7 +157,10 @@ def test_reafferentation_reroutes_eip_to_epl() -> None:
     env = ReafferentationWrapper(gym.make(P0))
     env.reset(seed=0)
     base = env.unwrapped
-    eip, epl = base.model.actuator("EIP").id, base.model.actuator("EPL").id
+    names = [base.model.actuator(i).name for i in range(base.model.nu)]
+    eip, epl = (
+        base.model.actuator(resolve_right_name(n, names)).id for n in ("EIP", "EPL")
+    )
     action = np.full(env.action_space.shape, -1.0, dtype=np.float32)
     action[eip] = 1.0
     env.step(action)

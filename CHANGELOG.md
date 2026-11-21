@@ -370,6 +370,16 @@ Changes since **v3.1.0** (2026-11-11).
   the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
   instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
   at their compiled positions, up to 1e-16 away before).
+* The arm-reach model edit (`myoArmReach*`) builds with myo_sim hands whose finger joints are used by tendons
+  and equalities, such as the lumbrical junction nodes of the revised hand. Finger joints are now deleted
+  together with everything that references them (`spec_processing.delete_joint`). The edited model is
+  unchanged on myo_sim 0.2.5 ([#748]).
+* The table-tennis body (`myoChallengeTableTennisP*`) builds with the revised hand: stripping the left arm
+  also removes the equalities and fixed tendons on its tendon-tied nodes ([#748]).
+* Finger removal of the myo_sim-native MuscleMimic bodies (`myoMimic-v0`, `myoChallengeChaseTagFB*`) resolves
+  the finger joints and muscles against the model: `_r`-suffixed right-side names, the extra joints on the
+  digit chains, and intrinsic hand muscles under any name. Reafferentation finds EIP/EPL with or without `_r`.
+  All models are unchanged on myo_sim 0.2.5 ([#748]).
 * Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
 * **Pure joint-limit terms, batched term shapes and ChaseTag-vs EVADE scoring ([#803]).** `joint_penalty` and `joint_limit_violation` now read `EnvAccessor.joint_limits()` (`jnt_range` on limited hinge/slide coordinates) instead of `actuator_ctrlrange`, which mismatched `qpos` whenever `nq != nu` or muscles had `[0, 1]` control ranges. `MuscleActionTerm` scopes fatigue muscle counts to the entity's indexed muscle actuators and writes through `write_ctrl_to_sim`; pure observation, reward and termination terms preserve leading batch dimensions and target devices; `reset_random_pose` requires an explicit seeded `rng`; and `ChaseTagVs` `compute_damage` / `get_score` route tag damage according to the active `CHASE`/`EVADE` role and clamp scores to `[0, 1]` (`docs/baseline_checkpoints.md`).
@@ -384,6 +394,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#748]: https://github.com/MyoHub/myosuite/pull/748
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#803]: https://github.com/MyoHub/myosuite/pull/803
 [#805]: https://github.com/MyoHub/myosuite/pull/805

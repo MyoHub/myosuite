@@ -1069,6 +1069,8 @@ def _strip_tabletennis_left_arm_muscles(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     pairs match exactly (the one exception, ``SUPSP``, is an isolated
     upstream calibration difference, not touched by this function).
     """
+    from myosuite.utils.spec_processing import delete_tendon
+
     subtree = _tabletennis_left_arm_subtree_names(spec)
     subtree_targets: set[str] = set()
     for site in spec.sites:
@@ -1087,12 +1089,10 @@ def _strip_tabletennis_left_arm_muscles(spec: mujoco.MjSpec) -> mujoco.MjSpec:
                 tendons_to_delete.add(tendon.name)
                 break
 
-    for actuator in list(spec.actuators):
-        if actuator.target in tendons_to_delete:
-            spec.delete(actuator)
+    # With their actuators and the equalities/sensors on them (e.g. tendon-tied nodes).
     for tendon in list(spec.tendons):
         if tendon.name in tendons_to_delete:
-            spec.delete(tendon)
+            delete_tendon(spec, tendon)
     return spec
 
 
@@ -1150,9 +1150,11 @@ def _immobilize_tabletennis_legs_and_left_arm(spec: mujoco.MjSpec) -> mujoco.MjS
     """
     from myosuite.utils.spec_processing import recursive_immobilize
 
-    recursive_immobilize(spec, None, spec.body("femur_l"), remove_eqs=True)
-    recursive_immobilize(spec, None, spec.body("femur_r"), remove_eqs=True)
-    recursive_immobilize(spec, None, spec.body("myoarm_l_root"), remove_eqs=True)
+    # remove_dependents: also the fixed tendons on the joints (passive limits, tied nodes).
+    for root in ("femur_l", "femur_r", "myoarm_l_root"):
+        recursive_immobilize(
+            spec, None, spec.body(root), remove_eqs=True, remove_dependents=True
+        )
     return spec
 
 
