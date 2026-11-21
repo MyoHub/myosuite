@@ -370,6 +370,41 @@ Changes since **v3.1.0** (2026-11-11).
   the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
   instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
   at their compiled positions, up to 1e-16 away before).
+* **MyoChallenge resets start with the coupled joints on their joint couplings.** The `reset` overrides of the
+  ChaseTag, Soccer, OslRun, Relocate and Bimanual envs wrote keyframes and reset noise into `qpos` without the
+  projection of `MyoGymnasiumEnv.reset` ([#630] had left the MyoChallenge envs as expected failures, pending
+  maintainer sign-off), so MuJoCo pulled the dependent joints of the `mjEQ_JOINT` couplings back during the first
+  steps. Offsets right after `reset`, and what the projection changes:
+  * `myoChallengeChaseTagP1/P2/P2eval-v0`: patella rotation 0.74 rad and 3.6 rad/s off (walk keyframes 2 and 3, as in
+    `myoLegWalk-v0`); largest `|qacc|` at t=0 1355 -> 391 rad/s^2 (P1). The patella moves 3.6 cm and the feet up to
+    1.6 cm (tibial rotation; under 3 mm in height). P2 also drew its N(0, 0.02) reset noise on the coupled joints.
+  * `myoChallengeRelocateP1/P2/P2eval-v0`: shoulder rhythm up to 0.16 rad off; largest coupling force 602 -> 5.5 and
+    `|qacc|` 410 -> 115 rad/s^2 (P1). The palm starts 4.3 cm (P1) and 3.0 cm (P2, mean) from its former place, and
+    the reset noise of P2 no longer moves the coupled shoulder joints (largest palm std 6 -> 2 mm).
+  * `myoChallengeOslRunFixed/Random-v0`: 0.16 rad (keyframes 0-2; the patella of keyframe 0 is 5.2 cm off); the
+    biological foot moves up to 1.4 cm.
+  * `myoChallengeBimanual-v0` 0.034 rad (ring abduction of the prosthesis, 2.5 mm), `myoChallengeSoccerP2-v0`
+    0.025 rad (reset noise on the coupled lumbar and knee joints), `myoChallengeSoccerP1-v0` 3.5e-5,
+    `myoChallengeChaseTagFBP2-v0` 4.2e-4 (0.054 in velocity, 0.4 mm).
+
+  These resets now call `MyoGymnasiumEnv._project_joint_couplings` before `mj_forward` (a no-op for the die-reorient
+  and Baoding models, which have no couplings), the mjlab twin of `myoChallengeChaseTagFBP2-v0` projects in
+  `reset_to_cpu_state`, and the couplings are read once per model instead of at every reset. This changes the start
+  state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
+  unchanged, and the parity baseline of `myoChallengeRelocateP1-v0` is regenerated. Table tennis follows in the next
+  entry; `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off) is **not** changed and stays an
+  expected failure of `test_joint_coupling.py`. See `docs/baseline_checkpoints.md`.
+* **Table-tennis resets start on the joint couplings, with the paddle still in the hand.** The `default` keyframe of
+  `myoChallengeTableTennisP{0,1,2}-v0` set the right shoulder rhythm (sternoclavicular, acromioclavicular, scapula and
+  humerus rotations, `shoulder1_r2_r`) up to 0.59 rad and the lumbar `L3_L4_FE` 0.097 rad off their couplings, and
+  projecting it as it was would have moved the grasp site 7.9 cm, off the paddle handle. The seven right-arm joints
+  (`elv_angle_r` to `deviation_r`) are re-solved, by up to 0.42 rad (`shoulder_rot_r`), so that every coupled joint is
+  on its polynomial while `S_grasp` keeps its pose (5e-6 m, 2e-4 rad) and the wrist stays 2 degrees inside its flexion
+  limit. The paddle spawn, the 1.7 cm handle-to-grasp distance and the seven hand-paddle and arm-torso contacts are
+  unchanged; the largest coupling force at t=0 falls from 928 to 190. The CPU reset and the mjlab twins
+  (`TableTennisReset`, also after joint noise) now project like the other MyoChallenge envs. This changes the start
+  state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
+  unchanged, and no parity baseline covers them.
 * Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
 * **Pure joint-limit terms, batched term shapes and ChaseTag-vs EVADE scoring ([#803]).** `joint_penalty` and `joint_limit_violation` now read `EnvAccessor.joint_limits()` (`jnt_range` on limited hinge/slide coordinates) instead of `actuator_ctrlrange`, which mismatched `qpos` whenever `nq != nu` or muscles had `[0, 1]` control ranges. `MuscleActionTerm` scopes fatigue muscle counts to the entity's indexed muscle actuators and writes through `write_ctrl_to_sim`; pure observation, reward and termination terms preserve leading batch dimensions and target devices; `reset_random_pose` requires an explicit seeded `rng`; and `ChaseTagVs` `compute_damage` / `get_score` route tag damage according to the active `CHASE`/`EVADE` role and clamp scores to `[0, 1]` (`docs/baseline_checkpoints.md`).
