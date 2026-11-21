@@ -2,23 +2,25 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Multi-trial EMG neuromusculoskeletal calibration and hybrid inverse-dynamics pipeline.
+"""Multi-trial EMG neuromusculoskeletal parameter calibration solver.
 
 Implements CEINMS-style subject muscle calibration (Lloyd & Besier, *J. Biomech.*,
 2003; Pizzolato et al., *J. Biomech.*, 2015): calibrates muscle group peak isometric
 strength scales, tendon-slack / operating-range shifts and fiber-span scales, nonlinear
 EMG-to-excitation shape factor ``A``, and electromechanical delay across one or more
-recorded trials, then executes hybrid EMG-assisted static optimization to synthesize
-unmeasured deep muscles while tracking calibrated surface EMG.
+recorded trials. Source C3D adaptation and hybrid static-optimization pipeline
+orchestration live in :mod:`myosuite.integrations.capture.emg_calibration`.
 """
 
 from __future__ import annotations
 
 import copy
+import importlib
+import warnings
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import mujoco
 import numpy as np
@@ -30,14 +32,15 @@ from myosuite.biomechanics.emg import (
     process_emg,
     shift_signal,
 )
-from myosuite.biomechanics.external_loads import force_at_body
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics, required_qfrc
-from myosuite.biomechanics.static_optimization import (
-    StaticOptimizationConfig,
-    StaticOptimizationResult,
-    static_optimization,
-)
 from myosuite.core.muscle_conditions import _passive_peak_force, _peak_force
+
+OnCalibrationFailure = Literal["raise", "warn", "ignore"]
+_VALID_FAILURE_MODES: frozenset[str] = frozenset({"raise", "warn", "ignore"})
+
+
+class CalibrationError(RuntimeError):
+    """Raised when nonlinear muscle calibration fails to converge."""
 
 
 @dataclass(frozen=True)
@@ -59,7 +62,25 @@ class CalibrationTrial:
 
 @dataclass(frozen=True)
 class MuscleCalibrationConfig:
-    """Bounds and regularization for CEINMS-style multi-trial muscle calibration."""
+    """Bounds, regularization, and convergence policy for multi-trial muscle calibration.
+
+    Attributes:
+        strength_bounds: Lower and upper bounds on per-group peak isometric force scale.
+        length_shift_bounds_m: Bounds on actuator operating-range midpoint shift [m].
+        span_scale_bounds: Bounds on actuator operating-range span multiplier.
+        shape_factor_bounds: Bounds on Lloyd & Besier (2003) shape factor ``A``.
+        delay_bounds_s: Bounds on electromechanical delay [s].
+        calibrate_length_params: Optimize ``length_shifts_m`` and ``span_scales`` when ``True``.
+        reg_weight: L2 regularization weight toward nominal parameters.
+        max_nfev: Maximum nonlinear least-squares residual evaluations.
+        lowpass_hz: Optional kinematics Butterworth cutoff [Hz] when ``qvel``/``qacc`` are derived.
+        emg_filter: Raw-EMG bandpass/envelope configuration.
+        on_failure: Policy when ``scipy.optimize.least_squares`` does not converge
+            (``opt.success`` is ``False``, e.g. ``max_nfev`` exhausted): ``"raise"``
+            raises :class:`CalibrationError`, ``"warn"`` emits ``RuntimeWarning`` and
+            returns ``converged=False``, and ``"ignore"`` returns ``converged=False``
+            without warning.
+    """
 
     strength_bounds: tuple[float, float] = (0.5, 2.0)
     length_shift_bounds_m: tuple[float, float] = (-0.03, 0.03)
@@ -68,14 +89,23 @@ class MuscleCalibrationConfig:
     delay_bounds_s: tuple[float, float] = (0.0, 0.08)
     calibrate_length_params: bool = True
     reg_weight: float = 1e-2
-    max_nfev: int = 80
+    max_nfev: int = 250
     lowpass_hz: float | None = None
     emg_filter: EMGFilterConfig = field(default_factory=EMGFilterConfig)
+    on_failure: OnCalibrationFailure = "raise"
+
+    def __post_init__(self) -> None:
+        if self.max_nfev < 1:
+            raise ValueError(f"max_nfev must be >= 1, got {self.max_nfev}")
+        if self.on_failure not in _VALID_FAILURE_MODES:
+            raise ValueError(
+                f"on_failure must be 'raise', 'warn', or 'ignore', got {self.on_failure!r}"
+            )
 
 
 @dataclass(frozen=True)
 class MuscleCalibrationResult:
-    """Calibrated MuJoCo model and neuromusculoskeletal EMG-to-activation parameters."""
+    """Calibrated MuJoCo model, physiological parameters, and solver diagnostics."""
 
     calibrated_model: mujoco.MjModel
     strength_scales: dict[str, float]
@@ -87,16 +117,11 @@ class MuscleCalibrationResult:
     initial_torque_rmse: float
     final_torque_rmse: float
     evaluations: int
-
-
-@dataclass(frozen=True)
-class EMGAssistedPipelineResult:
-    """Output of hybrid EMG-assisted static optimization on a calibrated subject model."""
-
-    calibrated_model: mujoco.MjModel
-    emg_activation: np.ndarray
-    so_result: StaticOptimizationResult
-    emg_tracking_rmse: float
+    converged: bool = True
+    status: int = 1
+    message: str = ""
+    optimality: float = 0.0
+    cost: float = 0.0
 
 
 def nonlinear_excitation_shape(u: np.ndarray, shape_a: float) -> np.ndarray:
@@ -121,7 +146,7 @@ def _actuator_lookup(model: mujoco.MjModel) -> dict[str, int]:
     return out
 
 
-def _prepare_trial(
+def prepare_calibration_trial(
     model: mujoco.MjModel,
     trial: CalibrationTrial,
     emg_filter: EMGFilterConfig,
@@ -136,6 +161,7 @@ def _prepare_trial(
     np.ndarray,
     dict[int, int],
 ]:
+    """Validate and synchronize kinematics, external loads, and `[0, 1]` EMG envelopes."""
     t = np.asarray(trial.time, dtype=np.float64)
     if t.ndim != 1 or len(t) < 4:
         raise ValueError("trial.time must have shape (T >= 4,)")
@@ -190,72 +216,6 @@ def _prepare_trial(
                 raise KeyError(f"Unknown actuator {nm!r} in channel_to_actuators")
             act_to_col[act_lookup[nm]] = col
     return t, dt, qpos, qvel, qacc, ext, env, act_to_col
-
-
-def trial_from_c3d(
-    c3d_trial: Any,
-    model: mujoco.MjModel,
-    qpos: np.ndarray,
-    channel_to_actuators: Mapping[int | str, str | Sequence[str]],
-    *,
-    plate_bodies: Sequence[str] | Mapping[int, str] | None = None,
-    mvc_peaks: np.ndarray | None = None,
-    lowpass_hz: float | None = 6.0,
-) -> CalibrationTrial:
-    """Build a :class:`CalibrationTrial` from a ``C3DTrial`` (markers, analogs, force plates)."""
-    time = np.asarray(c3d_trial.time, dtype=np.float64)
-    dt = float(np.median(np.diff(time)))
-    kin = clip_kinematics(
-        model, np.asarray(qpos, dtype=np.float64), dt, lowpass_hz=lowpass_hz
-    )
-
-    ext_qfrc: np.ndarray | None = None
-    plates = getattr(c3d_trial, "force_plates", ())
-    if plates and plate_bodies is not None:
-        ext_qfrc = np.zeros((len(time), model.nv), dtype=np.float64)
-        body_map = (
-            dict(plate_bodies)
-            if isinstance(plate_bodies, Mapping)
-            else {i: b for i, b in enumerate(plate_bodies)}
-        )
-        for p_idx, body_name in body_map.items():
-            if p_idx >= len(plates):
-                continue
-            fp = plates[p_idx]
-            fp_t = np.asarray(fp.time, dtype=np.float64)
-            f_interp = np.column_stack(
-                [np.interp(time, fp_t, fp.force[:, k]) for k in range(3)]
-            )
-            m_interp = np.column_stack(
-                [np.interp(time, fp_t, fp.moment[:, k]) for k in range(3)]
-            )
-            c_interp = np.column_stack(
-                [np.interp(time, fp_t, fp.cop[:, k]) for k in range(3)]
-            )
-            for k in range(len(time)):
-                ext_qfrc[k] += force_at_body(
-                    model,
-                    kin.qpos[k],
-                    body_name,
-                    f_interp[k],
-                    point=c_interp[k],
-                    torque=m_interp[k],
-                    frame="world",
-                )
-
-    return CalibrationTrial(
-        time=time,
-        qpos=kin.qpos,
-        qvel=kin.qvel,
-        qacc=kin.qacc,
-        external_qfrc=ext_qfrc,
-        emg_signals=np.asarray(c3d_trial.analog, dtype=np.float64),
-        emg_fs=float(c3d_trial.analog_rate),
-        is_raw_emg=True,
-        mvc_peaks=mvc_peaks,
-        channel_labels=tuple(str(x) for x in c3d_trial.analog_labels),
-        channel_to_actuators=channel_to_actuators,
-    )
 
 
 def apply_muscle_parameters(
@@ -326,7 +286,8 @@ def calibrate_subject_muscles(
         raise ValueError("trials must contain at least one CalibrationTrial")
     cfg = config or MuscleCalibrationConfig()
     prepared = [
-        _prepare_trial(model, tr, cfg.emg_filter, cfg.lowpass_hz) for tr in trials
+        prepare_calibration_trial(model, tr, cfg.emg_filter, cfg.lowpass_hz)
+        for tr in trials
     ]
     tracked_ids = sorted({act_id for *_, mapping in prepared for act_id in mapping})
     if not tracked_ids:
@@ -338,7 +299,6 @@ def calibrate_subject_muscles(
     else:
         grp_ids = [tuple(act_lookup[nm] for nm in g) for g in strength_groups]
 
-    # Precompute inverse-dynamics joint torques and auto-detect spanned DOFs on nominal model.
     d_nom = mujoco.MjData(model)
     tau_trials: list[np.ndarray] = []
     spanned = np.zeros(model.nv, dtype=bool)
@@ -371,7 +331,6 @@ def calibrate_subject_muscles(
     if calibrated_dofs is not None:
         dofs = tuple(int(i) for i in calibrated_dofs)
     else:
-        # Prefer DOFs fully spanned by tracked EMG muscles; fall back to all spanned DOFs.
         pure_dofs = np.flatnonzero(spanned & ~untracked_spanned)
         dofs = tuple(
             int(i) for i in (pure_dofs if len(pure_dofs) else np.flatnonzero(spanned))
@@ -382,8 +341,6 @@ def calibrate_subject_muscles(
 
     n_grp = len(grp_ids)
     n_trk = len(tracked_ids)
-    # Parameter layout: [strength_groups (n_grp), shape_A (1), delay_s (1),
-    # optional length_shifts (n_trk), optional span_scales (n_trk)].
     x0_parts = [np.ones(n_grp), np.array([-0.5, 0.015])]
     lo_parts = [
         np.full(n_grp, cfg.strength_bounds[0]),
@@ -468,7 +425,6 @@ def calibrate_subject_muscles(
                     d_cal.moment_rowadr,
                     d_cal.moment_colind,
                 )
-                # Restrict actuator force sum to tracked muscles.
                 f_trk = np.zeros(m_cal.nu, dtype=np.float64)
                 f_trk[tracked_ids] = d_cal.actuator_force[tracked_ids]
                 tau_pred[k] = mom[:, dof_arr].T @ f_trk
@@ -499,6 +455,22 @@ def calibrate_subject_muscles(
         xtol=1e-5,
         max_nfev=cfg.max_nfev,
     )
+    converged = bool(opt.success)
+    status = int(opt.status)
+    message = str(opt.message)
+    optimality = float(opt.optimality)
+    cost = float(opt.cost)
+    if not converged:
+        diag = (
+            f"Muscle calibration did not converge (status={status}, "
+            f"evaluations={eval_count}/{cfg.max_nfev}, optimality={optimality:.3e}): "
+            f"{message}"
+        )
+        if cfg.on_failure == "raise":
+            raise CalibrationError(diag)
+        if cfg.on_failure == "warn":
+            warnings.warn(diag, RuntimeWarning, stacklevel=2)
+
     cal_model, final_err = torque_errors(opt.x)
     final_rmse = float(np.sqrt(np.mean(final_err**2)))
     s_map, l_map, sp_map, shape_a, delay_s = unpack(opt.x)
@@ -514,77 +486,35 @@ def calibrate_subject_muscles(
         initial_torque_rmse=initial_rmse,
         final_torque_rmse=final_rmse,
         evaluations=eval_count,
+        converged=converged,
+        status=status,
+        message=message,
+        optimality=optimality,
+        cost=cost,
     )
 
 
-def run_emg_assisted_pipeline(
-    trial: CalibrationTrial,
-    calibration: MuscleCalibrationResult | mujoco.MjModel,
-    *,
-    emg_filter: EMGFilterConfig | None = None,
-    lowpass_hz: float | None = None,
-    so_config: StaticOptimizationConfig | None = None,
-) -> EMGAssistedPipelineResult:
-    """Run calibrated EMG-to-activation mapping + hybrid EMG-assisted static optimization."""
-    if isinstance(calibration, MuscleCalibrationResult):
-        cal_model = calibration.calibrated_model
-        shape_a = calibration.shape_factor_a
-        delay_s = calibration.delay_s
-    else:
-        cal_model = calibration
-        shape_a = 0.0
-        delay_s = 0.0
+_COMPAT_ADAPTER_EXPORTS: frozenset[str] = frozenset(
+    {"EMGAssistedPipelineResult", "run_emg_assisted_pipeline", "trial_from_c3d"}
+)
 
-    _, dt, qpos, qvel, qacc, ext, env, act_to_col = _prepare_trial(
-        cal_model, trial, emg_filter or EMGFilterConfig(), lowpass_hz
-    )
-    emg_act = compute_calibrated_emg_activations(
-        cal_model,
-        env,
-        dt,
-        act_to_col,
-        shape_factor_a=shape_a,
-        delay_s=delay_s,
-    )
-    cfg_so = so_config or StaticOptimizationConfig(
-        emg_weight=25.0, emg_effort_weight=1.0
-    )
-    so_res = static_optimization(
-        cal_model,
-        qpos,
-        qvel,
-        qacc,
-        external_qfrc=ext,
-        emg_activation=emg_act,
-        config=cfg_so,
-    )
-    tracked_mask = np.isfinite(emg_act)
-    tracking_rmse = (
-        float(
-            np.sqrt(
-                np.mean((so_res.activation[tracked_mask] - emg_act[tracked_mask]) ** 2)
-            )
-        )
-        if tracked_mask.any()
-        else 0.0
-    )
-    return EMGAssistedPipelineResult(
-        calibrated_model=cal_model,
-        emg_activation=emg_act,
-        so_result=so_res,
-        emg_tracking_rmse=tracking_rmse,
-    )
+
+def __getattr__(name: str) -> Any:
+    if name in _COMPAT_ADAPTER_EXPORTS:
+        mod = importlib.import_module("myosuite.integrations.capture.emg_calibration")
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
+    "CalibrationError",
     "CalibrationTrial",
-    "EMGAssistedPipelineResult",
     "MuscleCalibrationConfig",
     "MuscleCalibrationResult",
+    "OnCalibrationFailure",
     "apply_muscle_parameters",
     "calibrate_subject_muscles",
     "compute_calibrated_emg_activations",
     "nonlinear_excitation_shape",
-    "run_emg_assisted_pipeline",
-    "trial_from_c3d",
+    "prepare_calibration_trial",
 ]

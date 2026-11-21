@@ -19,11 +19,14 @@ from myosuite.biomechanics.emg import (
 )
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics
 from myosuite.biomechanics.muscle_calibration import (
+    CalibrationError,
     CalibrationTrial,
     MuscleCalibrationConfig,
     apply_muscle_parameters,
     calibrate_subject_muscles,
     nonlinear_excitation_shape,
+)
+from myosuite.integrations.capture.emg_calibration import (
     run_emg_assisted_pipeline,
     trial_from_c3d,
 )
@@ -163,15 +166,38 @@ def test_multi_trial_ceinms_calibration_recovers_strength_and_slashes_rmse() -> 
     res = calibrate_subject_muscles(
         nominal,
         trials,
-        config=MuscleCalibrationConfig(reg_weight=1e-4, max_nfev=80),
+        config=MuscleCalibrationConfig(reg_weight=1e-4, max_nfev=250),
     )
 
-    # Caller's nominal model is never mutated.
+    # Caller's nominal model is never mutated; solver converges cleanly.
     np.testing.assert_allclose(nominal.actuator_gainprm[:, 2], orig_gain)
+    assert res.converged is True
+    assert res.status > 0
+    assert np.isfinite(res.optimality) and res.optimality >= 0.0
+    assert res.cost >= 0.0
     assert res.initial_torque_rmse > 1.2
     assert res.final_torque_rmse < 0.15 * res.initial_torque_rmse
     assert res.strength_scales["BIC"] == pytest.approx(1.45, abs=0.18)
     assert res.strength_scales["TRI"] == pytest.approx(0.68, abs=0.18)
+
+    # Budget exhaustion fails loudly by default, or records converged=False under "warn".
+    with pytest.raises(CalibrationError, match="did not converge"):
+        calibrate_subject_muscles(
+            nominal,
+            trials,
+            config=MuscleCalibrationConfig(max_nfev=2, on_failure="raise"),
+        )
+
+    with pytest.warns(RuntimeWarning, match="did not converge"):
+        unconv = calibrate_subject_muscles(
+            nominal,
+            trials,
+            config=MuscleCalibrationConfig(max_nfev=2, on_failure="warn"),
+        )
+    assert unconv.converged is False
+    assert unconv.status == 0
+    with pytest.raises(CalibrationError, match="unconverged calibration"):
+        run_emg_assisted_pipeline(trials[0], unconv)
 
 
 @dataclass
