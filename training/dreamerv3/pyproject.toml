@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-dreamerv3"
+version = "0.1.0"
+description = "DreamerV3 world-model training (Hafner et al., Nature 2025) for MyoSuite CPU (Gymnasium) and GPU (MJX / Warp) tasks"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "LICENSE-*.txt"]
+dependencies = [
+    "myosuite",
+    "elements>=3.19.1",
+    "ninjax>=3.5.1",
+    "portal>=3.5.0",
+    "scope>=0.4.4",
+    "granular>=0.20.3",
+    "google-resumable-media>=2.7.2",
+    "jax>=0.4.33",
+    "jaxtyping",
+    "optax>=0.2.2",
+    "chex>=0.1.86",
+    "einops>=0.8.0",
+    "cloudpickle>=3.0.0",
+    "colored_traceback",
+    "ruamel.yaml>=0.18.0",
+    "av>=12.0.0",
+    "pillow>=10.0.0",
+    "psutil>=5.9.0",
+    "tqdm>=4.66.0",
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+rl = ["stable-baselines3>=2.7.1"]
+mjlab = [
+    "myosuite[mjlab]",
+]
+mjx = [
+    "mujoco-mjx>=3.7,<4; sys_platform != 'win32' and sys_platform != 'darwin'",
+    "brax>=0.10.0; sys_platform != 'win32' and sys_platform != 'darwin'",
+    "flax>=0.8.0; sys_platform != 'win32' and sys_platform != 'darwin'",
+    "warp-lang>=1.11; sys_platform != 'win32'",
+]
+onnx = [
+    "torch>=2.0",
+    "onnx>=1.15.0",
+    "onnxruntime>=1.17.0",
+]
+hf = [
+    "huggingface_hub>=0.24.0",
+]
+test = ["pytest>=9.0"]
+
+[project.scripts]
+dreamerv3-train = "myosuite_dreamerv3.train:main"
+dreamerv3-train-mjlab = "myosuite_dreamerv3.mjlab_driver:main"
+dreamerv3-train-mjx = "myosuite_dreamerv3.train_mjx:main"
+dreamerv3-bench = "myosuite_dreamerv3.benchmark:main"
+dreamerv3-export = "myosuite_dreamerv3.export:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_dreamerv3*"]
