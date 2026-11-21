@@ -108,6 +108,10 @@ def enclosure_margins(
     d_high = hi - site_pos
     parts = [d_low, d_high]
 
+    if (plane_normals is None) != (plane_offsets is None):
+        raise ValueError(
+            "plane_normals and plane_offsets must both be provided or both be None"
+        )
     if plane_normals is not None and plane_offsets is not None:
         normals = _as_xp_array(xp, plane_normals, site_pos)
         offsets = _as_xp_array(xp, plane_offsets, site_pos)
@@ -118,9 +122,13 @@ def enclosure_margins(
             else xp.maximum(norm_len, 1e-12)
         )
         unit_n = normals / norm_safe
+        norm_flat = (
+            norm_safe.squeeze(-1) if _is_torch(xp) else xp.squeeze(norm_safe, axis=-1)
+        )
+        unit_d = offsets / norm_flat
         expanded = _expand_axis(xp, site_pos, -2) * unit_n
         proj = xp.sum(expanded, dim=-1) if _is_torch(xp) else xp.sum(expanded, axis=-1)
-        parts.append(proj - offsets)
+        parts.append(proj - unit_d)
 
     if _is_torch(xp):
         return xp.cat(parts, dim=-1)

@@ -17,6 +17,7 @@ from myosuite.terms.spatial import (
     boundary_proximity_obs,
     enclosure_clearance_reward,
     enclosure_contact_penalty,
+    enclosure_margins,
 )
 
 pytestmark = pytest.mark.tier1
@@ -191,3 +192,64 @@ def test_enclosure_clearance_reward_cpu_and_torch_batch_parity() -> None:
     np.testing.assert_allclose(res_np["dense"], res_t["dense"].numpy(), atol=1e-6)
     np.testing.assert_array_equal(res_np["solved"], res_t["solved"].numpy())
     np.testing.assert_array_equal(res_np["done"], res_t["done"].numpy())
+
+
+def test_non_unit_plane_normal_scales_offset_in_numpy_and_torch() -> None:
+    # Plane 2*x - 2 >= 0 <=> x >= 1.0; at p = (1.5, 0, 0), signed Euclidean clearance is +0.5 m.
+    pos_np = np.array([[1.5, 0.0, 0.0]], dtype=np.float32)
+    bounds_lo = (-10.0, -10.0, -10.0)
+    bounds_hi = (10.0, 10.0, 10.0)
+
+    margins_non_unit = enclosure_margins(
+        np,
+        pos_np,
+        bounds_lo,
+        bounds_hi,
+        plane_normals=[[2.0, 0.0, 0.0]],
+        plane_offsets=[2.0],
+    )
+    margins_unit = enclosure_margins(
+        np,
+        pos_np,
+        bounds_lo,
+        bounds_hi,
+        plane_normals=[[1.0, 0.0, 0.0]],
+        plane_offsets=[1.0],
+    )
+    assert float(margins_non_unit[0, 6]) == pytest.approx(0.5)
+    np.testing.assert_allclose(margins_non_unit, margins_unit, atol=1e-6)
+
+    acc_np = _SpatialAccessor(pos_np[None, ...], np, batched=True)
+    state = {
+        "enclosure_site_ids": [0],
+        "bounds_low": bounds_lo,
+        "bounds_high": bounds_hi,
+        "plane_normals": [[2.0, 0.0, 0.0]],
+        "plane_offsets": [2.0],
+    }
+    res_np = enclosure_clearance_reward(acc_np, state, terminate_on_violation=True)
+    assert float(res_np["min_clearance"][0]) == pytest.approx(0.5)
+    assert bool(res_np["solved"][0]) is True
+    assert bool(res_np["done"][0]) is False
+
+    with pytest.raises(ValueError, match="plane_normals and plane_offsets"):
+        enclosure_margins(
+            np, pos_np, bounds_lo, bounds_hi, plane_normals=[[1.0, 0.0, 0.0]]
+        )
+
+    torch = pytest.importorskip("torch")
+    pos_t = torch.tensor(pos_np[None, ...])
+    margins_t = enclosure_margins(
+        torch,
+        pos_t,
+        bounds_lo,
+        bounds_hi,
+        plane_normals=[[2.0, 0.0, 0.0]],
+        plane_offsets=[2.0],
+    )
+    assert float(margins_t[0, 0, 6].item()) == pytest.approx(0.5)
+    acc_t = _SpatialAccessor(pos_t, torch, batched=True)
+    res_t = enclosure_clearance_reward(acc_t, state, terminate_on_violation=True)
+    assert float(res_t["min_clearance"][0].item()) == pytest.approx(0.5)
+    assert bool(res_t["solved"][0].item()) is True
+    assert bool(res_t["done"][0].item()) is False
