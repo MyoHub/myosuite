@@ -64,6 +64,10 @@ def test_trc_write_read_roundtrip_and_gap_filling(tmp_path: Path) -> None:
     )
     loaded = read_markers(trc_path)
     assert loaded.names == ("r_heel", "m2") and loaded.rate == rate
+    assert loaded.missing_mask.shape == (30, 2)
+    assert loaded.missing_mask[5:8, 0].all()
+    assert loaded.missing_mask[15:24, 1].all()
+    assert not loaded.missing_mask[0, 0]
     assert np.isnan(loaded.positions[5:8, 0]).all()
     assert np.isnan(loaded.positions[15:24, 1]).all()
     finite = np.isfinite(gapped)
@@ -163,6 +167,15 @@ def test_c3d_trial_mock_and_force_plate_qfrc_balances_standing_body(
     np.testing.assert_allclose(qfrc[:2, 2], id_static[:, 2], atol=1e-10)
     # Ankle hinge axis +Y receives lever-arm moment -(cop_x - ankle_x) * Fz = -0.05 * weight_n.
     np.testing.assert_allclose(qfrc[:2, 6], -0.05 * weight_n, atol=1e-10)
+
+    from myosuite.biomechanics import external_loads, mocap_io
+    from myosuite.integrations import capture
+
+    assert mocap_io.read_markers is capture.read_markers
+    assert mocap_io.read_c3d_trial is capture.read_c3d_trial
+    assert mocap_io.write_trc is capture.write_trc
+    assert mocap_io.fill_marker_gaps is capture.fill_marker_gaps
+    assert mocap_io.force_plates_to_qfrc is external_loads.force_plates_to_qfrc
 
 
 def test_real_ezc3d_binary_roundtrip(tmp_path: Path) -> None:

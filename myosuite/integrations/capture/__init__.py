@@ -3,8 +3,26 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Motion-capture file readers used by :func:`myosuite.core.retargeting.retarget`.
+"""Motion-capture file I/O (OpenSim TRC, C3D markers/analogs/force plates, CSV)."""
 
-The readers are private: pass a ``.trc``, ``.c3d`` or landmark ``.csv`` path to
-``retarget`` instead of calling them.
-"""
+from myosuite.integrations.capture.markers import (
+    C3DTrial,
+    ForcePlateData,
+    MarkerClip,
+    fill_marker_gaps,
+    open_c3d,
+    read_c3d_trial,
+    read_markers,
+    write_trc,
+)
+
+__all__ = [
+    "C3DTrial",
+    "ForcePlateData",
+    "MarkerClip",
+    "fill_marker_gaps",
+    "open_c3d",
+    "read_c3d_trial",
+    "read_markers",
+    "write_trc",
+]
