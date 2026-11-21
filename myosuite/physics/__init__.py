@@ -45,19 +45,33 @@ from myosuite.physics.base_excitation import (
     StochasticBaseProfile,
     inertial_body_wrenches,
 )
+from myosuite.physics.disturbance_profiles import (
+    BoundedJerkProfile,
+    DiscreteGustProfile,
+    DrydenTurbulenceProfile,
+    GaitOscillationProfile,
+    RoadRoughnessProfile,
+    load_imu_base_profile,
+)
 from myosuite.physics.fatigue import CumulativeFatigue
 
 __all__ = [
     "BaseExcitationProfile",
     "BaseKinematics",
+    "BoundedJerkProfile",
     "CompositeBaseProfile",
     "CumulativeFatigue",
     "CumulativeFatigueJax",
+    "DiscreteGustProfile",
+    "DrydenTurbulenceProfile",
+    "GaitOscillationProfile",
     "HarmonicBaseProfile",
     "PulseBaseProfile",
     "RecordedBaseProfile",
+    "RoadRoughnessProfile",
     "StochasticBaseProfile",
     "inertial_body_wrenches",
+    "load_imu_base_profile",
 ]
 
 
