@@ -89,3 +89,14 @@ def test_ergonomics_wrapper_reuses_host_fatigue_and_supports_wrapper_spec() -> N
 def test_ergonomics_config_validates_bounds(bad_kwargs: dict) -> None:
     with pytest.raises(ValueError):
         ErgonomicsConfig(**bad_kwargs)
+
+
+def test_ergonomics_wrapper_rejects_non_cpu_mujoco_env() -> None:
+    import gymnasium as gym
+
+    class _DummyEnv(gym.Env):
+        observation_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
+        action_space = gym.spaces.Box(-1.0, 1.0, shape=(1,), dtype=np.float32)
+
+    with pytest.raises(TypeError, match="CPU MuJoCo Gymnasium environment"):
+        ErgonomicsWrapper(_DummyEnv())

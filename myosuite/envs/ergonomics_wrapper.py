@@ -3,7 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Gymnasium wrapper recording per-step musculoskeletal ergonomics telemetry."""
+"""CPU MuJoCo Gymnasium wrapper recording per-step musculoskeletal ergonomics telemetry."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from myosuite.biomechanics.effort import (
     muscle_saturation_bounds,
     squared_activation,
 )
-from myosuite.envs.wrappers import _ForwardPublicAttributes
+from myosuite.envs.wrappers import ForwardPublicAttributes
 from myosuite.physics.fatigue import CumulativeFatigue
 
 
@@ -74,8 +74,12 @@ class ErgonomicsConfig:
             )
 
 
-class ErgonomicsWrapper(_ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper):
-    """Gymnasium wrapper populating ``info["ergonomics"]`` on ``reset()`` and ``step()``.
+class ErgonomicsWrapper(ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper):
+    """CPU Gymnasium wrapper populating ``info["ergonomics"]`` on ``reset()`` and ``step()``.
+
+    Requires a CPU MuJoCo Gymnasium environment whose ``unwrapped`` exposes
+    ``mujoco.MjModel`` and ``mujoco.MjData`` (batched ``mjlab`` tensor environments
+    are not supported by this wrapper).
 
     Tracks six normalized musculoskeletal quantities in ``[0, 1]``:
     - ``instantaneous_effort``: mean squared muscle activation ``mean_m a_m^2``.
@@ -124,7 +128,13 @@ class ErgonomicsWrapper(_ForwardPublicAttributes, RecordConstructorArgs, gym.Wra
         self.config = cfg
 
         base = self.unwrapped
-        model = base.model
+        model = getattr(base, "model", None)
+        data = getattr(base, "data", None)
+        if not isinstance(model, mujoco.MjModel) or not isinstance(data, mujoco.MjData):
+            raise TypeError(
+                "ErgonomicsWrapper requires a CPU MuJoCo Gymnasium environment exposing "
+                "MjModel and MjData (mjlab tensor environments are not supported)."
+            )
         frame_skip = int(getattr(base, "frame_skip", 10))
 
         self._fatigue_observer: CumulativeFatigue | None = None
