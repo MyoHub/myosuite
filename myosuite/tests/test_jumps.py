@@ -28,6 +28,8 @@ FOOT = np.array([1, 2, 0])
 R = np.array([0.03, 0.03, 0.10])
 COM_UP = 1.0
 FOOT_DROP = COM_UP - 0.03  # foot sphere centre at 3 cm, lowest point on the ground
+# grounded feet penetrate 1 mm: their contact patch reaches this far behind the sphere centre
+PATCH = math.sqrt(0.03**2 - 0.029**2)
 
 
 def body(com, two_feet_down=True, right_only=False):
@@ -102,7 +104,7 @@ def test_long_jump_mark_matches_ballistic_flight():
     assert r["takeoff_toe_fwd"] == pytest.approx(
         x0 - 8.0 * DT + 0.03, abs=1e-6
     )  # foot front surface
-    assert r["mark_m"] == pytest.approx(land - spec.line_fwd, abs=1e-6)
+    assert r["mark_m"] == pytest.approx(land - PATCH - spec.line_fwd, abs=1e-6)
     # airborne control steps x dt: the landing frame is not airborne, so one step under the sampled flight
     assert r["flight_time_s"] == pytest.approx(t_flight - DT, abs=1e-9)
     # midpoint estimate of the take-off vz: within g dt / 2 of the true 3.0 m/s
@@ -146,7 +148,9 @@ def test_long_jump_nearest_break_counts():
     path += [((land - 0.4, 0.0, COM_UP), (0.0, 0.0, 0.0))] * 40
     run_path(j, path)
     r = j.finalize(0)
-    assert r["mark_m"] == pytest.approx(land - 0.4 - LONG_JUMP.line_fwd, abs=1e-6)
+    assert r["mark_m"] == pytest.approx(
+        land - 0.4 - PATCH - LONG_JUMP.line_fwd, abs=1e-6
+    )
 
 
 def _high_path(spec, vz, vx=4.0):
@@ -199,7 +203,8 @@ def test_high_jump_under_the_bar():
         ((x, 0.0, COM_UP), (5.0, 0.0, 0.0)) for x in np.arange(12.0, 17.0, 5.0 * DT)
     ]
     run_path(j, path)
-    assert j.finalize(0)["outcome"] == "under"
+    # the feet reach the ground past the bar's nearer edge before the body passes under it (TR27.2)
+    assert j.finalize(0)["outcome"] in ("under", "ground_beyond")
 
 
 def test_high_jump_ducking_under_through_a_collider_gap_is_not_a_clearance():
@@ -229,7 +234,7 @@ def test_high_jump_ducking_under_through_a_collider_gap_is_not_a_clearance():
         if out["done"][0]:
             break
     r = j.finalize(0)
-    assert r["outcome"] in ("under", "through") and not r["cleared"]
+    assert r["outcome"] in ("under", "through", "ground_beyond") and not r["cleared"]
 
 
 # regression cases from the review (judge v2) ---------------------------------------------------------------
@@ -318,5 +323,75 @@ def test_long_jump_delayed_backward_contact_inside_window():
     path += [((land - 0.5, 0.0, COM_UP), (0.0, 0.0, 0.0))] * 10
     run_path(j, path)
     assert j.finalize(0)["mark_m"] == pytest.approx(
-        land - 0.5 - LONG_JUMP.line_fwd, abs=1e-6
+        land - 0.5 - PATCH - LONG_JUMP.line_fwd, abs=1e-6
     )
+
+
+# regression cases from the rules review (judge v4) --------------------------------------------------------
+
+
+def _hj_step(j, pts, rad, com_up=1.0):
+    pts = np.asarray(pts, float)
+    return j.update(
+        DT,
+        pts[None],
+        pts[None],
+        np.asarray(rad, float),
+        np.array([[pts[0, 0], 0, com_up]]),
+        np.array([[6.0, 0, 0]]),
+        np.array([com_up]),
+        0.3,
+    )
+
+
+def test_high_jump_ground_plane_is_the_bars_nearer_edge():
+    j = JumpJudge(HIGH_JUMP, 1, np.array([1]), names=["f"])
+    j.reset(0)
+    j.phase[0] = 1  # airborne candidate
+    out = _hj_step(j, [[14.99, 0.0, 0.029]], [0.03])
+    assert out["done"][0] and j.finalize(0)["outcome"] == "ground_beyond"
+
+
+def test_high_jump_clearance_recognised_before_landing():
+    j = JumpJudge(high_jump_at(0.5), 1, np.array([1]), names=["f"])
+    j.reset(0)
+    j.phase[0] = 1
+    fs = {
+        "t": 0,
+        "t_off": 0,
+        "toe_fwd": 14.0,
+        "feet": [1],
+        "nonfoot": False,
+        "com_vel_off": [5, 0, 2],
+        "com_up": 1.0,
+        "com_fwd": 14.0,
+    }
+    j.flight_start[0] = fs
+    j = JumpJudge(high_jump_at(0.1), 1, np.array([1]), names=["f"])
+    j.reset(0)
+    j.phase[0] = 1
+    j.flight_start[0] = fs
+    _hj_step(j, [[14.9, 0.0, 0.3]], [0.03])
+    _hj_step(j, [[15.0, 0.0, 0.2]], [0.03])
+    out = _hj_step(
+        j, [[15.2, 0.0, 0.029]], [0.03]
+    )  # past the far edge on the same step as the landing contact
+    assert out["done"][0] and j.finalize(0)["outcome"] == "cleared"
+
+
+def test_high_jump_sweep_catches_sub_millimetre_overlap():
+    j = JumpJudge(HIGH_JUMP, 1, np.array([0]), names=["s"])
+    j.reset(0)
+    for x in (14.91, 15.11):
+        out = _hj_step(j, [[x, 0.0, 1.0299]], [0.03], 1.03)
+        if out["done"][0]:
+            break
+    assert j.finalize(0)["outcome"] == "knocked"
+
+
+def test_long_jump_footprint_includes_contact_patch():
+    from myosuite.envs.myo.tasks.basic.full_body.jumps import _footprint_fwd
+
+    p = np.array([[[25.0, 0.0, 0.09]]])
+    touch, fmin, fmax = _footprint_fwd(p, p, np.array([[0.10]]), 0.0)
+    assert touch[0, 0] and fmin[0, 0] == pytest.approx(25 - math.sqrt(0.1**2 - 0.09**2))

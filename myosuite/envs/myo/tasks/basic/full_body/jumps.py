@@ -40,7 +40,7 @@ import numpy as np
 
 # phases
 APPROACH, AIRBORNE_CANDIDATE, LANDED, DONE = 0, 1, 2, 3
-JUDGE_VERSION = "3"  # bump when a rule or metric definition changes
+JUDGE_VERSION = "4"  # bump when a rule or metric definition changes
 
 
 @dataclass(frozen=True)
@@ -62,11 +62,11 @@ class JumpSpec:
     mark_window_s: float = (
         1.0  # long: landing contacts that count towards the mark (timed surrogate)
     )
-    sweep_substeps: int = (
-        8  # high: bar contact tested at this many points between control samples
-    )
+    # high: bar contact is tested on the swept motion between control samples, at points no further apart than
+    # this (m); the minimum gap then errs by at most half of it (1 mm)
+    sweep_step: float = 0.002
     crossed_margin: float = (
-        0.05  # high: every collider this far past the bar plane = cleared
+        0.0  # high: cleared once every collider is this far past the bar's far edge
     )
     # reward weights (training; the benchmark reads the metrics, not the return)
     lambda_mark: float = 2.0  # long: once per valid jump, per metre of mark
@@ -85,7 +85,7 @@ class JumpSpec:
 
 LONG_JUMP = JumpSpec("long", line_fwd=20.0)
 HIGH_JUMP = JumpSpec("high", line_fwd=15.0, bar_height=1.0, approach_v_cap=6.0)
-# benchmark ladder (bar centre heights, m) for "best height cleared"
+# benchmark ladder (official bar heights, ground to the top of the bar, m) for "best height cleared"
 HIGH_JUMP_LADDER = (0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
 
 
@@ -159,10 +159,17 @@ def _footprint_fwd(a, b, radius, eps):
     ps = a + ts[..., None] * (b - a)
     e1 = np.where(ina[..., None], a, ps)
     e2 = np.where(inb[..., None], b, ps)
+    # half-width of the contact patch around a penetrating end (a sphere of radius r cut by the ground plane)
+    h1 = np.sqrt(np.maximum(radius**2 - (e1[..., 2] - eps) ** 2, 0.0)) * (
+        e1[..., 2] < radius + eps
+    )
+    h2 = np.sqrt(np.maximum(radius**2 - (e2[..., 2] - eps) ** 2, 0.0)) * (
+        e2[..., 2] < radius + eps
+    )
     return (
         ina | inb,
-        np.minimum(e1[..., 0], e2[..., 0]),
-        np.maximum(e1[..., 0], e2[..., 0]),
+        np.minimum(e1[..., 0] - h1, e2[..., 0] - h2),
+        np.maximum(e1[..., 0] + h1, e2[..., 0] + h2),
     )
 
 
@@ -445,8 +452,10 @@ class JumpJudge:
         # bar contact on the swept motion since the previous control sample (3-D segment distance)
         gap = self._bar_gap(a, b, radius)
         if np.isfinite(pa).all():
-            for k in range(1, s.sweep_substeps):
-                al = k / s.sweep_substeps
+            disp = max(float(np.abs(a - pa).max()), float(np.abs(b - pb).max()))
+            ns = min(500, max(1, math.ceil(disp * math.sqrt(3) / s.sweep_step)))
+            for k in range(1, ns):
+                al = k / ns
                 gap = np.minimum(
                     gap, self._bar_gap(pa + al * (a - pa), pb + al * (b - pb), radius)
                 )
@@ -522,11 +531,9 @@ class JumpJudge:
                 )
                 return fail(outcome, **kw)
             self.crossed_above[w] = True
-        if any_touch and (touch & (fmax > L)).any():
-            return fail(
-                "ground_beyond"
-            )  # touched the ground past the bar plane before clearing (TR27.2)
-        if rear > L + s.crossed_margin:
+        if (
+            rear > L + s.bar_radius + s.crossed_margin
+        ):  # every collider past the bar's far edge: cleared
             if (
                 self.phase[w] != AIRBORNE_CANDIDATE
             ):  # past the plane without a judged flight (not reachable over a bar)
@@ -542,6 +549,9 @@ class JumpJudge:
                 com_rise_m=r["flight_peak_up"] - r.get("takeoff_com_up", np.nan),
             )
             return True, (0.0 if two_feet else s.lambda_clear) + bonus, True
+        # touched the ground beyond the vertical plane through the bar's nearer edge before clearing (TR27.2)
+        if any_touch and (touch & (fmax > L - s.bar_radius)).any():
+            return fail("ground_beyond")
         if not susp and pelvis_up < fall_height:
             return fail("fallen")
         return False, bonus, susp

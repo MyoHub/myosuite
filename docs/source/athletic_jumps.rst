@@ -25,13 +25,13 @@ Events
        ground to the top of the bar (TR26); bar = static collider
    * - Valid attempt
      - the flight that leaves the ground behind the line and lands beyond it
-     - every body collider passes the bar plane above the bar, without touching it, after a one-foot take-off
+     - every body collider passes beyond the bar's far edge, above the bar, without touching it, after a one-foot take-off
    * - Fails
      - foul (the take-off foot breaks the plane of the line before leaving the ground, TR30.1.1); simulation
        endings (fall, off the runway, not facing, stalled)
-     - knocked (collider touches the bar, tested on the swept motion between control steps), under / through
-       (a body part passes below the bar), run-out past the standards, ground contact beyond the bar plane
-       before clearing (TR27.2), two-foot take-off (TR27.1), simulation endings
+     - knocked (collider touches the bar, tested on the swept motion between control steps, sampled every 2 mm), under / through
+       (a body part passes below the bar), run-out past the standards, ground contact beyond the plane of the
+       bar's nearer edge before clearing (TR27.2), two-foot take-off (TR27.1), simulation endings
    * - Score
      - mark: line to the nearest ground-footprint point of any body part within 1 s of landing (a timed
        flat-ground surrogate of the "nearest break")
@@ -75,7 +75,7 @@ Checked against the World Athletics Technical Rules, 2026 edition.
        parts breaking the plane do not count (as in the rule); a body part other than a foot on the ground
        beyond the line before the jump ends the attempt as ``fallen``
    * - TR29 measurement (nearest break, perpendicular to the line, down to the centimetre)
-     - approximated: no sand, so the nearest point of the ground footprint within 1 s of landing (``mark_m``;
+     - approximated: no sand, so the nearest point of the ground footprint (contact patches included) within 1 s of landing (``mark_m``;
        ``mark_official_m`` rounded down to the centimetre)
    * - TR30.3.1 running outside the runway lines is not a failure
      - not followed: the sprint lane rule (``toes_out``) still ends the run-up, a simulation ending (it also
