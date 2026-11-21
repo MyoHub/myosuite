@@ -48,6 +48,7 @@ from supermimic.networks import (
     WorldModel,
 )
 from supermimic.optim import MuonAdam, gated_step
+from supermimic.pods import MedianRowClip, pods_targets
 from supermimic.heads import (
     NUM_TOUCH,
     _goal,
@@ -289,6 +290,11 @@ class SuperMimicRunner:
             else None
         )
         self._build_networks()
+        assert (
+            cfg.pods_iters >= 1 and cfg.pods_batch >= 1
+        ), "pods: pods_iters and pods_batch must be positive"
+        # pods: the annealed target step, a device tensor filled every iteration (read inside the captured update)
+        self.pods_delta = torch.tensor(float(cfg.pods_step), device=device)
         self.it, self.wall_offset, self.sim_steps = 0, 0.0, 0
         self._decay_at = None  # lr_decay_ret: the iteration the policy learning-rate decay was triggered at
         self.mirror = (
@@ -466,16 +472,21 @@ class SuperMimicRunner:
         ).sum() / s1.shape[0]
         return loss, e[:, -1], (e_touch * mask).sum() / mask.sum().clamp(min=1)
 
-    def _imag_step(self, S, hist, f, a_last):
+    def _imag_step(self, S, hist, f, a_last, probe=None, d=None):
         """One imagined step from S. Also returns the critic input of S (detached), for the critic's targets: it is
         made of the observation the policy reads here (the observation has no history), so every imagined state's
-        muscle geometry is evaluated once."""
+        muscle geometry is evaluated once. ``probe``: act_grad_clip's statistics leaf; ``d``: pods' zero offset on the
+        action, after the clip, whose gradient is dJ/da_t."""
         ctx = StepCtx(S, f, a_last)
         obs, goal = (
             self.obs_policy.assemble(hist, ctx),
             self.obs_goal.assemble(None, ctx),
         )
         a = self.pi(obs, goal)
+        if probe is not None:
+            a = MedianRowClip.apply(a, probe, self.cfg.act_grad_clip)
+        if d is not None:
+            a = a + d
         x = torch.cat((obs, goal, self.heads.critic_extras(ctx)), -1).detach()
         act1, _ = self.muscle.step(S[6], a)
         body1, touch_n = self.wm_imag.step(S, S[6], act1)
@@ -492,11 +503,15 @@ class SuperMimicRunner:
         G = self.obs_goal.assemble(None, StepCtx(None, F))
         return G.view(H, f.shape[0], -1), self.pi.encode(G).view(H, f.shape[0], -1)
 
-    def _imag_step_z(self, S, hist, f, a_last, z, goal):
+    def _imag_step_z(self, S, hist, f, a_last, z, goal, probe=None, d=None):
         """_imag_step with the step's goal and latent given (hoist_goal)."""
         ctx = StepCtx(S, f, a_last)
         obs = self.obs_policy.assemble(hist, ctx)
         a = self.pi.decode(z, obs)
+        if probe is not None:
+            a = MedianRowClip.apply(a, probe, self.cfg.act_grad_clip)
+        if d is not None:
+            a = a + d
         x = torch.cat((obs, goal, self.heads.critic_extras(ctx)), -1).detach()
         act1, _ = self.muscle.step(S[6], a)
         body1, touch_n = self.wm_imag.step(S, S[6], act1)
@@ -548,6 +563,13 @@ class SuperMimicRunner:
         return c.lr * (
             0.03 + 0.97 * 0.5 * (1 + math.cos(math.pi * it / c.lr_decay_iters))
         )
+
+    def pods_step_at(self, it: int) -> float:
+        """pods: the RMS target step, on the learning rate's cosine from pods_step down to pods_step_floor x it."""
+        c = self.cfg
+        frac = min(it / max(c.lr_decay_iters, 1), 1.0)
+        fl = c.pods_step_floor
+        return c.pods_step * (fl + (1.0 - fl) * 0.5 * (1.0 + math.cos(math.pi * frac)))
 
     # ------------------------------------------------------------------ updates
     def _mirror_windows(self, w: dict, n: int) -> dict:
@@ -625,8 +647,20 @@ class SuperMimicRunner:
         set_requires_grad(self.critic, False)
         S0 = S
         Ss, As, Aps, Fs = [], [], [], []
-        if c.use_critic:  # critic inputs of S_0 .. S_H, written in place (MS-Human-700: ~2 GB at 4096 x 33 states)
+        # critic inputs of S_0 .. S_H, written in place (MS-Human-700: ~2 GB at 4096 x 33 states); pods regresses on
+        # the policy inputs they start with
+        if c.use_critic or c.pods:
             X = torch.empty(HZ + 1, B, self.critic.norm.mean.shape[0], device=dev)
+        probe = (
+            torch.zeros(2, device=dev, requires_grad=True)
+            if c.act_grad_clip > 0
+            else None
+        )
+        ds = (
+            [torch.zeros(B, self.nm, device=dev, requires_grad=True) for _ in range(HZ)]
+            if c.pods
+            else None
+        )
         step = self.imag_step
         if c.remat_imagination:  # recompute each step in the backward pass instead of keeping its activations
 
@@ -642,10 +676,14 @@ class SuperMimicRunner:
         clipped = []  # per imagined step (filled by the backward pass): fraction of trajectories clipped
         for t in range(HZ):
             Aps.append(a_last)
+            on = probe is not None or ds is not None
+            extra = (probe, ds[t] if ds is not None else None) if on else ()
             if c.hoist_goal:
-                S, a_last, hist, f, x = self.imag_step_z(S, hist, f, a_last, Z[t], G[t])
+                S, a_last, hist, f, x = self.imag_step_z(
+                    S, hist, f, a_last, Z[t], G[t], *extra
+                )
             else:
-                S, a_last, hist, f, x = step(S, hist, f, a_last)
+                S, a_last, hist, f, x = step(S, hist, f, a_last, *extra)
             if c.state_grad_clip > 0:
                 live = [i for i, xh in enumerate(hist) if xh is not None]
                 out = ClipRowGrad.apply(
@@ -655,7 +693,7 @@ class SuperMimicRunner:
                 for i, xh in zip(live, out[len(S) + 1 :], strict=True):
                     hist[i] = xh
             Ss.append(S), As.append(a_last), Fs.append(f)
-            if c.use_critic:
+            if c.use_critic or c.pods:
                 X[t] = x
         flat = lambda xs: torch.stack(xs).flatten(0, 1)  # noqa: E731  (H*B, ...)
         S_all = tuple(flat([St[i] for St in Ss]) for i in range(len(S0)))
@@ -682,21 +720,15 @@ class SuperMimicRunner:
             X[HZ] = x_last.detach()
             J = J + (c.gamma**HZ) * surv * self.value(x_last)
         loss = -J.mean()
-        self.opt_pi.zero_grad(set_to_none=True)
-        loss.backward()
-        gn = nn.utils.clip_grad_norm_(self.pi.parameters(), c.grad_clip)
-        nn.utils.clip_grad_value_(self.pi.parameters(), c.policy_grad_clip_value)
-        if c.no_sync:
-            # skip a non-finite update without a host read: zero the gradients on the device and gate the optimizer step
-            # (parameters and optimizer state unchanged); counted in the log column nonfinite
-            finite = torch.isfinite(gn)
-            self.nonfinite.add_((~finite).long())
-            for p in self.pi.parameters():
-                if p.grad is not None:
-                    p.grad.copy_(torch.where(finite, p.grad, 0.0))
-            gated_step(self.opt_pi, finite)
-        elif torch.isfinite(gn):
-            self.opt_pi.step()
+        if c.pods:
+            gn, xstats = self._pods_update(loss, ds, probe, As, X, HZ, B)
+        else:
+            self.opt_pi.zero_grad(set_to_none=True)
+            loss.backward()
+            gn = self._pi_step()
+            xstats = None
+            if probe is not None:
+                xstats = probe.grad / HZ
         self.ema_update()
         clip_frac = (
             torch.stack(clipped).mean() if clipped else torch.zeros((), device=dev)
@@ -734,7 +766,60 @@ class SuperMimicRunner:
                     self.opt_v.step()
             self.update_critic_targ()
         return (loss.detach(), v_loss.detach(), (r_sum / HZ / self.max_step_reward).mean(), gn.detach(), surv.mean().detach(),
-                clip_frac)  # fmt: skip
+                clip_frac) + ((xstats.detach(),) if xstats is not None else ())  # fmt: skip
+
+    def _pi_step(self):
+        """Clip the policy gradients and take the optimizer step, skipped if they are not finite. Returns the norm."""
+        c = self.cfg
+        gn = nn.utils.clip_grad_norm_(self.pi.parameters(), c.grad_clip)
+        nn.utils.clip_grad_value_(self.pi.parameters(), c.policy_grad_clip_value)
+        if c.no_sync:
+            # skip a non-finite update without a host read: zero the gradients on the device and gate the optimizer step
+            # (parameters and optimizer state unchanged); counted in the log column nonfinite
+            finite = torch.isfinite(gn)
+            self.nonfinite.add_((~finite).long())
+            for p in self.pi.parameters():
+                if p.grad is not None:
+                    p.grad.copy_(torch.where(finite, p.grad, 0.0))
+            gated_step(self.opt_pi, finite)
+        elif torch.isfinite(gn):
+            self.opt_pi.step()
+        return gn
+
+    PODS_STATS = ("eta", "used", "nonfinite", "clip", "reg_loss", "dq_rms")
+
+    def _pods_update(self, loss, ds, probe, As, X, HZ: int, B: int):
+        """pods: targets a_t + eta dJ/da_t from the window, then pods_iters regression steps of the policy onto them.
+
+        Returns the last step's gradient norm and the statistics (act_grad_clip's two, then PODS_STATS) as one tensor.
+        """
+        c = self.cfg
+        grads = torch.autograd.grad(loss, ds + ([probe] if probe is not None else []))
+        # (H*B, nm) ascent direction of J (the loss is -J.mean())
+        g = -torch.stack(grads[:HZ]).flatten(0, 1)
+        a = torch.stack(As).detach().flatten(0, 1)
+        no, ng = self.obs_policy.dim, self.obs_goal.dim
+        x = X[:HZ].flatten(0, 1)[:, : no + ng]
+        ok = torch.isfinite(x).all(-1)
+        x = torch.where(ok[:, None], x, 0.0)
+        target, w, st = pods_targets(a, g, self.pods_delta, c.act_grad_clip, valid=ok)
+        n = x.shape[0]
+        for _ in range(c.pods_iters):
+            idx = torch.randint(0, n, (c.pods_batch,), device=x.device)
+            xb, wb = x[idx], w[idx]
+            err = (self.pi(xb[:, :no], xb[:, no:]) - target[idx]).square().mean(-1)
+            reg = (wb * err).sum() / wb.sum().clamp(min=1.0)
+            self.opt_pi.zero_grad(set_to_none=True)
+            reg.backward()
+            gn = self._pi_step()
+        with torch.no_grad():  # the RMS excitation change the update made on the last minibatch's used rows
+            da = (self.pi(xb[:, :no], xb[:, no:]) - a[idx]).square().mean(-1)
+            dq = ((wb * da).sum() / wb.sum().clamp(min=1.0)).sqrt()
+        clip = grads[HZ] / HZ if probe is not None else torch.zeros(2, device=x.device)
+        stats = torch.stack(
+            (st["eta"], st["used"], st["nonfinite"], st["clip"], reg.detach(), dq)
+        )
+        return gn, torch.cat((clip, stats))
 
     # ------------------------------------------------------------------ simulator
     @torch.no_grad()
@@ -869,7 +954,9 @@ class SuperMimicRunner:
                 wl, e8, et = wm_update()
         agg["wm"].append(wl), agg["wm8"].append(e8), agg["wmt"].append(et)
         if it >= c.wm_only_iters:
-            pl, vl, ir, gn, surv, clip = policy_update()
+            pl, vl, ir, gn, surv, clip, *xstats = policy_update()
+            if xstats:  # act_grad_clip / pods statistics
+                agg["x"].append(xstats[0])
             if c.empty_cache and str(self.device).startswith("cuda"):
                 # hand the update's cached blocks back: MuJoCo-Warp allocates outside torch's pool when it steps
                 torch.cuda.empty_cache()
@@ -960,6 +1047,7 @@ class SuperMimicRunner:
             "gn": [],
             "surv": [],
             "clip": [],
+            "x": [],
         }
         start_it = self.it
         for it in range(start_it, start_it + num_learning_iterations):
@@ -969,8 +1057,15 @@ class SuperMimicRunner:
                 pi_mult = c.pi_lr_mult + (1.0 - c.pi_lr_mult) * min(
                     1.0, (it - self._decay_at) / max(c.lr_decay_len, 1)
                 )
-            for o, k in ((self.opt_wm, 1.0), (self.opt_pi, pi_mult), (self.opt_v, 1.0)):
+            pods_mult = c.pods_lr_mult if c.pods else 1.0
+            for o, k in (
+                (self.opt_wm, 1.0),
+                (self.opt_pi, pi_mult * pods_mult),
+                (self.opt_v, 1.0),
+            ):
                 set_lr(o, lr * k)
+            if c.pods:
+                self.pods_delta.fill_(self.pods_step_at(it))
             step_acc += 1.0 / c.utd
             n = int(step_acc)
             step_acc -= n
@@ -993,7 +1088,7 @@ class SuperMimicRunner:
                        "gpu_mem_gb": torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0}  # fmt: skip
                 row.update(
                     {
-                        "pi_lr": lr * pi_mult,
+                        "pi_lr": lr * pi_mult * pods_mult,
                         "pi_mult": float(pi_mult),
                         "nonfinite": int(self.nonfinite),
                     }
@@ -1010,6 +1105,21 @@ class SuperMimicRunner:
                         )
                 if c.state_grad_clip > 0:
                     row["pi_state_clip"] = mean(agg["clip"])
+                if agg["x"]:
+                    xs = torch.stack(agg["x"]).mean(0).tolist()
+                    names = ("act_clip_frac", "act_clip_removed")
+                    if c.pods:
+                        names += tuple(f"pods_{k}" for k in self.PODS_STATS)
+                        row["pods_step"] = self.pods_step_at(it)
+                    # pods alone: the in-graph clip's slots are zeros
+                    skip = "act_clip" if c.act_grad_clip <= 0 else None
+                    row.update(
+                        {
+                            k: v
+                            for k, v in zip(names, xs, strict=True)
+                            if skip is None or not k.startswith(skip)
+                        }
+                    )
                 if stats["r_terms"]:
                     terms = torch.stack(stats["r_terms"]).mean(0).tolist()
                     row.update(

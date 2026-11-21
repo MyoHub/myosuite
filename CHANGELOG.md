@@ -24,6 +24,7 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **myoSuperMimic: PODS-style action targets (opt-in, `training/supermimic`).** `--agent.pods` replaces the policy's step on the window gradient with regression onto targets `a_t + eta dJ/da_t` (after NablaMimic's `--action-target`): `eta` sets the RMS step over the rows with a finite nonzero gradient to `--agent.pods-step` (annealed to `pods_step_floor` x it), `pods_iters` minibatch steps at `pods_lr_mult` x the policy learning rate. `--agent.act-grad-clip` clips each imagined step's action gradient to a multiple of the median over the rows that carry gradient, in the graph and again on the targets. Both run inside the CUDA-graphed update without host syncs; off by default, and then the runner is bitwise unchanged ([#608]).
 
 ### Fixed
 
@@ -381,6 +382,7 @@ Changes since **v3.1.0** (2026-11-11).
 * `RunTrackEnv` (`myoChallengeOslRunFixed/Random-v0`) stores `ACTUATOR_PARAM` and `OSL_PARAM_LIST` per environment instance rather than mutating shared class-level containers, and seeds `self.np_random` before constructing `TrackField`.
 * `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) perturbs and clips only `jnt_limited` coordinates instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset.
 
+[#608]: https://github.com/MyoHub/myosuite/pull/608
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#672]: https://github.com/MyoHub/myosuite/pull/672
