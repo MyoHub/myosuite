@@ -6,18 +6,22 @@
 
 Both events start like the sprint (run pose at the origin, lane rules on the runway) and are written in task axes
 (forward, side, up), so any plant adapter can feed them. Rules follow World Athletics Competition Rules (C2.1,
-rules 29 and 27) where a simulation can apply them:
+TR26-TR30, 2026 edition) where a simulation can apply them:
 
-* **Long jump.** A take-off line ``line_fwd`` m down the runway. During support, any collider of a supporting foot
-  breaking the vertical plane of the line (its forward surface, toe included, even off the ground), or any other
-  body part touching the ground beyond it, is a foul (TR 30.1). The jump is the flight that leaves the ground
+* **Long jump.** A take-off line ``line_fwd`` m down the runway. A supporting (take-off) foot breaking the
+  vertical plane of the line, at any time before it leaves the ground, is a foul (TR30.1.1; the foot's forward
+  surface, toe included, even off the ground; hands or the swing foot breaking the plane do not count). Another
+  body part touching the ground beyond the line before the jump ends the attempt as ``fallen``. The jump is the flight that leaves the ground
   behind the line and lands beyond it; the mark is measured from the line to the nearest point of the ground
   footprint of any body part within ``mark_window_s`` of landing (a timed, flat-ground surrogate of the
-  "nearest break" of TR 30.4: there is no sand and no pit-exit rule).
-* **High jump.** A bar along the side axis at ``line_fwd`` m, centre height ``bar_height``, between standards
-  ``2 * bar_half_length`` apart. The attempt fails if a body collider touches the bar (it would fall), the body
+  "nearest break", measured perpendicular to the line, TR29 Distance Measurement; ``mark_official_m`` rounds it
+  down to the centimetre). Not applied: somersaults (TR30.1.3), landing-area side borders (TR30.1.4-5: the ground
+  is one plane) and the pit-exit rule (TR30.2).
+* **High jump.** A bar along the side axis at ``line_fwd`` m, between standards
+  ``2 * bar_half_length`` apart. ``bar_height`` is the official height, from the ground to the top of the bar
+  (TR26 Height Measurement); the bar's centre is ``bar_radius`` lower. The attempt fails if a body collider touches the bar (it would fall), the body
   passes under it, the athlete runs out past the standards, touches the ground beyond the bar plane before
-  clearing, or takes off from both feet (TR 27.2). Any bar overlap fails (a conservative static-bar convention:
+  clearing, or takes off from both feet (TR27.1-27.2). Any bar overlap fails (a conservative static-bar convention:
   real bars fall only when dislodged). Bar contact is tested on the swept motion between control steps, as 3-D
   segment distances. It is cleared when every collider is past the bar plane without touching it.
 
@@ -36,16 +40,18 @@ import numpy as np
 
 # phases
 APPROACH, AIRBORNE_CANDIDATE, LANDED, DONE = 0, 1, 2, 3
-JUDGE_VERSION = "2"  # bump when a rule or metric definition changes
+JUDGE_VERSION = "3"  # bump when a rule or metric definition changes
 
 
 @dataclass(frozen=True)
 class JumpSpec:
     event: Literal["long", "high"]
     line_fwd: float  # long: take-off line; high: bar plane (task forward, m)
-    bar_height: float = 0.0  # high: bar centre height (m)
-    bar_radius: float = 0.015  # 30 mm bar (rule 27.6)
-    bar_half_length: float = 2.0  # standards 4.0 m apart (rule 27.5)
+    bar_height: float = 0.0  # high: official height, ground to the top of the bar (m, TR26); centre = - bar_radius
+    bar_radius: float = 0.015  # 30 mm crossbar (TR26 Crossbar)
+    bar_half_length: float = (
+        2.0  # 4.00 m crossbar, uprights 4.00-4.04 m apart (TR26, TR27 Apparatus)
+    )
     # ground contact: collider lowest point below this height (m). Calibrated against the plugin's ground reaction
     # force (eval_jumps.py contact_vs_grf, sprinter on both events): Bolt's penalty contact only pushes when
     # penetrating, so 0 matches GRF > 1 N on 99.8 % of steps (0 misses); 1 cm flagged 6 % of airborne steps.
@@ -102,7 +108,7 @@ def bar_scene_geoms(spec: JumpSpec) -> list[dict]:
             "body": "ground",
             "type": 3,
             "size": [r, h, r],
-            "pos": [spec.line_fwd, spec.bar_height, 0.0],
+            "pos": [spec.line_fwd, spec.bar_height - r, 0.0],
             "quat_xyzw": [0.0, 0.0, 0.0, 1.0],
             "friction": [0.8, 0.8, 0.0],
             "stiffness": 29240.177734375,
@@ -362,14 +368,21 @@ class JumpJudge:
             self.phase[w] = APPROACH  # a running stride that came down behind the line
         if self.phase[w] == APPROACH:
             if any_touch:
-                over = (sup & (front > L)) | (touch & (self.foot == 0) & (fmax > L))
-                if over.any():
+                over = sup & (front > L)
+                if (
+                    over.any()
+                ):  # TR30.1.1: the take-off foot breaks the plane of the line
                     r.update(
                         outcome="foul",
                         valid=False,
                         mark_m=0.0,
-                        foul_fwd=float(np.where(sup, front, fmax)[over].max()),
+                        foul_fwd=float(front[over].max()),
                     )
+                    return True, 0.0, False
+                if (
+                    touch & (self.foot == 0) & (fmax > L)
+                ).any():  # fell over the line before jumping
+                    r.update(outcome="fallen", valid=False, mark_m=0.0)
                     return True, 0.0, False
                 r["max_fwd_before_takeoff"] = max(
                     r["max_fwd_before_takeoff"],
@@ -397,6 +410,7 @@ class JumpJudge:
                 outcome="jump",
                 valid=True,
                 mark_m=mark,
+                mark_official_m=math.floor(mark * 100 + 1e-9) / 100,
                 effective_m=mark + r["board_gap_m"],
                 stride_like=stride,
             )
@@ -406,8 +420,9 @@ class JumpJudge:
     # high jump ----------------------------------------------------------------------------------------------
     def _bar_gap(self, a, b, radius):
         s = self.spec
-        p2 = np.array([s.line_fwd, -s.bar_half_length, s.bar_height])
-        q2 = np.array([s.line_fwd, s.bar_half_length, s.bar_height])
+        hc = s.bar_height - s.bar_radius  # bar centre
+        p2 = np.array([s.line_fwd, -s.bar_half_length, hc])
+        q2 = np.array([s.line_fwd, s.bar_half_length, hc])
         return _seg_seg_dist(a, b, p2, q2) - radius - s.bar_radius
 
     def _high(
@@ -426,7 +441,7 @@ class JumpJudge:
         fall_height,
     ):
         s, r = self.spec, self.results[w]
-        L, H = s.line_fwd, s.bar_height
+        L, H = s.line_fwd, s.bar_height - s.bar_radius  # H: bar centre
         # bar contact on the swept motion since the previous control sample (3-D segment distance)
         gap = self._bar_gap(a, b, radius)
         if np.isfinite(pa).all():
@@ -510,7 +525,7 @@ class JumpJudge:
         if any_touch and (touch & (fmax > L)).any():
             return fail(
                 "ground_beyond"
-            )  # touched the ground past the bar plane before clearing (TR 27.2.3)
+            )  # touched the ground past the bar plane before clearing (TR27.2)
         if rear > L + s.crossed_margin:
             if (
                 self.phase[w] != AIRBORNE_CANDIDATE
@@ -523,7 +538,7 @@ class JumpJudge:
                 valid=not two_feet,
                 cleared=not two_feet,
                 takeoff_dist_m=L - r.get("takeoff_toe_fwd", np.nan),
-                com_peak_minus_bar=r["flight_peak_up"] - H,
+                com_peak_minus_bar=r["flight_peak_up"] - s.bar_height,
                 com_rise_m=r["flight_peak_up"] - r.get("takeoff_com_up", np.nan),
             )
             return True, (0.0 if two_feet else s.lambda_clear) + bonus, True
