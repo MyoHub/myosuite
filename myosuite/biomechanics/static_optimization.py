@@ -123,6 +123,10 @@ class StaticOptimizationConfig:
             count), ``"raise"`` raises :class:`StaticOptimizationError`, and
             ``"nan"`` returns NaN activations and forces for it (``joint_torque``,
             ``status`` and solver diagnostics stay).
+        supported_dofs: Dof addresses whose load an external support carries
+            (a strap, a brace, a dynamometer). Their reserves cost nothing, as
+            free-joint residuals do without contacts, so the muscles crossing
+            them need not cancel their own torques there with antagonists.
     """
 
     reserve_optimal_force: float | tuple[float, ...] | None = None
@@ -135,6 +139,7 @@ class StaticOptimizationConfig:
     contact_optimal_force: float | None = None
     residual_optimal_force: float | None = None
     on_failure: OnFailure = "warn"
+    supported_dofs: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -315,6 +320,9 @@ class StaticOptimizer:
                 self._optimal_force[root] = residual
             else:
                 self._reserve_weight[root] = 0.0
+        supported = np.asarray(cfg.supported_dofs, dtype=int)
+        self._optimal_force[supported] = 1.0
+        self._reserve_weight[supported] = 0.0
         # The settings as solved, with the model-derived defaults filled in.
         self.config = replace(
             cfg,
