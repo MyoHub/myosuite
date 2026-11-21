@@ -55,6 +55,7 @@ from __future__ import annotations
 import copy
 import warnings
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace
 from typing import Any, Literal, get_args
 
@@ -116,6 +117,12 @@ class StaticOptimizationConfig:
         residual_optimal_force: Optimal force of the free-joint residuals when
             contacts are estimated [N or N m]; ``None`` is a tenth of the body
             weight. Without contacts residuals are not penalised.
+        emg_weight: Quadratic tracking weight on ``(a_i - emg_activation_i)**2``
+            for actuators with finite measured EMG targets in a frame (CEINMS-style
+            hybrid EMG-assisted mode).
+        emg_effort_weight: Effort weight on ``a_i**2`` retained for EMG-tracked
+            actuators (`0.0` tracks measured co-contraction without shrinking
+            tracked channels toward zero; unmeasured deep muscles keep weight `1.0`).
         on_failure: What to do with a frame OSQP did not solve (any status but
             ``"solved"``, e.g. ``"maximum iterations reached"``): ``"warn"``
             keeps its unconverged solution and warns
@@ -134,6 +141,8 @@ class StaticOptimizationConfig:
     contact_distance: float = 0.01
     contact_optimal_force: float | None = None
     residual_optimal_force: float | None = None
+    emg_weight: float = 10.0
+    emg_effort_weight: float = 0.0
     on_failure: OnFailure = "warn"
 
 
@@ -182,6 +191,7 @@ def _near_optimal(
     primal: np.ndarray,
     dual: np.ndarray,
     tolerance: float,
+    linear: np.ndarray | None = None,
 ) -> bool:
     """Check the previous solution against the rebuilt QP's absolute tolerance."""
     if not (np.isfinite(primal).all() and np.isfinite(dual).all()):
@@ -189,11 +199,12 @@ def _near_optimal(
     activity = matrix @ primal
     active = np.abs(dual) > tolerance
     bounds = np.where(dual[active] > 0, upper[active], lower[active])
+    grad = 2.0 * weight * primal + (0.0 if linear is None else linear) + matrix.T @ dual
     return bool(
         np.all(activity >= lower - tolerance)
         and np.all(activity <= upper + tolerance)
         and np.all(np.abs(activity[active] - bounds) <= tolerance)
-        and np.all(np.abs(2.0 * weight * primal + matrix.T @ dual) <= tolerance)
+        and np.all(np.abs(grad) <= tolerance)
     )
 
 
@@ -241,6 +252,14 @@ class StaticOptimizer:
         if cfg.on_failure not in get_args(OnFailure):
             raise ValueError(
                 f"on_failure must be one of {get_args(OnFailure)}: {cfg.on_failure!r}"
+            )
+        if not np.isfinite(cfg.emg_weight) or cfg.emg_weight <= 0:
+            raise ValueError(
+                f"emg_weight must be finite and positive: {cfg.emg_weight!r}"
+            )
+        if not np.isfinite(cfg.emg_effort_weight) or cfg.emg_effort_weight < 0:
+            raise ValueError(
+                f"emg_effort_weight must be finite and nonnegative: {cfg.emg_effort_weight!r}"
             )
         unsupported = [
             m.actuator(i).name
@@ -325,6 +344,45 @@ class StaticOptimizer:
         self._solver: osqp.OSQP | None = None
         self._pattern: np.ndarray | None = None
         self._warm_start: tuple[np.ndarray, np.ndarray] | None = None
+        self._linear: np.ndarray | None = None
+        full_names = [m.actuator(i).name for i in range(m.nu)]
+        leaf_counts = Counter(n.split("/")[-1] for n in full_names if n)
+        self._actuator_index: dict[str, int] = {}
+        for i, name in enumerate(full_names):
+            if not name:
+                continue
+            self._actuator_index[name] = i
+            leaf = name.split("/")[-1]
+            if leaf_counts[leaf] == 1:
+                self._actuator_index.setdefault(leaf, i)
+
+    def _resolve_emg_frame(
+        self, emg_activation: np.ndarray | Mapping[str, float] | None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        nu = self.model.nu
+        if emg_activation is None:
+            return np.ones(nu), np.zeros(nu)
+        if isinstance(emg_activation, Mapping):
+            targets = np.full(nu, np.nan)
+            for name, val in emg_activation.items():
+                if name not in self._actuator_index:
+                    raise KeyError(f"Unknown actuator in emg_activation: {name!r}")
+                targets[self._actuator_index[name]] = float(val)
+        else:
+            targets = np.asarray(emg_activation, dtype=float)
+            if targets.shape != (nu,):
+                raise ValueError(f"emg_activation must have shape ({nu},)")
+        if np.isinf(targets).any():
+            raise ValueError("emg_activation cannot contain infinite values")
+        tracked = np.isfinite(targets)
+        if np.any((targets[tracked] < 0.0) | (targets[tracked] > 1.0)):
+            raise ValueError("Finite emg_activation values must lie in [0, 1]")
+        w_trk = self.config.emg_effort_weight + self.config.emg_weight
+        act_w = np.where(tracked, w_trk, 1.0)
+        act_q = np.where(
+            tracked, -2.0 * self.config.emg_weight * np.nan_to_num(targets), 0.0
+        )
+        return act_w, act_q
 
     def peak_actuator_qfrc(self) -> np.ndarray:
         """Per dof, ``sum_i |R_ij| F_i`` at ``qpos0`` and rest [N m or N].
@@ -361,7 +419,11 @@ class StaticOptimizer:
         return d.actuator_force.copy()
 
     def _solve_qp(
-        self, A: np.ndarray, lower: np.ndarray, upper: np.ndarray, weight: np.ndarray
+        self,
+        A: np.ndarray,
+        lower: np.ndarray,
+        upper: np.ndarray,
+        weight: np.ndarray,
     ) -> tuple[np.ndarray | None, Any]:
         """Minimise the cost subject to ``lower <= A x <= upper``, warm-started.
 
@@ -369,21 +431,29 @@ class StaticOptimizer:
         frames only update values. A rebuild can reuse converged primal and
         dual values if they still approximately satisfy the new problem.
         """
+        n = A.shape[1]
+        linear, self._linear = self._linear, None
+        q = np.zeros(n) if linear is None else linear
         pattern = A != 0
         previous_pattern = self._pattern
         same_shape = previous_pattern is not None and previous_pattern.shape == A.shape
         if same_shape and not (pattern & ~previous_pattern).any():
-            self._solver.update(Ax=A.T[previous_pattern.T], l=lower, u=upper)
+            self._solver.update(
+                Px=2.0 * weight, q=q, Ax=A.T[previous_pattern.T], l=lower, u=upper
+            )
         else:
             if same_shape:
                 pattern |= previous_pattern
             cols, rows = np.nonzero(pattern.T)
-            indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=A.shape[1]))]
+            indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=n))]
             A_csc = sparse.csc_matrix((A[rows, cols], rows, indptr), shape=A.shape)
+            P_csc = sparse.csc_matrix(
+                (2.0 * weight, np.arange(n), np.arange(n + 1)), shape=(n, n)
+            )
             solver = osqp.OSQP()
             solver.setup(
-                sparse.diags(2.0 * weight, format="csc"),
-                np.zeros(A.shape[1]),
+                P_csc,
+                q,
                 A_csc,
                 lower,
                 upper,
@@ -397,7 +467,14 @@ class StaticOptimizer:
             if same_shape and self._warm_start is not None:
                 primal, dual = self._warm_start
                 if _near_optimal(
-                    A_csc, lower, upper, weight, primal, dual, self.config.tolerance
+                    A_csc,
+                    lower,
+                    upper,
+                    weight,
+                    primal,
+                    dual,
+                    self.config.tolerance,
+                    linear=q,
                 ):
                     solver.warm_start(x=primal, y=dual)
             self._solver, self._pattern = solver, pattern
@@ -417,6 +494,7 @@ class StaticOptimizer:
         external_qfrc: np.ndarray | None = None,
         max_activation: np.ndarray | None = None,
         min_activation: np.ndarray | None = None,
+        emg_activation: np.ndarray | Mapping[str, float] | None = None,
     ) -> StaticOptimizationResult:
         """Activations for one state.
 
@@ -431,6 +509,9 @@ class StaticOptimizer:
             min_activation: Optional ``(nu,)`` lower activation bounds for this
                 frame (e.g. the activations reachable under activation
                 dynamics), within the actuators' ranges and the upper bounds.
+            emg_activation: Optional ``(nu,)`` array or ``{actuator_name: value}``
+                mapping of normalized ``[0, 1]`` EMG targets for this frame;
+                ``NaN`` or omitted entries fall back to pure effort minimization.
 
         Returns:
             The solution of this frame.
@@ -480,13 +561,18 @@ class StaticOptimizer:
         rhs = tau - moment.T @ bias
         lower = np.r_[rhs, lo, np.zeros(n_c)]
         upper = np.r_[rhs, hi, np.full(n_c, np.inf)]
+        act_w, act_q = self._resolve_emg_frame(emg_activation)
         weight = np.r_[
-            np.ones(nu),
+            act_w,
             self._reserve_weight,
             np.full(n_eq, _CONSTRAINT_WEIGHT),
             np.ones(n_c),
         ]
-        x, solver = self._solve_qp(A, lower, upper, weight)
+        self._linear = np.r_[act_q, np.zeros(nv + n_eq + n_c)]
+        try:
+            x, solver = self._solve_qp(A, lower, upper, weight)
+        finally:
+            self._linear = None
         status = solver if isinstance(solver, str) else solver.status
         iterations = 0 if isinstance(solver, str) else solver.iter
         primal_residual = np.nan if isinstance(solver, str) else solver.prim_res
@@ -597,6 +683,7 @@ def static_optimization(
     qacc: np.ndarray,
     *,
     external_qfrc: np.ndarray | None = None,
+    emg_activation: np.ndarray | Mapping[str, Any] | None = None,
     config: StaticOptimizationConfig | None = None,
 ) -> StaticOptimizationResult:
     """Static optimization of every frame of a motion.
@@ -608,6 +695,9 @@ def static_optimization(
         qacc: ``(T, nv)`` accelerations, e.g. from
             :func:`~myosuite.biomechanics.inverse_dynamics.clip_kinematics`.
         external_qfrc: Optional ``(T, nv)`` known external generalized forces.
+        emg_activation: Optional ``(T, nu)`` array (``NaN`` where unmeasured) or
+            ``{actuator_name: (T,) array}`` of normalized ``[0, 1]`` EMG targets
+            for CEINMS-style hybrid EMG-assisted static optimization.
         config: Weights, tolerances and ``on_failure``.
 
     Returns:
@@ -622,8 +712,40 @@ def static_optimization(
             solve and their statuses, with ``on_failure="warn"``.
     """
     return _solve_clip(
-        StaticOptimizer(model, config), qpos, qvel, qacc, external_qfrc, stacklevel=3
+        StaticOptimizer(model, config),
+        qpos,
+        qvel,
+        qacc,
+        external_qfrc,
+        emg_activation=emg_activation,
+        stacklevel=3,
     )
+
+
+def _normalize_emg_clip(
+    so: StaticOptimizer,
+    n_frames: int,
+    emg_activation: np.ndarray | Mapping[str, Any] | None,
+) -> np.ndarray | None:
+    if emg_activation is None:
+        return None
+    nu = so.model.nu
+    if isinstance(emg_activation, Mapping):
+        out = np.full((n_frames, nu), np.nan)
+        for name, values in emg_activation.items():
+            if name not in so._actuator_index:
+                raise KeyError(f"Unknown actuator in emg_activation: {name!r}")
+            col = np.asarray(values, dtype=float)
+            if col.shape != (n_frames,):
+                raise ValueError(
+                    f"emg_activation[{name!r}] must have shape ({n_frames},)"
+                )
+            out[:, so._actuator_index[name]] = col
+        return out
+    arr = np.asarray(emg_activation, dtype=float)
+    if arr.shape != (n_frames, nu):
+        raise ValueError(f"emg_activation must have shape ({n_frames}, {nu})")
+    return arr
 
 
 def _solve_clip(
@@ -633,16 +755,21 @@ def _solve_clip(
     qacc: np.ndarray,
     external_qfrc: np.ndarray | None = None,
     *,
+    emg_activation: np.ndarray | Mapping[str, Any] | None = None,
     stacklevel: int = 2,
 ) -> StaticOptimizationResult:
     """Solve a clip on an existing optimizer, including private sampled models."""
+    emg_clip = _normalize_emg_clip(so, len(qpos), emg_activation)
     frames = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", StaticOptimizationWarning)
         for t in range(len(qpos)):
             ext = None if external_qfrc is None else external_qfrc[t]
+            emg_t = None if emg_clip is None else emg_clip[t]
             try:
-                frames.append(so.solve(qpos[t], qvel[t], qacc[t], ext))
+                frames.append(
+                    so.solve(qpos[t], qvel[t], qacc[t], ext, emg_activation=emg_t)
+                )
             except StaticOptimizationError as exc:
                 raise StaticOptimizationError(
                     f"frame {t} of {len(qpos)}: {exc}"
