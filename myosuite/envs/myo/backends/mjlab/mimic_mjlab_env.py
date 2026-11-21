@@ -71,6 +71,7 @@ import numpy as np
 from myosuite.core.trajectory_io import MotionClip
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
     MjlabEntityAccessor,
+    normalize_mjlab_env_ids,
 )
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2mat
@@ -379,6 +380,18 @@ def _init_state_from_model(mj_model: Any, *, project_couplings: bool = False) ->
     )
 
 
+def _resolve_reset_env_ids(env: Any, env_ids: Any) -> Any:
+    """Normalise *env_ids* to a 1-D ``torch.long`` tensor on the env device."""
+    import torch
+
+    resolved = normalize_mjlab_env_ids(env, env_ids)
+    if isinstance(resolved, torch.Tensor):
+        return resolved.to(device=env.device, dtype=torch.long).reshape(-1)
+    if isinstance(resolved, slice):
+        return torch.arange(env.num_envs, device=env.device, dtype=torch.long)[resolved]
+    return torch.as_tensor(resolved, device=env.device, dtype=torch.long).reshape(-1)
+
+
 def _mimic_keyframe_reset_event(
     entity_name: str, mj_model: Any
 ) -> Callable[[Any, Any], None]:
@@ -417,65 +430,72 @@ def _mimic_keyframe_reset_event(
         for j in range(mj_model.njnt)
         if int(mj_model.jnt_type[j]) == int(_mj.mjtJoint.mjJNT_FREE)
     )
+    device_keyframes: dict[tuple[Any, Any, Any, Any], tuple[Any, Any, Any]] = {}
 
     def _fn(env: Any, env_ids: Any) -> None:
         import torch
 
-        data = env.scene[entity_name].data.data
+        entity = env.scene[entity_name]
+        data = entity.data.data
         device = data.qpos.device
-        n_envs = int(data.qpos.shape[0])
-
-        if env_ids is None:
-            env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)
-        elif isinstance(env_ids, slice):
-            env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)[
-                env_ids
-            ]
-        else:
-            env_ids_long = torch.as_tensor(
-                env_ids, device=device, dtype=torch.long
-            ).reshape(-1)
+        env_ids_long = _resolve_reset_env_ids(env, env_ids)
         _invalidate_mimic_reset_cache(env, entity_name, env_ids_long)
 
         n_reset = int(env_ids_long.shape[0])
-        qpos = (
-            torch.as_tensor(key_qpos, device=device, dtype=data.qpos.dtype)
-            .unsqueeze(0)
-            .repeat(n_reset, 1)
-        )
-        qvel = (
-            torch.as_tensor(key_qvel, device=device, dtype=data.qvel.dtype)
-            .unsqueeze(0)
-            .repeat(n_reset, 1)
-        )
+        act_dtype = data.act.dtype if hasattr(data, "act") else None
+        cache_key = (device, data.qpos.dtype, data.qvel.dtype, act_dtype)
+        cached = device_keyframes.get(cache_key)
+        if cached is None:
+            cached = (
+                torch.as_tensor(key_qpos, device=device, dtype=data.qpos.dtype),
+                torch.as_tensor(key_qvel, device=device, dtype=data.qvel.dtype),
+                None
+                if key_act is None or act_dtype is None
+                else torch.as_tensor(key_act, device=device, dtype=act_dtype),
+            )
+            device_keyframes[cache_key] = cached
+        key_qpos_t, key_qvel_t, key_act_t = cached
+        qpos = key_qpos_t.unsqueeze(0).repeat(n_reset, 1)
+        qvel = key_qvel_t.unsqueeze(0).repeat(n_reset, 1)
 
-        env_origins = getattr(env.scene, "env_origins", None)
-        if env_origins is not None and free_qpos_adrs:
-            origins = env_origins[env_ids_long].to(device=device, dtype=data.qpos.dtype)
-            for qadr in free_qpos_adrs:
-                qpos[:, qadr : qadr + 3] += origins
+        is_fixed = bool(getattr(entity, "is_fixed_base", False))
+        is_articulated = bool(getattr(entity, "is_articulated", True))
+        can_write_fixed = (
+            is_fixed
+            and is_articulated
+            and not free_qpos_adrs
+            and hasattr(entity, "write_joint_state_to_sim")
+        )
+        can_write_floating = (
+            not is_fixed
+            and is_articulated
+            and free_qpos_adrs == (0,)
+            and hasattr(entity, "write_root_state_to_sim")
+            and hasattr(entity, "write_joint_state_to_sim")
+            and getattr(env.scene, "env_origins", None) is not None
+        )
+        if can_write_fixed or can_write_floating:
+            from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import (
+                write_cpu_state,
+            )
 
-        # TODO: migrate to entity.write_root_state_to_sim + write_joint_state_to_sim.
-        # This function writes the full qpos/qvel in one shot, including auxiliary
-        # free joints (e.g. detached props) that are not covered by the
-        # entity root+joints decomposition.  Synchronise around the raw Warp writes
-        # to prevent CUDA error 700 under certain allocator states (GitHub #40).
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        data.qpos[env_ids_long] = qpos
-        data.qvel[env_ids_long] = qvel
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
+            write_cpu_state(env, entity_name, env_ids_long, qpos, qvel)
+        else:
+            env_origins = getattr(env.scene, "env_origins", None)
+            if env_origins is not None and free_qpos_adrs:
+                origins = env_origins[env_ids_long].to(
+                    device=device, dtype=data.qpos.dtype
+                )
+                for qadr in free_qpos_adrs:
+                    qpos[:, qadr : qadr + 3] += origins
+            data.qpos[env_ids_long] = qpos
+            data.qvel[env_ids_long] = qvel
+
         if hasattr(data, "act"):
-            if key_act is None:
+            if key_act_t is None:
                 data.act[env_ids_long] = 0.0
             else:
-                act = (
-                    torch.as_tensor(key_act, device=device, dtype=data.act.dtype)
-                    .unsqueeze(0)
-                    .repeat(n_reset, 1)
-                )
-                data.act[env_ids_long] = act
+                data.act[env_ids_long] = key_act_t.unsqueeze(0).repeat(n_reset, 1)
         env.sim.forward()
 
     return _fn
@@ -1339,17 +1359,7 @@ def _mimic_rsi_event(
         clip_source._ensure_device(device, n_envs)
 
         # Resample start offsets for the envs that just reset.
-        # env_ids=None means "all envs" in mjlab's event contract.
-        if env_ids is None:
-            env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)
-        elif isinstance(env_ids, slice):
-            env_ids_long = torch.arange(n_envs, device=device, dtype=torch.long)[
-                env_ids
-            ]
-        else:
-            env_ids_long = torch.as_tensor(
-                env_ids, device=device, dtype=torch.long
-            ).reshape(-1)
+        env_ids_long = _resolve_reset_env_ids(env, env_ids)
         _invalidate_mimic_reset_cache(env, entity_name, env_ids_long)
         n_reset = int(env_ids_long.shape[0])
         if hasattr(clip_source, "_clip_indices") and hasattr(clip_source, "clips"):
