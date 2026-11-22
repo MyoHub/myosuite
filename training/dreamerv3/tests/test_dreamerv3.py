@@ -257,6 +257,66 @@ def test_mjlab_driver_same_step_autoreset_contract() -> None:
     assert float(w0[3]["proprio"][0]) == pytest.approx(10.0)
 
 
+@pytest.mark.tier1
+def test_mjlab_driver_action_range_map_and_sanitize() -> None:
+    """[-1, 1] DreamerV3 actions map linearly onto a [0, 1] twin action range (the
+    leg-walk twins, like CPU ``NormalizeAction``), and NaN observations from a
+    diverged world never reach the replay buffer."""
+    torch = pytest.importorskip("torch")
+    sent: list[np.ndarray] = []
+
+    class _Term:
+        action_dim = 2
+
+        class cfg:  # noqa: N801
+            action_range = (0.0, 1.0)
+            normalize_act = True
+
+    class _ActMgr:
+        total_action_dim = 2
+        active_terms = ("muscles",)
+
+        def get_term(self, name: str) -> Any:
+            return _Term()
+
+    class _ToyWalkEnv:
+        num_envs = 1
+        device = "cpu"
+        action_manager = _ActMgr()
+
+        def reset(self) -> tuple[dict[str, Any], dict[str, Any]]:
+            return {"actor": torch.zeros((1, 3))}, {}
+
+        def step(self, action: Any) -> tuple[Any, Any, Any, Any, dict[str, Any]]:
+            sent.append(action.numpy().copy())
+            obs = torch.tensor([[float("nan"), 1e9, 0.5]])
+            return (
+                {"actor": obs},
+                torch.ones(1),
+                torch.zeros(1, dtype=torch.bool),
+                torch.zeros(1, dtype=torch.bool),
+                {},
+            )
+
+        def close(self) -> None:
+            pass
+
+    driver = MjlabDriver(_ToyWalkEnv())
+    transitions: list[dict[str, np.ndarray]] = []
+    driver.on_step(lambda trn, wid: transitions.append(trn))
+
+    def _policy(carry, obs):
+        n = len(obs["is_first"])
+        return carry, {"action": np.tile([[-1.0, 0.0]], (n, 1)).astype(np.float32)}, {}
+
+    driver.reset()
+    driver(_policy, steps=2)
+    np.testing.assert_allclose(sent[0], [[0.0, 0.5]])
+    assert all(np.isfinite(t["proprio"]).all() for t in transitions)
+    assert np.abs(transitions[-1]["proprio"]).max() <= 1e4
+    assert driver.sanitized_values >= 2
+
+
 @pytest.mark.tier2
 def test_vision_training_and_checkpoint_resume(tmp_path: Path) -> None:
     logdir = tmp_path / "vision_resume_run"

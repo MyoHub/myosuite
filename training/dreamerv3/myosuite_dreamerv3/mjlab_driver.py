@@ -30,6 +30,10 @@ from myosuite_dreamerv3.train import (
 )
 from myosuite_dreamerv3.train_mjx import run_mjx_training_loop
 
+# Sanity bounds for observations / rewards of diverged Warp worlds (see _sanitize).
+OBS_BOUND = 1e4
+REWARD_BOUND = 1e4
+
 
 def _extract_actor_obs(obs_dict: Any) -> Any:
     """Extract policy observation tensor from an ``mjlab`` observation mapping."""
@@ -40,6 +44,42 @@ def _extract_actor_obs(obs_dict: Any) -> Any:
             return obs_dict["policy"]
         return next(iter(obs_dict.values()))
     return obs_dict
+
+
+def mjlab_action_bounds(env: Any) -> tuple[np.ndarray, np.ndarray]:
+    """Per-dimension normalized action bounds of an ``mjlab`` env's action terms.
+
+    DreamerV3 always acts in ``[-1, 1]``. On the CPU backend, ``NormalizeAction``
+    maps that range linearly onto the env's ``action_space`` (``[0, 1]`` for the
+    leg-walk envs, ``[-1, 1]`` for pose/reach). The ``mjlab`` twins instead *clamp*
+    raw actions to their term's ``action_range``, so without the same linear map the
+    negative half of DreamerV3's range collapses to zero activation on the walk twins
+    and a trained policy sees different muscle commands on CPU than in training.
+
+    Args:
+        env: Instantiated ``ManagerBasedRlEnv``.
+
+    Returns:
+        ``(low, high)`` float32 arrays of length ``total_action_dim``.
+    """
+    am = env.action_manager
+    dim = int(am.total_action_dim)
+    low = np.full(dim, -1.0, np.float32)
+    high = np.full(dim, 1.0, np.float32)
+    col = 0
+    for name in getattr(am, "active_terms", ()):
+        term = am.get_term(name)
+        d = int(term.action_dim)
+        cfg = getattr(term, "cfg", None)
+        rng = getattr(cfg, "action_range", None)
+        if rng is not None:
+            if getattr(cfg, "normalize_act", True):
+                low[col : col + d], high[col : col + d] = float(rng[0]), float(rng[1])
+            elif hasattr(term, "_ctrl_lo") and hasattr(term, "_ctrl_hi"):
+                low[col : col + d] = term._ctrl_lo.detach().cpu().numpy()
+                high[col : col + d] = term._ctrl_hi.detach().cpu().numpy()
+        col += d
+    return low, high
 
 
 def load_myosuite_mjlab_env(
@@ -108,6 +148,7 @@ class MjlabDriver:
         self.device = getattr(self.env, "device", "cpu")
         self.act_key = act_key
         self.kwargs = kwargs
+        self.sanitized_values = 0
         self._has_success = hasattr(
             self.env, "metrics_manager"
         ) and "success" in getattr(self.env.metrics_manager, "active_terms", ())
@@ -118,6 +159,7 @@ class MjlabDriver:
 
         self._obs_shape = tuple(init_obs.shape[1:])
         act_dim = int(self.env.action_manager.total_action_dim)
+        self._act_low, self._act_high = mjlab_action_bounds(self.env)
 
         self.obs_space: dict[str, elements.Space] = {
             "reward": elements.Space(np.float32),
@@ -159,6 +201,22 @@ class MjlabDriver:
     def close(self) -> None:
         """Close the underlying ``mjlab`` environment."""
         self.env.close()
+
+    def _sanitize(self, x: np.ndarray, bound: float) -> np.ndarray:
+        """Replace non-finite values and clip to ``[-bound, bound]``.
+
+        A diverged MuJoCo Warp world can emit NaN/inf or huge values for a step; one
+        such transition in the replay buffer turns every DreamerV3 parameter into NaN.
+        Bounds sit far outside the values of a regular step, so they only touch
+        diverged worlds.
+        """
+        bad = ~np.isfinite(x) | (np.abs(x) > bound)
+        if bad.any():
+            self.sanitized_values += int(bad.sum())
+            x = np.clip(
+                np.nan_to_num(x, nan=0.0, posinf=bound, neginf=-bound), -bound, bound
+            )
+        return x
 
     def on_step(self, callback: Callable[..., Any]) -> None:
         """Register a per-transition callback ``fn(tran, worker_idx)``."""
@@ -256,15 +314,20 @@ class MjlabDriver:
         act_np = np.clip(
             np.asarray(self.acts[self.act_key], dtype=np.float32), -1.0, 1.0
         )
+        # Same linear [-1, 1] -> action_space map as the CPU NormalizeAction wrapper.
+        act_np = self._act_low + (act_np + 1.0) * 0.5 * (self._act_high - self._act_low)
         with torch.no_grad():
             act_tensor = torch.as_tensor(
                 act_np, dtype=torch.float32, device=self.device
             )
             obs_raw, rew_t, term_t, trunc_t, extras = self.env.step(act_tensor)
-            next_obs = (
-                _extract_actor_obs(obs_raw).detach().cpu().numpy().astype(np.float32)
+            next_obs = self._sanitize(
+                _extract_actor_obs(obs_raw).detach().cpu().numpy().astype(np.float32),
+                OBS_BOUND,
             )
-            rew = rew_t.detach().cpu().numpy().astype(np.float32)
+            rew = self._sanitize(
+                rew_t.detach().cpu().numpy().astype(np.float32), REWARD_BOUND
+            )
             terminated = term_t.detach().cpu().numpy().astype(bool)
             truncated = trunc_t.detach().cpu().numpy().astype(bool)
             done = terminated | truncated
@@ -284,12 +347,13 @@ class MjlabDriver:
                 extras.get("observations", {}) if isinstance(extras, dict) else {}
             )
             if isinstance(extra_obs, dict) and "terminal" in extra_obs:
-                term_obs[done] = (
+                term_obs[done] = self._sanitize(
                     extra_obs["terminal"][done]
                     .detach()
                     .cpu()
                     .numpy()
-                    .astype(np.float32)
+                    .astype(np.float32),
+                    OBS_BOUND,
                 )
             else:
                 term_obs[done] = self._last_obs[done]

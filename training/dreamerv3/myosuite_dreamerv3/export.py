@@ -612,7 +612,26 @@ def evaluate_dreamer_torch_policy(
     """Evaluate a ``DreamerV3TorchPolicy`` deterministically in memory on CPU ``make_env``."""
     myosuite = import_myosuite()
     policy = policy.cpu().eval()
+    # Batch-1 recurrent inference is latency-bound: PyTorch's default of one thread
+    # per core oversubscribes the CPU (70x slower next to a running trainer).
+    prev_threads = torch.get_num_threads()
+    torch.set_num_threads(max(1, min(prev_threads, 4)))
+    try:
+        return _evaluate_dreamer_torch_policy(
+            policy, myosuite, env_id, episodes, seed, features
+        )
+    finally:
+        torch.set_num_threads(prev_threads)
 
+
+def _evaluate_dreamer_torch_policy(
+    policy: DreamerV3TorchPolicy,
+    myosuite: Any,
+    env_id: str,
+    episodes: int,
+    seed: int,
+    features: Sequence[Any],
+) -> dict[str, float]:
     def _make_env() -> Any:
         if features:
             from myosuite.core.config import EnvConfig
@@ -626,6 +645,7 @@ def evaluate_dreamer_torch_policy(
 
     returns: list[float] = []
     solved_flags: list[float] = []
+    final_flags: list[float] = []
     lengths: list[int] = []
 
     with torch.no_grad():
@@ -635,6 +655,8 @@ def evaluate_dreamer_torch_policy(
                 obs, _ = env.reset(seed=int(seed + ep))
                 deter, stoch, prevact = policy.initial_state(1)
                 is_first = torch.ones(1, dtype=torch.float32)
+                lo = np.asarray(env.action_space.low, dtype=np.float32)
+                hi = np.asarray(env.action_space.high, dtype=np.float32)
 
                 done = False
                 ep_ret = 0.0
@@ -647,17 +669,21 @@ def evaluate_dreamer_torch_policy(
                     )
                     prevact = action
                     is_first = torch.zeros(1, dtype=torch.float32)
+                    act_vec = np.clip(action.squeeze(0).cpu().numpy(), -1.0, 1.0)
+                    # Same linear [-1, 1] -> action_space map as NormalizeAction.
                     obs, rew, term, trunc, info = env.step(
-                        action.squeeze(0).cpu().numpy()
+                        lo + (act_vec + 1.0) * 0.5 * (hi - lo)
                     )
                     ep_ret += float(rew)
                     rwd_dict = info.get("rwd_dict", {})
                     solved = info.get("solved", rwd_dict.get("solved", 0.0))
-                    ep_solved = ep_solved or (float(np.asarray(solved).mean()) > 0.5)
+                    step_solved = float(np.asarray(solved).mean()) > 0.5
+                    ep_solved = ep_solved or step_solved
                     ep_len += 1
                     done = bool(term or trunc)
                 returns.append(ep_ret)
                 solved_flags.append(1.0 if ep_solved else 0.0)
+                final_flags.append(1.0 if step_solved else 0.0)
                 lengths.append(ep_len)
             finally:
                 env.close()
@@ -666,6 +692,7 @@ def evaluate_dreamer_torch_policy(
         "mean_return": float(np.mean(returns)),
         "std_return": float(np.std(returns)),
         "solved_rate": float(np.mean(solved_flags)),
+        "solved_final_rate": float(np.mean(final_flags)),
         "mean_length": float(np.mean(lengths)),
     }
 
@@ -707,6 +734,7 @@ def evaluate_exported_onnx_stateful(
 
     returns: list[float] = []
     solved_flags: list[float] = []
+    final_flags: list[float] = []
     lengths: list[int] = []
 
     for ep in range(episodes):
@@ -734,17 +762,25 @@ def evaluate_exported_onnx_stateful(
                     },
                 )
                 act_vec = np.asarray(action[0], dtype=np.float32)
+                # DreamerV3 acts in [-1, 1]; map linearly onto the env's action space
+                # exactly like NormalizeAction (identity for [-1, 1] pose/reach envs,
+                # [0, 1] activations for the leg-walk envs).
+                lo = np.asarray(env.action_space.low, dtype=np.float32)
+                hi = np.asarray(env.action_space.high, dtype=np.float32)
+                act_vec = lo + (np.clip(act_vec, -1.0, 1.0) + 1.0) * 0.5 * (hi - lo)
                 obs, rew, term, trunc, info = env.step(act_vec)
                 prevact = action.astype(np.float32, copy=False)
                 is_first = np.zeros((1,), dtype=np.float32)
                 ep_ret += float(rew)
                 rwd_dict = info.get("rwd_dict", {})
                 solved = info.get("solved", rwd_dict.get("solved", 0.0))
-                ep_solved = ep_solved or (float(np.asarray(solved).mean()) > 0.5)
+                step_solved = float(np.asarray(solved).mean()) > 0.5
+                ep_solved = ep_solved or step_solved
                 ep_len += 1
                 done = bool(term or trunc)
             returns.append(ep_ret)
             solved_flags.append(1.0 if ep_solved else 0.0)
+            final_flags.append(1.0 if step_solved else 0.0)
             lengths.append(ep_len)
         finally:
             env.close()
@@ -753,6 +789,7 @@ def evaluate_exported_onnx_stateful(
         "mean_return": float(np.mean(returns)),
         "std_return": float(np.std(returns)),
         "solved_rate": float(np.mean(solved_flags)),
+        "solved_final_rate": float(np.mean(final_flags)),
         "mean_length": float(np.mean(lengths)),
     }
 
