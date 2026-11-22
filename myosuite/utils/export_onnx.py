@@ -68,7 +68,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
 from myosuite.core.registry import make_env
+from myosuite.integrations.musclemimic.actor_tree import (
+    residual_block_indices as _residual_block_indices,
+)
 
 try:
     import torch
@@ -321,19 +325,6 @@ def export_jax_to_onnx(
 # ---------------------------------------------------------------------------
 # Orbax/Flax export (MuscleMimic full-body residual actor)
 # ---------------------------------------------------------------------------
-
-
-def _residual_block_indices(actor: dict[str, Any]) -> list[int]:
-    """Return sorted residual block indices present in an actor tree."""
-    indices: list[int] = []
-    suffix = "_layer0_dense"
-    for key in actor:
-        if not key.startswith("block") or not key.endswith(suffix):
-            continue
-        idx = key[len("block") : -len(suffix)]
-        if idx.isdigit():
-            indices.append(int(idx))
-    return sorted(indices)
 
 
 class _OrbaxResBlock(_ModuleBase):
