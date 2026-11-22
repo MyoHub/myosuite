@@ -26,7 +26,6 @@ from myosuite.biomechanics.emg import EMGFilterConfig, project_tendon_nodes
 from myosuite.biomechanics.emg_validation import (
     ChannelBinding,
     EMGChannelMap,
-    EMGSource,
     EMGTrial,
     spatial_site_channel_map,
 )
@@ -42,7 +41,11 @@ from myosuite.biomechanics.opensim_motion import (
     opensim_motion_to_qpos,
     read_opensim_motion,
 )
-from myosuite.integrations.emg.trial_io import EMG_TRIAL_META_KEY, load_emg_trial
+from myosuite.integrations.emg.trial_io import (
+    EMG_TRIAL_META_KEY,
+    BaseEMGSource,
+    load_emg_trial,
+)
 
 
 DIMITROV_SHANK_ACTUATORS: tuple[str, ...] = (
@@ -115,10 +118,28 @@ def _parse_opensim_motion_text(
     )
 
 
-class RajagopalWalkingSource(EMGSource):
+class RajagopalWalkingSource(BaseEMGSource):
     """OpenSim Moco ``example3DWalking`` EMG, IK and force-plate GRF adapter."""
 
     name = "rajagopal2016"
+    _DEFAULT_CHANNEL_MAP = EMGChannelMap(
+        name="rajagopal2016_right_leg",
+        version=1,
+        bindings=(
+            ChannelBinding("gluteus_maximus", ("glmax1_r", "glmax2_r", "glmax3_r")),
+            ChannelBinding("gluteus_medius", ("glmed1_r", "glmed2_r", "glmed3_r")),
+            ChannelBinding("medial_hamstrings", ("semimem_r", "semiten_r")),
+            ChannelBinding("biceps_femoris", ("bflh_r", "bfsh_r")),
+            ChannelBinding("rectus_femoris", ("recfem_r",)),
+            ChannelBinding("vastus_lateralis", ("vaslat_r",)),
+            ChannelBinding("vastus_medius", ("vasmed_r",)),
+            ChannelBinding(
+                "gastrocnemius", ("gasmed_r", "gaslat_r"), reference_peak=0.87
+            ),
+            ChannelBinding("soleus", ("soleus_r",), reference_peak=0.77),
+            ChannelBinding("tibialis_anterior", ("tibant_r",), reference_peak=0.37),
+        ),
+    )
 
     def __init__(
         self,
@@ -149,27 +170,6 @@ class RajagopalWalkingSource(EMGSource):
 
     def trial_ids(self) -> Sequence[str]:
         return ("moco_3d_walking",)
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
-        del model
-        return EMGChannelMap(
-            name="rajagopal2016_right_leg",
-            version=1,
-            bindings=(
-                ChannelBinding("gluteus_maximus", ("glmax1_r", "glmax2_r", "glmax3_r")),
-                ChannelBinding("gluteus_medius", ("glmed1_r", "glmed2_r", "glmed3_r")),
-                ChannelBinding("medial_hamstrings", ("semimem_r", "semiten_r")),
-                ChannelBinding("biceps_femoris", ("bflh_r", "bfsh_r")),
-                ChannelBinding("rectus_femoris", ("recfem_r",)),
-                ChannelBinding("vastus_lateralis", ("vaslat_r",)),
-                ChannelBinding("vastus_medius", ("vasmed_r",)),
-                ChannelBinding(
-                    "gastrocnemius", ("gasmed_r", "gaslat_r"), reference_peak=0.87
-                ),
-                ChannelBinding("soleus", ("soleus_r",), reference_peak=0.77),
-                ChannelBinding("tibialis_anterior", ("tibant_r",), reference_peak=0.37),
-            ),
-        )
 
     def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
         if trial_id not in self.trial_ids():
@@ -243,10 +243,26 @@ _LENCIONI_LOADS_XML = """<ExternalLoads>
 </ExternalLoads>"""
 
 
-class Lencioni2019Source(EMGSource):
+class Lencioni2019Source(BaseEMGSource):
     """Lencioni et al. (2019) 8-ch 1 kHz lower-limb EMG across speeds and stairs."""
 
     name = "lencioni2019"
+    _DEFAULT_CHANNEL_MAP = EMGChannelMap(
+        name="lencioni2019_right_leg",
+        version=1,
+        bindings=(
+            ChannelBinding("tibialis_anterior", ("tibant_r",), reference_peak=0.37),
+            ChannelBinding("soleus", ("soleus_r",), reference_peak=0.77),
+            ChannelBinding(
+                "gastrocnemius_medialis", ("gasmed_r",), reference_peak=0.87
+            ),
+            ChannelBinding("peroneus_longus", ("perlong_r",)),
+            ChannelBinding("rectus_femoris", ("recfem_r",)),
+            ChannelBinding("vastus_medialis", ("vasmed_r",)),
+            ChannelBinding("biceps_femoris", ("bflh_r", "bfsh_r")),
+            ChannelBinding("gluteus_maximus", ("glmax1_r", "glmax2_r", "glmax3_r")),
+        ),
+    )
 
     def __init__(
         self,
@@ -332,25 +348,6 @@ class Lencioni2019Source(EMGSource):
             all_ids = [t for t in all_ids if self.pattern.search(t)]
         self._ids_cache = tuple(all_ids)
         return self._ids_cache
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
-        del model
-        return EMGChannelMap(
-            name="lencioni2019_right_leg",
-            version=1,
-            bindings=(
-                ChannelBinding("tibialis_anterior", ("tibant_r",), reference_peak=0.37),
-                ChannelBinding("soleus", ("soleus_r",), reference_peak=0.77),
-                ChannelBinding(
-                    "gastrocnemius_medialis", ("gasmed_r",), reference_peak=0.87
-                ),
-                ChannelBinding("peroneus_longus", ("perlong_r",)),
-                ChannelBinding("rectus_femoris", ("recfem_r",)),
-                ChannelBinding("vastus_medialis", ("vasmed_r",)),
-                ChannelBinding("biceps_femoris", ("bflh_r", "bfsh_r")),
-                ChannelBinding("gluteus_maximus", ("glmax1_r", "glmax2_r", "glmax3_r")),
-            ),
-        )
 
     def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
         parts = trial_id.split("/")
@@ -772,7 +769,7 @@ _DIMITROV_PRIORITY_BRANCHES: tuple[tuple[str, ...], ...] = (
 )
 
 
-class Dimitrov2023Source(EMGSource):
+class Dimitrov2023Source(BaseEMGSource):
     """Streaming zip/MAT loader for Dimitrov et al. (2023) 64-ch below-knee HDsEMG."""
 
     name = "dimitrov2023"
@@ -876,10 +873,6 @@ class Dimitrov2023Source(EMGSource):
             all_ids = [t for t in all_ids if self.pattern.search(t)]
         self._ids_cache = tuple(all_ids)
         return self._ids_cache
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap | None:
-        del model
-        return None
 
     def _match_force_plate_loads(
         self,
@@ -1088,10 +1081,26 @@ def _read_camargo_labels(cond_path: Path, n_frames: int) -> list[str]:
     return [""] * n_frames
 
 
-class Camargo2021Source(EMGSource):
+class Camargo2021Source(BaseEMGSource):
     """Camargo et al. (2021) 10-ch 1 kHz multi-mode lower-limb EMG, IK and ID adapter."""
 
     name = "camargo2021"
+    _DEFAULT_CHANNEL_MAP = EMGChannelMap(
+        name="camargo2021_right_leg_10ch",
+        version=1,
+        bindings=(
+            ChannelBinding("gastrocmed", ("gasmed_r",), reference_peak=0.87),
+            ChannelBinding("tibialisanterior", ("tibant_r",), reference_peak=0.37),
+            ChannelBinding("soleus", ("soleus_r",), reference_peak=0.77),
+            ChannelBinding("vastusmedialis", ("vasmed_r",)),
+            ChannelBinding("vastuslateralis", ("vaslat_r",)),
+            ChannelBinding("rectusfemoris", ("recfem_r",)),
+            ChannelBinding("bicepsfemoris", ("bflh_r", "bfsh_r")),
+            ChannelBinding("semitendinosus", ("semiten_r",)),
+            ChannelBinding("gracilis", ("grac_r",)),
+            ChannelBinding("gluteusmedius", ("glmed1_r", "glmed2_r", "glmed3_r")),
+        ),
+    )
 
     def __init__(
         self,
@@ -1174,25 +1183,6 @@ class Camargo2021Source(EMGSource):
             all_ids = [t for t in all_ids if self.pattern.search(t)]
         self._ids_cache = tuple(all_ids)
         return self._ids_cache
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
-        del model
-        return EMGChannelMap(
-            name="camargo2021_right_leg_10ch",
-            version=1,
-            bindings=(
-                ChannelBinding("gastrocmed", ("gasmed_r",), reference_peak=0.87),
-                ChannelBinding("tibialisanterior", ("tibant_r",), reference_peak=0.37),
-                ChannelBinding("soleus", ("soleus_r",), reference_peak=0.77),
-                ChannelBinding("vastusmedialis", ("vasmed_r",)),
-                ChannelBinding("vastuslateralis", ("vaslat_r",)),
-                ChannelBinding("rectusfemoris", ("recfem_r",)),
-                ChannelBinding("bicepsfemoris", ("bflh_r", "bfsh_r")),
-                ChannelBinding("semitendinosus", ("semiten_r",)),
-                ChannelBinding("gracilis", ("grac_r",)),
-                ChannelBinding("gluteusmedius", ("glmed1_r", "glmed2_r", "glmed3_r")),
-            ),
-        )
 
     @staticmethod
     def _select_stride(
@@ -1549,7 +1539,7 @@ def _load_manifest_kinematics(
     raise ValueError(f"unsupported kinematics file format: {path}")
 
 
-class ManifestEMGSource(EMGSource):
+class ManifestEMGSource(BaseEMGSource):
     """Declarative JSON/YAML dataset loader for custom lab EMG recordings."""
 
     def __init__(self, manifest_path: str | Path) -> None:
