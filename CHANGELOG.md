@@ -370,6 +370,14 @@ Changes since **v3.1.0** (2026-11-11).
   the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
   instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
   at their compiled positions, up to 1e-16 away before).
+* **`solved` of the directional walks means sustained walking too.** `myoLegDirectionalForward-v0`,
+  `myoLegDirectionalBackward-v0` and `myoLegDirectionalRandom-v0` counted every step on which the body was upright
+  and within 0.5 m/s of the commanded velocity, so random actions that fall after about 1 s had 15 to 69 solved steps
+  and `evaluate_success` reported 100 % for the forward and backward ids. They now use the same one-second rule as
+  the walks (200 control steps of 0.005 s), through the new `RewardSpec.solved_window_s` of the `TaskConfig` route
+  (default 0: the per-step flag of the reward terms, unchanged for every other task). The per-step flag is `on_target`
+  in `info`; the mjlab twins log `Episode_Metrics/on_target` next to the new `Episode_Metrics/success`. Rewards,
+  observations and dynamics are unchanged. See `docs/baseline_checkpoints.md`.
 * Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
 * **Pure joint-limit terms, batched term shapes and ChaseTag-vs EVADE scoring ([#803]).** `joint_penalty` and `joint_limit_violation` now read `EnvAccessor.joint_limits()` (`jnt_range` on limited hinge/slide coordinates) instead of `actuator_ctrlrange`, which mismatched `qpos` whenever `nq != nu` or muscles had `[0, 1]` control ranges. `MuscleActionTerm` scopes fatigue muscle counts to the entity's indexed muscle actuators and writes through `write_ctrl_to_sim`; pure observation, reward and termination terms preserve leading batch dimensions and target devices; `reset_random_pose` requires an explicit seeded `rng`; and `ChaseTagVs` `compute_damage` / `get_score` route tag damage according to the active `CHASE`/`EVADE` role and clamp scores to `[0, 1]` (`docs/baseline_checkpoints.md`).
