@@ -13,21 +13,18 @@ import numpy as np
 import pytest
 import torch
 
-pytest.importorskip("mujoco_warp")
-pytest.importorskip("warp")
-
-from newton_shac import (
-    DifferentiablePoseEnv,
-    ShacConfig,
-    export_shac_onnx,
-    train_shac,
-)
-
 from myosuite import make_env
 
 
+def _require_newton_shac():
+    pytest.importorskip("mujoco_warp")
+    pytest.importorskip("warp")
+    return pytest.importorskip("newton_shac")
+
+
 def test_differentiable_muscle_step_matches_finite_differences() -> None:
-    env = DifferentiablePoseEnv("myoElbowPose1D6MRandom-v0", num_envs=2, seed=3)
+    ns = _require_newton_shac()
+    env = ns.DifferentiablePoseEnv("myoElbowPose1D6MRandom-v0", num_envs=2, seed=3)
     env.reset(seed=3)
     q0 = torch.tensor(
         [[0.75], [1.15]], dtype=torch.float32, device=env.device, requires_grad=True
@@ -95,10 +92,11 @@ def test_differentiable_muscle_step_matches_finite_differences() -> None:
     not torch.cuda.is_available(), reason="CUDA required for graph capture"
 )
 def test_cuda_graph_matches_eager_forward_and_backward() -> None:
-    env_graph = DifferentiablePoseEnv(
+    ns = _require_newton_shac()
+    env_graph = ns.DifferentiablePoseEnv(
         "myoElbowPose1D6MRandom-v0", num_envs=8, seed=7, use_cuda_graph=True
     )
-    env_eager = DifferentiablePoseEnv(
+    env_eager = ns.DifferentiablePoseEnv(
         "myoElbowPose1D6MRandom-v0", num_envs=8, seed=7, use_cuda_graph=False
     )
     assert env_graph.uses_cuda_graph
@@ -134,14 +132,15 @@ def test_cuda_graph_matches_eager_forward_and_backward() -> None:
 
 
 def test_shac_smoke_cpu_playback_and_onnx_export(tmp_path: Path) -> None:
-    shac_cfg = ShacConfig(
+    ns = _require_newton_shac()
+    shac_cfg = ns.ShacConfig(
         num_envs=16,
         horizon=4,
         total_env_steps=128,
         eval_interval_steps=64,
         eval_episodes=8,
     )
-    model, metrics = train_shac("myoElbowPose1D6MRandom-v0", shac_cfg, seed=0)
+    model, metrics = ns.train_shac("myoElbowPose1D6MRandom-v0", shac_cfg, seed=0)
     assert len(metrics.eval_return_mean) == 3
     assert np.isfinite(metrics.eval_return_mean).all()
     assert np.isfinite(metrics.cpu_eval_return)
@@ -149,7 +148,7 @@ def test_shac_smoke_cpu_playback_and_onnx_export(tmp_path: Path) -> None:
         assert torch.isfinite(p).all()
 
     ort = pytest.importorskip("onnxruntime")
-    onnx_path = export_shac_onnx(model, tmp_path / "shac_policy.onnx")
+    onnx_path = ns.export_shac_onnx(model, tmp_path / "shac_policy.onnx")
     assert onnx_path.is_file()
 
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
