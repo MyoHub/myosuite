@@ -26,10 +26,10 @@ from myosuite.biomechanics.emg import EMGFilterConfig, project_tendon_nodes
 from myosuite.biomechanics.emg_validation import (
     ChannelBinding,
     EMGChannelMap,
-    EMGSource,
     EMGTrial,
 )
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics, required_qfrc
+from myosuite.integrations.emg.trial_io import BaseEMGSource, resolve_stem_channel_map
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 EMG2POSE_JOINT_NAMES: tuple[str, ...] = (
@@ -598,10 +598,28 @@ def thoracohumeral_to_upper_limb_coords(
     }
 
 
-class Quesada2024UpperLimbSource(EMGSource):
+class Quesada2024UpperLimbSource(BaseEMGSource):
     """Quesada et al. (2024) 12-ch MVC-normalized shoulder and elbow EMG adapter."""
 
     name = "quesada2024"
+    _DEFAULT_CHANNEL_MAP = EMGChannelMap(
+        name="quesada2024_upper_limb_12ch",
+        version=1,
+        bindings=(
+            ChannelBinding("DELTAnt", ("DELT1_r",)),
+            ChannelBinding("DELTMed", ("DELT2_r",)),
+            ChannelBinding("DELTPost", ("DELT3_r",)),
+            ChannelBinding("PECT", ("PECM1_r", "PECM2_r", "PECM3_r")),
+            ChannelBinding("LATI", ("LAT1_r", "LAT2_r", "LAT3_r")),
+            ChannelBinding("TRILong", ("TRIlong_r",)),
+            ChannelBinding("TRILat", ("TRIlat_r",)),
+            ChannelBinding("TRIMed", ("TRImed_r",)),
+            ChannelBinding("BICLong", ("BIClong_r",)),
+            ChannelBinding("BICShort", ("BICshort_r",)),
+            ChannelBinding("BRA", ("BRA_r",)),
+            ChannelBinding("BRD", ("BRD_r",)),
+        ),
+    )
 
     def __init__(
         self,
@@ -668,27 +686,6 @@ class Quesada2024UpperLimbSource(EMGSource):
         ]
         self._ids_cache = tuple(filtered)
         return self._ids_cache
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
-        del model
-        return EMGChannelMap(
-            name="quesada2024_upper_limb_12ch",
-            version=1,
-            bindings=(
-                ChannelBinding("DELTAnt", ("DELT1_r",)),
-                ChannelBinding("DELTMed", ("DELT2_r",)),
-                ChannelBinding("DELTPost", ("DELT3_r",)),
-                ChannelBinding("PECT", ("PECM1_r", "PECM2_r", "PECM3_r")),
-                ChannelBinding("LATI", ("LAT1_r", "LAT2_r", "LAT3_r")),
-                ChannelBinding("TRILong", ("TRIlong_r",)),
-                ChannelBinding("TRILat", ("TRIlat_r",)),
-                ChannelBinding("TRIMed", ("TRImed_r",)),
-                ChannelBinding("BICLong", ("BIClong_r",)),
-                ChannelBinding("BICShort", ("BICshort_r",)),
-                ChannelBinding("BRA", ("BRA_r",)),
-                ChannelBinding("BRD", ("BRD_r",)),
-            ),
-        )
 
     def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
         if trial_id not in self.trial_ids():
@@ -821,7 +818,7 @@ def map_emg2pose_to_hand_qpos(
     return qpos, sorted(controlled_qadr)
 
 
-class Emg2PoseHandSource(EMGSource):
+class Emg2PoseHandSource(BaseEMGSource):
     """Meta ``emg2pose`` 2 kHz 16-channel wrist sEMG and 20-DOF hand pose adapter."""
 
     name = "emg2pose"
@@ -850,10 +847,6 @@ class Emg2PoseHandSource(EMGSource):
 
     def trial_ids(self) -> Sequence[str]:
         return tuple(self._files.keys())
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap | None:
-        del model
-        return None
 
     def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
         if trial_id not in self._files:
@@ -1023,7 +1016,7 @@ def map_cyberglove_to_hand_qpos(
     return qpos, sorted(set(ctrl_qadr))
 
 
-class NinaProDB5Source(EMGSource):
+class NinaProDB5Source(BaseEMGSource):
     """NinaPro DB5 16-ch dual-Myo forearm sEMG and 22-sensor CyberGlove II adapter."""
 
     name = "ninapro_db5"
@@ -1109,10 +1102,6 @@ class NinaProDB5Source(EMGSource):
             all_ids = [t for t in all_ids if self.pattern.search(t)]
         self._ids_cache = tuple(all_ids)
         return self._ids_cache
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap | None:
-        del model
-        return None
 
     def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
         parts = trial_id.split("/")
@@ -1382,7 +1371,7 @@ def map_grabmyo_gestures_to_qpos(
     return qpos, sorted(ctrl_qadr)
 
 
-class GrabMyoSource(EMGSource):
+class GrabMyoSource(BaseEMGSource):
     """PhysioNet GRABMyo 28-ch 2048 Hz forearm+wrist sEMG multi-gesture adapter."""
 
     name = "grabmyo"
@@ -1462,10 +1451,6 @@ class GrabMyoSource(EMGSource):
             all_ids = [t for t in all_ids if self.pattern.search(t)]
         self._ids_cache = tuple(all_ids)
         return self._ids_cache
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap | None:
-        del model
-        return None
 
     @staticmethod
     def _concat_with_crossfade(
@@ -1625,7 +1610,7 @@ def buet_arm_to_upper_limb_coords(
     return coords
 
 
-class Fritsche2026Source(EMGSource):
+class Fritsche2026Source(BaseEMGSource):
     """ULTRA-MoCap right-arm biceps, triceps and middle deltoid sEMG with IK.
 
     Fritsche, O., Camacho, S., Hossain, M. S. B., Halfpenny, T., Arciniegas, C.,
@@ -1639,6 +1624,15 @@ class Fritsche2026Source(EMGSource):
     """
 
     name = "fritsche2026"
+    _DEFAULT_CHANNEL_MAP = EMGChannelMap(
+        name="fritsche2026_right_arm_3ch",
+        version=1,
+        bindings=(
+            ChannelBinding("biceps_brachii", ("BIClong_r", "BICshort_r")),
+            ChannelBinding("triceps_long", ("TRIlong_r",)),
+            ChannelBinding("deltoid_middle", ("DELT2_r",)),
+        ),
+    )
 
     def __init__(
         self,
@@ -1687,18 +1681,6 @@ class Fritsche2026Source(EMGSource):
             ids = [t for t in ids if self.pattern.search(t)]
         self._ids_cache = tuple(ids)
         return self._ids_cache
-
-    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
-        del model
-        return EMGChannelMap(
-            name="fritsche2026_right_arm_3ch",
-            version=1,
-            bindings=(
-                ChannelBinding("biceps_brachii", ("BIClong_r", "BICshort_r")),
-                ChannelBinding("triceps_long", ("TRIlong_r",)),
-                ChannelBinding("deltoid_middle", ("DELT2_r",)),
-            ),
-        )
 
     def get_trial(self, trial_id: str, model: mujoco.MjModel | None = None) -> EMGTrial:
         if trial_id not in self._files:
@@ -1831,7 +1813,7 @@ def xsens_urdf_to_upper_limb_coords(
     return coords
 
 
-class Maurice2020Source(EMGSource):
+class Maurice2020Source(BaseEMGSource):
     """AndyData-lab overhead pointing: right anterior deltoid and erector spinae sEMG.
 
     Maurice, P., Camernik, J., Gorjan, D., Schirrmeister, B., Bornmann, J.,
@@ -2162,7 +2144,7 @@ def map_bham_ik_to_qpos(
     return qpos, sorted(set(ctrl_qadr) | set(hand_qadr))
 
 
-class Diaz2026HandSource(EMGSource):
+class Diaz2026HandSource(BaseEMGSource):
     """BHaM hand biomechanics: forearm sEMG and fine-wire thumb EMG with kinematics.
 
     Diaz, M. T., Benoit, A. R., Kearney, K. M. et al. (2026). A hand
@@ -2286,21 +2268,14 @@ class Diaz2026HandSource(EMGSource):
         return self._ids_cache
 
     def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap:
-        names = {model.actuator(i).name for i in range(model.nu)}
-
-        def _find(stem: str) -> str | None:
-            return next((c for c in (f"{stem}_r", stem) if c in names), None)
-
-        bindings = []
-        for channel, options in DIAZ2026_CHANNELS:
-            for stems in options:
-                acts = [_find(s) for s in stems]
-                if all(acts):
-                    bindings.append(ChannelBinding(channel, tuple(acts)))
-                    break
-        return EMGChannelMap(
-            name="diaz2026_forearm_thumb", version=1, bindings=tuple(bindings)
+        resolved = resolve_stem_channel_map(
+            model,
+            name="diaz2026_forearm_thumb",
+            channel_options=DIAZ2026_CHANNELS,
+            suffixes=("_r", ""),
         )
+        assert resolved is not None
+        return resolved
 
     def _load_task(self, subj: str, task: str) -> dict[str, Any]:
         key = (subj, task)

@@ -24,26 +24,6 @@ The review rules for every reviewer (people, Claude Code Review, Codex, Antigrav
 - Link human design agreement in feature/policy PRs. Human implementation approval must come from an eligible maintainer other than the author; an agent acting through a human account does not count. New implementation commits require renewed approval; scope changes require renewed design agreement. Revalidate affected checks when the base changes.
 - Keep one updated review summary: category, reproduction results, compatibility impact, checks run/not run, and merge decision. Separate defects from optional suggestions.
 
-### Core-team PR review and merge policy
-
-| Change | Gate |
-|---|---|
-| Routine docs, changelog, wording | Auto-merge after relevant validation and agent review |
-| Bug fix preserving supported contracts | Auto-merge after verified reproduction, regression checks, and agent review |
-| Correct fix intentionally changing behavior or compatibility | Human approval of the consequences, then merge after checks |
-| New feature, architecture, design or agent instructions | Human agreement on scope and implementation approach before coding; human implementation approval before merge |
-| Pure refactor or other change outside the automatic lanes | Human implementation approval after relevant checks |
-| Unproven bug, uncertain impact, or accidental regression | Block pending evidence or resolution |
-
-- These auto-merge rules apply only to core-team contributions and explicitly authorized agent work. Mixed changes take the stricter gate. Existing branch protections and required checks still apply; this policy does not install automation or authorize bypassing protections. External contributions require human approval.
-- Auto-merge requires an independent agent review of the latest revision, passing applicable required checks, and no unresolved blocking findings or change requests. The authoring agent cannot approve its own work. Missing checks/evidence or uncertain classification require human review; a human approval cannot substitute for fixing an accidental regression.
-- **Every bug fix requires a minimal reproduction:** expected behavior and its basis, smallest input, command, dependencies/seed where relevant, and exact target/proposed commits. Run the same reproduction: it must fail for the claimed reason before the fix and pass afterward. Retain a focused regression test where practical.
-- Validate the expected result against a documented contract, approved design, reference calculation, or established supported behavior; an LLM-generated assertion alone is not proof. Setup failures do not prove an unrelated bug. GPU/rendering/stochastic defects may use reproducible scripts with measured results. Unexecuted evidence is unverified and cannot qualify for auto-merge.
-- Agent reviewers must support blocking bug findings with a reproduction or concrete, verifiable counterexample. Report unsupported concerns as questions.
-- Human review is required for changes to observation/action contracts, rewards, termination, reset distributions, timing, CPU/mjlab parity, published checkpoint compatibility, or scientifically meaningful model behavior. Also require it for public API/support, dependency, licensing, CI/release, design/review policy, baseline, and tolerance changes. Do not update baselines or loosen tolerances just to pass checks.
-- Link human design agreement in feature/policy PRs. Human implementation approval must come from an eligible maintainer other than the author; an agent acting through a human account does not count. New implementation commits require renewed approval; scope changes require renewed design agreement. Revalidate affected checks when the base changes.
-- Keep one updated review summary: category, reproduction results, compatibility impact, checks run/not run, and merge decision. Separate defects from optional suggestions.
-
 Read the relevant wiki pages in `docs/wiki/` before making substantial changes.
 
 ---
