@@ -22,8 +22,11 @@ import mujoco
 import numpy as np
 import torch
 
+from myosuite.envs.myo.tasks.basic.arm.key_turn import KeyTurnEnvV0
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0
+from myosuite.envs.myo.tasks.basic.hand.obj_hold import ObjHoldFixedEnvV0
+from myosuite.envs.myo.tasks.basic.hand.pen import PenTwirlFixedEnvV0
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0
 from myosuite.envs.myo.tasks.basic.torso.pose import TorsoEnvV0
@@ -31,6 +34,7 @@ from myosuite.integrations.newton.accessor import _entry_point_defaults
 from myosuite.integrations.newton.batch_sim import NewtonBatchSim
 from myosuite.integrations.newton.torch_pipeline import NewtonActionCfg
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
+from myosuite.physics.quat_math import euler2quat
 from myosuite.terms.base_event import terrain_heights
 from myosuite.terms.base_obs import (
     com_linear_velocity,
@@ -103,12 +107,19 @@ class NewtonTaskEnv:
             self.task_kind = "leg_reach"
         elif "ReachEnvV0" in entry_str:
             self.task_kind = "reach"
+        elif "ObjHold" in entry_str:
+            self.task_kind = "obj_hold"
+        elif "PenTwirl" in entry_str:
+            self.task_kind = "pen_twirl"
+        elif "KeyTurnEnvV0" in entry_str:
+            self.task_kind = "key_turn"
         elif "LegWalkEnvV0" in entry_str or "LegTerrainEnvV0" in entry_str:
             self.task_kind = "walk"
         else:
             raise ValueError(
                 "NewtonTaskEnv supports PoseEnvV0, TorsoEnvV0, ReachEnvV0, "
-                f"LegReachEnvV0, LegWalkEnvV0, and LegTerrainEnvV0 tasks, got {entry_str!r}."
+                "LegReachEnvV0, LegWalkEnvV0, LegTerrainEnvV0, ObjHold*EnvV0, "
+                f"PenTwirl*EnvV0, and KeyTurnEnvV0 tasks, got {entry_str!r}."
             )
 
         kwargs = dict(spec.kwargs)
@@ -221,6 +232,88 @@ class NewtonTaskEnv:
                 dtype=torch.float32,
                 device=self.torch_device,
             )
+        elif self.task_kind == "obj_hold":
+            obs_keys = list(kwargs.get("obs_keys", ObjHoldFixedEnvV0.DEFAULT_OBS_KEYS))
+            self.rwd_keys_wt = dict(
+                kwargs.get(
+                    "weighted_reward_keys",
+                    ObjHoldFixedEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS,
+                )
+            )
+            self._is_random_task = "ObjHoldRandomEnvV0" in entry_str
+            ref_data = mujoco.MjData(ref_model)
+            mujoco.mj_forward(ref_model, ref_data)
+            self._object_sid = int(ref_model.site("object").id)
+            self._goal_sid = int(ref_model.site("goal").id)
+            self._object_init_pos = ref_data.site_xpos[self._object_sid].copy()
+            init_qp = ref_data.qpos.ravel().astype(np.float32).copy()
+            init_qp[:-7] = 0.0
+            init_qp[0] = -1.5
+            self._init_qpos = init_qp
+            self._init_qvel = ref_data.qvel.ravel().astype(np.float32).copy()
+            self.tip_sids = []
+            self.target_sids = []
+        elif self.task_kind == "pen_twirl":
+            obs_keys = list(kwargs.get("obs_keys", PenTwirlFixedEnvV0.DEFAULT_OBS_KEYS))
+            self.rwd_keys_wt = dict(
+                kwargs.get(
+                    "weighted_reward_keys",
+                    PenTwirlFixedEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS,
+                )
+            )
+            self._is_random_task = "PenTwirlRandomEnvV0" in entry_str
+            ref_data = mujoco.MjData(ref_model)
+            mujoco.mj_forward(ref_model, ref_data)
+            self._target_obj_bid = int(ref_model.body("target").id)
+            self._obj_bid = int(ref_model.body("Object").id)
+            self._eps_ball_sid = int(ref_model.site("eps_ball").id)
+            self._obj_t_sid = int(ref_model.site("object_top").id)
+            self._obj_b_sid = int(ref_model.site("object_bottom").id)
+            self._tar_t_sid = int(ref_model.site("target_top").id)
+            self._tar_b_sid = int(ref_model.site("target_bottom").id)
+            self.pen_length = float(
+                np.linalg.norm(
+                    ref_model.site_pos[self._obj_t_sid]
+                    - ref_model.site_pos[self._obj_b_sid]
+                )
+            )
+            self.tar_length = float(
+                np.linalg.norm(
+                    ref_model.site_pos[self._tar_t_sid]
+                    - ref_model.site_pos[self._tar_b_sid]
+                )
+            )
+            init_qp = ref_data.qpos.ravel().astype(np.float32).copy()
+            init_qp[:-6] = 0.0
+            init_qp[0] = -1.5
+            self._init_qpos = init_qp
+            self._init_qvel = ref_data.qvel.ravel().astype(np.float32).copy()
+            self.tip_sids = []
+            self.target_sids = []
+        elif self.task_kind == "key_turn":
+            obs_keys = list(kwargs.get("obs_keys", KeyTurnEnvV0.DEFAULT_OBS_KEYS))
+            self.rwd_keys_wt = dict(
+                kwargs.get(
+                    "weighted_reward_keys", KeyTurnEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS
+                )
+            )
+            self.goal_th = float(kwargs.get("goal_th", defaults.get("goal_th", 3.14)))
+            self.key_init_range = tuple(
+                kwargs.get("key_init_range", defaults.get("key_init_range", (0.0, 0.0)))
+            )
+            sfx = "" if kwargs.get("model_recipe") == "hand_keyturn" else "_r"
+            ref_data = mujoco.MjData(ref_model)
+            mujoco.mj_forward(ref_model, ref_data)
+            self._keyhead_sid = int(ref_model.site("keyhead").id)
+            self._if_sid = int(ref_model.site(f"IFtip{sfx}").id)
+            self._th_sid = int(ref_model.site(f"THtip{sfx}").id)
+            self._key_init_pos = ref_data.site_xpos[self._keyhead_sid].copy()
+            init_qp = ref_data.qpos.ravel().astype(np.float32).copy()
+            init_qp[:-1] = 0.0
+            self._init_qpos = init_qp
+            self._init_qvel = ref_data.qvel.ravel().astype(np.float32).copy()
+            self.tip_sids = []
+            self.target_sids = []
         else:
             obs_keys = list(kwargs.get("obs_keys", LegWalkEnvV0.DEFAULT_OBS_KEYS))
             self.rwd_keys_wt = dict(
@@ -340,6 +433,41 @@ class NewtonTaskEnv:
             obs_map["tip_pos"] = tip
             obs_map["target_pos"] = self.target_pos
             obs_map["reach_err"] = self.target_pos - tip
+        elif self.task_kind == "obj_hold":
+            qvel_dt = obs_map["qvel"]
+            obj_pos = t_acc.site_xpos(self._object_sid)
+            goal_pos = t_acc.site_xpos(self._goal_sid)
+            obs_map["hand_qpos"] = qpos[:, :-7]
+            obs_map["hand_qvel"] = qvel_dt[:, :-6]
+            obs_map["obj_pos"] = obj_pos
+            obs_map["obj_err"] = goal_pos - obj_pos
+        elif self.task_kind == "pen_twirl":
+            qvel_dt = obs_map["qvel"]
+            obj_pos = t_acc.body_xpos()[:, self._obj_bid]
+            obj_des_pos = t_acc.site_xpos(self._eps_ball_sid)
+            obj_rot = (
+                t_acc.site_xpos(self._obj_t_sid) - t_acc.site_xpos(self._obj_b_sid)
+            ) / self.pen_length
+            obj_des_rot = (
+                t_acc.site_xpos(self._tar_t_sid) - t_acc.site_xpos(self._tar_b_sid)
+            ) / self.tar_length
+            obs_map["hand_jnt"] = qpos[:, :-6]
+            obs_map["obj_pos"] = obj_pos
+            obs_map["obj_des_pos"] = obj_des_pos
+            obs_map["obj_vel"] = qvel_dt[:, -6:]
+            obs_map["obj_rot"] = obj_rot
+            obs_map["obj_des_rot"] = obj_des_rot
+            obs_map["obj_err_pos"] = obj_pos - obj_des_pos
+            obs_map["obj_err_rot"] = obj_rot - obj_des_rot
+        elif self.task_kind == "key_turn":
+            qvel_dt = obs_map["qvel"]
+            keyhead_xpos = t_acc.site_xpos(self._keyhead_sid)
+            obs_map["hand_qpos"] = qpos[:, :-1]
+            obs_map["hand_qvel"] = qvel_dt[:, :-1]
+            obs_map["key_qpos"] = qpos[:, -1:]
+            obs_map["key_qvel"] = qvel_dt[:, -1:]
+            obs_map["IFtip_approach"] = keyhead_xpos - t_acc.site_xpos(self._if_sid)
+            obs_map["THtip_approach"] = keyhead_xpos - t_acc.site_xpos(self._th_sid)
         else:
             xpos = t_acc.body_xpos()
             xquat = t_acc.body_xquat()
@@ -370,18 +498,20 @@ class NewtonTaskEnv:
 
     def _compute_reward_dict_torch(self) -> dict[str, torch.Tensor]:
         t_acc = self.sim.torch_accessor
+        act = t_acc.muscle_act()
+        act_mag = (
+            torch.linalg.norm(act, dim=-1) / act.shape[-1]
+            if act.shape[-1] > 0
+            else torch.zeros(
+                self.num_envs, dtype=torch.float32, device=self.torch_device
+            )
+        )
         if self.task_kind == "pose":
             comp = pose_reward(
                 t_acc,
                 {"target_angles": self.target_angles},
                 pose_thd=self.pose_thd,
                 far_thd=self.pose_far_thd,
-            )
-            act = t_acc.muscle_act()
-            act_mag = (
-                torch.linalg.norm(act, dim=-1) / act.shape[-1]
-                if act.shape[-1] > 0
-                else torch.zeros_like(comp["pose"])
             )
             rwd: dict[str, torch.Tensor] = {
                 "pose": comp["pose"],
@@ -407,6 +537,76 @@ class NewtonTaskEnv:
                 },
                 far_th=self.far_th,
             )
+        elif self.task_kind == "obj_hold":
+            obj_err = t_acc.site_xpos(self._goal_sid) - t_acc.site_xpos(
+                self._object_sid
+            )
+            goal_dist = torch.linalg.norm(obj_err, dim=-1)
+            goal_th = 0.010
+            drop = goal_dist > 0.300
+            rwd = {
+                "goal_dist": -goal_dist,
+                "bonus": 1.0 * (goal_dist < 2.0 * goal_th)
+                + 1.0 * (goal_dist < goal_th),
+                "act_reg": -act_mag,
+                "penalty": -1.0 * drop,
+                "sparse": -goal_dist,
+                "solved": goal_dist < goal_th,
+                "done": drop,
+            }
+        elif self.task_kind == "pen_twirl":
+            obj_pos = t_acc.body_xpos()[:, self._obj_bid]
+            obj_des_pos = t_acc.site_xpos(self._eps_ball_sid)
+            obj_rot = (
+                t_acc.site_xpos(self._obj_t_sid) - t_acc.site_xpos(self._obj_b_sid)
+            ) / self.pen_length
+            obj_des_rot = (
+                t_acc.site_xpos(self._tar_t_sid) - t_acc.site_xpos(self._tar_b_sid)
+            ) / self.tar_length
+            pos_align = torch.linalg.norm(obj_pos - obj_des_pos, dim=-1)
+            norm_prod = torch.linalg.norm(obj_rot, dim=-1) * torch.linalg.norm(
+                obj_des_rot, dim=-1
+            )
+            rot_align = (obj_rot * obj_des_rot).sum(dim=-1) / torch.where(
+                norm_prod == 0.0, torch.ones_like(norm_prod), norm_prod
+            )
+            dropped = pos_align > 0.075
+            in_zone = pos_align < 0.075
+            rwd = {
+                "pos_align": -pos_align,
+                "rot_align": rot_align,
+                "act_reg": -act_mag,
+                "drop": -1.0 * dropped,
+                "bonus": 1.0 * ((rot_align > 0.9) & in_zone)
+                + 5.0 * ((rot_align > 0.95) & in_zone),
+                "sparse": -pos_align + rot_align,
+                "solved": (rot_align > 0.95) & ~dropped,
+                "done": dropped,
+            }
+        elif self.task_kind == "key_turn":
+            key_pos = t_acc.joint_pos()[:, -1]
+            keyhead_xpos = t_acc.site_xpos(self._keyhead_sid)
+            if_dist = torch.abs(
+                torch.linalg.norm(keyhead_xpos - t_acc.site_xpos(self._if_sid), dim=-1)
+                - 0.030
+            )
+            th_dist = torch.abs(
+                torch.linalg.norm(keyhead_xpos - t_acc.site_xpos(self._th_sid), dim=-1)
+                - 0.030
+            )
+            far_th = 0.1
+            rwd = {
+                "key_turn": key_pos,
+                "IFtip_approach": -if_dist,
+                "THtip_approach": -th_dist,
+                "act_reg": -act_mag,
+                "bonus": 1.0 * (key_pos > math.pi / 2.0) + 1.0 * (key_pos > math.pi),
+                "penalty": -1.0 * (if_dist > far_th / 2.0)
+                - 1.0 * (th_dist > far_th / 2.0),
+                "sparse": key_pos,
+                "solved": key_pos > self.goal_th,
+                "done": (if_dist > far_th) | (th_dist > far_th),
+            }
         else:
             qpos = t_acc.joint_pos()
             com, com_vel, phase_var = self._walk_kinematics_torch()
@@ -434,12 +634,6 @@ class NewtonTaskEnv:
             vel_error = torch.linalg.norm(self._target_vel_t - com_vel, dim=-1)
             on_target = locomotion_solved(torch, vel_error, done_bool)
             streak = locomotion_streak(self._on_target_steps, on_target)
-            act = t_acc.muscle_act()
-            act_mag = (
-                torch.linalg.norm(act, dim=-1) / act.shape[-1]
-                if act.shape[-1] > 0
-                else torch.zeros_like(comp["vel_reward"])
-            )
             rwd = {
                 "vel_reward": comp["vel_reward"],
                 "cyclic_hip": comp["cyclic_hip"],
@@ -554,6 +748,49 @@ class NewtonTaskEnv:
                         ref_model.jnt_range[:, 1],
                     )
                     qpos_batch[row] = qp
+        elif self.task_kind == "obj_hold":
+            if self._is_random_task:
+                goals = np.empty((len(selected), 3), dtype=np.float32)
+                sizes = np.empty((len(selected), 3), dtype=np.float32)
+                for row, w in enumerate(selected):
+                    rng = self._rngs[int(w)]
+                    goals[row] = self._object_init_pos + rng.uniform(
+                        high=np.array([0.030, 0.030, 0.030]),
+                        low=np.array([-0.030, -0.030, -0.030]),
+                    )
+                    sizes[row] = rng.uniform(
+                        high=np.array([0.030, 0.030, 0.030]),
+                        low=np.array([0.020, 0.020, 0.020]),
+                    )
+                self.sim.set_site_pos(self._goal_sid, goals, env_ids=selected)
+                self.sim.set_geom_size(-1, sizes, env_ids=selected)
+        elif self.task_kind == "pen_twirl":
+            pen_quats: np.ndarray | None = None
+            if self._is_random_task:
+                pen_quats = np.empty((len(selected), 4), dtype=np.float32)
+                for row, w in enumerate(selected):
+                    rng = self._rngs[int(w)]
+                    desired_orien = np.zeros(3)
+                    desired_orien[0] = rng.uniform(low=-1.0, high=1.0)
+                    desired_orien[1] = rng.uniform(low=-1.0, high=1.0)
+                    pen_quats[row] = euler2quat(desired_orien)
+        elif self.task_kind == "key_turn":
+            randomize_pos = self.key_init_range[0] != self.key_init_range[1]
+            key_pos_batch: np.ndarray | None = (
+                np.empty((len(selected), 3), dtype=np.float32)
+                if randomize_pos
+                else None
+            )
+            for row, w in enumerate(selected):
+                rng = self._rngs[int(w)]
+                qpos_batch[row, -1] = rng.uniform(
+                    low=self.key_init_range[0], high=self.key_init_range[1]
+                )
+                if key_pos_batch is not None:
+                    key_pos_batch[row] = self._key_init_pos + rng.uniform(
+                        low=np.array([-0.01, -0.01, -0.01]),
+                        high=np.array([0.01, 0.01, 0.01]),
+                    )
         else:
             for row, w in enumerate(selected):
                 rng = self._rngs[int(w)]
@@ -589,6 +826,12 @@ class NewtonTaskEnv:
             qpos=qpos_batch,
             qvel=qvel_batch,
         )
+        if self.task_kind == "pen_twirl" and pen_quats is not None:
+            self.sim.set_body_pose(
+                self._target_obj_bid, quat=pen_quats, env_ids=selected
+            )
+        elif self.task_kind == "key_turn" and key_pos_batch is not None:
+            self.sim.set_body_pose(-1, pos=key_pos_batch, env_ids=selected)
         if self.task_kind == "leg_reach":
             n_sites = len(self.tip_sids)
             targets = np.empty((len(selected), 3 * n_sites), dtype=np.float32)
