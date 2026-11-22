@@ -39,12 +39,14 @@ def reference() -> dict:
 
 @pytest.fixture(scope="module")
 def measured() -> dict:
+    pytest.importorskip("myo_sim.scaling", reason="Requires MyoHub/myo_sim#149")
     return validation.sample_myo()
 
 
 @pytest.fixture(scope="module")
 def mutants() -> dict:
     """Sampled mutants by (case, mutation), filled on first use."""
+    pytest.importorskip("myo_sim.scaling", reason="Requires MyoHub/myo_sim#149")
     return {}
 
 
@@ -275,6 +277,7 @@ def _torso_and_head(model: mujoco.MjModel) -> tuple[np.ndarray, np.ndarray, np.n
 
 
 def test_torso_and_root_take_opensim_axes(tmp_path: Path) -> None:
+    pytest.importorskip("myo_sim.scaling", reason="Requires MyoHub/myo_sim#149")
     # MyoLeg's root and torso are z-up; OpenSim's y is up. Distinct factors per
     # OpenSim axis must land on the body axes that point the same way.
     factors = np.array([1.1, 1.2, 1.3])
@@ -309,7 +312,9 @@ def test_root_height_regression_sees_unscaled_feet(
 ) -> None:
     # Inject the bug through the private geom-scaling helper: the feet keep their
     # nominal collision geoms. The calcaneus landmarks cannot see this.
-    from myo_sim import scaling as model_scaling
+    model_scaling = pytest.importorskip(
+        "myo_sim.scaling", reason="Requires MyoHub/myo_sim#149"
+    )
 
     scale_geom = model_scaling._scale_geom
 
