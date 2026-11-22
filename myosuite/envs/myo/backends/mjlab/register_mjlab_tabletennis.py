@@ -30,9 +30,7 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import (
-    RslRlModelCfg,
     RslRlOnPolicyRunnerCfg,
-    RslRlPpoAlgorithmCfg,
 )
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
@@ -44,16 +42,17 @@ from myosuite.core.model_recipes import (
     _add_tabletennis_furniture,
     _tabletennis_body_spec,
 )
-from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
     episode_length_s as _cpu_episode_length_s,
+)
+from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (
     mujoco_cfg_from_model,
 )
+from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM, sync_forward
 from myosuite.envs.myo.backends.mjlab.tasks.rl import (
-    MUSCLE_ENTROPY_COEF,
-    muscle_gaussian_distribution_cfg,
+    myo_ppo_runner_cfg,
 )
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
@@ -782,43 +781,18 @@ def _tt_relaunch_ball(
 
 
 def _table_tennis_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    # Match register_mjlab_tasks: env observation group is ``policy`` (flat 417-d).
-    _policy_obs_groups: dict[str, tuple[str, ...]] = {
-        "actor": ("policy",),
-        "critic": ("policy",),
-    }
-    return RslRlOnPolicyRunnerCfg(
-        actor=RslRlModelCfg(
-            hidden_dims=(256, 128, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=muscle_gaussian_distribution_cfg(),
-        ),
-        critic=RslRlModelCfg(
-            hidden_dims=(256, 128, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=None,
-        ),
-        algorithm=RslRlPpoAlgorithmCfg(
-            value_loss_coef=1.0,
-            use_clipped_value_loss=True,
-            clip_param=0.2,
-            entropy_coef=MUSCLE_ENTROPY_COEF,
-            num_learning_epochs=4,
-            num_mini_batches=4,
-            learning_rate=3e-4,
-            schedule="adaptive",
-            gamma=0.99,
-            lam=0.95,
-            desired_kl=0.01,
-            max_grad_norm=1.0,
-        ),
-        experiment_name="myo_table_tennis",
-        save_interval=100,
-        num_steps_per_env=48,
+    """PPO runner config for the table-tennis GPU env (flat 417-d ``policy`` group)."""
+    return myo_ppo_runner_cfg(
+        "myo_table_tennis",
+        hidden_dims=(256, 128, 64),
+        critic_hidden_dims=(256, 128, 64),
         max_iterations=500,
-        obs_groups=dict(_policy_obs_groups),
+        num_steps_per_env=48,
+        num_learning_epochs=4,
+        num_mini_batches=4,
+        clip_param=0.2,
+        gamma=0.99,
+        obs_groups={"actor": ("policy",), "critic": ("policy",)},
     )
 
 

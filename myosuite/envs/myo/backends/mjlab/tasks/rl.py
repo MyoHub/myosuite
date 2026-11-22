@@ -87,6 +87,7 @@ def myo_ppo_runner_cfg(
     num_mini_batches: int = 8,
     clip_param: float = 0.3,
     gamma: float = 0.97,
+    obs_groups: dict[str, tuple[str, ...]] | None = None,
 ) -> RslRlOnPolicyRunnerCfg:
     """PPO runner config shared by all pose and reach tasks.
 
@@ -126,6 +127,8 @@ def myo_ppo_runner_cfg(
         num_mini_batches: Minibatches per epoch.
         clip_param: PPO clipping epsilon.
         gamma: Discount factor.
+        obs_groups: Observation groups fed to actor and critic; ``None`` keeps
+            the runner default (``actor`` / ``critic`` groups).
 
     Returns:
         The runner config.
@@ -160,4 +163,5 @@ def myo_ppo_runner_cfg(
         save_interval=100,
         num_steps_per_env=num_steps_per_env,
         max_iterations=max_iterations,
+        **({} if obs_groups is None else {"obs_groups": obs_groups}),
     )

@@ -38,37 +38,34 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.rl import (
-    RslRlModelCfg,
     RslRlOnPolicyRunnerCfg,
-    RslRlPpoAlgorithmCfg,
 )
 from mjlab.scene import SceneCfg
 from mjlab.sim import SimulationCfg
 from mjlab.tasks.registry import register_mjlab_task
 
 from myosuite.core.config import TaskConfig
-from myosuite.physics.joint_coupling import JointCouplings
-from myosuite.physics.quat import quat_yaw
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
-from myosuite.utils.asset_path_resolver import resolve_model_xml_path
-from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
-from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
-    MyoMuscleActivationActionCfg,
-    mjlab_env_cfg_from_task_config,
-)
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
     _init_state_from_model,
     _muscle_actuator_names,
     _muscle_tendon_names,
     default_mimic_clip_on_policy_runner_cfg,
 )
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
+from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
+    MyoMuscleActivationActionCfg,
+    mjlab_env_cfg_from_task_config,
+)
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
     register_table_tennis_mjlab_tasks,
 )
 from myosuite.envs.myo.backends.mjlab.tasks.rl import (
-    MUSCLE_ENTROPY_COEF,
-    muscle_gaussian_distribution_cfg,
+    myo_ppo_runner_cfg,
 )
+from myosuite.physics.joint_coupling import JointCouplings
+from myosuite.physics.quat import quat_yaw
+from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 if TYPE_CHECKING:  # pragma: no cover
     from mjlab.envs import ManagerBasedRlEnv
@@ -212,38 +209,15 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
 def _elbow_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     """Minimal PPO runner config for benchmarking."""
-    return RslRlOnPolicyRunnerCfg(
-        actor=RslRlModelCfg(
-            hidden_dims=(64, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=muscle_gaussian_distribution_cfg(),
-        ),
-        critic=RslRlModelCfg(
-            hidden_dims=(64, 64),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=None,
-        ),
-        algorithm=RslRlPpoAlgorithmCfg(
-            value_loss_coef=1.0,
-            use_clipped_value_loss=True,
-            clip_param=0.2,
-            entropy_coef=MUSCLE_ENTROPY_COEF,
-            num_learning_epochs=2,
-            num_mini_batches=1,
-            learning_rate=3e-4,
-            schedule="adaptive",
-            gamma=0.99,
-            lam=0.95,
-            desired_kl=0.01,
-            max_grad_norm=1.0,
-        ),
-        experiment_name="myo_elbow",
-        save_interval=100,
-        num_steps_per_env=24,
+    return myo_ppo_runner_cfg(
+        "myo_elbow",
+        hidden_dims=(64, 64),
+        critic_hidden_dims=(64, 64),
         max_iterations=100,
-        # Map actor/critic to the env's "policy" group.
+        num_learning_epochs=2,
+        num_mini_batches=1,
+        clip_param=0.2,
+        gamma=0.99,
         obs_groups={"actor": ("policy",), "critic": ("policy",)},
     )
 
@@ -644,7 +618,9 @@ def _make_chasetag_fbp2_env_cfg(num_envs: int = 128) -> ManagerBasedRlEnvCfg:
     Returns:
         The env config.
     """
-    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref  # noqa: PLC0415
+    from myosuite.envs.myo.backends.mjlab.tasks import (
+        cpu_reference as ref,  # noqa: PLC0415
+    )
     from myosuite.envs.myo.backends.mjlab.tasks import mdp  # noqa: PLC0415
 
     task = _chasetag_cpu_task()
@@ -766,37 +742,16 @@ def _chasetag_ppo_runner_cfg(
     experiment_name: str = "myo_chasetag_fbp2",
 ) -> RslRlOnPolicyRunnerCfg:
     """PPO runner config for the FBP2 chase-tag GPU env (mirrors the directional runner cfg)."""
-    return RslRlOnPolicyRunnerCfg(
-        actor=RslRlModelCfg(
-            hidden_dims=(512, 256, 128),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=muscle_gaussian_distribution_cfg(),
-        ),
-        critic=RslRlModelCfg(
-            hidden_dims=(512, 256, 128),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg=None,
-        ),
-        algorithm=RslRlPpoAlgorithmCfg(
-            value_loss_coef=1.0,
-            use_clipped_value_loss=True,
-            clip_param=0.2,
-            entropy_coef=MUSCLE_ENTROPY_COEF,
-            num_learning_epochs=4,
-            num_mini_batches=4,
-            learning_rate=3e-4,
-            schedule="adaptive",
-            gamma=0.99,
-            lam=0.95,
-            desired_kl=0.01,
-            max_grad_norm=1.0,
-        ),
-        experiment_name=experiment_name,
-        save_interval=100,
-        num_steps_per_env=48,
+    return myo_ppo_runner_cfg(
+        experiment_name,
+        hidden_dims=(512, 256, 128),
+        critic_hidden_dims=(512, 256, 128),
         max_iterations=500,
+        num_steps_per_env=48,
+        num_learning_epochs=4,
+        num_mini_batches=4,
+        clip_param=0.2,
+        gamma=0.99,
         obs_groups={"actor": ("policy",), "critic": ("policy",)},
     )
 
