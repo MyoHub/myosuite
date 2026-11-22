@@ -26,6 +26,10 @@ def test_ppo_comparison_smoke() -> None:
         n_envs=2,
         n_eval_episodes=2,
     )
-    assert len(summary.arms) == 2
-    assert [a.method for a in summary.arms] == ["PPO", "LambdaHold+PPO"]
+    assert len(summary.arms) == 3
+    assert [a.method for a in summary.arms] == [
+        "PPO",
+        "LambdaHold+PPO",
+        "CurriculumLambdaHold+PPO",
+    ]
     assert all(len(a.curves) == 2 for a in summary.arms)
