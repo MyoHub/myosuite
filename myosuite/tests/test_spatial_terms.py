@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 
 from myosuite.core.protocols import PhysicsPath
-from myosuite.terms import spatial as spatial_compat
 from myosuite.terms.base_obs import boundary_proximity_obs
 from myosuite.terms.base_reward import (
     enclosure_clearance_reward,
@@ -152,9 +151,6 @@ def test_enclosure_reward_and_termination_cpu_and_torch_batch_parity() -> None:
     np.testing.assert_array_equal(res_np["done"], [False, False, True])
     np.testing.assert_array_equal(term_np, [False, False, True])
     assert enclosure_contact_penalty is enclosure_clearance_reward
-    assert spatial_compat.boundary_proximity_obs is boundary_proximity_obs
-    assert spatial_compat.enclosure_clearance_reward is enclosure_clearance_reward
-    assert spatial_compat.enclosure_violation is enclosure_violation
 
     acc_unbatched = _SpatialAccessor(sites_np[2], np, batched=False)
     state_unbatched = {

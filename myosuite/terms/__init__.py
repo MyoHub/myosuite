@@ -42,19 +42,17 @@ Example (minimal)::
 """
 
 from myosuite.terms import (
-    base_action,
-    base_event,
     base_obs,
     base_reward,
     base_termination,
-    spatial,
+    base_event,
+    base_action,
 )
 
 __all__ = [
-    "base_action",
-    "base_event",
     "base_obs",
     "base_reward",
     "base_termination",
-    "spatial",
+    "base_event",
+    "base_action",
 ]
