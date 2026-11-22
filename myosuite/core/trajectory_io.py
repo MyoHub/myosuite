@@ -273,7 +273,10 @@ def _expand_state_field(
     model_indices: np.ndarray,
     use_qvel: bool,
 ) -> np.ndarray:
-    default = _default_state(mj_model, use_qvel=use_qvel)
+    # In the clip's dtype, so a float32 clip stays float32.
+    default = _default_state(mj_model, use_qvel=use_qvel).astype(
+        partial_values.dtype, copy=False
+    )
     expanded = np.repeat(default[None, :], partial_values.shape[0], axis=0)
     expanded[:, model_indices] = partial_values
     return expanded
@@ -406,6 +409,7 @@ def load_motion_clip(
     path: Path,
     expected_nq: int,
     expected_nv: int,
+    dtype: Any = np.float64,
 ) -> MotionClip:
     """Load motion NPZ and validate core tensor shapes.
 
@@ -416,11 +420,19 @@ def load_motion_clip(
     :func:`expand_motion_clip_to_model` before its columns are used as model
     qpos/qvel. Arrays share a positive frame count; optional ``site_xpos`` has
     shape ``(T, S, 3)``.
+
+    Args:
+        path: The NPZ file.
+        expected_nq: Model qpos width (checked unless the clip names its joints).
+        expected_nv: Model qvel width (likewise).
+        dtype: dtype of qpos, qvel and site_xpos. ``np.float32`` halves the host
+            memory of a large mjlab clip bank and leaves its float32 device bank
+            unchanged; the CPU envs compute in float64.
     """
     with np.load(path, allow_pickle=False) as npz:
         if "qpos" not in npz.files:
             raise KeyError(f"Motion file missing required key 'qpos': {path}")
-        qpos = np.asarray(npz["qpos"], dtype=np.float64)
+        qpos = np.asarray(npz["qpos"], dtype=dtype)
         if qpos.ndim != 2:
             raise ValueError(f"qpos must be rank-2, got shape {qpos.shape}")
         if qpos.shape[0] == 0:
@@ -433,7 +445,7 @@ def load_motion_clip(
         qvel: np.ndarray | None = None
         qvel_joint_names: list[str] | None = None
         if "qvel" in npz.files:
-            qvel_arr = np.asarray(npz["qvel"], dtype=np.float64)
+            qvel_arr = np.asarray(npz["qvel"], dtype=dtype)
             qvel_joint_names = _decode_name_list(npz, _QVEL_NAME_KEYS)
             if qvel_arr.ndim != 2:
                 raise ValueError(f"qvel must be rank-2, got shape {qvel_arr.shape}")
@@ -444,7 +456,7 @@ def load_motion_clip(
             qvel = qvel_arr
         site_xpos: np.ndarray | None = None
         if "site_xpos" in npz.files:
-            site_xpos = np.asarray(npz["site_xpos"], dtype=np.float64)
+            site_xpos = np.asarray(npz["site_xpos"], dtype=dtype)
             if site_xpos.ndim != 3 or site_xpos.shape[2] != 3:
                 raise ValueError(
                     f"site_xpos must have shape (T, S, 3), got {site_xpos.shape}"
@@ -454,6 +466,7 @@ def load_motion_clip(
                 raise ValueError(
                     f"{name} frame count mismatch: expected {qpos.shape[0]}, got {values.shape[0]}"
                 )
+
         site_names: list[str] | None = None
         if "site_names" in npz.files:
             try:
