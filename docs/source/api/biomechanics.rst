@@ -1,24 +1,36 @@
 Biomechanics
 ============
 
-Musculoskeletal analysis of motions in :mod:`myosuite.biomechanics`.
+Musculoskeletal kinematics, retargeting, inverse dynamics, muscle redundancy solvers, and physiological movement metrics in :mod:`myosuite.biomechanics`.
 
-Inverse kinematics
-------------------
+Inverse kinematics & landmark observability
+-------------------------------------------
 
 .. automodule:: myosuite.biomechanics.inverse_kinematics
    :members:
 
-OpenSim motions
----------------
+.. automodule:: myosuite.biomechanics.observability
+   :members:
+
+OpenSim motions & force-plate loads
+-----------------------------------
 
 .. automodule:: myosuite.biomechanics.opensim_motion
    :members:
 
-Motion retargeting
-------------------
+.. automodule:: myosuite.biomechanics.opensim_grf
+   :members:
+
+Body, video & hand retargeting
+------------------------------
 
 .. automodule:: myosuite.biomechanics.retarget
+   :members:
+
+.. automodule:: myosuite.biomechanics.smplh
+   :members:
+
+.. automodule:: myosuite.biomechanics.gvhmr
    :members:
 
 .. automodule:: myosuite.biomechanics.retarget_smplh
@@ -27,20 +39,23 @@ Motion retargeting
 .. automodule:: myosuite.biomechanics.retarget_instanthmr
    :members:
 
-Inverse dynamics
-----------------
+.. automodule:: myosuite.biomechanics.mano
+   :members:
+
+.. automodule:: myosuite.biomechanics.hand_retarget
+   :members:
+
+.. automodule:: myosuite.biomechanics.hoi_retarget
+   :members:
+
+Inverse dynamics & muscle redundancy
+------------------------------------
 
 .. automodule:: myosuite.biomechanics.inverse_dynamics
    :members:
 
-Static optimization
--------------------
-
 .. automodule:: myosuite.biomechanics.static_optimization
    :members:
-
-Computed muscle control
------------------------
 
 .. automodule:: myosuite.biomechanics.computed_muscle_control
    :members:
@@ -73,6 +88,18 @@ Camera
 Calibrated metric camera reconstruction with depth lifting, triangulation and rejection diagnostics.
 
 .. automodule:: myosuite.biomechanics.camera
+   :members:
+
+Muscle effort, EMG & movement quality
+-------------------------------------
+
+.. automodule:: myosuite.biomechanics.effort
+   :members:
+
+.. automodule:: myosuite.biomechanics.emg
+   :members:
+
+.. automodule:: myosuite.biomechanics.kinematic_metrics
    :members:
 
 Muscle mesh reconstruction
