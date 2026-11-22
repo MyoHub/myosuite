@@ -1,25 +1,41 @@
 # Copyright (c) MyoSuite Authors. All rights reserved.
-# Portions adapted from robfiras/loco-mujoco (loco_mujoco/core/visuals/viser_viewer.py,
-# Copyright (c) 2024 Al-Hafez, MIT License).
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Viser user-scene marker bridge, sky/floor styling, and multi-env grid layout.
+"""Thin ``mjviser`` adapter for MyoSuite ``VizCallback`` / ``MotionClip`` markers and XY grids.
 
-Adapted from ``robfiras/loco-mujoco`` (``loco_mujoco/core/visuals/viser_viewer.py``,
-MIT License, Copyright (c) 2024 Al-Hafez) for native MuJoCo ``MjvScene`` markers
-and MyoSuite's ``mjviser`` scenes.
+Scope against ``mjviser>=0.0.14,<0.0.17``:
+- Reuses ``mjviser.ViserMujocoScene(num_envs=...)``, ``update_from_arrays``,
+  public ``scene.fixed_bodies_frame`` camera tracking,
+  ``mjviser.conversions.create_primitive_mesh`` and
+  ``mjviser.conversions.mujoco_mesh_to_trimesh``, and ``viser``'s public
+  ``add_batched_meshes_simple`` / ``add_arrows`` APIs.
+- ``ViserMujocoScene._update_decor_from_mjvscene`` is private and overwrites its
+  internal ``_mjv_scene`` via ``mjv_updateScene`` each frame rather than
+  accepting caller-populated ``MjvScene`` buffers (such as
+  :class:`~myosuite.viz.site_marker_viz.SiteMarkerViz` or
+  :class:`~myosuite.viz.ghost_body_viz.GhostBodyViz`). Until ``mjviser`` exposes
+  a public external-``MjvScene`` hook (e.g. ``update_user_scene(mjv_scene)``),
+  :class:`ViserMarkers` bridges MyoSuite ``VizCallback`` buffers using public
+  ``mjviser.conversions`` and ``viser`` handles only.
+- ``ViserMujocoScene(num_envs=...)`` overlays environments at the origin unless
+  caller-supplied ``body_xpos`` / ``mocap_pos`` arrays include spatial offsets;
+  :class:`ViserMultiEnvScene` isolates that grid-offset + ``mj_forward`` step.
 """
 
 from __future__ import annotations
 
 import contextlib
+import functools
 import math
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 import numpy as np
+
+if TYPE_CHECKING:
+    from myosuite.core.trajectory_io import MotionClip
 
 _PLANE = int(mujoco.mjtGeom.mjGEOM_PLANE)
 _HFIELD = int(mujoco.mjtGeom.mjGEOM_HFIELD)
@@ -38,53 +54,36 @@ _ARROWS = frozenset(
     )
 )
 
-_UNIT_MESH_CACHE: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-_SKY_PRESETS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
-    "light": ((180, 210, 240), (242, 246, 250)),
-    "dark": ((20, 28, 42), (52, 64, 82)),
-}
-_FLOOR_PRESETS: dict[str, tuple[int, int, int]] = {
-    "light": (220, 224, 230),
-    "dark": (46, 50, 58),
+_PRIMITIVE_SPECS: dict[str, tuple[mujoco.mjtGeom, list[float]]] = {
+    "sphere": (mujoco.mjtGeom.mjGEOM_SPHERE, [1.0, 0.0, 0.0]),
+    "box": (mujoco.mjtGeom.mjGEOM_BOX, [1.0, 1.0, 1.0]),
+    "cylinder": (mujoco.mjtGeom.mjGEOM_CYLINDER, [1.0, 0.5, 0.0]),
+    "capsule": (mujoco.mjtGeom.mjGEOM_CAPSULE, [1.0, 0.5, 0.0]),
+    "ellipsoid": (mujoco.mjtGeom.mjGEOM_ELLIPSOID, [1.0, 1.0, 1.0]),
 }
 
 
-def _get_unit_mesh(kind: str) -> tuple[np.ndarray, np.ndarray]:
-    """Return cached ``(vertices, faces)`` for a unit primitive *kind*."""
-    cached = _UNIT_MESH_CACHE.get(kind)
-    if cached is not None:
-        return cached
+@functools.lru_cache(maxsize=1)
+def _unit_primitives() -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Build unit primitive ``(vertices, faces)`` once via ``mjviser.conversions``."""
+    from mjviser.conversions import create_primitive_mesh  # noqa: PLC0415
 
-    import trimesh  # noqa: PLC0415
-
-    if kind in ("sphere", "ellipsoid"):
-        mesh = trimesh.creation.icosphere(subdivisions=2, radius=1.0)
-    elif kind == "box":
-        mesh = trimesh.creation.box(extents=[2.0, 2.0, 2.0])
-    elif kind == "cylinder":
-        mesh = trimesh.creation.cylinder(radius=1.0, height=1.0, sections=16)
-    elif kind == "capsule":
-        mesh = trimesh.creation.capsule(height=1.0, radius=1.0, count=[8, 16])
-    elif kind == "arrow_shaft":
-        mesh = trimesh.creation.cylinder(radius=1.0, height=1.0, sections=12)
-        mesh.apply_translation([0.0, 0.0, 0.5])
-    elif kind == "arrow_head":
-        mesh = trimesh.creation.cone(radius=1.0, height=1.0, sections=12)
-    else:
-        raise ValueError(f"Unsupported unit mesh kind: {kind!r}")
-
-    verts = np.asarray(mesh.vertices, dtype=np.float32)
-    faces = np.asarray(mesh.faces, dtype=np.uint32)
-    _UNIT_MESH_CACHE[kind] = (verts, faces)
-    return verts, faces
-
-
-def _clamp_rgb(rgb: Sequence[int | float] | np.ndarray) -> tuple[int, int, int]:
-    arr = np.asarray(rgb, dtype=np.float64).reshape(-1)
-    if arr.size != 3:
-        raise ValueError(f"Expected 3-element RGB tuple, got shape {arr.shape}")
-    clamped = np.clip(np.round(arr), 0.0, 255.0).astype(int)
-    return (int(clamped[0]), int(clamped[1]), int(clamped[2]))
+    spec = mujoco.MjSpec()
+    order = list(_PRIMITIVE_SPECS)
+    for name in order:
+        gtype, gsize = _PRIMITIVE_SPECS[name]
+        geom = spec.worldbody.add_geom(name=name)
+        geom.type = gtype
+        geom.size = gsize
+    unit_model = spec.compile()
+    out: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for gid, name in enumerate(order):
+        mesh = create_primitive_mesh(unit_model, gid)
+        out[name] = (
+            np.asarray(mesh.vertices, dtype=np.float32),
+            np.asarray(mesh.faces, dtype=np.uint32),
+        )
+    return out
 
 
 def _normalize_env_offsets(
@@ -107,16 +106,16 @@ def _normalize_env_offsets(
 
 
 class ViserMarkers:
-    """Batched ``MjvGeom`` user-scene marker bridge for ``mjviser`` scenes.
+    """Bridge MyoSuite ``VizCallback`` / ``MotionClip`` ``MjvGeom`` markers into ``mjviser``.
 
-    Converts active ``MjvGeom`` entries from one or more ``mujoco.MjvScene``
-    buffers into ``viser`` batched meshes parented under the scene's body frame
-    so markers automatically follow camera tracking.
+    Markers are parented under ``scene.fixed_bodies_frame`` so they track
+    ``ViserMujocoScene`` camera offsets automatically through public handles.
 
     Args:
-        scene: ``mjviser`` ``ViserMujocoScene`` (or compatible scene wrapper).
-        model: Compiled MuJoCo model used to resolve ``mjGEOM_MESH`` assets.
-        root_name: Scene-tree prefix for batched marker handles.
+        scene: ``mjviser.ViserMujocoScene`` (or an object exposing ``server`` and
+            optional ``fixed_bodies_frame``).
+        model: Compiled MuJoCo model used to resolve ``mjGEOM_MESH`` geoms.
+        root_name: Scene-tree suffix for owned marker handles.
     """
 
     def __init__(
@@ -141,42 +140,49 @@ class ViserMarkers:
                 if clean == prefix or clean.startswith(f"{prefix}/")
                 else f"{prefix}{clean}"
             )
-            self._use_scene_offset = False
         else:
             self.root_path = clean
-            self._use_scene_offset = True
 
         self.handles: dict[str, Any] = {}
+        self.opacities: dict[str, np.ndarray] = {}
         self._counts: dict[str, int] = {}
-        self._mesh_cache: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        self._geom_for_mesh_id: dict[int, int] = {}
+        for gid in range(model.ngeom):
+            if int(model.geom_type[gid]) == _MESH:
+                mid = int(model.geom_dataid[gid])
+                self._geom_for_mesh_id.setdefault(mid, gid)
         self._callback_scn: mujoco.MjvScene | None = None
         self._callback_maxgeom: int = 0
 
-    def _model_mesh(self, mesh_id: int) -> tuple[np.ndarray, np.ndarray] | None:
-        cached = self._mesh_cache.get(mesh_id)
-        if cached is not None:
-            return cached
+    def _mesh_vertices_faces(
+        self, mesh_id: int
+    ) -> tuple[np.ndarray, np.ndarray] | None:
         if mesh_id < 0 or mesh_id >= self.model.nmesh:
             return None
+        gid = self._geom_for_mesh_id.get(mesh_id)
+        if gid is not None:
+            from mjviser.conversions import mujoco_mesh_to_trimesh  # noqa: PLC0415
+
+            mesh = mujoco_mesh_to_trimesh(self.model, gid)
+            return (
+                np.asarray(mesh.vertices, dtype=np.float32),
+                np.asarray(mesh.faces, dtype=np.uint32),
+            )
         v_adr = int(self.model.mesh_vertadr[mesh_id])
         v_num = int(self.model.mesh_vertnum[mesh_id])
         f_adr = int(self.model.mesh_faceadr[mesh_id])
         f_num = int(self.model.mesh_facenum[mesh_id])
         if v_num <= 0 or f_num <= 0:
             return None
-        verts = np.asarray(
-            self.model.mesh_vert[v_adr : v_adr + v_num], dtype=np.float32
-        ).copy()
-        faces = np.asarray(
-            self.model.mesh_face[f_adr : f_adr + f_num], dtype=np.uint32
-        ).copy()
-        self._mesh_cache[mesh_id] = (verts, faces)
-        return verts, faces
+        return (
+            np.asarray(self.model.mesh_vert[v_adr : v_adr + v_num], dtype=np.float32),
+            np.asarray(self.model.mesh_face[f_adr : f_adr + f_num], dtype=np.uint32),
+        )
 
     def _resolve_mesh_id(self, dataid: int) -> int:
         if 0 <= dataid < self.model.nmesh:
             return dataid
-        if self.model.nmesh <= dataid < 2 * self.model.nmesh:
+        if 0 <= dataid < 2 * self.model.nmesh:
             return dataid // 2
         return -1
 
@@ -200,6 +206,7 @@ class ViserMarkers:
             handle.batched_colors = colors
             handle.batched_opacities = opacities
             handle.visible = True
+            self.opacities[key] = opacities
             return
 
         if handle is not None:
@@ -218,7 +225,9 @@ class ViserMarkers:
             cast_shadow=False,
             receive_shadow=False,
         )
+        handle.batched_opacities = opacities
         self.handles[key] = handle
+        self.opacities[key] = opacities
         self._counts[key] = count
 
     def update(
@@ -227,14 +236,7 @@ class ViserMarkers:
         *,
         env_offsets: np.ndarray | None = None,
     ) -> None:
-        """Synchronize Viser batched marker handles with *user_scn*.
-
-        Args:
-            user_scn: Single ``MjvScene``, per-environment sequence of
-                ``MjvScene`` instances, or ``None`` to hide all markers.
-            env_offsets: Optional ``(n_envs, 2)`` or ``(n_envs, 3)`` world-space
-                offsets applied per scene.
-        """
+        """Synchronize owned Viser marker handles with *user_scn*."""
         if user_scn is None:
             scenes: list[mujoco.MjvScene] = []
         elif isinstance(user_scn, mujoco.MjvScene):
@@ -247,23 +249,17 @@ class ViserMarkers:
             if scenes
             else np.zeros((0, 3), dtype=np.float64)
         )
-        scene_shift = (
-            np.asarray(
-                getattr(self.scene, "_scene_offset", np.zeros(3)), dtype=np.float64
-            )
-            if self._use_scene_offset
-            else np.zeros(3, dtype=np.float64)
-        )
 
-        # Per-key accumulators: (pos, quat, scale, rgb, opacity)
         batches: dict[
             str, list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]]
         ] = {}
         mesh_ids_for_key: dict[str, int] = {}
+        arrow_points: list[np.ndarray] = []
+        arrow_colors: list[np.ndarray] = []
+        arrow_radii: list[tuple[float, float, float]] = []
         quat_buf = np.empty(4, dtype=np.float64)
 
-        for scn, env_off in zip(scenes, offsets):
-            shift = env_off + scene_shift
+        for scn, shift in zip(scenes, offsets, strict=True):
             ngeom = min(int(scn.ngeom), len(scn.geoms))
             for idx in range(ngeom):
                 g = scn.geoms[idx]
@@ -278,7 +274,7 @@ class ViserMarkers:
                 pos = np.asarray(g.pos, dtype=np.float64) + shift
                 mat = np.asarray(g.mat, dtype=np.float64).reshape(3, 3)
                 mujoco.mju_mat2Quat(quat_buf, mat.reshape(9))
-                quat = quat_buf.astype(np.float32)
+                quat = quat_buf.astype(np.float32).copy()
                 size = np.asarray(g.size, dtype=np.float64)
                 rgb = np.clip(np.round(rgba[:3] * 255.0), 0.0, 255.0).astype(np.uint8)
                 alpha = float(np.clip(rgba[3], 0.0, 1.0))
@@ -301,15 +297,19 @@ class ViserMarkers:
                     )
                 elif geom_type == _CYLINDER:
                     r = max(float(size[0]), 1e-6)
-                    height = max(2.0 * float(size[2]), 1e-6)
+                    half_h = float(size[2]) if float(size[2]) > 0.0 else float(size[1])
+                    height = max(2.0 * half_h, 1e-6)
                     scale = np.array([r, r, height], dtype=np.float32)
                     batches.setdefault("cylinder", []).append(
                         (pos.astype(np.float32), quat, scale, rgb, alpha)
                     )
                 elif geom_type == _CAPSULE:
                     r = max(float(size[0]), 1e-6)
-                    half_len = max(float(size[2]), 0.0)
-                    scale_z = max(2.0 * (half_len + r) / 3.0, 1e-6)
+                    half_len = (
+                        float(size[2]) if float(size[2]) > 0.0 else float(size[1])
+                    )
+                    # Unit capsule from create_primitive_mesh(r=1, half=0.5) has total Z=3.
+                    scale_z = max(2.0 * (max(half_len, 0.0) + r) / 3.0, 1e-6)
                     scale = np.array([r, r, scale_z], dtype=np.float32)
                     batches.setdefault("capsule", []).append(
                         (pos.astype(np.float32), quat, scale, rgb, alpha)
@@ -318,26 +318,13 @@ class ViserMarkers:
                     shaft_r = max(float(size[0]), 1e-6)
                     head_r = float(size[1]) if float(size[1]) > 0.0 else 2.0 * shaft_r
                     total_len = max(float(size[2]), 1e-6)
-                    shaft_len = 0.8 * total_len
-                    head_len = 0.2 * total_len
-
-                    shaft_scale = np.array(
-                        [shaft_r, shaft_r, shaft_len], dtype=np.float32
-                    )
-                    head_pos = (pos + mat[:, 2] * shaft_len).astype(np.float32)
-                    head_scale = np.array(
-                        [max(head_r, 1e-6), max(head_r, 1e-6), head_len],
-                        dtype=np.float32,
-                    )
-                    batches.setdefault("arrow_shaft", []).append(
-                        (pos.astype(np.float32), quat, shaft_scale, rgb, alpha)
-                    )
-                    batches.setdefault("arrow_head", []).append(
-                        (head_pos, quat.copy(), head_scale, rgb.copy(), alpha)
-                    )
+                    end = pos + mat[:, 2] * total_len
+                    arrow_points.append(np.stack([pos, end], axis=0).astype(np.float32))
+                    arrow_colors.append(rgb)
+                    arrow_radii.append((shaft_r, max(head_r, 1e-6), 0.2 * total_len))
                 elif geom_type == _MESH:
                     mesh_id = self._resolve_mesh_id(int(g.dataid))
-                    if self._model_mesh(mesh_id) is None:
+                    if mesh_id < 0 or mesh_id >= self.model.nmesh:
                         continue
                     key = f"mesh_{mesh_id}"
                     mesh_ids_for_key[key] = mesh_id
@@ -346,6 +333,7 @@ class ViserMarkers:
                         (pos.astype(np.float32), quat, scale, rgb, alpha)
                     )
 
+        primitives = _unit_primitives() if batches else {}
         atomic_fn = getattr(self.server, "atomic", None)
         ctx = atomic_fn() if callable(atomic_fn) else contextlib.nullcontext()
         active_keys = set(batches.keys())
@@ -353,13 +341,13 @@ class ViserMarkers:
         with ctx:
             for key, items in batches.items():
                 if key in mesh_ids_for_key:
-                    mesh_pair = self._model_mesh(mesh_ids_for_key[key])
+                    mesh_pair = self._mesh_vertices_faces(mesh_ids_for_key[key])
                     if mesh_pair is None:
                         active_keys.discard(key)
                         continue
                     verts, faces = mesh_pair
                 else:
-                    verts, faces = _get_unit_mesh(key)
+                    verts, faces = primitives[key]
 
                 positions = np.stack([it[0] for it in items], axis=0)
                 orientations = np.stack([it[1] for it in items], axis=0)
@@ -377,6 +365,22 @@ class ViserMarkers:
                     opacities,
                 )
 
+            if arrow_points:
+                active_keys.add("arrows")
+                prev_arrows = self.handles.get("arrows")
+                if prev_arrows is not None:
+                    prev_arrows.remove()
+                shaft_r, head_r, head_len = arrow_radii[0]
+                self.handles["arrows"] = self.server.scene.add_arrows(
+                    f"{self.root_path}/arrows",
+                    np.stack(arrow_points, axis=0),
+                    np.stack(arrow_colors, axis=0),
+                    shaft_radius=shaft_r,
+                    head_radius=head_r,
+                    head_length=head_len,
+                )
+                self._counts["arrows"] = len(arrow_points)
+
             for key, handle in self.handles.items():
                 if key not in active_keys:
                     handle.visible = False
@@ -389,20 +393,7 @@ class ViserMarkers:
         *,
         maxgeom: int = 256,
     ) -> mujoco.MjvScene:
-        """Populate an internal ``MjvScene`` via *viz_fn* and update Viser markers.
-
-        Compatible directly with ``SiteMarkerViz.as_viz_fn()`` and
-        ``GhostBodyViz.as_viz_fn()``.
-
-        Args:
-            step_idx: Current step or frame index passed to *viz_fn*.
-            data: Current ``MjData`` passed to *viz_fn*.
-            viz_fn: Callback ``(step_idx, model, data, user_scn) -> None``.
-            maxgeom: Capacity of the internal ``MjvScene`` buffer.
-
-        Returns:
-            The populated ``MjvScene`` instance.
-        """
+        """Populate an ``MjvScene`` via *viz_fn* (``SiteMarkerViz`` / ``GhostBodyViz``) and sync."""
         if self._callback_scn is None or self._callback_maxgeom != maxgeom:
             self._callback_scn = mujoco.MjvScene(self.model, maxgeom=maxgeom)
             self._callback_maxgeom = maxgeom
@@ -411,265 +402,47 @@ class ViserMarkers:
         self.update(self._callback_scn)
         return self._callback_scn
 
+    def update_from_clip(
+        self,
+        clip: MotionClip,
+        frame_idx: int,
+        *,
+        rgba: tuple[float, float, float, float] = (1.0, 0.4, 0.0, 0.6),
+        sphere_radius: float = 0.03,
+        maxgeom: int = 256,
+    ) -> mujoco.MjvScene:
+        """Render ``clip.site_xpos[frame_idx]`` directly via :class:`SiteMarkerViz`."""
+        from myosuite.viz.site_marker_viz import SiteMarkerViz  # noqa: PLC0415
+
+        site_names = tuple(clip.site_names or ())
+        viz = SiteMarkerViz(
+            clip=clip,
+            site_names=site_names,
+            model=self.model,
+            rgba=rgba,
+            sphere_radius=sphere_radius,
+        )
+        cap = max(
+            maxgeom, int(clip.site_xpos.shape[1]) if clip.site_xpos is not None else 0
+        )
+        if self._callback_scn is None or self._callback_maxgeom != cap:
+            self._callback_scn = mujoco.MjvScene(self.model, maxgeom=cap)
+            self._callback_maxgeom = cap
+        viz.draw(frame_idx, self._callback_scn)
+        self.update(self._callback_scn)
+        return self._callback_scn
+
     def clear(self) -> None:
-        """Remove all marker handles from the Viser scene and reset caches."""
+        """Remove all owned marker handles from the Viser scene."""
         for handle in self.handles.values():
             handle.remove()
         self.handles.clear()
+        self.opacities.clear()
         self._counts.clear()
 
 
-def _extract_model_sky_colors(
-    model: mujoco.MjModel,
-) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
-    sky_type = int(mujoco.mjtTexture.mjTEXTURE_SKYBOX)
-    for tex_id in range(model.ntex):
-        if int(model.tex_type[tex_id]) != sky_type:
-            continue
-        w = int(model.tex_width[tex_id])
-        h = int(model.tex_height[tex_id])
-        nc = int(model.tex_nchannel[tex_id])
-        adr = int(model.tex_adr[tex_id])
-        if w <= 0 or h <= 0 or nc <= 0:
-            continue
-        raw = np.asarray(model.tex_data[adr : adr + w * h * nc], dtype=np.uint8)
-        img = raw.reshape(h, w, nc)
-        if nc == 1:
-            img = np.repeat(img, 3, axis=2)
-        else:
-            img = img[:, :, :3]
-
-        if h >= 6 and h % 6 == 0:
-            face_h = h // 6
-            up_face = img[2 * face_h : 3 * face_h]
-            down_face = img[3 * face_h : 4 * face_h]
-            top_rgb = _clamp_rgb(up_face[face_h // 2, w // 2])
-            bot_rgb = _clamp_rgb(down_face[face_h // 2, w // 2])
-        else:
-            top_rgb = _clamp_rgb(img[0].mean(axis=0))
-            bot_rgb = _clamp_rgb(img[-1].mean(axis=0))
-        return (top_rgb, bot_rgb)
-    return None
-
-
-def apply_viser_sky(
-    server: Any,
-    model: mujoco.MjModel,
-    sky: str | tuple[tuple[int, int, int], tuple[int, int, int]] | None = "model",
-) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
-    """Apply a vertical skybox gradient to a Viser server scene.
-
-    Args:
-        server: ``viser.ViserServer`` instance.
-        model: Compiled ``MjModel`` inspected when ``sky == "model"``.
-        sky: ``"model"`` to extract zenith/nadir colours from ``mjTEXTURE_SKYBOX``,
-            ``"light"`` / ``"dark"`` presets, an explicit
-            ``((r1, g1, b1), (r2, g2, b2))`` top/bottom RGB tuple, or ``None``
-            to clear the background image.
-
-    Returns:
-        Applied ``(top_rgb, bottom_rgb)`` 0-255 integer tuples, or ``None`` if
-        cleared or no skybox texture exists in *model*.
-
-    Raises:
-        ValueError: If *sky* is an unrecognized preset name or malformed tuple.
-    """
-    if sky is None or (isinstance(sky, str) and sky.lower() in ("none", "off")):
-        server.scene.set_background_image(None)
-        return None
-
-    colors: tuple[tuple[int, int, int], tuple[int, int, int]] | None
-    if isinstance(sky, str):
-        key = sky.lower()
-        if key == "model":
-            colors = _extract_model_sky_colors(model)
-            if colors is None:
-                return None
-        elif key in _SKY_PRESETS:
-            colors = _SKY_PRESETS[key]
-        else:
-            raise ValueError(
-                f"Unsupported sky mode {sky!r}; expected 'model', 'light', 'dark', "
-                "None, or ((r1, g1, b1), (r2, g2, b2))."
-            )
-    else:
-        if len(sky) != 2:
-            raise ValueError(f"Expected (top_rgb, bottom_rgb) pair, got {sky!r}")
-        colors = (_clamp_rgb(sky[0]), _clamp_rgb(sky[1]))
-
-    top = np.array(colors[0], dtype=np.float64)
-    bottom = np.array(colors[1], dtype=np.float64)
-    gradient = np.linspace(top, bottom, 64, dtype=np.float64)
-    image = np.repeat(
-        np.clip(np.round(gradient), 0.0, 255.0).astype(np.uint8)[:, None, :],
-        4,
-        axis=1,
-    )
-    server.scene.set_background_image(image)
-    return colors
-
-
-def _extract_model_floor_colors(
-    model: mujoco.MjModel,
-) -> tuple[tuple[int, int, int], tuple[int, int, int] | None, float] | None:
-    for geom_id in range(model.ngeom):
-        if int(model.geom_type[geom_id]) != _PLANE:
-            continue
-        geom_rgba = np.asarray(model.geom_rgba[geom_id], dtype=np.float64)
-        if geom_rgba[3] <= 0.0:
-            continue
-
-        mat_id = int(model.geom_matid[geom_id])
-        if 0 <= mat_id < model.nmat:
-            mat_rgba = np.asarray(model.mat_rgba[mat_id], dtype=np.float64)
-            opacity = float(np.clip(mat_rgba[3], 0.0, 1.0))
-            tex_id = int(
-                model.mat_texid[mat_id, int(mujoco.mjtTextureRole.mjTEXROLE_RGB)]
-            )
-            if tex_id < 0:
-                tex_id = int(
-                    model.mat_texid[mat_id, int(mujoco.mjtTextureRole.mjTEXROLE_RGBA)]
-                )
-            if 0 <= tex_id < model.ntex:
-                w = int(model.tex_width[tex_id])
-                h = int(model.tex_height[tex_id])
-                nc = int(model.tex_nchannel[tex_id])
-                adr = int(model.tex_adr[tex_id])
-                if w > 0 and h > 0 and nc > 0:
-                    raw = np.asarray(
-                        model.tex_data[adr : adr + w * h * nc], dtype=np.float64
-                    ).reshape(h, w, nc)
-                    rgb_img = np.repeat(raw, 3, axis=2) if nc == 1 else raw[:, :, :3]
-                    tint = np.clip(mat_rgba[:3], 0.0, 1.0)
-                    c0 = _clamp_rgb(rgb_img[0, 0] * tint)
-                    c1 = _clamp_rgb(rgb_img[0, max(w // 2, 0)] * tint)
-                    mean_rgb = _clamp_rgb(rgb_img.mean(axis=(0, 1)) * tint)
-                    accent = c1 if c1 != c0 else None
-                    primary = c0 if accent is not None else mean_rgb
-                    return (primary, accent, opacity)
-            return (_clamp_rgb(mat_rgba[:3] * 255.0), None, opacity)
-
-        return (
-            _clamp_rgb(geom_rgba[:3] * 255.0),
-            None,
-            float(np.clip(geom_rgba[3], 0.0, 1.0)),
-        )
-    return None
-
-
-def _derive_grid_line_colors(
-    base_rgb: tuple[int, int, int],
-    accent_rgb: tuple[int, int, int] | None = None,
-) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
-    base = np.array(base_rgb, dtype=np.float64)
-    if accent_rgb is not None:
-        acc = np.array(accent_rgb, dtype=np.float64)
-        return (_clamp_rgb(acc), _clamp_rgb(0.5 * (base + acc)))
-    luminance = float(base.mean())
-    delta = -28.0 if luminance > 127.0 else 28.0
-    cell = _clamp_rgb(base + delta)
-    section = _clamp_rgb(base + 1.8 * delta)
-    return (cell, section)
-
-
-def _find_floor_grid_handles(server: Any) -> list[Any]:
-    handles_map = getattr(server.scene, "_handle_from_node_name", None)
-    if not isinstance(handles_map, dict):
-        return []
-    return [
-        h
-        for h in handles_map.values()
-        if hasattr(getattr(h, "_impl", None), "props")
-        and hasattr(h._impl.props, "plane_color")
-        and hasattr(h._impl.props, "cell_color")
-    ]
-
-
-def apply_viser_floor(
-    server: Any,
-    model: mujoco.MjModel,
-    floor_color: str | tuple[int, int, int] | None = "model",
-) -> tuple[int, int, int] | None:
-    """Style the Viser floor grid from *model*'s plane material/texture or *floor_color*.
-
-    Args:
-        server: ``viser.ViserServer`` instance.
-        model: Compiled ``MjModel`` inspected when ``floor_color == "model"``.
-        floor_color: ``"model"`` to inspect ``mjGEOM_PLANE`` materials/checkerboard
-            textures, ``"light"`` / ``"dark"`` presets, an explicit
-            ``(r, g, b)`` 0-255 tuple, or ``None`` to hide floor grids.
-
-    Returns:
-        Applied ``(r, g, b)`` floor colour tuple, or ``None`` if hidden or no
-        plane geom exists in *model* when ``floor_color == "model"``.
-
-    Raises:
-        ValueError: If *floor_color* is an unrecognized preset or malformed tuple.
-    """
-    grid_handles = _find_floor_grid_handles(server)
-
-    if floor_color is None or (
-        isinstance(floor_color, str) and floor_color.lower() in ("none", "off")
-    ):
-        for handle in grid_handles:
-            handle.visible = False
-        return None
-
-    accent_rgb: tuple[int, int, int] | None = None
-    opacity = 0.75
-    if isinstance(floor_color, str):
-        key = floor_color.lower()
-        if key == "model":
-            extracted = _extract_model_floor_colors(model)
-            if extracted is None:
-                return None
-            rgb, accent_rgb, model_alpha = extracted
-            opacity = float(np.clip(model_alpha, 0.4, 0.9))
-        elif key in _FLOOR_PRESETS:
-            rgb = _FLOOR_PRESETS[key]
-        else:
-            raise ValueError(
-                f"Unsupported floor_color {floor_color!r}; expected 'model', "
-                "'light', 'dark', None, or (r, g, b)."
-            )
-    else:
-        rgb = _clamp_rgb(floor_color)
-
-    cell_rgb, section_rgb = _derive_grid_line_colors(rgb, accent_rgb)
-    if not grid_handles:
-        server.scene.add_grid(
-            "/fixed_bodies/world/floor",
-            infinite_grid=True,
-            fade_distance=50.0,
-            shadow_opacity=0.2,
-            plane_color=rgb,
-            plane_opacity=opacity,
-            cell_color=cell_rgb,
-            section_color=section_rgb,
-        )
-    else:
-        for handle in grid_handles:
-            handle.plane_color = rgb
-            handle.plane_opacity = opacity
-            handle.cell_color = cell_rgb
-            handle.section_color = section_rgb
-            handle.visible = True
-    return rgb
-
-
 def square_grid_offsets(num_envs: int, spacing: float = 2.0) -> np.ndarray:
-    """Compute centered ``(num_envs, 2)`` XY grid offsets for parallel environments.
-
-    Args:
-        num_envs: Number of parallel environments (``>= 1``).
-        spacing: Centre-to-centre distance in metres between adjacent cells.
-
-    Returns:
-        ``(num_envs, 2)`` float64 array of XY offsets centred around ``(0, 0)``.
-
-    Raises:
-        ValueError: If ``num_envs < 1`` or ``spacing < 0``.
-    """
+    """Compute centered ``(num_envs, 2)`` XY grid offsets for parallel environments."""
     if num_envs < 1:
         raise ValueError(f"num_envs must be >= 1, got {num_envs}")
     if spacing < 0.0:
@@ -688,22 +461,10 @@ def square_grid_offsets(num_envs: int, spacing: float = 2.0) -> np.ndarray:
 
 
 class ViserMultiEnvScene:
-    """Multi-environment XY grid wrapper around ``mjviser``'s ``ViserMujocoScene``.
+    """Thin composition adapter over ``mjviser.ViserMujocoScene(num_envs=...)``.
 
-    Supports both free-joint models (offsetting free-joint XY coordinates in
-    ``qpos`` + ``mocap_pos``) and fixed-base models such as
-    ``myoElbowPose1D6MRandom-v0`` (offsetting non-world ``body_xpos[:, 1:, :2]``
-    + ``mocap_pos``), while synchronizing per-environment ``MjvScene`` markers
-    on the same grid.
-
-    Args:
-        server: ``viser.ViserServer`` instance.
-        model: Compiled MuJoCo model shared across environments.
-        num_envs: Number of parallel environments.
-        spacing: Grid cell spacing in metres.
-        root_name: Scene-tree prefix for :class:`ViserMarkers`.
-        camera_tracking: Override ``scene.camera_tracking_enabled``; defaults to
-            ``True`` for a single environment and ``False`` for ``num_envs > 1``.
+    Delegates scene rendering and camera tracking to ``ViserMujocoScene`` while
+    isolating per-env ``mj_forward`` grid offsets and :class:`ViserMarkers` sync.
     """
 
     square_grid_offsets = staticmethod(square_grid_offsets)
@@ -731,6 +492,8 @@ class ViserMultiEnvScene:
         self.scene.camera_tracking_enabled = bool(camera_tracking)
 
         self.markers = ViserMarkers(self.scene, model, root_name=root_name)
+        self.last_body_xpos: np.ndarray | None = None
+        self.last_mocap_pos: np.ndarray | None = None
         self._data = mujoco.MjData(model)
         self._default_mocap_pos = self._data.mocap_pos.copy()
         self._default_mocap_quat = self._data.mocap_quat.copy()
@@ -739,6 +502,9 @@ class ViserMultiEnvScene:
             for j in range(model.njnt)
             if int(model.jnt_type[j]) == int(mujoco.mjtJoint.mjJNT_FREE)
         )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.scene, name)
 
     def update(
         self,
@@ -749,20 +515,7 @@ class ViserMultiEnvScene:
         mocap_quat: np.ndarray | None = None,
         user_scenes: mujoco.MjvScene | Sequence[mujoco.MjvScene] | None = None,
     ) -> None:
-        """Advance forward kinematics for all environments and update Viser.
-
-        Args:
-            qpos: Batched joint positions ``(num_envs, nq)`` (or ``(nq,)`` when
-                ``num_envs == 1``).
-            qvel: Optional batched joint velocities ``(num_envs, nv)``.
-            mocap_pos: Optional mocap positions ``(num_envs, nmocap, 3)``.
-            mocap_quat: Optional mocap quaternions ``(num_envs, nmocap, 4)``.
-            user_scenes: Optional single ``MjvScene`` or per-env sequence of
-                ``MjvScene`` buffers rendered via :attr:`markers`.
-
-        Raises:
-            ValueError: If input array shapes do not match ``(num_envs, ...)``.
-        """
+        """Compute grid-offset forward kinematics and forward arrays to ``ViserMujocoScene``."""
         qpos_arr = np.array(qpos, dtype=np.float64, copy=True)
         if qpos_arr.ndim == 1 and self.num_envs == 1:
             qpos_arr = qpos_arr[None, :]
@@ -836,6 +589,8 @@ class ViserMultiEnvScene:
             if not has_free_joint and nbody > 1:
                 body_xpos[env_i, 1:, :2] += self.grid_offsets[env_i]
 
+        self.last_body_xpos = body_xpos
+        self.last_mocap_pos = mpos_arr
         self.scene.update_from_arrays(
             body_xpos,
             body_xmat,
@@ -861,7 +616,5 @@ class ViserMultiEnvScene:
 __all__ = [
     "ViserMarkers",
     "ViserMultiEnvScene",
-    "apply_viser_floor",
-    "apply_viser_sky",
     "square_grid_offsets",
 ]
