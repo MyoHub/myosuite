@@ -3,7 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""SceneSpec to backend-specific scene representation."""
+"""SceneSpec to backend-specific scene representation via a single MjSpec emitter."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ import mujoco
 from myosuite.scenes.library import (
     SCENES,
     FixtureSpec,
+    FloorSpec,
     ObjectSpec,
     SceneSpec,
-    SiteMarkerSpec,
 )
 
 _GEOM_TYPE_MAP: dict[str, mujoco.mjtGeom] = {
@@ -29,9 +29,12 @@ _GEOM_TYPE_MAP: dict[str, mujoco.mjtGeom] = {
     "ellipsoid": mujoco.mjtGeom.mjGEOM_ELLIPSOID,
 }
 
+_HFIELD_NROW = 64
+_HFIELD_NCOL = 64
+
 
 def get_scene(name: str) -> SceneSpec:
-    """Look up a copy of a named scene from the library.
+    """Look up a deep copy of a named scene from the library.
 
     Args:
         name: Scene name (e.g. ``"flat_floor"``, ``"seated_workspace"``).
@@ -55,13 +58,13 @@ def _geom_type_enum(shape: str) -> mujoco.mjtGeom:
     return _GEOM_TYPE_MAP[shape]
 
 
-def _geom_size_xml(shape: str, size: tuple[float, float, float]) -> str:
-    s0, s1, s2 = size
-    if shape == "sphere":
-        return f"{s0}"
-    if shape in ("capsule", "cylinder"):
-        return f"{s0} {s1}"
-    return f"{s0} {s1} {s2}"
+def _object_geom_size(obj: ObjectSpec) -> list[float]:
+    s = float(obj.size)
+    if obj.shape == "box":
+        return [s, s, s]
+    if obj.shape in ("capsule", "cylinder"):
+        return [s, s, 0.0]
+    return [s, 0.0, 0.0]
 
 
 def _iter_object_instances(spec: SceneSpec) -> list[tuple[str, ObjectSpec]]:
@@ -85,107 +88,55 @@ def _object_spawn_pos(
     return (x, 0.0, z)
 
 
-def _site_to_mjcf_line(site: SiteMarkerSpec) -> str:
-    sx, sy, sz = site.pos
-    size_str = _geom_size_xml(site.shape, site.size)
-    rgba_str = " ".join(str(c) for c in site.rgba)
-    return (
-        f'      <site name="{site.name}" type="{site.shape}"'
-        f' pos="{sx} {sy} {sz}" size="{size_str}"'
-        f' rgba="{rgba_str}" group="{site.group}"/>'
-    )
-
-
-def scene_to_mjcf_xml(spec: SceneSpec) -> str:
-    """Render a :class:`SceneSpec` to compilable MJCF XML.
-
-    Args:
-        spec: Scene specification to render.
-
-    Returns:
-        MJCF XML string with ``<option>``, ``<asset>``, and ``<worldbody>``.
-    """
-    gx, gy, gz = spec.gravity
-    lines = [
-        "<mujoco>",
-        f'  <option gravity="{gx} {gy} {gz}"/>',
-    ]
-
-    if spec.floor.kind == "uneven":
-        lines.extend(
-            [
-                "  <asset>",
-                f'    <hfield name="terrain" nrow="64" ncol="64"'
-                f' size="{spec.floor.size} {spec.floor.size} 0.2 0.1"/>',
-                "  </asset>",
-            ]
+def _attach_floor_to_spec(mj_spec: mujoco.MjSpec, floor: FloorSpec) -> None:
+    if floor.kind == "none":
+        return
+    if any(g.name == "floor" for g in mj_spec.geoms):
+        return
+    if floor.kind == "flat":
+        geom = mj_spec.worldbody.add_geom(name="floor")
+        geom.type = mujoco.mjtGeom.mjGEOM_PLANE
+        geom.size = [float(floor.size), float(floor.size), 0.1]
+        geom.rgba = [0.9, 0.9, 0.9, 1.0]
+        geom.condim = 3
+        geom.contype = 1
+        geom.conaffinity = 1
+    elif floor.kind == "uneven":
+        if not any(h.name == "terrain" for h in mj_spec.hfields):
+            mj_spec.add_hfield(
+                name="terrain",
+                nrow=_HFIELD_NROW,
+                ncol=_HFIELD_NCOL,
+                size=[float(floor.size), float(floor.size), 0.2, 0.1],
+                userdata=[0.0] * (_HFIELD_NROW * _HFIELD_NCOL),
+            )
+        geom = mj_spec.worldbody.add_geom(name="floor")
+        geom.type = mujoco.mjtGeom.mjGEOM_HFIELD
+        geom.hfieldname = "terrain"
+        geom.rgba = [0.7, 0.7, 0.5, 1.0]
+        geom.condim = 3
+        geom.contype = 1
+        geom.conaffinity = 1
+    else:
+        raise ValueError(
+            f"Unsupported floor kind {floor.kind!r}. Expected 'flat', 'uneven', or 'none'."
         )
 
-    lines.append("  <worldbody>")
 
-    if spec.floor.kind == "flat":
-        lines.append(
-            f'    <geom name="floor" type="plane"'
-            f' size="{spec.floor.size} {spec.floor.size} 0.1"'
-            ' rgba="0.9 0.9 0.9 1" condim="3"/>'
-        )
-    elif spec.floor.kind == "uneven":
-        lines.append(
-            '    <geom name="floor" type="hfield" hfield="terrain"'
-            ' rgba="0.7 0.7 0.5 1" condim="3"/>'
-        )
-
-    for fix in spec.fixtures:
-        _geom_type_enum(fix.shape)
-        px, py, pz = fix.pos
-        qw, qx, qy, qz = fix.quat
-        mocap_attr = ' mocap="true"' if fix.mocap else ""
-        con_val = 1 if fix.collide else 0
-        size_str = _geom_size_xml(fix.shape, fix.size)
-        rgba_str = " ".join(str(c) for c in fix.rgba)
-        lines.append(
-            f'    <body name="{fix.name}" pos="{px} {py} {pz}"'
-            f' quat="{qw} {qx} {qy} {qz}"{mocap_attr}>'
-        )
-        lines.append(
-            f'      <geom name="{fix.name}_geom" type="{fix.shape}"'
-            f' size="{size_str}" rgba="{rgba_str}"'
-            f' contype="{con_val}" conaffinity="{con_val}"/>'
-        )
-        for site in fix.sites:
-            lines.append(_site_to_mjcf_line(site))
-        lines.append("    </body>")
-
-    instances = _iter_object_instances(spec)
-    n_total = len(instances)
-    for idx, (body_name, obj) in enumerate(instances):
-        if obj.shape == "box":
-            geom_attrs = f'type="box" size="{obj.size} {obj.size} {obj.size}"'
-        elif obj.shape in ("capsule", "cylinder"):
-            geom_attrs = f'type="{obj.shape}" size="{obj.size} {obj.size}"'
-        else:
-            geom_attrs = f'type="sphere" size="{obj.size}"'
-
-        px, py, pz = _object_spawn_pos(obj, idx, n_total)
-        rgba_str = " ".join(str(c) for c in obj.rgba)
-        lines.append(
-            f'    <body name="{body_name}" pos="{px} {py} {pz}">'
-            f"\n      <freejoint/>"
-            f'\n      <geom {geom_attrs} rgba="{rgba_str}" mass="{obj.mass}"/>'
-            f"\n    </body>"
-        )
-
-    lines.append("  </worldbody>")
-    lines.append("</mujoco>")
-    return "\n".join(lines)
-
-
-def _attach_fixture_to_spec(mj_spec: mujoco.MjSpec, fix: FixtureSpec) -> None:
+def _attach_fixture_to_spec(
+    mj_spec: mujoco.MjSpec,
+    fix: FixtureSpec,
+    *,
+    root_origin: bool = False,
+) -> None:
+    pos = [0.0, 0.0, 0.0] if root_origin else list(fix.pos)
+    quat = [1.0, 0.0, 0.0, 0.0] if root_origin else list(fix.quat)
+    mocap = False if root_origin else bool(fix.mocap)
     body = mj_spec.worldbody.add_body(
         name=fix.name,
-        pos=list(fix.pos),
-        quat=list(fix.quat),
-        mocap=bool(fix.mocap),
+        pos=pos,
+        quat=quat,
+        mocap=mocap,
     )
     geom = body.add_geom(name=f"{fix.name}_geom")
     geom.type = _geom_type_enum(fix.shape)
@@ -203,6 +154,23 @@ def _attach_fixture_to_spec(mj_spec: mujoco.MjSpec, fix: FixtureSpec) -> None:
         site.group = int(s.group)
 
 
+def _attach_object_to_spec(
+    mj_spec: mujoco.MjSpec,
+    body_name: str,
+    obj: ObjectSpec,
+    pos: tuple[float, float, float],
+) -> None:
+    body = mj_spec.worldbody.add_body(name=body_name, pos=list(pos))
+    body.add_freejoint()
+    geom = body.add_geom()
+    geom.type = _geom_type_enum(obj.shape)
+    geom.size = _object_geom_size(obj)
+    geom.mass = float(obj.mass)
+    geom.rgba = list(obj.rgba)
+    geom.contype = 1
+    geom.conaffinity = 1
+
+
 def apply_scene_to_spec(
     mj_spec: mujoco.MjSpec,
     spec: SceneSpec,
@@ -217,19 +185,14 @@ def apply_scene_to_spec(
     Args:
         mj_spec: Target MuJoCo specification modified in place.
         spec: Scene specification whose fixtures and objects are added.
-        include_floor: Also add ``spec.floor`` when ``mj_spec`` has no floor geom.
+        include_floor: Add ``spec.floor`` when ``mj_spec`` does not already
+            define a geom named ``"floor"``.
 
     Returns:
         *mj_spec* for fluent chaining.
     """
-    if include_floor and spec.floor.kind == "flat":
-        floor = mj_spec.worldbody.add_geom(name="floor")
-        floor.type = mujoco.mjtGeom.mjGEOM_PLANE
-        floor.size = [spec.floor.size, spec.floor.size, 0.1]
-        floor.rgba = [0.9, 0.9, 0.9, 1.0]
-        floor.condim = 3
-        floor.contype = 1
-        floor.conaffinity = 1
+    if include_floor:
+        _attach_floor_to_spec(mj_spec, spec.floor)
 
     for fix in spec.fixtures:
         _attach_fixture_to_spec(mj_spec, fix)
@@ -238,40 +201,34 @@ def apply_scene_to_spec(
     n_total = len(instances)
     for idx, (body_name, obj) in enumerate(instances):
         pos = _object_spawn_pos(obj, idx, n_total)
-        body = mj_spec.worldbody.add_body(name=body_name, pos=list(pos))
-        body.add_freejoint()
-        geom = body.add_geom()
-        geom.type = _geom_type_enum(obj.shape)
-        geom.mass = float(obj.mass)
-        geom.rgba = list(obj.rgba)
-        geom.contype = 1
-        geom.conaffinity = 1
-        if obj.shape == "box":
-            geom.size = [obj.size, obj.size, obj.size]
-        elif obj.shape in ("capsule", "cylinder"):
-            geom.size = [obj.size, obj.size, 0.0]
-        else:
-            geom.size = [obj.size, 0.0, 0.0]
+        _attach_object_to_spec(mj_spec, body_name, obj, pos)
     return mj_spec
+
+
+def scene_to_mjcf_xml(spec: SceneSpec) -> str:
+    """Render a :class:`SceneSpec` to compilable MJCF XML via ``MjSpec``.
+
+    Args:
+        spec: Scene specification to render.
+
+    Returns:
+        Serialized MJCF XML string compiled from :func:`apply_scene_to_spec`.
+    """
+    mj_spec = mujoco.MjSpec()
+    mj_spec.option.gravity = [float(g) for g in spec.gravity]
+    apply_scene_to_spec(mj_spec, spec, include_floor=True)
+    mj_spec.compile()
+    return mj_spec.to_xml()
 
 
 def _make_object_spec_fn(
     body_name: str, obj: ObjectSpec, pos: tuple[float, float, float]
 ) -> Callable[[], mujoco.MjSpec]:
+    obj_copy = copy.deepcopy(obj)
+
     def _build() -> mujoco.MjSpec:
         s = mujoco.MjSpec()
-        body = s.worldbody.add_body(name=body_name, pos=list(pos))
-        body.add_freejoint()
-        geom = body.add_geom()
-        geom.mass = float(obj.mass)
-        geom.rgba = list(obj.rgba)
-        geom.type = _geom_type_enum(obj.shape)
-        if obj.shape == "box":
-            geom.size = [obj.size, obj.size, obj.size]
-        elif obj.shape in ("capsule", "cylinder"):
-            geom.size = [obj.size, obj.size, 0.0]
-        else:
-            geom.size = [obj.size, 0.0, 0.0]
+        _attach_object_to_spec(s, body_name, obj_copy, pos)
         return s
 
     return _build
@@ -282,7 +239,8 @@ def _make_fixture_spec_fn(fix: FixtureSpec) -> Callable[[], mujoco.MjSpec]:
 
     def _build() -> mujoco.MjSpec:
         s = mujoco.MjSpec()
-        _attach_fixture_to_spec(s, fix_copy)
+        # mjlab mounts fixed-base entities on a mocap frame placed at InitialStateCfg(pos, rot).
+        _attach_fixture_to_spec(s, fix_copy, root_origin=True)
         return s
 
     return _build

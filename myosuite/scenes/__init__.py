@@ -12,8 +12,6 @@ from myosuite.scenes.library import (
     ObjectSpec,
     SceneSpec,
     SiteMarkerSpec,
-    WorkspaceConfig,
-    make_workspace_scene,
     quat_from_euler_xyz,
 )
 from myosuite.scenes.scene_builder import (
@@ -22,6 +20,7 @@ from myosuite.scenes.scene_builder import (
     scene_to_mjcf_xml,
     scene_to_mjlab_cfg,
 )
+from myosuite.scenes.workspaces import WorkspaceConfig, make_workspace_scene
 
 __all__ = [
     "SCENES",
