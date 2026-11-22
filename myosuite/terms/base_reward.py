@@ -595,3 +595,105 @@ def walk_env_reward(
         "joint_angle_rew": joint_angle_rew,
         "dense": dense,
     }
+
+
+def enclosure_clearance_reward(
+    accessor: EnvAccessor,
+    task_state: dict[str, Any],
+    *,
+    margin: float = 0.05,
+    violation_weight: float = 5.0,
+    contact_weight: float = 1.0,
+    contact_threshold: float = 1.0,
+    terminate_on_violation: bool = False,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Penalize spatial boundary intrusion and unintended enclosure contact forces.
+
+    Args:
+        accessor: Environment state accessor.
+        task_state: Dict containing ``"enclosure_site_ids"`` (or ``"tip_site_ids"``),
+            ``"bounds_low"``, ``"bounds_high"``, and optional ``"plane_normals"``,
+            ``"plane_offsets"``, and ``"enclosure_contact_force"`` (scalar or 3-vector
+            contact force in Newtons).
+        margin: Safe inward clearance buffer [m] before intrusion penalty begins.
+        violation_weight: Scale factor for boundary clearance intrusion penalty.
+        contact_weight: Scale factor for excess physical contact force penalty.
+        contact_threshold: Allowed contact force magnitude [N] before penalty.
+        terminate_on_violation: Set ``done=True`` when outside the enclosure or
+            exceeding ``contact_threshold``.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Reward dict with ``min_clearance``, ``clearance_penalty``,
+        ``contact_penalty``, ``dense``, ``solved``, and ``done``.
+    """
+    from myosuite.physics.spatial_enclosure import (  # noqa: PLC0415
+        excess_contact_force,
+        min_enclosure_clearance,
+    )
+
+    del kwargs
+    xp = accessor.array_module()
+    is_torch = getattr(xp, "__name__", "") == "torch"
+    batched = accessor.joint_pos().ndim > 1
+    raw_ids = (
+        task_state["enclosure_site_ids"]
+        if "enclosure_site_ids" in task_state
+        else task_state["tip_site_ids"]
+    )
+    ids = [int(raw_ids)] if isinstance(raw_ids, int | np.integer) else raw_ids
+    pos = accessor.site_xpos(ids)
+    min_clearance = min_enclosure_clearance(
+        xp,
+        pos,
+        task_state["bounds_low"],
+        task_state["bounds_high"],
+        plane_normals=task_state.get("plane_normals"),
+        plane_offsets=task_state.get("plane_offsets"),
+    )
+    raw_intrusion = float(margin) - min_clearance
+    intrusion = (
+        xp.clamp_min(raw_intrusion, 0.0) if is_torch else xp.maximum(raw_intrusion, 0.0)
+    )
+    denom = max(float(margin), 1e-6)
+    clearance_penalty = -float(violation_weight) * (
+        intrusion + (intrusion * intrusion) / denom
+    )
+
+    excess_force = excess_contact_force(
+        xp,
+        task_state.get("enclosure_contact_force"),
+        threshold=contact_threshold,
+        reference=min_clearance,
+        batched=batched,
+    )
+    contact_penalty = -float(contact_weight) * excess_force
+
+    violated = (min_clearance < 0.0) | (excess_force > 0.0)
+    dense = clearance_penalty + contact_penalty
+    solved = ~violated
+    bool_dtype = xp.bool if is_torch else bool
+    done = (
+        _xp_asarray(xp, violated, dtype=bool_dtype, device=getattr(pos, "device", None))
+        if terminate_on_violation
+        else _xp_asarray(
+            xp,
+            xp.zeros_like(min_clearance),
+            dtype=bool_dtype,
+            device=getattr(pos, "device", None),
+        )
+    )
+    return {
+        "min_clearance": min_clearance,
+        "clearance_penalty": clearance_penalty,
+        "contact_penalty": contact_penalty,
+        "dense": dense,
+        "solved": _xp_asarray(
+            xp, solved, dtype=bool_dtype, device=getattr(pos, "device", None)
+        ),
+        "done": done,
+    }
+
+
+enclosure_contact_penalty = enclosure_clearance_reward

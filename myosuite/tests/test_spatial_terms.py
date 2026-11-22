@@ -3,7 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Unit tests for spatial enclosure observation and reward terms."""
+"""Unit tests for spatial enclosure observation, reward, and termination adapters."""
 
 from __future__ import annotations
 
@@ -13,12 +13,13 @@ import numpy as np
 import pytest
 
 from myosuite.core.protocols import PhysicsPath
-from myosuite.terms.spatial import (
-    boundary_proximity_obs,
+from myosuite.terms import spatial as spatial_compat
+from myosuite.terms.base_obs import boundary_proximity_obs
+from myosuite.terms.base_reward import (
     enclosure_clearance_reward,
     enclosure_contact_penalty,
-    enclosure_margins,
 )
+from myosuite.terms.base_termination import enclosure_violation
 
 pytestmark = pytest.mark.tier1
 
@@ -76,7 +77,6 @@ class _SpatialAccessor:
 
 
 def test_boundary_proximity_obs_unbatched_and_signed() -> None:
-    # Two sites in [-0.5, 0.5]^3: site 0 at center (clearance 0.5), site 1 outside +x at 0.6 (clearance -0.1)
     sites = np.array([[0.0, 0.0, 0.0], [0.6, 0.0, 0.0]], dtype=np.float64)
     acc = _SpatialAccessor(sites, np, batched=False)
 
@@ -89,9 +89,7 @@ def test_boundary_proximity_obs_unbatched_and_signed() -> None:
     )
     assert obs.dtype == np.float32
     assert obs.shape == (12,)
-    # Site 0 is 0.5 m from every wall (> soft_margin=0.2) -> proximity 0.0
     np.testing.assert_allclose(obs[:6], np.zeros(6, dtype=np.float32))
-    # Site 1 upper-x clearance is 0.5 - 0.6 = -0.1 -> proximity 1 - (-0.1)/0.2 = 1.5 (unclipped!)
     assert float(obs[9]) == pytest.approx(1.5)
 
     signed = boundary_proximity_obs(
@@ -105,7 +103,6 @@ def test_boundary_proximity_obs_unbatched_and_signed() -> None:
     )
     assert signed.shape == (7,)
     assert float(signed[3]) == pytest.approx(-0.1)
-    # Plane (0, 0, -1) . (0.6, 0, 0) - (-0.4) = +0.4
     assert float(signed[6]) == pytest.approx(0.4)
 
     with pytest.raises(ValueError, match="soft_margin"):
@@ -118,11 +115,7 @@ def test_boundary_proximity_obs_unbatched_and_signed() -> None:
         )
 
 
-def test_enclosure_clearance_reward_cpu_and_torch_batch_parity() -> None:
-    # Batch of 3 envs, 2 sites:
-    # Env 0: well inside -> solved=True, dense=0.0
-    # Env 1: inside but within margin (clearance=0.02 < margin=0.05) -> solved=True, dense < 0
-    # Env 2: outside boundary (clearance=-0.05) + excess contact force -> solved=False, done=True
+def test_enclosure_reward_and_termination_cpu_and_torch_batch_parity() -> None:
     sites_np = np.array(
         [
             [[0.0, 0.0, 0.0], [0.1, -0.1, 0.0]],
@@ -150,13 +143,27 @@ def test_enclosure_clearance_reward_cpu_and_torch_batch_parity() -> None:
         contact_threshold=1.0,
         terminate_on_violation=True,
     )
+    term_np = enclosure_violation(acc_np, state_np, contact_threshold=1.0)
     assert res_np["dense"].shape == (3,)
     assert float(res_np["dense"][0]) == pytest.approx(0.0)
     assert float(res_np["dense"][1]) < 0.0
     assert float(res_np["contact_penalty"][2]) == pytest.approx(-2.0 * (5.0 - 1.0))
     np.testing.assert_array_equal(res_np["solved"], [True, True, False])
     np.testing.assert_array_equal(res_np["done"], [False, False, True])
+    np.testing.assert_array_equal(term_np, [False, False, True])
     assert enclosure_contact_penalty is enclosure_clearance_reward
+    assert spatial_compat.boundary_proximity_obs is boundary_proximity_obs
+    assert spatial_compat.enclosure_clearance_reward is enclosure_clearance_reward
+    assert spatial_compat.enclosure_violation is enclosure_violation
+
+    acc_unbatched = _SpatialAccessor(sites_np[2], np, batched=False)
+    state_unbatched = {
+        "tip_site_ids": [0, 1],
+        "bounds_low": (-0.5, -0.5, -0.5),
+        "bounds_high": (0.5, 0.5, 0.5),
+        "enclosure_contact_force": forces_np[2],
+    }
+    assert enclosure_violation(acc_unbatched, state_unbatched) is True
 
     torch = pytest.importorskip("torch")
     acc_t = _SpatialAccessor(torch.tensor(sites_np), torch, batched=True)
@@ -189,67 +196,34 @@ def test_enclosure_clearance_reward_cpu_and_torch_batch_parity() -> None:
         contact_threshold=1.0,
         terminate_on_violation=True,
     )
+    term_t = enclosure_violation(acc_t, state_t, contact_threshold=1.0)
     np.testing.assert_allclose(res_np["dense"], res_t["dense"].numpy(), atol=1e-6)
     np.testing.assert_array_equal(res_np["solved"], res_t["solved"].numpy())
     np.testing.assert_array_equal(res_np["done"], res_t["done"].numpy())
+    np.testing.assert_array_equal(term_np, term_t.numpy())
 
 
-def test_non_unit_plane_normal_scales_offset_in_numpy_and_torch() -> None:
-    # Plane 2*x - 2 >= 0 <=> x >= 1.0; at p = (1.5, 0, 0), signed Euclidean clearance is +0.5 m.
-    pos_np = np.array([[1.5, 0.0, 0.0]], dtype=np.float32)
-    bounds_lo = (-10.0, -10.0, -10.0)
-    bounds_hi = (10.0, 10.0, 10.0)
-
-    margins_non_unit = enclosure_margins(
-        np,
-        pos_np,
-        bounds_lo,
-        bounds_hi,
-        plane_normals=[[2.0, 0.0, 0.0]],
-        plane_offsets=[2.0],
-    )
-    margins_unit = enclosure_margins(
-        np,
-        pos_np,
-        bounds_lo,
-        bounds_hi,
-        plane_normals=[[1.0, 0.0, 0.0]],
-        plane_offsets=[1.0],
-    )
-    assert float(margins_non_unit[0, 6]) == pytest.approx(0.5)
-    np.testing.assert_allclose(margins_non_unit, margins_unit, atol=1e-6)
-
-    acc_np = _SpatialAccessor(pos_np[None, ...], np, batched=True)
+def test_adapters_preserve_non_unit_plane_clearance() -> None:
+    pos_np = np.array([[[1.5, 0.0, 0.0]]], dtype=np.float32)
     state = {
         "enclosure_site_ids": [0],
-        "bounds_low": bounds_lo,
-        "bounds_high": bounds_hi,
+        "bounds_low": (-10.0, -10.0, -10.0),
+        "bounds_high": (10.0, 10.0, 10.0),
         "plane_normals": [[2.0, 0.0, 0.0]],
         "plane_offsets": [2.0],
     }
+    acc_np = _SpatialAccessor(pos_np, np, batched=True)
     res_np = enclosure_clearance_reward(acc_np, state, terminate_on_violation=True)
     assert float(res_np["min_clearance"][0]) == pytest.approx(0.5)
     assert bool(res_np["solved"][0]) is True
     assert bool(res_np["done"][0]) is False
-
-    with pytest.raises(ValueError, match="plane_normals and plane_offsets"):
-        enclosure_margins(
-            np, pos_np, bounds_lo, bounds_hi, plane_normals=[[1.0, 0.0, 0.0]]
-        )
+    assert bool(enclosure_violation(acc_np, state)[0]) is False
 
     torch = pytest.importorskip("torch")
-    pos_t = torch.tensor(pos_np[None, ...])
-    margins_t = enclosure_margins(
-        torch,
-        pos_t,
-        bounds_lo,
-        bounds_hi,
-        plane_normals=[[2.0, 0.0, 0.0]],
-        plane_offsets=[2.0],
-    )
-    assert float(margins_t[0, 0, 6].item()) == pytest.approx(0.5)
+    pos_t = torch.tensor(pos_np)
     acc_t = _SpatialAccessor(pos_t, torch, batched=True)
     res_t = enclosure_clearance_reward(acc_t, state, terminate_on_violation=True)
     assert float(res_t["min_clearance"][0].item()) == pytest.approx(0.5)
     assert bool(res_t["solved"][0].item()) is True
     assert bool(res_t["done"][0].item()) is False
+    assert bool(enclosure_violation(acc_t, state)[0].item()) is False

@@ -136,3 +136,56 @@ def upright_posture_failure(
         device=getattr(accessor.joint_pos(), "device", None),
     )
     return _maybe_item(posture < float(upright_posture_threshold))
+
+
+def enclosure_violation(
+    accessor: EnvAccessor,
+    task_state: dict[str, Any],
+    *,
+    contact_threshold: float = 1.0,
+    **kwargs: Any,
+) -> Any:
+    """Terminate when any tracked site exits the enclosure or exceeds *contact_threshold*.
+
+    Args:
+        accessor: Environment state accessor.
+        task_state: Dict with ``"enclosure_site_ids"`` (or ``"tip_site_ids"``),
+            ``"bounds_low"``, ``"bounds_high"``, and optional ``"plane_normals"``,
+            ``"plane_offsets"``, and ``"enclosure_contact_force"``.
+        contact_threshold: Allowed contact force magnitude [N] before violation.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Boolean scalar (unbatched CPU) or shape-``(N,)`` boolean array (batched).
+    """
+    from myosuite.physics.spatial_enclosure import (  # noqa: PLC0415
+        excess_contact_force,
+        min_enclosure_clearance,
+    )
+
+    del kwargs
+    xp = accessor.array_module()
+    batched = accessor.joint_pos().ndim > 1
+    raw_ids = (
+        task_state["enclosure_site_ids"]
+        if "enclosure_site_ids" in task_state
+        else task_state["tip_site_ids"]
+    )
+    ids = [int(raw_ids)] if isinstance(raw_ids, int | np.integer) else raw_ids
+    pos = accessor.site_xpos(ids)
+    min_clearance = min_enclosure_clearance(
+        xp,
+        pos,
+        task_state["bounds_low"],
+        task_state["bounds_high"],
+        plane_normals=task_state.get("plane_normals"),
+        plane_offsets=task_state.get("plane_offsets"),
+    )
+    excess_force = excess_contact_force(
+        xp,
+        task_state.get("enclosure_contact_force"),
+        threshold=contact_threshold,
+        reference=min_clearance,
+        batched=batched,
+    )
+    return _maybe_item((min_clearance < 0.0) | (excess_force > 0.0))
