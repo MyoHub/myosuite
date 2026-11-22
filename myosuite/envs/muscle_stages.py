@@ -170,11 +170,24 @@ class LowPassStage(ExcitationStage):
 class FESStage(ExcitationStage):
     """Functional Electrical Stimulation (FES) recruitment and fatigue stage.
 
-    Maps normalized stimulation commands ``u`` in ``[0, 1]`` through a pulse-width
-    spatial recruitment curve, Ding/Riener force-frequency scaling, and rapid
-    synchronous motor-unit fatigue and recovery (inspired by ``pyomeca/cocofest``,
-    Riener & Quintern 1997, and Ding et al. 2003). Portable across CPU (NumPy) and
-    ``mjlab`` (PyTorch) via :class:`~myosuite.envs.wrappers.ExcitationStageWrapper`.
+    Models neuroprosthetic surface/implanted stimulation on a subset (or all) of a
+    model's muscles via :class:`~myosuite.envs.wrappers.ExcitationStageWrapper`
+    (CPU NumPy and ``mjlab`` PyTorch):
+
+    1. **Pulse-width spatial recruitment** (Riener & Fuhr 1998; Lynch & Popovic 2008):
+       maps command ``u in [0, 1]`` to pulse width ``PW in [pw_min, pw_max]`` [us],
+       normalizes ``s = clip((PW - PW_th) / (PW_sat - PW_th), 0, 1)``, and evaluates
+       ``r_pw = s^p / (s^p + (1 - s)^p)`` (exact deadzone below rheobase ``PW_th``,
+       ``0.5`` at midpoint, saturation at ``PW_sat``).
+    2. **Force-frequency fusion** (Riener & Quintern 1997; Ding et al. 2003):
+       ``freq_gain = (f / f50)^q / (1 + (f / f50)^q)``, yielding ``a_rec = freq_gain * r_pw``.
+    3. **Synchronous motor-unit fitness ODE** (Riener, Quintern & Schmidt 1996):
+       ``d(mu)/dt = (mu_min - mu) * a_rec / tau_fat + (1 - mu) * (1 - a_rec) / tau_rec``,
+       scaling effective excitation ``u_fes = clip(mu * a_rec, 0, 1)``.
+    4. **Selective electrode channels**: ``stimulated_indices`` with
+       ``passthrough_unstimulated=False`` zeroes unstimulated paralyzed muscles
+       (e.g. SCI neuroprostheses) or ``True`` preserves residual voluntary drive
+       (hybrid FES + voluntary rehabilitation).
     """
 
     def __init__(
