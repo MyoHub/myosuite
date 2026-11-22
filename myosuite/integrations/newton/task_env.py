@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -23,11 +24,14 @@ import torch
 
 from myosuite.envs.myo.tasks.basic.arm.pose import PoseEnvV0
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0
+from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0
 from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0
+from myosuite.envs.myo.tasks.basic.torso.pose import TorsoEnvV0
 from myosuite.integrations.newton.accessor import _entry_point_defaults
 from myosuite.integrations.newton.batch_sim import NewtonBatchSim
 from myosuite.integrations.newton.torch_pipeline import NewtonActionCfg
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
+from myosuite.terms.base_event import terrain_heights
 from myosuite.terms.base_obs import (
     com_linear_velocity,
     joint_pos_obs,
@@ -37,6 +41,7 @@ from myosuite.terms.base_obs import (
     tip_pos_obs,
 )
 from myosuite.terms.base_reward import (
+    leg_reach_reward,
     locomotion_solved,
     locomotion_streak,
     locomotion_sustained,
@@ -91,15 +96,19 @@ class NewtonTaskEnv:
         self.env_id = str(env_id)
         spec = gym.spec(self.env_id)
         entry_str = str(spec.entry_point)
-        if "PoseEnvV0" in entry_str:
+        is_torso = "TorsoEnvV0" in entry_str
+        if "PoseEnvV0" in entry_str or is_torso:
             self.task_kind = "pose"
+        elif "LegReachEnvV0" in entry_str:
+            self.task_kind = "leg_reach"
         elif "ReachEnvV0" in entry_str:
             self.task_kind = "reach"
-        elif "LegWalkEnvV0" in entry_str and "terrain" not in spec.kwargs:
+        elif "LegWalkEnvV0" in entry_str or "LegTerrainEnvV0" in entry_str:
             self.task_kind = "walk"
         else:
             raise ValueError(
-                f"NewtonTaskEnv supports PoseEnvV0, ReachEnvV0, and LegWalkEnvV0 tasks, got {entry_str!r}."
+                "NewtonTaskEnv supports PoseEnvV0, TorsoEnvV0, ReachEnvV0, "
+                f"LegReachEnvV0, LegWalkEnvV0, and LegTerrainEnvV0 tasks, got {entry_str!r}."
             )
 
         kwargs = dict(spec.kwargs)
@@ -132,21 +141,29 @@ class NewtonTaskEnv:
         ]
 
         if self.task_kind == "pose":
-            obs_keys = list(kwargs.get("obs_keys", PoseEnvV0.DEFAULT_OBS_KEYS))
+            pose_cls = TorsoEnvV0 if is_torso else PoseEnvV0
+            obs_keys = list(kwargs.get("obs_keys", pose_cls.DEFAULT_OBS_KEYS))
             self.rwd_keys_wt = dict(
                 kwargs.get(
-                    "weighted_reward_keys", PoseEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS
+                    "weighted_reward_keys", pose_cls.DEFAULT_RWD_KEYS_AND_WEIGHTS
                 )
             )
             self.reset_type = str(
                 kwargs.get("reset_type", defaults.get("reset_type", "init"))
             )
-            self.target_type = str(
-                kwargs.get("target_type", defaults.get("target_type", "generate"))
+            self.target_type = (
+                "fixed"
+                if is_torso
+                else str(
+                    kwargs.get("target_type", defaults.get("target_type", "generate"))
+                )
             )
             self.pose_thd = float(
-                kwargs.get("pose_thd", defaults.get("pose_thd", 0.35))
+                kwargs.get(
+                    "pose_thd", defaults.get("pose_thd", 0.25 if is_torso else 0.35)
+                )
             )
+            self.pose_far_thd = math.pi if is_torso else 2.0 * math.pi
             target_jnt_range = kwargs.get("target_jnt_range")
             if target_jnt_range is not None:
                 ranges = [target_jnt_range[jnt_name] for jnt_name in target_jnt_range]
@@ -165,11 +182,12 @@ class NewtonTaskEnv:
             )
             self.tip_sids: list[int] = []
             self.target_sids: list[int] = []
-        elif self.task_kind == "reach":
-            obs_keys = list(kwargs.get("obs_keys", ReachEnvV0.DEFAULT_OBS_KEYS))
+        elif self.task_kind in ("reach", "leg_reach"):
+            reach_cls = LegReachEnvV0 if self.task_kind == "leg_reach" else ReachEnvV0
+            obs_keys = list(kwargs.get("obs_keys", reach_cls.DEFAULT_OBS_KEYS))
             self.rwd_keys_wt = dict(
                 kwargs.get(
-                    "weighted_reward_keys", ReachEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS
+                    "weighted_reward_keys", reach_cls.DEFAULT_RWD_KEYS_AND_WEIGHTS
                 )
             )
             self.target_reach_range = dict(kwargs["target_reach_range"])
@@ -177,12 +195,20 @@ class NewtonTaskEnv:
                 kwargs.get("target_sampling", defaults.get("target_sampling", "box"))
             )
             self.far_th = float(kwargs.get("far_th", defaults.get("far_th", 0.35)))
+            self.joint_random_range = tuple(
+                kwargs.get(
+                    "joint_random_range", defaults.get("joint_random_range", (0.0, 0.0))
+                )
+            )
+            if self.task_kind == "leg_reach":
+                self._init_qpos = ref_model.key_qpos[0].astype(np.float32).copy()
+                self._init_qvel = ref_model.key_qvel[0].astype(np.float32).copy()
             self.tip_sids = [ref_model.site(s).id for s in self.target_reach_range]
             self.target_sids = [
                 ref_model.site(f"{s}_target").id for s in self.target_reach_range
             ]
             self._workspace_points: np.ndarray | None = None
-            if self.target_sampling == "workspace":
+            if self.task_kind == "reach" and self.target_sampling == "workspace":
                 spans = list(self.target_reach_range.values())
                 self._workspace_points = reachable_target_points(
                     ref_model,
@@ -202,6 +228,10 @@ class NewtonTaskEnv:
                     "weighted_reward_keys", LegWalkEnvV0.DEFAULT_RWD_KEYS_AND_WEIGHTS
                 )
             )
+            self.terrain: str | None = kwargs.get("terrain")
+            self.terrain_variant: str | None = kwargs.get("variant")
+            if self.terrain is not None:
+                self.sim.set_geom_pos("terrain", [0.0, 0.0, 0.0])
             self.min_height = float(
                 kwargs.get("min_height", defaults.get("min_height", 0.8))
             )
@@ -305,7 +335,7 @@ class NewtonTaskEnv:
             obs_map["pose_err"] = pose_error_obs(
                 t_acc, target=self.target_angles
             ).reshape(self.num_envs, -1)
-        elif self.task_kind == "reach":
+        elif self.task_kind in ("reach", "leg_reach"):
             tip = tip_pos_obs(t_acc, self.tip_sids).reshape(self.num_envs, -1)
             obs_map["tip_pos"] = tip
             obs_map["target_pos"] = self.target_pos
@@ -342,7 +372,10 @@ class NewtonTaskEnv:
         t_acc = self.sim.torch_accessor
         if self.task_kind == "pose":
             comp = pose_reward(
-                t_acc, {"target_angles": self.target_angles}, pose_thd=self.pose_thd
+                t_acc,
+                {"target_angles": self.target_angles},
+                pose_thd=self.pose_thd,
+                far_thd=self.pose_far_thd,
             )
             act = t_acc.muscle_act()
             act_mag = (
@@ -359,8 +392,13 @@ class NewtonTaskEnv:
                 "solved": comp["solved"],
                 "done": comp["done"],
             }
-        elif self.task_kind == "reach":
-            rwd = multi_site_reach_reward(
+        elif self.task_kind in ("reach", "leg_reach"):
+            reward_fn = (
+                leg_reach_reward
+                if self.task_kind == "leg_reach"
+                else multi_site_reach_reward
+            )
+            rwd = reward_fn(
                 t_acc,
                 {
                     "tip_site_ids": self.tip_sids,
@@ -388,6 +426,11 @@ class NewtonTaskEnv:
                 max_rot=self.max_rot,
             )
             done_bool = comp["done"] > 0.5
+            if self.terrain is not None:
+                feet_z = t_acc.body_xpos()[:, self._feet_bids, 2]
+                knee_fail = (com[:, 2] - feet_z.mean(dim=-1)) < 0.61
+                done_bool = done_bool | knee_fail
+                comp["done"] = done_bool.to(dtype=comp["vel_reward"].dtype)
             vel_error = torch.linalg.norm(self._target_vel_t - com_vel, dim=-1)
             on_target = locomotion_solved(torch, vel_error, done_bool)
             streak = locomotion_streak(self._on_target_steps, on_target)
@@ -493,9 +536,31 @@ class NewtonTaskEnv:
             self.target_pos[idx_t] = torch.as_tensor(
                 targets, dtype=torch.float32, device=self.torch_device
             )
+        elif self.task_kind == "leg_reach":
+            jnt_adr = ref_model.jnt_qposadr
+            if np.ptp(self.joint_random_range) > 0:
+                for row, w in enumerate(selected):
+                    rng = self._rngs[int(w)]
+                    qpos_rand = rng.uniform(
+                        low=self.joint_random_range[0],
+                        high=self.joint_random_range[1],
+                        size=self._init_qpos.shape,
+                    )
+                    qp = self._init_qpos.astype(np.float64).copy()
+                    qp[jnt_adr] += qpos_rand[jnt_adr]
+                    qp[jnt_adr] = np.clip(
+                        qp[jnt_adr],
+                        ref_model.jnt_range[:, 0],
+                        ref_model.jnt_range[:, 1],
+                    )
+                    qpos_batch[row] = qp
         else:
             for row, w in enumerate(selected):
                 rng = self._rngs[int(w)]
+                if self.terrain is not None:
+                    heights = terrain_heights(self.terrain, self.terrain_variant, rng)
+                    if int(w) == 0:
+                        self.sim.set_hfield_data(heights)
                 if self.reset_type == "random":
                     k_idx = 2 if rng.uniform() < 0.5 else 3
                     qp = ref_model.key_qpos[k_idx].copy()
@@ -524,6 +589,29 @@ class NewtonTaskEnv:
             qpos=qpos_batch,
             qvel=qvel_batch,
         )
+        if self.task_kind == "leg_reach":
+            n_sites = len(self.tip_sids)
+            targets = np.empty((len(selected), 3 * n_sites), dtype=np.float32)
+            tip_xpos = self.sim.accessor.site_xpos(self.tip_sids)
+            spans = list(self.target_reach_range.values())
+            for row, w in enumerate(selected):
+                rng = self._rngs[int(w)]
+                w_int = int(w)
+                pts = [
+                    tip_xpos[w_int, s_i] + rng.uniform(low=sp[0], high=sp[1])
+                    for s_i, sp in enumerate(spans)
+                ]
+                targets[row] = np.concatenate(pts).astype(np.float32)
+            for s_i, target_sid in enumerate(self.target_sids):
+                self.sim.set_site_pos(
+                    target_sid, targets[:, 3 * s_i : 3 * (s_i + 1)], env_ids=selected
+                )
+            idx_t = torch.as_tensor(
+                selected, dtype=torch.long, device=self.torch_device
+            )
+            self.target_pos[idx_t] = torch.as_tensor(
+                targets, dtype=torch.float32, device=self.torch_device
+            )
         return self._compute_obs_torch(), {"time": self.sim.torch_accessor.time()}
 
     def step_torch(
