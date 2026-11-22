@@ -177,6 +177,12 @@ models collected before the MuscleMimic bridge fix (#459) must be recollected.
 
 **Motor finger gears.** With `myo_sim` 0.2.4 the `motorFinger*` envs use the gears of `motorfinger_v0.xml` as they are, 160/80/80/160/160 (`extn`, `adabR`, `adabL`, `mflx`, `dflx`), and MyoSuite no longer scales them. Checkpoints trained on the earlier 80/20/20/40/40 no longer apply. Their observations, actions and control step are unchanged, so they still load and the env contract hash in `manifest.json` does not warn about them: use the checkpoints of the release that matches your MyoSuite version. The four `motorFinger*` rows are means over seeds 0-2 with 256 episodes each.
 
+**Head and trunk masses (`myo_sim` 0.3.0, after 3.1.0).** `myo_sim` 0.3.0 moves 3.72 kg from `torso` to `head`, which changes the dynamics of the torso pose tasks, Soccer, Table Tennis, the full-body ChaseTag ids and `myoMimic-v0` (CHANGELOG). The same checkpoints, evaluated on the CPU under `myo_sim` 0.2.5 and 0.3.0:
+
+- `myoTorsoPoseFixed-v0` (`model_103.pt`) and `myoTorsoExoPoseFixed-v0` (`model_188.pt`): 100 % success on both versions (50 episodes, `--stochastic --seed 0`); returns 1572 ± 19 → 1562 ± 42 and 1582.4 ± 0.8 → 1582.0 ± 0.9. The rows in the table still apply.
+- `onnx/chasetag_fbvs_baseline.onnx` in `myoChallengeChaseTagFBVs-v0` (bouts of `training/chasetag_teacher`, action noise 0.02, seeds 0-19): as chaser against an idle player it tags in 20/20 bouts on 0.2.5 and 2/20 on 0.3.0, falling in the other 18; in self-play the chaser tags in 19/20 on 0.2.5 and falls in 20/20 on 0.3.0. Without action noise it still tags an idle player (3.47 s instead of 3.06 s) but falls in self-play. It needs retraining for 0.3.0; the baseline rows of tutorial 5.6 were measured on 0.2.5.
+- Not measured: the SuperMimic files of tutorials 5.4, 5.6 and 5.7 (they need the KIT clip library). Table Tennis, Soccer, `myoChallengeChaseTagFBP2-v0` and `myoMimic-v0` have no published checkpoint.
+
 **Fatigue parameters of torso, hamstring, forearm and two-agent muscles.** In the `myoFati*` variants, lumbar and
 abdominal muscles use the new `Trunk` row and hamstrings the `Thigh-Hamstring` row (both used `Default`), the forearm
 rotators `SUP`/`PT`/`PQ` the `Elbow` row and `APL` the wrist-extensor row, and the left arm of the MuscleMimic models

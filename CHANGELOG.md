@@ -35,6 +35,18 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **`myo-sim` 0.3.0: head and trunk masses.** `myo-sim` moves from 0.2.5 to 0.3.0, whose torso chain gives the head
+  6.94 % of body mass (de Leva 1996, MyoHub/myo_sim#138): `head` goes from 2.126 to 5.848 kg and `torso` from 18.619
+  to 14.897 kg, with the total unchanged. The dynamics change in every env in which these bodies move:
+  `myoTorsoPoseFixed-v0`, `myoTorsoExoPoseFixed-v0`, `myoChallengeSoccerP1/P2-v0`,
+  `myoChallengeTableTennisP0/P1/P2-v0`, `myoChallengeChaseTagFBP2-v0`, `myoChallengeChaseTagFBVs-v0` and
+  `myoMimic-v0`, with their `myoSarc` / `myoFati` variants and mjlab twins. The joint-space inertia at `qpos0`
+  (`dof_M0`) of the lumbar joints rises by up to 64 % in the torso and soccer models and by up to 9 % in `myofullbody`.
+  In `myoArmReach*` both bodies are welded to the world, so the dynamics are unchanged; every other registered CPU env
+  compiles to the same model arrays. Observation and action shapes are unchanged, and `myoMimic-v0`'s KIT clips keep
+  loading (the body's kinematic fingerprint is unchanged). The `myoTorsoPoseFixed-v0` and `myoTorsoExoPoseFixed-v0`
+  checkpoints still succeed; the FBVs ONNX baseline does not transfer (*Head and trunk masses* in
+  `docs/baseline_checkpoints.md`).
 * **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
   `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
   keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
