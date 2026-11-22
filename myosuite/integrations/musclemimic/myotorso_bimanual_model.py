@@ -31,13 +31,14 @@ import tempfile
 import warnings
 from pathlib import Path
 
-from ml_collections import config_dict
 import mujoco
+from ml_collections import config_dict
 
 from myosuite.integrations.musclemimic.bimanual_model import (
     BODY2SITES_FOR_MIMIC,
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
+    _apply_mimic_solver_options,
     _translate_finger_token,
     apply_mimic_bimanual_spec_edits,
     default_mimic_config,
@@ -454,10 +455,7 @@ def compile_myotorso_bimanual_mimic_mjmodel(
         Tuple of compiled model, post-edit spec, and tag string.
     """
     spec, tag = build_myotorso_bimanual_mimic_spec(config)
-    spec.option.timestep = float(config.sim_dt)
-    spec.option.iterations = int(config.model_iterations)
-    spec.option.ls_iterations = int(config.model_ls_iterations)
-    spec.option.disableflags = int(config.model_disableflags)
+    _apply_mimic_solver_options(spec, config)
     mj_model = spec.compile()
     return mj_model, spec, tag
 
