@@ -35,7 +35,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
-* **`myo-sim` 0.3.0: head and trunk masses.** `myo-sim` moves from 0.2.5 to 0.3.0, whose torso chain gives the head
+* **`myo-sim` 0.3.0: head and trunk masses ([#920]).** `myo-sim` moves from 0.2.5 to 0.3.0, whose torso chain gives the head
   6.94 % of body mass (de Leva 1996, MyoHub/myo_sim#138): `head` goes from 2.126 to 5.848 kg and `torso` from 18.619
   to 14.897 kg, with the total unchanged. The dynamics change in every env in which these bodies move:
   `myoTorsoPoseFixed-v0`, `myoTorsoExoPoseFixed-v0`, `myoChallengeSoccerP1/P2-v0`,
@@ -409,6 +409,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#805]: https://github.com/MyoHub/myosuite/pull/805
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
+[#920]: https://github.com/MyoHub/myosuite/pull/920
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
