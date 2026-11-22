@@ -209,6 +209,7 @@ packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite
 
 [project.scripts]
 myosuite-export-onnx = "myosuite.utils.export_onnx:main"
+myosuite-terms = "myosuite.terms.catalog:main"
 # MuscleMimic full-body: native --path trajectory playback, preview, or MJX smoke.
 myosuite-musclemimic-fullbody-eval = "myosuite.integrations.musclemimic.fullbody_eval_cli:main"
 # Demo motion cache (HF); runs in MuscleMimic tree — see integrations/musclemimic/README.md.
