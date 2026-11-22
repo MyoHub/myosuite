@@ -11,9 +11,11 @@ import importlib
 from typing import Any
 
 _EXPORTS: dict[str, str] = {
+    "BaseEMGSource": "myosuite.integrations.emg.trial_io",
     "EMG_TRIAL_META_KEY": "myosuite.integrations.emg.trial_io",
     "NpzDirectoryEMGSource": "myosuite.integrations.emg.trial_io",
     "load_emg_trial": "myosuite.integrations.emg.trial_io",
+    "resolve_stem_channel_map": "myosuite.integrations.emg.trial_io",
     "save_emg_trial": "myosuite.integrations.emg.trial_io",
 }
 

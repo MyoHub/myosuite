@@ -102,7 +102,48 @@ def load_emg_trial(path: str | Path) -> EMGTrial:
         return EMGTrial(**kwargs)  # type: ignore[arg-type]
 
 
-class NpzDirectoryEMGSource:
+class BaseEMGSource:
+    """Shared base class for EMG dataset adapters with declarative channel maps."""
+
+    name: str = ""
+    _DEFAULT_CHANNEL_MAP: EMGChannelMap | None = None
+
+    def default_channel_map(self, model: mujoco.MjModel) -> EMGChannelMap | None:
+        del model
+        return self._DEFAULT_CHANNEL_MAP
+
+
+def resolve_stem_channel_map(
+    model: mujoco.MjModel,
+    *,
+    name: str,
+    channel_options: Sequence[tuple[str, Sequence[Sequence[str]]]],
+    suffixes: Sequence[str] = ("_r", ""),
+    allow_empty: bool = True,
+) -> EMGChannelMap | None:
+    """Build an :class:`EMGChannelMap` matching the first present actuator stems on *model*."""
+    act_names = {
+        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
+        for i in range(model.nu)
+    }
+    bindings: list[ChannelBinding] = []
+    for channel, options in channel_options:
+        for stems in options:
+            acts = [
+                next(
+                    (f"{s}{sfx}" for sfx in suffixes if f"{s}{sfx}" in act_names), None
+                )
+                for s in stems
+            ]
+            if all(acts):
+                bindings.append(ChannelBinding(channel, tuple(str(a) for a in acts)))
+                break
+    if not bindings and not allow_empty:
+        return None
+    return EMGChannelMap(name=name, version=1, bindings=tuple(bindings))
+
+
+class NpzDirectoryEMGSource(BaseEMGSource):
     """Dataset source reading standardized :class:`EMGTrial` ``.npz`` files from a directory."""
 
     def __init__(self, root: str | Path) -> None:
@@ -123,26 +164,20 @@ class NpzDirectoryEMGSource:
         first = load_emg_trial(next(iter(self._paths.values())))
         if isinstance(first.meta.get("channel_map"), dict):
             return EMGChannelMap.from_dict(first.meta["channel_map"])
-        act_names = {
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
-            for i in range(model.nu)
-        }
-        bindings: list[ChannelBinding] = []
-        for ch in first.channel_names:
-            for cand in (ch, f"{ch}_r", f"{ch}_l"):
-                if cand in act_names:
-                    bindings.append(ChannelBinding(channel=ch, actuators=(cand,)))
-                    break
-        return (
-            EMGChannelMap(name=f"{self.name}_auto", bindings=tuple(bindings))
-            if bindings
-            else None
+        return resolve_stem_channel_map(
+            model,
+            name=f"{self.name}_auto",
+            channel_options=[(ch, ((ch,),)) for ch in first.channel_names],
+            suffixes=("", "_r", "_l"),
+            allow_empty=False,
         )
 
 
 __all__ = [
+    "BaseEMGSource",
     "EMG_TRIAL_META_KEY",
     "NpzDirectoryEMGSource",
     "load_emg_trial",
+    "resolve_stem_channel_map",
     "save_emg_trial",
 ]
