@@ -369,7 +369,10 @@ def build_native_myotorso_bimanual_mimic_spec(
     spec.attach(legs_spec, prefix="", suffix="", frame=legs_frame)
 
     if config.disable_fingers:
-        model = spec.compile()
+        from myosuite.core.model_builder import suppress_empty_prefix_attach_warning
+
+        with suppress_empty_prefix_attach_warning():
+            model = spec.compile()
         joint_pool = frozenset(
             mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
             for i in range(model.njnt)
