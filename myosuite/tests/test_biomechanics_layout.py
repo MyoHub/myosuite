@@ -21,6 +21,8 @@ _PACKAGE = Path(__file__).parents[1]
 _METHOD_DEPENDENCIES = {"numpy", "scipy", "mujoco", "osqp", "absl", "myosuite"}
 # Canonical differential IK uses the explicitly declared core Mink dependency.
 _MODULE_DEPENDENCIES = {"inverse_kinematics.py": {"mink"}}
+# The model fingerprint is delegated to myo_sim.
+_MODULE_IMPORTS = {"emg_validation.py": {"myo_sim.fingerprint"}}
 # Internal subpackages allowed inside myosuite/biomechanics/ (#895): no integrations/ or envs/.
 _INTERNAL_SUBPACKAGES = {"biomechanics", "core", "physics"}
 _MODULE_INTERNAL_SUBPACKAGES = {"retarget_instanthmr.py": {"viz"}}
@@ -43,7 +45,12 @@ def test_biomechanics_depends_only_on_approved_runtime_libraries() -> None:
         module = path.relative_to(_PACKAGE / "biomechanics").as_posix()
         imports = _imports(path)
         dependencies = allowed | _MODULE_DEPENDENCIES.get(module, set())
-        extra = {n for n in imports if n.split(".")[0] not in dependencies}
+        extra = {
+            n
+            for n in imports
+            if n.split(".")[0] not in dependencies
+            and n not in _MODULE_IMPORTS.get(module, set())
+        }
         assert not extra, f"{path.relative_to(_PACKAGE)} imports {sorted(extra)}"
 
         allowed_internal = _INTERNAL_SUBPACKAGES | _MODULE_INTERNAL_SUBPACKAGES.get(

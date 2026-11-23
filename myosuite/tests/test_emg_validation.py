@@ -38,6 +38,7 @@ from myosuite.integrations.mm_evalkit import (
     export_mm_evalkit_rollout,
     write_mm_evalkit_policy_config,
 )
+from myosuite.tests.support.optional_deps import needs_myo_sim_fingerprint
 
 pytestmark = pytest.mark.tier1
 
@@ -156,6 +157,7 @@ def test_channel_map_cross_version_resolution_and_npz_roundtrip(tmp_path: Path) 
     assert dir_src.get_trial("unit_clip").trial_id == "unit_clip"
 
 
+@needs_myo_sim_fingerprint
 def test_musculoskeletal_fingerprint_detects_ligament_and_muscle_mutations() -> None:
     m_base = mujoco.MjModel.from_xml_string(_TWO_MUSCLE_ARM_XML)
     m_same = mujoco.MjModel.from_xml_string(_TWO_MUSCLE_ARM_XML)
@@ -176,6 +178,7 @@ def test_musculoskeletal_fingerprint_detects_ligament_and_muscle_mutations() -> 
     assert musculoskeletal_fingerprint(m_geom) != fp_base
 
 
+@needs_myo_sim_fingerprint
 def test_inverse_emg_feasibility_and_known_bad_mutations() -> None:
     model = mujoco.MjModel.from_xml_string(_TWO_MUSCLE_ARM_XML)
     data = mujoco.MjData(model)
@@ -292,6 +295,7 @@ def test_inverse_emg_feasibility_and_known_bad_mutations() -> None:
     assert agg["flagged"][0]["trial_id"] == "phase_inverted_emg"
 
 
+@needs_myo_sim_fingerprint
 def test_rsa_and_paired_wilcoxon_comparison() -> None:
     three_muscle_xml = _TWO_MUSCLE_ARM_XML.replace(
         '<muscle name="triceps_r" tendon="tri_tendon" force="120" lengthrange="0.09 0.20"/>',
