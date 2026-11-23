@@ -39,6 +39,12 @@ Changes since **v3.1.0** (2026-11-11).
   `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
   keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
   Python 3.15 on Linux for the ONNX-free native CPU path.
+* **MuJoCo >= 3.11 and mjlab >= 1.6.** MuJoCo 3.10 and earlier crash with an access violation when `MjsWrap.target`
+  or `MjsWrap.sidesite` is read on a copied `MjSpec` (google-deepmind/mujoco#3406). Every spec `ModelBuilder` builds
+  is a copy, so an `edit_fn` that reads tendon wrap targets crashed on those releases. The core requirement is now
+  `mujoco>=3.11,<4`; `[mjlab]` needs `mjlab>=1.6.0` and `mujoco-warp>=3.11.0`, `[mjx]` needs `mujoco-mjx>=3.11`.
+  `uv.lock` moves from mjlab 1.4.0 / MuJoCo 3.8.1 to mjlab 1.6.1 / MuJoCo 3.11.0 (Python < 3.14), the versions that
+  unlocked installs and CI already resolve.
 
 ### Fixed
 
