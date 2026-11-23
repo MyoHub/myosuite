@@ -55,19 +55,19 @@ class StrengthCalibration:
     predicted: np.ndarray
 
 
-def _library(*, need_mvc: bool = False) -> ModuleType:
+def _library(*, need_mvc: bool = False, need_selected: bool = False) -> ModuleType:
     try:
         mod = importlib.import_module("myo_sim.physics.muscle_strength")
     except ModuleNotFoundError as exc:
         if exc.name != "myo_sim.physics.muscle_strength":
             raise
-        prs = (
-            "MyoHub/myo_sim#186 and MyoHub/myo_sim#195"
-            if need_mvc
-            else "MyoHub/myo_sim#186"
-        )
+        prs = ["MyoHub/myo_sim#186"]
+        if need_mvc:
+            prs.append("MyoHub/myo_sim#195")
+        if need_selected:
+            prs.append("MyoHub/myo_sim#211")
         raise ImportError(
-            f"Muscle strength requires a myo-sim build containing {prs} "
+            f"Muscle strength requires a myo-sim build containing {' and '.join(prs)} "
             "(myo_sim.physics.muscle_strength). Install that development build "
             "or a release containing it; 0.2.5 lacks this API."
         ) from exc
@@ -77,40 +77,71 @@ def _library(*, need_mvc: bool = False) -> ModuleType:
             "containing MyoHub/myo_sim#195 (myo_sim.physics.muscle_strength). "
             "Install that development build or a release containing it."
         )
+    if need_selected and not hasattr(mod, "max_joint_torque"):
+        raise ImportError(
+            "Selected-muscle strength scaling and max_joint_torque require a myo-sim "
+            "build containing MyoHub/myo_sim#211 "
+            "(myo_sim.physics.muscle_strength). Install that development build "
+            "or a release containing it."
+        )
     return mod
 
 
-def scale_muscle_strength(model: mujoco.MjModel, factors: float | np.ndarray) -> None:
+def scale_muscle_strength(
+    model: mujoco.MjModel,
+    factors: float | np.ndarray,
+    *,
+    muscles: Sequence[str] | None = None,
+) -> None:
     """Multiply each muscle's peak active and passive force in place.
 
     Args:
         model: Compiled model.
         factors: Positive finite scalar, or ``(nu,)`` per-actuator factors.
+        muscles: Distinct muscle actuator names to scale; ``None`` scales all
+            muscles. Other actuators keep their gain and bias parameters.
 
     Raises:
-        ValueError: If a muscle's factor is not positive and finite.
-        ImportError: If the installed myo-sim lacks ``myo_sim.physics.muscle_strength``.
+        ValueError: If a selected muscle's factor is not positive and finite, or
+            ``muscles`` does not name distinct muscle actuators.
+        ImportError: If the installed myo-sim lacks ``myo_sim.physics.muscle_strength``
+            (or, with ``muscles``, MyoHub/myo_sim#211).
     """
-    _library().scale_muscle_strength(model, factors)
+    if muscles is None:
+        _library().scale_muscle_strength(model, factors)
+    else:
+        _library(need_selected=True).scale_muscle_strength(
+            model, factors, muscles=list(muscles)
+        )
 
 
 def scale_muscle_strength_spec(
-    spec: mujoco.MjSpec, factors: float | np.ndarray
+    spec: mujoco.MjSpec,
+    factors: float | np.ndarray,
+    *,
+    muscles: Sequence[str] | None = None,
 ) -> mujoco.MjSpec:
     """Multiply each muscle's peak active and passive force on an ``MjSpec``.
 
     Args:
         spec: Model specification (modified in place and returned).
         factors: Positive finite scalar, or ``(nu,)`` per-actuator factors.
+        muscles: Distinct muscle actuator names to scale; ``None`` scales all.
 
     Returns:
         ``spec``.
 
     Raises:
-        ValueError: If a muscle's factor is not positive and finite.
-        ImportError: If the installed myo-sim lacks ``myo_sim.physics.muscle_strength``.
+        ValueError: If a selected muscle's factor is not positive and finite, or
+            ``muscles`` does not name distinct muscle actuators.
+        ImportError: If the installed myo-sim lacks ``myo_sim.physics.muscle_strength``
+            (or, with ``muscles``, MyoHub/myo_sim#211).
     """
-    return _library().scale_muscle_strength_spec(spec, factors)
+    if muscles is None:
+        return _library().scale_muscle_strength_spec(spec, factors)
+    return _library(need_selected=True).scale_muscle_strength_spec(
+        spec, factors, muscles=list(muscles)
+    )
 
 
 def strength_factor_from_body_mass(mass: float, reference_mass: float) -> float:
@@ -157,6 +188,36 @@ def max_torque_terms(
     )
     active, passive, joints = mod.max_torque_terms(model, trial)
     return active, passive, float(joints)
+
+
+def max_joint_torque(
+    model: mujoco.MjModel,
+    qpos: np.ndarray,
+    joint: str,
+    direction: float = 1.0,
+    *,
+    max_activation: np.ndarray | None = None,
+) -> tuple[float, tuple[str, ...]]:
+    """Predict isometric net MVC and its agonist names, optionally with activation caps.
+
+    Args:
+        model: Compiled model, unchanged.
+        qpos: Probe posture ``(nq,)``; coupled joints are projected.
+        joint: Independent hinge/slide joint about which torque is measured.
+        direction: ``+1`` or ``-1`` along the joint coordinate.
+        max_activation: ``(nu,)`` muscle activation caps in [0, 1]; passive
+            forces are not capped.
+
+    Returns:
+        Signed torque and agonist actuator names.
+
+    Raises:
+        ValueError: If the inputs or the model violate the steady MVC contract.
+        ImportError: If the installed myo-sim lacks MyoHub/myo_sim#211.
+    """
+    return _library(need_mvc=True, need_selected=True).max_joint_torque(
+        model, qpos, joint, direction, max_activation=max_activation
+    )
 
 
 def calibrate_muscle_strength(
@@ -210,6 +271,7 @@ __all__ = [
     "MaxTorqueMeasurement",
     "StrengthCalibration",
     "calibrate_muscle_strength",
+    "max_joint_torque",
     "max_torque_terms",
     "scale_muscle_strength",
     "scale_muscle_strength_spec",

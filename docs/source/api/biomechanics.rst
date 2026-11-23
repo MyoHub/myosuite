@@ -102,6 +102,11 @@ Muscle effort, EMG & movement quality
 .. automodule:: myosuite.biomechanics.kinematic_metrics
    :members:
 
+Participant strength calibration
+--------------------------------
+
+Participant group-strength fits and steady MVC probes in :mod:`myosuite.biomechanics.calibration`, documented on :doc:`/participant_calibration`.
+
 Muscle mesh reconstruction
 --------------------------
 

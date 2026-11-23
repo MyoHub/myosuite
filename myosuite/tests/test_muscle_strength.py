@@ -143,6 +143,20 @@ for call, expected in calls:
             model, [MaxTorqueMeasurement("hinge", np.zeros(1), 5.0)]
         )
 
+    monkeypatch.setattr(
+        muscle_strength.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(
+            scale_muscle_strength=lambda m, f: None,
+            calibrate_muscle_strength=None,
+        ),
+    )
+    scale_muscle_strength(model, 1.0)
+    with pytest.raises(ImportError, match="myo_sim#211"):
+        scale_muscle_strength(model, 1.0, muscles=["m"])
+    with pytest.raises(ImportError, match="myo_sim#211"):
+        muscle_strength.max_joint_torque(model, np.zeros(1), "hinge")
+
 
 def test_scaling_multiplies_active_and_passive_force(elbow: mujoco.MjModel) -> None:
     factors = np.random.default_rng(0).uniform(0.5, 2.0, elbow.nu)

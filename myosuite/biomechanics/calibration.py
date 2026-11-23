@@ -24,6 +24,7 @@ from myosuite.core.muscle_strength import (
     max_torque_terms,
     scale_muscle_strength,
 )
+from myosuite.core.muscle_strength import max_joint_torque as _max_joint_torque
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 
@@ -94,6 +95,8 @@ def max_joint_torque(
 ) -> tuple[float, tuple[str, ...]]:
     """Predict isometric net MVC, optionally with fatigued activation caps.
 
+    Delegates to ``myo_sim.physics.muscle_strength.max_joint_torque``.
+
     Args:
         model: Compiled model, unchanged.
         qpos: Probe posture ``(nq,)`` [rad/m, quaternions for ball/free joints].
@@ -111,20 +114,9 @@ def max_joint_torque(
             compensation, or enabled stateless muscle control clamps exclude part
             of [0, 1]. Force must be affine in activation and strength.
     """
-    if direction not in (-1.0, 1.0):
-        raise ValueError("direction must be +1 or -1")
-    active, passive, springs = _torque_terms(model, qpos, joint)
-    ids = _muscles(model, None)
-    cap = np.ones(model.nu) if max_activation is None else np.asarray(max_activation)
-    if cap.shape != (model.nu,) or not np.all(
-        np.isfinite(cap[ids]) & (cap[ids] >= 0) & (cap[ids] <= 1)
-    ):
-        raise ValueError(
-            "max_activation must have shape (nu,) and muscle caps in [0,1]"
-        )
-    agonists = ids[direction * active[ids] > 0]
-    torque = passive.sum() + springs + active[agonists] @ cap[agonists]
-    return float(torque), tuple(model.actuator(int(i)).name for i in agonists)
+    return _max_joint_torque(
+        model, qpos, joint, direction, max_activation=max_activation
+    )
 
 
 @dataclass(frozen=True)
@@ -193,6 +185,8 @@ def scale_strength(
 ) -> mujoco.MjModel:
     """Return a copy with selected muscles' peak active and passive forces scaled.
 
+    Delegates to ``myo_sim.physics.muscle_strength.scale_muscle_strength``.
+
     Args:
         model: Compiled model, unchanged; automatic peak forces are resolved first.
         scale: Positive, finite effective strength factor.
@@ -201,18 +195,10 @@ def scale_strength(
     Returns:
         Independent model copy. Non-muscle actuators retain their parameters.
     """
-    if not np.isfinite(scale) or scale <= 0:
-        raise ValueError("strength scale must be positive and finite")
     out = copy.deepcopy(model)
-    ids = _muscles(model, muscles)
-    factors = np.ones(model.nu)
-    factors[ids] = scale
-    scale_muscle_strength(out, factors)
-    selected = np.zeros(model.nu, dtype=bool)
-    selected[ids] = True
-    out.actuator_gainprm[~selected] = model.actuator_gainprm[~selected]
-    bias = selected & (model.actuator_biastype == mujoco.mjtBias.mjBIAS_MUSCLE)
-    out.actuator_biasprm[~bias] = model.actuator_biasprm[~bias]
+    scale_muscle_strength(
+        out, scale, muscles=None if muscles is None else list(muscles)
+    )
     return out
 
 
