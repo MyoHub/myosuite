@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import scipy.io as sio
 
+from myosuite.tests.support.optional_deps import needs_myo_sim_fingerprint
 from scripts.validation.emg_sources import CAMARGO_CHANNELS, Camargo2021Source
 from scripts.validation.validate_emg import main as cli_main
 
@@ -54,6 +55,7 @@ _TWO_MUSCLE_ARM_XML = """
 """
 
 
+@needs_myo_sim_fingerprint
 def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
     tmpl = tmp_path / "starter_manifest.json"
     assert cli_main(["--init-manifest", str(tmpl)]) == 0
@@ -268,6 +270,7 @@ def test_init_manifest_and_cli_ab_comparison(tmp_path: Path) -> None:
             assert (reg_out / "emg_validation_summary.json").exists()
 
 
+@needs_myo_sim_fingerprint
 def test_camargo2021_source_synthetic(tmp_path: Path) -> None:
     leg_xml = """
     <mujoco model="mini_leg">
