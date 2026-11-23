@@ -21,6 +21,13 @@ _PACKAGE = Path(__file__).parents[1]
 _METHOD_DEPENDENCIES = {"numpy", "scipy", "mujoco", "osqp", "absl", "myosuite"}
 # Canonical differential IK uses the explicitly declared core Mink dependency.
 _MODULE_DEPENDENCIES = {"inverse_kinematics.py": {"mink"}}
+# Muscle calibration delegates only these model-only myo_sim transforms.
+_MODULE_IMPORTS = {
+    "muscle_calibration.py": {
+        "myo_sim.physics.muscle_operating_range",
+        "myo_sim.physics.muscle_strength",
+    }
+}
 
 
 def _imports(path: Path) -> set[str]:
@@ -39,7 +46,12 @@ def test_biomechanics_depends_only_on_approved_runtime_libraries() -> None:
     for path in sorted((_PACKAGE / "biomechanics").rglob("*.py")):
         module = path.relative_to(_PACKAGE / "biomechanics").as_posix()
         dependencies = allowed | _MODULE_DEPENDENCIES.get(module, set())
-        extra = {n for n in _imports(path) if n.split(".")[0] not in dependencies}
+        extra = {
+            n
+            for n in _imports(path)
+            if n.split(".")[0] not in dependencies
+            and n not in _MODULE_IMPORTS.get(module, set())
+        }
         assert not extra, f"{path.relative_to(_PACKAGE)} imports {sorted(extra)}"
 
 

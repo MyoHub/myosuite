@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import copy
 import importlib
+import inspect
 import warnings
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -33,10 +34,18 @@ from myosuite.biomechanics.emg import (
     shift_signal,
 )
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics, required_qfrc
-from myosuite.core.muscle_conditions import _passive_peak_force, _peak_force
 
 OnCalibrationFailure = Literal["raise", "warn", "ignore"]
 _VALID_FAILURE_MODES: frozenset[str] = frozenset({"raise", "warn", "ignore"})
+_MYO_SIM_MODULES: frozenset[str] = frozenset(
+    {"myo_sim.physics.muscle_strength", "myo_sim.physics.muscle_operating_range"}
+)
+_MYO_SIM_MISSING = (
+    "Applying muscle parameters requires a myo-sim build containing "
+    "MyoHub/myo_sim#211 (selected-muscle strength scaling) and "
+    "MyoHub/myo_sim#212 (muscle operating-range transform). Install that "
+    "development build or a release containing both."
+)
 
 
 class CalibrationError(RuntimeError):
@@ -218,6 +227,22 @@ def prepare_calibration_trial(
     return t, dt, qpos, qvel, qacc, ext, env, act_to_col
 
 
+def _myo_sim_transforms() -> tuple[Callable[..., None], Callable[..., None]]:
+    """Return myo_sim's ``(scale_muscle_strength, scale_muscle_operating_range)``."""
+    try:
+        from myo_sim.physics.muscle_operating_range import (
+            scale_muscle_operating_range,
+        )
+        from myo_sim.physics.muscle_strength import scale_muscle_strength
+    except ModuleNotFoundError as exc:
+        if exc.name not in _MYO_SIM_MODULES:
+            raise
+        raise ImportError(_MYO_SIM_MISSING) from exc
+    if "muscles" not in inspect.signature(scale_muscle_strength).parameters:
+        raise ImportError(_MYO_SIM_MISSING)
+    return scale_muscle_strength, scale_muscle_operating_range
+
+
 def apply_muscle_parameters(
     model: mujoco.MjModel,
     *,
@@ -225,25 +250,35 @@ def apply_muscle_parameters(
     length_shifts_m: Mapping[int, float],
     span_scales: Mapping[int, float],
 ) -> mujoco.MjModel:
-    """Return a copy of *model* with calibrated peak forces and ``actuator_lengthrange``."""
-    out = copy.deepcopy(model)
-    base_f = _peak_force(out)
-    has_pas, base_pas = _passive_peak_force(out)
-    for act_id, gamma in strength_scales.items():
-        out.actuator_gainprm[act_id, 2] = base_f[act_id] * float(gamma)
-        if has_pas[act_id]:
-            out.actuator_biasprm[act_id, 2] = base_pas[act_id] * float(gamma)
+    """Return a copy of *model* with calibrated peak forces and ``actuator_lengthrange``.
 
-    for act_id in set(length_shifts_m) | set(span_scales):
-        lr0, lr1 = out.actuator_lengthrange[act_id]
-        mid = 0.5 * (lr0 + lr1)
-        half = max(0.5 * (lr1 - lr0), 1e-5)
-        shift = float(length_shifts_m.get(act_id, 0.0))
-        span = float(span_scales.get(act_id, 1.0))
-        out.actuator_lengthrange[act_id] = [
-            mid + shift - span * half,
-            mid + shift + span * half,
-        ]
+    Delegates to ``myo_sim.physics.muscle_strength.scale_muscle_strength`` and
+    ``myo_sim.physics.muscle_operating_range.scale_muscle_operating_range``.
+    Actuators must be named muscles; others, non-positive scales and degenerate
+    length ranges raise ``ValueError``.
+
+    Raises:
+        ImportError: If the installed myo-sim lacks MyoHub/myo_sim#211
+            or MyoHub/myo_sim#212.
+    """
+    scale_strength, scale_range = _myo_sim_transforms()
+    out = copy.deepcopy(model)
+    if strength_scales:
+        factors = np.ones(model.nu)
+        for act_id, gamma in strength_scales.items():
+            factors[act_id] = float(gamma)
+        scale_strength(
+            out, factors, muscles=[model.actuator(i).name for i in strength_scales]
+        )
+    range_ids = sorted(set(length_shifts_m) | set(span_scales))
+    if range_ids:
+        shift, span = np.zeros(model.nu), np.ones(model.nu)
+        for act_id in range_ids:
+            shift[act_id] = float(length_shifts_m.get(act_id, 0.0))
+            span[act_id] = float(span_scales.get(act_id, 1.0))
+        scale_range(
+            out, span, shift=shift, muscles=[model.actuator(i).name for i in range_ids]
+        )
     return out
 
 

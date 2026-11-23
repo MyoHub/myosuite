@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import inspect
+import sys
 from dataclasses import dataclass
 
 import mujoco
@@ -32,6 +34,23 @@ from myosuite.integrations.capture.emg_calibration import (
 )
 
 pytestmark = pytest.mark.tier1
+
+
+def _myo_sim_api_available() -> bool:
+    try:
+        from myo_sim.physics.muscle_operating_range import (  # noqa: F401
+            scale_muscle_operating_range,
+        )
+        from myo_sim.physics.muscle_strength import scale_muscle_strength
+    except ImportError:
+        return False
+    return "muscles" in inspect.signature(scale_muscle_strength).parameters
+
+
+needs_myo_sim = pytest.mark.skipif(
+    not _myo_sim_api_available(),
+    reason="Requires MyoHub/myo_sim#211 and MyoHub/myo_sim#212",
+)
 
 
 def _build_elbow_3muscle_model(*, include_deep: bool = False) -> mujoco.MjModel:
@@ -125,6 +144,7 @@ def _simulate_inverse_trial(
     return kin.qpos, kin.qvel, kin.qacc, ext
 
 
+@needs_myo_sim
 def test_multi_trial_ceinms_calibration_recovers_strength_and_slashes_rmse() -> None:
     nominal = _build_elbow_3muscle_model(include_deep=False)
     orig_gain = nominal.actuator_gainprm[:, 2].copy()
@@ -217,6 +237,7 @@ class _MockC3DTrial:
     force_plates: tuple[_MockForcePlate, ...]
 
 
+@needs_myo_sim
 def test_c3d_trial_adapter_and_hybrid_emg_assisted_deep_muscle_synthesis() -> None:
     model = _build_elbow_3muscle_model(include_deep=True)
     t_mocap = np.linspace(0.0, 0.8, 41)
@@ -269,3 +290,47 @@ def test_c3d_trial_adapter_and_hybrid_emg_assisted_deep_muscle_synthesis() -> No
     # Unmeasured deep BRA is recruited while antagonist TRI co-contraction is preserved!
     assert float(out.so_result.activation[10:, tri_id].mean()) > 0.18
     assert float(out.so_result.activation[10:, bra_id].mean()) > 0.25
+
+
+@needs_myo_sim
+def test_apply_muscle_parameters_delegates_and_returns_an_independent_copy() -> None:
+    model = _build_elbow_3muscle_model()
+    gain, lengthrange = model.actuator_gainprm.copy(), model.actuator_lengthrange.copy()
+    out = apply_muscle_parameters(
+        model,
+        strength_scales={0: 1.5},
+        length_shifts_m={0: 0.01},
+        span_scales={1: 0.5},
+    )
+    np.testing.assert_array_equal(model.actuator_gainprm, gain)
+    np.testing.assert_array_equal(model.actuator_lengthrange, lengthrange)
+    assert out.actuator_gainprm[0, 2] == pytest.approx(1.5 * gain[0, 2])
+    assert out.actuator_gainprm[1, 2] == gain[1, 2]
+    mid, half = lengthrange.mean(axis=1), 0.5 * np.diff(lengthrange, axis=1)[:, 0]
+    np.testing.assert_allclose(
+        out.actuator_lengthrange[0], [mid[0] + 0.01 - half[0], mid[0] + 0.01 + half[0]]
+    )
+    np.testing.assert_allclose(
+        out.actuator_lengthrange[1], [mid[1] - 0.5 * half[1], mid[1] + 0.5 * half[1]]
+    )
+    with pytest.raises(ValueError):
+        apply_muscle_parameters(
+            model, strength_scales={0: 0.0}, length_shifts_m={}, span_scales={}
+        )
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["myo_sim.physics.muscle_operating_range", "myo_sim.physics.muscle_strength"],
+)
+def test_apply_muscle_parameters_names_the_missing_myo_sim_prs(
+    monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    monkeypatch.setitem(sys.modules, missing, None)
+    with pytest.raises(ImportError, match="myo_sim#211.*myo_sim#212"):
+        apply_muscle_parameters(
+            _build_elbow_3muscle_model(),
+            strength_scales={0: 1.1},
+            length_shifts_m={},
+            span_scales={},
+        )
