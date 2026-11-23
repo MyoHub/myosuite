@@ -19,6 +19,7 @@ from myosuite.biomechanics.retarget import Landmark, LandmarkMap
 from myosuite.biomechanics.subject_scaling import (
     BilevelScaleConfig,
     BilevelScaleError,
+    default_scale_groups,
     fit_subject_scale_and_ik,
     select_diverse_frames,
 )
@@ -57,13 +58,49 @@ def _synthetic_scale_spec(
     return out
 
 
+def _synthetic_inherited_scales(
+    spec: mujoco.MjSpec, scales: Mapping[str, float]
+) -> dict[str, float]:
+    """Test double for ``myo_sim.scaling.inherited_scales``."""
+    out: dict[str, float] = {}
+
+    def _walk(body: mujoco.MjsBody, s_parent: float) -> None:
+        out[body.name] = s_here = float(scales.get(body.name, s_parent))
+        for child in body.bodies:
+            _walk(child, s_here)
+
+    for root in spec.worldbody.bodies:
+        _walk(root, float(scales.get(root.name, 1.0)))
+    return out
+
+
+def _synthetic_scale_groups(
+    spec: mujoco.MjSpec, *, bilateral_symmetry: bool = True
+) -> tuple[tuple[str, ...], ...]:
+    """Test double for ``myo_sim.scaling.default_scale_groups`` on the biped."""
+    names = {b.name for b in spec.bodies}
+    groups = []
+    for known in (("pelvis",), ("femur_l", "femur_r"), ("tibia_l", "tibia_r")):
+        present = tuple(b for b in known if b in names)
+        groups.extend([present] if bilateral_symmetry else [(b,) for b in present])
+    return tuple(groups)
+
+
 @pytest.fixture
 def scaling_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Use installed ``myo_sim.scaling`` when present, otherwise stub it for unit tests."""
+    """Use installed ``myo_sim.scaling`` when complete, otherwise stub what it lacks."""
     if importlib.util.find_spec("myo_sim.scaling") is None:
-        fake = types.ModuleType("myo_sim.scaling")
-        fake.scale_spec = _synthetic_scale_spec  # type: ignore[attr-defined]
-        monkeypatch.setitem(sys.modules, "myo_sim.scaling", fake)
+        monkeypatch.setitem(
+            sys.modules, "myo_sim.scaling", types.ModuleType("myo_sim.scaling")
+        )
+    mod = importlib.import_module("myo_sim.scaling")
+    for name, double in (
+        ("scale_spec", _synthetic_scale_spec),
+        ("inherited_scales", _synthetic_inherited_scales),
+        ("default_scale_groups", _synthetic_scale_groups),
+    ):
+        if not hasattr(mod, name):
+            monkeypatch.setattr(mod, name, double, raising=False)
 
 
 def _build_coupled_biped_spec() -> tuple[mujoco.MjSpec, LandmarkMap]:
@@ -198,8 +235,28 @@ def test_missing_myo_sim_scaling_raises_actionable_import_error(
     spec, lmap = _build_coupled_biped_spec()
     markers = np.zeros((4, len(lmap.landmarks), 3), dtype=np.float64)
     monkeypatch.setitem(sys.modules, "myo_sim.scaling", None)
-    with pytest.raises(ImportError, match="myo_sim PR #149"):
+    with pytest.raises(ImportError, match="myo_sim#149 and fl0fischer/myo_sim#4"):
         fit_subject_scale_and_ik(spec, markers, lmap)
+
+
+def test_default_scale_groups_delegates_to_myo_sim(
+    scaling_backend: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del scaling_backend
+    calls: list[bool] = []
+
+    def groups(
+        spec: mujoco.MjSpec, *, bilateral_symmetry: bool
+    ) -> tuple[tuple[str, ...], ...]:
+        calls.append(bilateral_symmetry)
+        return (("pelvis",),)
+
+    monkeypatch.setattr(
+        importlib.import_module("myo_sim.scaling"), "default_scale_groups", groups
+    )
+    spec, _ = _build_coupled_biped_spec()
+    assert default_scale_groups(spec, bilateral_symmetry=False) == (("pelvis",),)
+    assert calls == [False]
 
 
 def test_bilevel_scaling_recovers_segment_scales_marker_offsets_and_couplings(

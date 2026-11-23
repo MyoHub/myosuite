@@ -13,10 +13,10 @@ Ridge estimation of body-local virtual marker offsets across diverse frames.
 
 from __future__ import annotations
 
-import re
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from types import ModuleType
 from typing import Literal
 
 import mujoco
@@ -118,72 +118,31 @@ def select_diverse_frames(positions: np.ndarray, max_frames: int = 16) -> np.nda
     return np.sort(valid[chosen]).astype(np.int64)
 
 
+def _scaling() -> ModuleType:
+    try:
+        import myo_sim.scaling as mod
+    except ModuleNotFoundError as exc:
+        if exc.name != "myo_sim.scaling":
+            raise
+        mod = None
+    if mod is None or not hasattr(mod, "inherited_scales"):
+        raise ImportError(
+            "Subject scaling requires a myo-sim build containing MyoHub/myo_sim#149 and "
+            "fl0fischer/myo_sim#4 (myo_sim.scaling.default_scale_groups and "
+            "inherited_scales). Install that development build or a release containing it; "
+            "0.2.5 lacks this API."
+        )
+    return mod
+
+
 def default_scale_groups(
     spec: mujoco.MjSpec, *, bilateral_symmetry: bool = True
 ) -> tuple[tuple[str, ...], ...]:
-    """Infer scalable segment body groups (pairing ``_l``/``_r`` limbs when symmetric)."""
-    body_names = [b.name for b in spec.bodies if b.name and b.name != "world"]
-    name_set = set(body_names)
-    known = (
-        ("pelvis",),
-        ("sacrum",),
-        ("torso",),
-        ("clavicle_l", "clavicle_r"),
-        ("femur_l", "femur_r"),
-        ("tibia_l", "tibia_r"),
-        ("talus_l", "talus_r"),
-        ("humerus_l", "humerus_r"),
-        ("ulna_l", "ulna_r"),
-        ("lunate_l", "lunate_r"),
-    )
-    groups: list[tuple[str, ...]] = []
-    covered: set[str] = set()
-    for grp in known:
-        present = tuple(b for b in grp if b in name_set)
-        if present:
-            if bilateral_symmetry or len(present) == 1:
-                groups.append(present)
-            else:
-                groups.extend((b,) for b in present)
-            covered.update(present)
-    if groups:
-        return tuple(groups)
+    """Infer scalable segment body groups (pairing ``_l``/``_r`` limbs when symmetric).
 
-    for name in body_names:
-        if name in covered:
-            continue
-        if bilateral_symmetry:
-            m = re.match(r"^(.*)_(l|r)$", name)
-            if m:
-                base = m.group(1)
-                pair = tuple(b for b in (f"{base}_l", f"{base}_r") if b in name_set)
-                groups.append(pair)
-                covered.update(pair)
-                continue
-        groups.append((name,))
-        covered.add(name)
-    return tuple(groups)
-
-
-def _body_scale_map(
-    spec: mujoco.MjSpec, scalar_scales: dict[str, float]
-) -> dict[str, float]:
-    out: dict[str, float] = {}
-    roots = [
-        b
-        for b in spec.worldbody.bodies
-        if any(j.type == mujoco.mjtJoint.mjJNT_FREE for j in b.joints)
-    ] or list(spec.worldbody.bodies)
-
-    def walk(body: mujoco.MjsBody, s_par: float) -> None:
-        s_b = scalar_scales.get(body.name, s_par)
-        out[body.name] = s_b
-        for child in body.bodies:
-            walk(child, s_b)
-
-    for rb in roots:
-        walk(rb, scalar_scales.get(rb.name, 1.0))
-    return out
+    Delegates to ``myo_sim.scaling.default_scale_groups``.
+    """
+    return _scaling().default_scale_groups(spec, bilateral_symmetry=bilateral_symmetry)
 
 
 def _scaled_base_lmap(
@@ -392,7 +351,7 @@ def fit_subject_scale_and_ik(
         scale_dict = {b: float(s) for s, grp in zip(theta, groups) for b in grp}
         s_spec = scale_spec(spec, scale_dict, total_mass=body_mass)
         s_model = s_spec.compile()
-        b_scales = _body_scale_map(spec, scale_dict)
+        b_scales = _scaling().inherited_scales(spec, scale_dict)
         base_map = _scaled_base_lmap(s_model, lmap, b_scales)
         cur_map = base_map
         deltas = np.zeros((n_lm, 3), dtype=np.float64)
