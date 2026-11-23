@@ -184,19 +184,70 @@ See ``tutorials/3.2_Inverse_Kinematics.ipynb`` and
 `mink <https://github.com/kevinzakka/mink>`_, which the 3.2 viewer script also uses
 directly for realtime differential IK (``python tutorials/files/3.2/inverse_kinematics.py``).
 
+Before solving IK from sparse optical or video landmarks, check whether your marker set
+uniquely determines every target degree of freedom without relying on posture priors:
 
-Replaying OpenSim Motion Files
--------------------------------
+.. code-block:: python
 
-MyoSuite can play back ``*.mot`` files exported from OpenSim.
-See ``tutorials/3.5_Playback_Mot_File.ipynb`` for the full workflow.
+   from myosuite.biomechanics.observability import landmark_observability
 
-The high-level steps are:
+   obs_report = landmark_observability(model, data.qpos, landmarks)
+   print("Observable rank:", obs_report.rank, "/", len(obs_report.dofs))
 
-1. Load the motion file (column headers map to joint names).
+
+Retargeting Body, Video, and Hand Captures
+------------------------------------------
+
+Beyond optical marker files, :mod:`myosuite.biomechanics` converts common body-mesh,
+monocular-video, and dexterous hand-object captures into MuJoCo trajectories:
+
+* **AMASS / SMPL+H / SMPL-X & GVHMR video** — :mod:`myosuite.biomechanics.smplh`
+  (``SMPLH``, ``load_amass``, ``adapt_smplx_poses_to_smplh``),
+  :mod:`myosuite.biomechanics.gvhmr` (``load_gvhmr_result``, ``to_amass_clip``),
+  :mod:`myosuite.biomechanics.retarget_smplh`, and
+  :mod:`myosuite.biomechanics.retarget_instanthmr` map full-body captures onto
+  ``myoLeg`` and ``myoFullBody``.
+* **MANO hands & hand-object interaction (HOI)** — :mod:`myosuite.biomechanics.mano`
+  (``MANO``), :mod:`myosuite.biomechanics.hand_retarget` (``preset_for_model``,
+  ``DexHandRetargeter``), and :mod:`myosuite.biomechanics.hoi_retarget`
+  (``HOIClip``, ``retarget_hoi_mujoco``) retarget fingertip and contact-aware grasps
+  onto the 23-DoF ``myoHand``.
+
+.. code-block:: python
+
+   from myosuite.biomechanics.hand_retarget import DexHandRetargeter, preset_for_model
+
+   preset = preset_for_model(model, side="right")
+   retargeter = DexHandRetargeter(model, preset, mode="dexpilot")
+
+
+Replaying OpenSim Motion and Force-Plate Files
+----------------------------------------------
+
+MyoSuite can play back ``*.mot`` and ``*.sto`` files exported from OpenSim and map
+force-plate ``ExternalLoads`` XML definitions directly into generalised forces ``qfrc``.
+See ``tutorials/3.5_Playback_Mot_File.ipynb`` for the full workflow:
+
+.. code-block:: python
+
+   from myosuite.biomechanics.opensim_motion import load_opensim_motion
+   from myosuite.biomechanics.opensim_grf import (
+       normalize_opensim_motion,
+       opensim_grf_to_qfrc,
+   )
+
+   ik_motion, _ = normalize_opensim_motion(load_opensim_motion("walk_ik.mot"))
+   grf_motion = load_opensim_motion("walk_grf.mot")
+   qfrc_ext = opensim_grf_to_qfrc(
+       model, qpos_traj, ik_motion.time, grf_motion, "external_loads.xml"
+   )
+
+The high-level playback steps are:
+
+1. Load and normalise the motion file (OpenSim 3 column names or OpenSim 4 ``/jointset/.../value`` paths map to joint names).
 2. Iterate over frames, setting ``data.qpos`` to the corresponding angles.
 3. Call ``mujoco.mj_forward(model, data)`` to update all derived quantities.
-4. Extract whatever quantities you need (muscle forces, contact forces, etc.).
+4. Extract muscle forces, contact forces, or pass ``qfrc_ext`` into inverse dynamics / static optimization.
 
 
 Body Centre of Mass and Ground Reaction Forces
@@ -291,6 +342,62 @@ Each variant is the base env registered with the matching wrapper, so the same c
 noise) can be applied to any other env, with your own parameters, through ``EnvConfig(env_id, features=...)``;
 see :doc:`quickstart_neuroscience` for examples and ``docs/wiki/cross-backend-contract.md`` for which envs
 take which features.
+
+
+Evaluating Effort, EMG, and Movement Smoothness
+-----------------------------------------------
+
+Once you have recorded rollouts or solved muscle trajectories, :mod:`myosuite.biomechanics`
+provides pure NumPy/SciPy analysis tools across three complementary levels:
+
+1. **Muscle effort, co-contraction, and saturation** (:mod:`myosuite.biomechanics.effort`):
+
+   .. code-block:: python
+
+      from myosuite.biomechanics.effort import (
+          cocontraction_index,
+          muscle_saturation,
+          squared_activation,
+          wasted_torque,
+      )
+
+      effort = squared_activation(activations)          # mean squared activation
+      cci = cocontraction_index(moment_arms, forces)    # antagonist co-contraction per DoF
+      wasted = wasted_torque(moment_arms, forces)       # cancelled joint torque (N·m)
+      sat = muscle_saturation(actions)                  # fraction of commands near bounds
+
+2. **Surface/intramuscular EMG filtering and activation dynamics** (:mod:`myosuite.biomechanics.emg`):
+
+   .. code-block:: python
+
+      from myosuite.biomechanics.emg import (
+          EMGFilterConfig,
+          excitation_to_activation,
+          phase_normalize,
+          process_emg,
+      )
+
+      envelope = process_emg(raw_emg, fs=1000.0, config=EMGFilterConfig(lowpass_hz=6.0))
+      sim_act = excitation_to_activation(sim_ctrl, dt=0.002, model=model)
+      gait_cycles = phase_normalize(envelope, time_s, heel_strike_times, points=101)
+
+3. **Kinematic movement smoothness, Fitts' law, and reference-cohort distance**
+   (:mod:`myosuite.biomechanics.kinematic_metrics`):
+
+   .. code-block:: python
+
+      from myosuite.biomechanics.kinematic_metrics import (
+          compare_against_reference_cohorts,
+          dimensionless_squared_jerk,
+          spectral_arc_length,
+          summarize_kinematic_trial,
+      )
+
+      dsj = dimensionless_squared_jerk(hand_xyz, dt=0.02)
+      sparc = spectral_arc_length(hand_speed, dt=0.02)
+      trial = summarize_kinematic_trial(hand_xyz, dt=0.02, target_position=goal_xyz)
+
+See :doc:`api/biomechanics` for the full API reference across all modules.
 
 
 Next Steps
