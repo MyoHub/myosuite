@@ -241,11 +241,12 @@ nominal envs stay bit-identical, the twin builds the CPU model, both backends
 reset and step alike, other tasks refuse ``scales``, and manifests record and
 check the subject. ``test_body_scaling_skin.py`` checks segment-local skin
 scaling and the fidelity of ``.skn``/GLB exports.
-
-The :doc:`opensim_scaling_validation` compares the OpenSim-file route of
-``scale_model`` with OpenSim's own ``ModelScaler`` on a pinned Rajagopal model.
-It reports where the two differ (nominal conversion, child joint offsets,
-inertia approximations, wrap shapes) and does not establish solver equivalence.
+``test_scaled_model_integration.py`` checks that MyoSuite's entry points build
+the model ``myo_sim.scale_spec`` makes, for body factors and an OpenSim
+ScaleSet. The comparison of the scaling rules with OpenSim's ``ModelScaler`` on
+a pinned Rajagopal model, with its fixtures and bounds, lives in myo_sim
+(``tests/test_opensim_comparison.py``, ``tests/test_opensim_pose_comparison.py``
+and ``scripts/validate_opensim_scaling.py``).
 
 Remaining work is tracked in issues:
 `OpenSim biomechanical validation <https://github.com/MyoHub/myosuite/issues/560>`__
