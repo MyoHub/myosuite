@@ -52,7 +52,7 @@ class MissingApis(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, MissingApis())
 import mujoco
 import numpy as np
-from myosuite.core.muscle_conditions import _peak_force, apply_sarcopenia_to_model
+from myosuite.core.muscle_conditions import _passive_peak_force, _peak_force, apply_sarcopenia_to_model
 from myosuite.core.muscle_strength import scale_muscle_strength, scale_muscle_strength_spec
 from myosuite.biomechanics.calibration import scale_body_mass, max_joint_torque
 assert 'myo_sim.physics.muscle_strength' not in sys.modules
@@ -60,9 +60,11 @@ assert 'myo_sim.physics.body_mass' not in sys.modules
 spec = mujoco.MjSpec.from_string({_XML!r})
 model = spec.copy().compile()
 gain, bias = _peak_force(model), model.actuator_biasprm.copy()
+passive, passive_force = _passive_peak_force(model)
 apply_sarcopenia_to_model(model, 0.5)
 np.testing.assert_allclose(model.actuator_gainprm[:, 2], gain * 0.5)
-np.testing.assert_array_equal(model.actuator_biasprm, bias)
+bias[passive, 2] = passive_force[passive] * 0.5
+np.testing.assert_allclose(model.actuator_biasprm, bias)
 calls = (
     (lambda: scale_muscle_strength(model, 1.0), 'myo_sim.physics.muscle_strength'),
     (lambda: scale_muscle_strength_spec(spec, 1.0), 'myo_sim.physics.muscle_strength'),
