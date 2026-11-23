@@ -34,7 +34,9 @@ dependencies = [
     "scipy",
     "pandas",
     "osqp",
-    "mujoco<4",
+    # 3.11 fixes a crash when reading tendon wrap targets on copied specs
+    # (google-deepmind/mujoco#3406); every recipe spec is a copy.
+    "mujoco>=3.11,<4",
     # Patched Pillow wheels require Python >=3.11; 3.10 retains known advisories.
     "Pillow>=13.0.0; python_version >= '3.11'",
     "Pillow>=12.3.0,<13; python_version < '3.11'",
@@ -87,8 +89,9 @@ examples = []
 capture = ["ezc3d>=1.5"]
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
-    "mjlab>=1.4.0; python_version >= '3.10' and python_version < '3.14'",
-    "mujoco-warp>=3.7.0,<4; python_version >= '3.10' and python_version < '3.14'",
+    # mjlab 1.4 and 1.5 pin MuJoCo 3.8 and 3.10, below the core floor.
+    "mjlab>=1.6.0; python_version >= '3.10' and python_version < '3.14'",
+    "mujoco-warp>=3.11.0,<4; python_version >= '3.10' and python_version < '3.14'",
     "warp-lang>=1.12.0; python_version >= '3.10'",
     # mjlab's own rsl_rl dependency (rsl-rl-lib) still passes the deprecated
     # wandb.Settings(start_method=...) kwarg; wandb>=0.29.0 rewrote Settings to
@@ -132,10 +135,10 @@ mjx = [
     "mediapy>=1.2.0; python_version >= '3.10' and sys_platform != 'win32'",
     "imageio>=2.31.0; python_version >= '3.10' and sys_platform != 'win32'",
     "wandb>=0.21.0; python_version >= '3.10' and sys_platform != 'win32'",
-	"mujoco>=3.7",
+	"mujoco>=3.11",
 	# mujoco-mjx 4 requires mujoco-core 4, which installs a second `mujoco` module
 	# over MuJoCo 3 (core caps mujoco<4), so `mujoco.mjx` fails to import.
-	"mujoco-mjx>=3.7,<4",
+	"mujoco-mjx>=3.11,<4",
 ]
 # CUDA-enabled MJX stack for GPU.
 # Install with: uv sync --extra mjx-cuda

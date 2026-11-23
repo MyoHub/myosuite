@@ -41,6 +41,10 @@ Changes since **v3.1.0** (2026-11-11).
   `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
   keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
   Python 3.15 on Linux for the ONNX-free native CPU path.
+* **MuJoCo 3.11 or newer is required.** Before 3.11, reading a tendon wrap's `target` or `sidesite` on a copied
+  `MjSpec` crashed the interpreter (google-deepmind/mujoco#3406), and every recipe spec is a copy by the time its
+  `edit_fn` runs. The `mjlab` extra requires mjlab 1.6, since 1.4 and 1.5 pin MuJoCo 3.8 and 3.10. `uv.lock` moves
+  from MuJoCo 3.8.1 and mjlab 1.4.0 to MuJoCo 3.11.0 and mjlab 1.6.1, which CI already installs; re-run `uv sync`.
 
 ### Fixed
 
