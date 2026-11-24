@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
+import functools
 import logging
+
+import numpy as np
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,9 +21,9 @@ from myosuite.core.config import (
     RewardSpec,
     TaskConfig,
 )
-from myosuite.envs.myo.athletic.specs import AthleticBundle
+from myosuite.envs.modular_env import ModularTaskEnv
+from myosuite.envs.myo.athletic.specs import AthleticBundle, ensure_tendons_applied
 from myosuite.envs.myo.athletic.terms import default_lane_reward_terms
-from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import AthleticSpec
 
 _LOG = logging.getLogger(__name__)
 
@@ -28,7 +31,7 @@ _LOG = logging.getLogger(__name__)
 def task_config_from_bundle(bundle: AthleticBundle) -> TaskConfig:
     """CPU ModularTaskEnv TaskConfig for an athletic bundle."""
     spec = bundle.athletic
-    weights = default_lane_reward_terms(spec)
+    default_lane_reward_terms(spec)
     # ModularTaskEnv uses a single "sprint" term that reads λs from extra.
     extra = {
         "heading_dir": spec.heading_dir,
@@ -42,12 +45,12 @@ def task_config_from_bundle(bundle: AthleticBundle) -> TaskConfig:
         "facing_angle_deg": spec.facing_angle_deg,
         "task_key": bundle.task.key,
         **dict(bundle.task.extra),
+        "model": bundle.plant.key,
+        "tendons": bundle.tendons,
     }
     reward_term = "sprint"
     if bundle.task.kind == "locomotion":
         reward_term = "heading"
-    elif bundle.task.kind == "imitate":
-        reward_term = "pose"
     elif bundle.task.kind == "vertical":
         reward_term = "sprint"
     elif bundle.task.kind == "curve":
@@ -70,7 +73,9 @@ def task_config_from_bundle(bundle: AthleticBundle) -> TaskConfig:
                 extra={"heading_dir": spec.heading_dir},
             )
         )
-        goal: GoalSpec = field(default_factory=lambda: GoalSpec(target_type="joint_angles"))
+        goal: GoalSpec = field(
+            default_factory=lambda: GoalSpec(target_type="joint_angles")
+        )
         reward: RewardSpec = field(
             default_factory=lambda: RewardSpec(
                 terms=[reward_term],
@@ -84,7 +89,19 @@ def task_config_from_bundle(bundle: AthleticBundle) -> TaskConfig:
             ]
         )
 
-    return _AthleticTask()
+    task_cfg = _AthleticTask()
+    if bundle.task.scene == "hurdles":
+        # the hurdles as static colliders (World Athletics men's 110 m layout) and their marks for the
+        # nearest_hurdle observation
+        from myosuite.envs.myo.athletic.events import HurdleLayout, hurdle_scene
+
+        layout = HurdleLayout()
+        task_cfg.scene = hurdle_scene(layout, spec.heading_dir)
+        task_cfg.obs.extra.update(
+            hurdle_positions=tuple(float(x) for x in layout.positions()),
+            hurdle_height=layout.height_m,
+        )
+    return task_cfg
 
 
 def sprint_ppo_runner_cfg(bundle: AthleticBundle | None = None) -> Any:
@@ -99,9 +116,11 @@ def sprint_ppo_runner_cfg(bundle: AthleticBundle | None = None) -> Any:
             hidden_dims=(256, 256, 128),
             activation="elu",
             obs_normalization=True,
-            init_noise_std=1.0,
-            noise_std_type="scalar",
-            stochastic=True,
+            distribution_cfg={
+                "class_name": "GaussianDistribution",
+                "init_std": 1.0,
+                "std_type": "scalar",
+            },
         ),
         critic=RslRlModelCfg(
             hidden_dims=(256, 256, 128),
@@ -139,21 +158,42 @@ def mjlab_env_cfg_from_bundle(
 ) -> Any:
     """Build ManagerBasedRlEnvCfg for an athletic bundle.
 
-    **Bit-match freeze:** ``myosprinter`` × ``sprint`` always delegates to
-    :func:`make_sprint_env_cfg` so existing TD3 policies and Phase 5/6 gates
-    stay identical.
+    **Bit-match freeze:** ``myosprinter`` × ``sprint`` with rigid tendons
+    delegates to :func:`make_sprint_env_cfg` so existing TD3 policies and
+    Phase 5/6 gates stay identical. Any other series element is rejected
+    before that delegation.
     """
-    if (
-        bundle.plant.use_golden_sprint_cfg
-        and bundle.task.key == "sprint"
-    ):
+    ensure_tendons_applied(bundle)
+    if bundle.plant.use_golden_sprint_cfg and bundle.task.key == "sprint":
         from myosuite.envs.myo.backends.mjlab.tasks.myosprint.env_cfgs import (
             make_sprint_env_cfg,
         )
 
         return make_sprint_env_cfg(num_envs=num_envs, visual=visual, **kwargs)
 
-    return _make_generic_athletic_env_cfg(bundle, num_envs=num_envs, visual=visual, **kwargs)
+    return _make_generic_athletic_env_cfg(
+        bundle, num_envs=num_envs, visual=visual, **kwargs
+    )
+
+
+@functools.cache
+def _plant_muscle_targets(plant_key: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Muscle actuator names and their tendons, in actuator order (one compile per plant)."""
+    from myosuite.envs.myo.athletic.catalog import PLANTS
+    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        _muscle_actuator_names,
+        _muscle_tendon_names,
+    )
+
+    plant = PLANTS[plant_key]
+    if plant.load_spec is not None:
+        spec = plant.load_spec()
+    else:
+        import myo_sim
+
+        spec = myo_sim.load_spec(plant_key)
+    model = spec.compile()
+    return _muscle_actuator_names(model), _muscle_tendon_names(model)
 
 
 def _make_generic_athletic_env_cfg(
@@ -171,7 +211,10 @@ def _make_generic_athletic_env_cfg(
     from mjlab.envs.mdp.events import reset_scene_to_default
     from mjlab.envs.mdp.terminations import time_out
     from mjlab.managers.event_manager import EventTermCfg
-    from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
+    from mjlab.managers.observation_manager import (
+        ObservationGroupCfg,
+        ObservationTermCfg,
+    )
     from mjlab.managers.reward_manager import RewardTermCfg
     from mjlab.managers.termination_manager import TerminationTermCfg
     from mjlab.scene import SceneCfg
@@ -236,7 +279,10 @@ def _make_generic_athletic_env_cfg(
         pain = torch.zeros(qpos.shape[0], device=qpos.device)
         for j in range(int(m.njnt)):
             jtype = int(m.jnt_type[j])
-            if jtype not in (int(mujoco.mjtJoint.mjJNT_SLIDE), int(mujoco.mjtJoint.mjJNT_HINGE)):
+            if jtype not in (
+                int(mujoco.mjtJoint.mjJNT_SLIDE),
+                int(mujoco.mjtJoint.mjJNT_HINGE),
+            ):
                 continue
             lo, hi = float(m.jnt_range[j, 0]), float(m.jnt_range[j, 1])
             if not (hi > lo) or abs(hi - lo) > 1e6:
@@ -269,8 +315,30 @@ def _make_generic_athletic_env_cfg(
         thr = float(torch.cos(torch.tensor(spec.facing_angle_deg * 3.14159265 / 180.0)))
         return (speed > 0.3) & (cos_ang < thr)
 
-    entity_cfg = EntityCfg(spec_fn=_spec_fn, init_state=_init_state())
-    scene_cfg = SceneCfg(num_envs=num_envs, env_spacing=3.0, entities={entity: entity_cfg})
+    if bundle.action_kind == "bolt_muscle":
+        entity_cfg = EntityCfg(spec_fn=_spec_fn, init_state=_init_state())
+    else:
+        from mjlab.actuator import XmlActuatorCfg
+        from mjlab.entity import EntityArticulationInfoCfg
+        from mjlab.actuator.actuator import TransmissionType
+
+        muscle_names, tendon_names = _plant_muscle_targets(plant.key)
+        entity_cfg = EntityCfg(
+            spec_fn=_spec_fn,
+            init_state=_init_state(),
+            articulation=EntityArticulationInfoCfg(
+                actuators=(
+                    XmlActuatorCfg(
+                        command_field="effort",
+                        target_names_expr=tendon_names,
+                        transmission_type=TransmissionType.TENDON,
+                    ),
+                )
+            ),
+        )
+    scene_cfg = SceneCfg(
+        num_envs=num_envs, env_spacing=3.0, entities={entity: entity_cfg}
+    )
 
     observations = {
         "policy": ObservationGroupCfg(
@@ -280,11 +348,12 @@ def _make_generic_athletic_env_cfg(
             },
         ),
     }
-    if plant.action_kind == "bolt_muscle":
+    if bundle.action_kind == "bolt_muscle":
         actions = {
             "bolt_muscles": BoltMuscleActionCfg(
                 entity_name=entity,
                 default_activation=kwargs.get("default_activation"),
+                tendons=bundle.tendons,
             ),
         }
     else:
@@ -293,12 +362,18 @@ def _make_generic_athletic_env_cfg(
         )
 
         actions = {
-            "muscles": MyoMuscleActivationActionCfg(entity_name=entity),
+            "muscles": MyoMuscleActivationActionCfg(
+                entity_name=entity,
+                actuator_names=muscle_names,
+                tendon_names=tendon_names,
+            ),
         }
 
     rewards = {
         "rew_vel": RewardTermCfg(func=_rew_vel, weight=float(spec.lambda_vel)),
-        "rew_mid_lane": RewardTermCfg(func=_rew_mid_lane, weight=float(spec.lambda_mid_lane)),
+        "rew_mid_lane": RewardTermCfg(
+            func=_rew_mid_lane, weight=float(spec.lambda_mid_lane)
+        ),
         "rew_limit": RewardTermCfg(func=_rew_limit, weight=float(spec.lambda_limit)),
     }
     terminations: dict[str, TerminationTermCfg] = {
@@ -306,7 +381,9 @@ def _make_generic_athletic_env_cfg(
         "fallen": TerminationTermCfg(func=_fall, time_out=False),
     }
     if "not_facing" in bundle.task.terminations:
-        terminations["not_facing"] = TerminationTermCfg(func=_not_facing, time_out=False)
+        terminations["not_facing"] = TerminationTermCfg(
+            func=_not_facing, time_out=False
+        )
 
     gravity = (0.0, -9.80665, 0.0) if plant.up_axis == "y" else (0.0, 0.0, -9.80665)
 
@@ -318,7 +395,9 @@ def _make_generic_athletic_env_cfg(
         rewards=rewards,
         terminations=terminations,
         events={
-            "reset_scene_to_default": EventTermCfg(func=reset_scene_to_default, mode="reset"),
+            "reset_scene_to_default": EventTermCfg(
+                func=reset_scene_to_default, mode="reset"
+            ),
         },
         episode_length_s=float(bundle.task.episode_length_s),
         sim=SimulationCfg(
@@ -333,6 +412,89 @@ def _make_generic_athletic_env_cfg(
     )
 
 
+class AthleticModularTaskEnv(ModularTaskEnv):
+    """CPU athletic env.
+
+    The registered id fixes the skeleton and the tendon variant. Build through
+    :func:`~myosuite.envs.myo.athletic.catalog.make_athletic` /
+    :func:`~myosuite.core.registry.make_env`. ``model`` / ``tendons`` kwargs
+    may only restate what the id already baked in.
+    """
+
+    def __init__(
+        self,
+        task_config: TaskConfig,
+        render_mode: str | None = None,
+        *,
+        tendons: str | None = None,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        extra = task_config.reward.extra
+        baked_model = str(extra.get("model", task_config.model))
+        baked_tendons = str(extra.get("tendons", "rigid"))
+        if model is not None and model != baked_model:
+            raise ValueError(
+                f"{baked_model!r} is fixed by this env id; "
+                f"use make_athletic(..., model={model!r}, tendons={baked_tendons!r})"
+            )
+        if tendons is not None and tendons != baked_tendons:
+            raise ValueError(
+                f"tendons={baked_tendons!r} is fixed by this env id "
+                f"({task_config.model}); use make_athletic(..., tendons={tendons!r}) "
+                "for the Elastic variant id"
+            )
+        tendons = baked_tendons
+        if tendons not in ("rigid", "elastic"):
+            raise ValueError(
+                f"unknown tendons {tendons!r}; expected 'rigid' or 'elastic'"
+            )
+        if tendons != "rigid":
+            raise NotImplementedError(
+                "tendons='elastic' selects the series-elastic plugin "
+                f"(model={baked_model!r}) but that element is not applied yet. "
+                "Use tendons='rigid'."
+            )
+        super().__init__(task_config, render_mode=render_mode, **kwargs)
+        self.tendons = tendons
+        self.model_name = baked_model
+        # n_substeps in the spec is for the spec's sim_dt (Bolt: 1e-4 s); the compiled MuJoCo model keeps its own
+        # timestep. Keep that timestep (rounded so a whole number of substeps spans ctrl_dt), so one step is
+        # ctrl_dt of simulated time rather than n_substeps * the model's timestep.
+        self._command = (
+            task_config.reward.extra
+            if task_config.reward.extra.get("task_key") == "locomotion"
+            else None
+        )
+        ctrl_dt = float(task_config.backend.ctrl_dt)
+        if abs(self.frame_skip * self.model.opt.timestep - ctrl_dt) > 1e-9:
+            n = max(1, round(ctrl_dt / float(self.model.opt.timestep)))
+            self.frame_skip = n
+            self.model.opt.timestep = ctrl_dt / n
+
+    def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
+        """Locomotion: sample the episode's velocity command (speed, heading) into ``task_state``."""
+        task_state = super().reset_task(np_random)
+        ex = self._command
+        if ex is not None:
+            hx, hy = ex["heading_dir"]
+            half = np.radians(float(ex.get("heading_range_deg", 0.0))) / 2.0
+            turn = float(np_random.uniform(-half, half))
+            c, s = np.cos(turn), np.sin(turn)
+            task_state["heading_dir"] = (float(c * hx - s * hy), float(s * hx + c * hy))
+            stand = float(np_random.uniform()) < float(ex.get("stand_prob", 0.0))
+            task_state["target_speed"] = (
+                0.0
+                if stand
+                else float(
+                    np_random.uniform(
+                        ex.get("speed_min", 0.0), ex.get("speed_max", 1.0)
+                    )
+                )
+            )
+        return task_state
+
+
 def make_athletic_env(
     bundle: AthleticBundle,
     *,
@@ -340,16 +502,26 @@ def make_athletic_env(
     num_envs: int = 1,
     **overrides: Any,
 ) -> Any:
-    """Instantiate an athletic environment for ``backend`` in {cpu, mjlab}."""
-    if backend == "mjlab":
-        from mjlab.envs.manager_based_rl_env import ManagerBasedRlEnv
+    """Instantiate an athletic environment via :func:`~myosuite.core.registry.make_env`."""
+    ensure_tendons_applied(bundle)
+    if bundle.task.kind in ("long_jump", "high_jump"):
+        raise NotImplementedError(
+            f"{bundle.task.key}: jumps.JumpJudge (rules, rewards, endings) runs on the fullbody C-plugin env "
+            "(CFullbodySimpleTD3Env(task='long_jump' | 'high_jump_hXXX')); the ModularTaskEnv and mjlab "
+            "terms do not apply it yet."
+        )
+    if backend not in ("cpu", "mjlab"):
+        raise ValueError(f"Unknown athletic backend: {backend!r}")
+    # Lazy import: catalog imports this module at load time.
+    from myosuite.core.registry import make_env
+    from myosuite.envs.myo.athletic.catalog import register_athletic_matrix
 
-        device = overrides.pop("device", "cpu")
-        # device is an env ctor arg, not a cfg field (make_sprint_env_cfg rejects it).
-        cfg = mjlab_env_cfg_from_bundle(bundle, num_envs=num_envs, **overrides)
-        return ManagerBasedRlEnv(cfg=cfg, device=device)
-    if backend == "cpu":
-        from myosuite.core.registry import make_env
-
-        return make_env(bundle.env_id(), backend="cpu", **overrides)
-    raise ValueError(f"Unknown athletic backend: {backend!r}")
+    register_athletic_matrix(
+        tasks=(bundle.task.key,),
+        plants=(bundle.plant.key,),
+        tendons=(bundle.tendons,),
+        backends={backend},
+    )
+    if backend == "mjlab" and "num_envs" not in overrides:
+        overrides = {**overrides, "num_envs": num_envs}
+    return make_env(bundle.env_id(), backend=backend, **overrides)

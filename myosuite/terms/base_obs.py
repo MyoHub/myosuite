@@ -258,6 +258,68 @@ def root_planar_vel_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:
     return accessor.joint_vel()[..., :2]
 
 
+def command_vel_obs(
+    accessor: EnvAccessor,
+    heading_dir: tuple[float, float] = (0.0, 1.0),
+    target_speed: float = 0.0,
+    **kwargs: Any,
+) -> Any:
+    """Commanded planar velocity ``target_speed * heading_dir`` (per-episode command in ``task_state``).
+
+    Args:
+        accessor: Environment state accessor.
+        heading_dir: Commanded unit direction ``(dx, dy)``.
+        target_speed: Commanded speed (m/s); 0 commands standing.
+        **kwargs: Unused; for uniform call signature.
+
+    Returns:
+        Length-2 array ``[vx, vy]``.
+    """
+    xp = accessor.array_module()
+    return float(target_speed) * xp.asarray(heading_dir, dtype=xp.float32)
+
+
+def nearest_hurdle_obs(
+    accessor: EnvAccessor,
+    heading_dir: tuple[float, float] = (0.0, 1.0),
+    hurdle_positions: tuple[float, ...] = (),
+    hurdle_height: float = 0.0,
+    **kwargs: Any,
+) -> Any:
+    """Distance (m) along ``heading_dir`` from the root to the next hurdle, and its height.
+
+    Assumes the first joint is a freejoint at the world origin at start (root planar position = qpos[:2]).
+    A hurdle counts as ahead until the root is 0.5 m past it; ``[0, 0]`` after the last one.
+
+    Args:
+        accessor: Environment state accessor.
+        heading_dir: Running direction ``(dx, dy)``.
+        hurdle_positions: Hurdle distances from the start along ``heading_dir`` (m).
+        hurdle_height: Hurdle height (m).
+        **kwargs: Unused; for uniform call signature.
+
+    Returns:
+        Length-2 array ``[distance, height]``.
+    """
+    xp = accessor.array_module()
+    pos = accessor.joint_pos()[..., :2]
+    direction = xp.asarray(heading_dir, dtype=pos.dtype)
+    fwd = xp.sum(pos * direction, axis=-1)
+    if len(hurdle_positions) == 0:
+        return xp.zeros(fwd.shape + (2,), dtype=pos.dtype)
+    marks = xp.asarray(hurdle_positions, dtype=pos.dtype)
+    ahead = marks - fwd[..., None]
+    big = xp.asarray(1e9, dtype=pos.dtype)
+    masked = xp.where(ahead > -0.5, ahead, big)
+    dist = xp.min(masked, axis=-1)
+    found = dist < big
+    zero = xp.zeros_like(dist)
+    return xp.stack(
+        [xp.where(found, dist, zero), xp.where(found, zero + hurdle_height, zero)],
+        axis=-1,
+    )
+
+
 def heading_cmd_obs(
     accessor: EnvAccessor,
     heading_dir: tuple[float, float] = (0.0, 1.0),

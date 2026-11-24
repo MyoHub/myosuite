@@ -368,7 +368,8 @@ def heading_reward(
             by a command-randomized ``reset_task``), it overrides the static
             ``heading_dir`` kwarg so the reward tracks the sampled command.
         heading_dir: Commanded unit direction ``(dx, dy)`` (fallback default).
-        target_speed: Commanded speed (m/s) along ``heading_dir``.
+        target_speed: Commanded speed (m/s) along ``heading_dir``; a per-episode
+            ``task_state["target_speed"]`` overrides it.
         fall_height: Pelvis height (m) below which the agent is considered fallen.
         fall_penalty: Dense reward subtracted when fallen.
         **kwargs: Unused extra keyword arguments.
@@ -378,6 +379,8 @@ def heading_reward(
     """
     if isinstance(task_state, dict) and "heading_dir" in task_state:
         heading_dir = task_state["heading_dir"]
+    if isinstance(task_state, dict) and "target_speed" in task_state:
+        target_speed = task_state["target_speed"]
     xp = accessor.array_module()
     # Leading axes are batch axes (none on CPU, (N,) on mjlab).
     planar_vel = accessor.joint_vel()[..., :2]
@@ -549,8 +552,9 @@ def walk_env_reward(
         "dense": dense,
     }
 
+
 def sprint_reward(
-    accessor: "EnvAccessor",
+    accessor: EnvAccessor,
     task_state: dict[str, Any],
     heading_dir: tuple[float, float] = (1.0, 0.0),
     lambda_vel: float = 1e-2,
@@ -592,7 +596,9 @@ def sprint_reward(
                 continue
             adr = int(model.jnt_qposadr[j])
             q = qpos[adr]
-            overshoot = overshoot + xp.clip(lo - q, 0.0, None) + xp.clip(q - hi, 0.0, None)
+            overshoot = (
+                overshoot + xp.clip(lo - q, 0.0, None) + xp.clip(q - hi, 0.0, None)
+            )
         pain = overshoot
 
     height = qpos[2]
@@ -614,4 +620,3 @@ def sprint_reward(
         "solved": False,
         "done": _maybe_item(fallen),
     }
-

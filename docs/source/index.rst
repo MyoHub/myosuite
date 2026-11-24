@@ -86,6 +86,8 @@ Choose your path
    :caption: Advanced Features
 
    suite
+   athletic_rendering
+   athletic_jumps
 
 .. toctree::
    :maxdepth: 1

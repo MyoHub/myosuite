@@ -16,7 +16,7 @@ from myosuite.core.config import (
     RewardSpec,
     TaskConfig,
 )
-from myosuite.core.registry import register_task
+from myosuite.core.registry import register_env
 from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import (
     AthleticSpec,
     SPRINT_CTRL_DT,
@@ -72,6 +72,8 @@ class FullbodySimpleSprintTask(TaskConfig):
                 "fall_height": SPRINT_FALL_HEIGHT,
                 "alive_bonus": DEFAULT_ATHLETIC.alive_bonus,
                 "mid_lane_weight": DEFAULT_ATHLETIC.mid_lane_weight,
+                "model": "myofullbody_simple",
+                "tendons": "rigid",
             },
         )
     )
@@ -82,4 +84,26 @@ class FullbodySimpleSprintTask(TaskConfig):
     )
 
 
-register_task(FullbodySimpleSprintTask(), env_id="myoFullbodySimpleSprint-v0")
+_FULLBODY_SIMPLE_SPRINT = FullbodySimpleSprintTask()
+
+
+def _register_fullbody_simple_sprint() -> None:
+    # only when the installed myo_sim ships myofullbody_simple (released myo_sim ships myofullbody only)
+    import myo_sim  # type: ignore[import-untyped]
+
+    try:
+        myo_sim.load_spec("myofullbody_simple")
+    except ValueError:
+        return
+    register_env(
+        env_id="myoFullbodySimpleSprint-v0",
+        entry_point="myosuite.envs.myo.athletic.factory:AthleticModularTaskEnv",
+        max_episode_steps=_FULLBODY_SIMPLE_SPRINT.max_episode_steps,
+        config=_FULLBODY_SIMPLE_SPRINT.to_env_config(
+            env_id="myoFullbodySimpleSprint-v0"
+        ),
+        kwargs={"task_config": _FULLBODY_SIMPLE_SPRINT},
+    )
+
+
+_register_fullbody_simple_sprint()

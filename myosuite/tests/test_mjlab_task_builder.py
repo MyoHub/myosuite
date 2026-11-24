@@ -28,7 +28,7 @@ from mjlab.sim import MujocoCfg, SimulationCfg  # noqa: E402
 try:
     from mjlab.actuator import XmlActuatorCfg as _XmlWrappedActuatorCfg  # noqa: E402
 except ImportError:
-    from mjlab.actuator import XmlMuscleActuatorCfg as _XmlWrappedActuatorCfg  # noqa: E402
+    from mjlab.actuator import XmlActuatorCfg as _XmlWrappedActuatorCfg  # noqa: E402
 
 from myosuite.core.config import TaskConfig  # noqa: E402
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (  # noqa: E402

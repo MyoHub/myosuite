@@ -2276,7 +2276,7 @@ def _make_directional_sar_env_cfg(
         entity_name: Scene entity name for the articulated body.
         spec_fn: Callable returning a :class:`mujoco.MjSpec`.
         muscle_actuators: Muscle actuator names (length must match SAR n_muscles).
-        tendon_targets: Tendon names for the :class:`XmlMuscleActuatorCfg`.
+        tendon_targets: Tendon names for the :class:`XmlActuatorCfg` (muscle).
         sar_transform: :class:`SARTorchTransform` inverse-mapping synergies→activations.
         sim_dt: Physics timestep in seconds.
         ctrl_dt: Control timestep in seconds.
