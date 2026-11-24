@@ -1,25 +1,22 @@
 # Agent Instructions (AGENTS.md; CLAUDE.md imports this file)
 
-## Review guidelines
+## Code Review Rules
 
-- Automated code review covers defects in the proposed source, tests and documentation. **Do not emit findings about commit Author, Committer, AI attribution or CLA identity, and do not request attribution rewrites.** Those checks belong to the commit-creation hooks and maintainer verification of GitHub's PR commit list, not the code-review sandbox.
-- A review service may reconstruct a patch as a new local commit with a different SHA and service identity. Even `git show --format=fuller` on that object proves only the reconstructed object's metadata, not the submitted PR's authorship. Never treat local `HEAD`, a synthetic merge or a SHA absent from GitHub's PR commit list as the contributor's commit.
-- The human-attribution requirement below still applies when **creating commits**. This review scope does not waive it.
-- **Catalog coverage and reuse:** before adding a term or feature, search `myosuite-terms --grep <pattern>` and the source for reuse. When adding, moving, renaming or removing public terms/features, verify catalog coverage and update discovery mappings and tests in the same PR. Treat the catalog as a discovery aid, not an exhaustive substitute for source search. Reviewers check coverage and justified exclusions; do not maintain a second feature registry.
+The review rules for every reviewer (people, Claude Code Review, Codex, Antigravity/Gemini, local `scripts/review/local_review.sh`) are in [REVIEW.md](REVIEW.md). Read it before reviewing or opening a pull request.
 
 ### Core-team PR review and merge policy
 
 | Change | Gate |
 |---|---|
-| Routine docs, changelog, wording | Auto-merge after relevant validation and agent review |
-| Bug fix preserving supported contracts | Auto-merge after verified reproduction, regression checks, and agent review |
+| Routine docs, changelog, wording (`docs/**`, `*.md`; not `REVIEW.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.github/`, `scripts/review/`) | Auto-merge after the local checks (`scripts/review/local_review.sh`) |
+| Bug fix preserving supported contracts | Approval from a person other than the PR opener, after verified reproduction, regression checks and the local checks |
 | Correct fix intentionally changing behavior or compatibility | Human approval of the consequences, then merge after checks |
 | New feature, architecture, design or agent instructions | Human agreement on scope and implementation approach before coding; human implementation approval before merge |
-| Pure refactor or other change outside the automatic lanes | Human implementation approval after relevant checks |
+| Pure refactor or other change outside the docs auto-merge lane | Human implementation approval after relevant checks |
 | Unproven bug, uncertain impact, or accidental regression | Block pending evidence or resolution |
 
-- These auto-merge rules apply only to core-team contributions and explicitly authorized agent work. Mixed changes take the stricter gate. Existing branch protections and required checks still apply; this policy does not install automation or authorize bypassing protections. External contributions require human approval.
-- Auto-merge requires an independent agent review of the latest revision, passing applicable required checks, and no unresolved blocking findings or change requests. The authoring agent cannot approve its own work. Missing checks/evidence or uncertain classification require human review; a human approval cannot substitute for fixing an accidental regression.
+- The docs auto-merge lane applies only to core-team pull requests opened by a person (agent-assisted work included). Mixed changes take the stricter gate. Existing branch protections and required checks still apply; this policy does not install automation or authorize bypassing protections. External contributions require human approval.
+- Auto-merge requires the local checks recorded on the latest revision (the PR's "Local checks" block), passing applicable required checks, and no unresolved blocking findings or change requests. The authoring agent cannot approve its own work. Missing checks/evidence or uncertain classification require human review; a human approval cannot substitute for fixing an accidental regression.
 - **Every bug fix requires a minimal reproduction:** expected behavior and its basis, smallest input, command, dependencies/seed where relevant, and exact target/proposed commits. Run the same reproduction: it must fail for the claimed reason before the fix and pass afterward. Retain a focused regression test where practical.
 - Validate the expected result against a documented contract, approved design, reference calculation, or established supported behavior; an LLM-generated assertion alone is not proof. Setup failures do not prove an unrelated bug. GPU/rendering/stochastic defects may use reproducible scripts with measured results. Unexecuted evidence is unverified and cannot qualify for auto-merge.
 - Agent reviewers must support blocking bug findings with a reproduction or concrete, verifiable counterexample. Report unsupported concerns as questions.
@@ -85,9 +82,13 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 - `MjSpec` → `MjModel`: always call `.compile()` before passing a spec to functions that expect a `MjModel` (e.g. `_muscle_tendon_names`, `_init_state_from_model`).
 - `wp_data` attribute names: verify they exist in mujoco-warp before use — do not assume by analogy with mujoco-py (e.g. `site_xvelp` does not exist; derive from `cvel`).
 
+### Ownership and minimum-change review
+
+The ownership (`myo_sim` vs MyoSuite) and minimum-change rules live in [REVIEW.md](REVIEW.md). Apply them when writing code, not only when reviewing it.
+
 ### Code Quality
 
-- **Search before writing.** `grep` the repo first. If a similar implementation exists (≥ 80%), extend or import it.
+- **Search before writing.** Follow the ownership and minimum-change rules in REVIEW.md: search both repositories and compare existing behavior and constraints before extending or importing a primitive.
 - **Don't duplicate across task variants.** When writing multiple variants of the same task (e.g. different host models, difficulty tiers, or agent counts), factor shared model-builder/config logic into one parameterized function or base class before duplicating a file — don't write near-identical sibling files side by side in the same change. (Flagged in PR #101 review: `chase_tag_vs_fullbody_model.py` / `chase_tag_vs_model.py` duplicated their model builders and `ModelMeta` classes wholesale instead of parameterizing one implementation.)
 - **Use the library.** Check `docs/wiki/library-usage.md` before writing any helper.
 - No commented-out dead code, unused imports, or silent `except: pass`.

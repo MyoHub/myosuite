@@ -14,7 +14,7 @@
 Before any new class, function, or wrapper:
 1. `grep -r "keyword" myosuite/` — confirm it does not already exist.
 2. Check [library-usage.md](library-usage.md) — confirm no library already provides it.
-3. If ≥ 80% similar to something existing, extend or import it.
+3. Compare the existing behavior and constraints; extend or import it when it satisfies the requirement. Record this evidence in the PR.
 
 | Kind of code | Canonical location |
 |---|---|
@@ -234,3 +234,7 @@ pytest myosuite/tests/test_fragment_compat.py -v
 pytest myosuite/tests/test_parity.py -v
 pytest myosuite/tests/test_registry.py -v
 ```
+
+## Ownership and reuse gate
+
+Follow the ownership and minimum-change rules in [REVIEW.md](../../REVIEW.md). Search both MyoHub repositories, name the reused primitives and justify each new abstraction. Review the actual diff for duplicated transformations and code that can be removed; lint success alone does not clear this gate.
