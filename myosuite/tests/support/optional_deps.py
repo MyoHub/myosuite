@@ -36,7 +36,7 @@ def require_mjlab() -> None:
     pytest.importorskip("mjlab")
 
 
-def require_mujoco_warp(*, min_version: str = "3.7.0") -> None:
+def require_mujoco_warp(*, min_version: str = "3.11.0") -> None:
     """Skip when ``mujoco-warp`` is missing, too old, or fails to import."""
     from importlib.metadata import PackageNotFoundError, version
 

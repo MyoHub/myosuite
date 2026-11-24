@@ -35,7 +35,8 @@ dependencies = [
     "pandas",
     "osqp",
     # 3.11 fixes a crash when reading tendon wrap targets on copied specs
-    # (google-deepmind/mujoco#3406); every recipe spec is a copy.
+    # (google-deepmind/mujoco#3406); every recipe spec is a copy. 3.11+ ships no
+    # Intel (x86_64) macOS wheels, so Intel Macs are unsupported.
     "mujoco>=3.11,<4",
     # Patched Pillow wheels require Python >=3.11; 3.10 retains known advisories.
     "Pillow>=13.0.0; python_version >= '3.11'",
@@ -57,10 +58,9 @@ dependencies = [
     # into site-packages/mujoco/ over mujoco<4 on unpinned pip/uv installs.
     "mjviser>=0.0.14,<0.0.17",
     "loop-rate-limiters>=1.2.0",
-    # solve_ik runs on mink. mink>=1.3.0, needed on 3.14 (the first release without its
-    # own <3.14 cap), also raises mink's mujoco floor, so older interpreters take any 1.x.
-    "mink>=1.0.0; python_version < '3.14'",
-    "mink>=1.3.0; python_version >= '3.14'",
+    # solve_ik runs on mink. 1.3.0 is the first release without a <3.14 cap; its
+    # mujoco>=3.10 floor is below the core MuJoCo floor.
+    "mink>=1.3.0",
     # Core registered envs (myoFullBodyDirectional-v0, ChaseTagFBVs) download
     # reference gait clips at runtime via hf_hub_download -- not gated behind
     # the [musclemimic] extra since these envs are reachable via plain make_env.

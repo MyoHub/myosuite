@@ -45,6 +45,10 @@ Changes since **v3.1.0** (2026-11-11).
   `MjSpec` crashed the interpreter (google-deepmind/mujoco#3406), and every recipe spec is a copy by the time its
   `edit_fn` runs. The `mjlab` extra requires mjlab 1.6, since 1.4 and 1.5 pin MuJoCo 3.8 and 3.10. `uv.lock` moves
   from MuJoCo 3.8.1 and mjlab 1.4.0 to MuJoCo 3.11.0 and mjlab 1.6.1, which CI already installs; re-run `uv sync`.
+  mink 1.3 or newer is now required on every Python version, because its MuJoCo 3.10 floor no longer conflicts with
+  mjlab; below Python 3.14 the lock moves from mink 1.1.0 to 1.3.0. Python 3.10 stays supported. MuJoCo 3.11 and
+  later publish no Intel (x86_64) macOS wheels, so Intel Macs are no longer supported; Linux, Windows and
+  Apple-silicon Macs are unaffected.
 
 ### Fixed
 

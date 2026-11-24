@@ -2556,76 +2556,12 @@ wheels = [
 
 [[package]]
 name = "mink"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin'",
-    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'darwin'",
-    "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version == '3.11.*' and sys_platform == 'win32'",
-    "python_full_version == '3.11.*' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "mujoco", version = "3.11.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "qpsolvers", version = "4.11.0", source = { registry = "https://pypi.org/simple" }, extra = ["daqp"] },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b9/66/e09aa0a8a689eaee797f91415ea6133b3d1e4fa5ee5bd1504315e5d56b37/mink-1.1.0.tar.gz", hash = "sha256:2480fdd42ec2a28ffd4361e6fc5a7c7bc353caffffb8343d9c5bf7089c15ca5e", size = 51211, upload-time = "2026-02-19T22:23:39.574Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/09/27aa990f6fcb1f455b4e296ddb1213b9ae2c90c47c03cb8e36dbd37da8bf/mink-1.1.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:6c09564591dfcc6b77a47a57e38268490676b7a7d834a1f805679b650902961a", size = 69133, upload-time = "2026-02-19T22:51:34.529Z" },
-    { url = "https://files.pythonhosted.org/packages/8d/22/1ca95c1a4240c1e76a5689fc21bd64a433c28cc7b0b91f89ec2c0fecc0e0/mink-1.1.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:0547f9f416f431e6b9f319073807589e960253bcd1de05dc5e31c14c32613ecd", size = 67737, upload-time = "2026-02-19T22:51:36.12Z" },
-    { url = "https://files.pythonhosted.org/packages/e0/22/e35d9aef14b77ca0bdd4ecd64963f3100300132cd01d96f94b6dc65381bb/mink-1.1.0-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:7266f782bda3c3c08f8ea8c77e4394b17cf76cfac1f5393757db569a94c2c838", size = 70448, upload-time = "2026-02-19T22:51:37.46Z" },
-    { url = "https://files.pythonhosted.org/packages/33/a8/0ece416dccce9fe700b1fe607eecfec9f9dedad1a24d9faffc3a93fced96/mink-1.1.0-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e3c52803b58aa0727255f60da21f53787677b33d9867a01bec0ecfe81e1d608b", size = 69597, upload-time = "2026-02-19T22:51:38.652Z" },
-    { url = "https://files.pythonhosted.org/packages/ac/c2/1a35bf4c0e5ed8beb545e2cc0a1fedd3002e0e8cf2cf9f8f10962e0614c3/mink-1.1.0-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:d47cd76437e02cec4ad7cb1c4a1a93e67fdda9ccf03f9bca0bc875a63d281cf2", size = 69565, upload-time = "2026-02-19T22:51:39.991Z" },
-    { url = "https://files.pythonhosted.org/packages/39/e2/1fcc0c68673c894f503ce2c65725a021987de74c08f56a99f32e77c70483/mink-1.1.0-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:9c0493d88c0caaa56a10022b904040cf315506bdb54fce8ca928ede2d1d73aba", size = 70616, upload-time = "2026-02-19T22:51:41.373Z" },
-    { url = "https://files.pythonhosted.org/packages/ea/d4/a7cdcdc85c3544dff8a65fa8528a057c9d5c622739dd9df5642b5ac6fab9/mink-1.1.0-cp310-cp310-win32.whl", hash = "sha256:4c29aad05bec7c8ea0e637cc71d02fca1607ed394c70d665aecbd31271fda5fa", size = 71529, upload-time = "2026-02-19T22:51:42.549Z" },
-    { url = "https://files.pythonhosted.org/packages/5a/3c/3142f82b8aa87b53a6f3d6b07d6b8ee9bf987b94315772c4d31cdc4f97c9/mink-1.1.0-cp310-cp310-win_amd64.whl", hash = "sha256:f007ff472ef81ea089082a00f4a7fb578cf3e22600059bb478fb6f2c63954983", size = 72303, upload-time = "2026-02-19T22:51:43.926Z" },
-    { url = "https://files.pythonhosted.org/packages/20/ce/0ace26569797b0c22b54b5aa45fe05e2daa598831bddfa50232e0797d021/mink-1.1.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:504aac2ffbed5de281582d62c5fffa5efd079c0bb2c799456a9b7ddc96de7a46", size = 69131, upload-time = "2026-02-19T22:51:44.991Z" },
-    { url = "https://files.pythonhosted.org/packages/21/6e/e1e9014ba28182a966f34156e3377d6ceba7b0ac3455d1b93092db9713b8/mink-1.1.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:91b8578a0242aa772bdbb70a94b942a865ba90b29983b652d1fd3672261489ba", size = 67740, upload-time = "2026-02-19T22:51:46.089Z" },
-    { url = "https://files.pythonhosted.org/packages/db/03/4c5e7cc59b238a6f72b6a29c35b4d6805596e78fe409eb2bb6b16806d8c8/mink-1.1.0-cp311-cp311-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:1014bb5aef2a1cb4ea55eb878297e0c2de04e0a072fbd296ea00037887114240", size = 70449, upload-time = "2026-02-19T22:51:47.27Z" },
-    { url = "https://files.pythonhosted.org/packages/55/ed/2ffa9539bdabb09aa99b68621a19fbf77f94cc7d7e28014108ace0807b55/mink-1.1.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ac2095b21298ba0eaa4e1aa3151670ef4e35f636abb19b926256705e04b654d4", size = 69597, upload-time = "2026-02-19T22:51:48.758Z" },
-    { url = "https://files.pythonhosted.org/packages/10/b6/17885034dc4af7f76be93b402fbb2569303096406f088cc28494445cf243/mink-1.1.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:b64e9988f584f66b09609606a412f3a7b59ed958b0ce13c66dccbcec4eef95f8", size = 69570, upload-time = "2026-02-19T22:51:49.942Z" },
-    { url = "https://files.pythonhosted.org/packages/63/27/1fb27fed380d6686d740747a8d83d69acc4a9910bd1785c5ccdc3b8516a3/mink-1.1.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:660131b3d5372832479c772a74da2883f3fbd7efc4c37dbfab2f88839d964164", size = 70621, upload-time = "2026-02-19T22:51:51.209Z" },
-    { url = "https://files.pythonhosted.org/packages/5e/25/fa7499b47721d0a6d00dbff0578944270859525f236dd482134990557c77/mink-1.1.0-cp311-cp311-win32.whl", hash = "sha256:58f03f4c3f334977ff4f8e10a55752de0f1d0ee27ee13b5ffc40d732996a7a77", size = 71523, upload-time = "2026-02-19T22:51:52.76Z" },
-    { url = "https://files.pythonhosted.org/packages/4d/b4/e30d95e43552fdd14381c3970159b8f8fefb463a5ab90b15076bab6d5f8d/mink-1.1.0-cp311-cp311-win_amd64.whl", hash = "sha256:5361445bf6f48dd1c3c630f9469bc0630f308ade22012cf7683b20fec039303e", size = 72299, upload-time = "2026-02-19T22:51:54.338Z" },
-    { url = "https://files.pythonhosted.org/packages/0e/7a/dba5e7dd311b5fd5ac2f83a2baf20c203857e901fe21c6656331c787314a/mink-1.1.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:58090c5cece086a1149616d94a220918680ef2eab76737e0ab0f0384b80f8ca1", size = 69196, upload-time = "2026-02-19T22:51:55.714Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/3d/97e4b9736f7d983d87f872eb80bbdc256a903ae1e4481f24bf3c317e376e/mink-1.1.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:de76f557b2f667abbd1305a5074f051a6e66d439df53e48ada5359915e122fc1", size = 67759, upload-time = "2026-02-19T22:51:56.742Z" },
-    { url = "https://files.pythonhosted.org/packages/15/6f/64c5dd93f1d19de05709e5c6ac66f6abe89d280838b434e9075f94e30b65/mink-1.1.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:3d11676be6d08ccf7943be6c8afa1ff64fa6be3fbab633fcc2e3f1cd1ef004b1", size = 70482, upload-time = "2026-02-19T22:51:57.937Z" },
-    { url = "https://files.pythonhosted.org/packages/9c/71/3b219f6563b5a1a4e7bda894d7314b9eea1a5ec53d5cc3975b7951c6e84a/mink-1.1.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9b1f8426e6e39976a9863e832680583945a9ccb644d6f96c7fa40462d7859965", size = 69613, upload-time = "2026-02-19T22:51:59.093Z" },
-    { url = "https://files.pythonhosted.org/packages/e2/2c/e0baaa2757f36382ac02a06caa163c8b617ff444149dad7616cc5bbff247/mink-1.1.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:3dad64095cd401da7f99f16eca8dde1d9802f0915207e097d63371abc58c5b9e", size = 69612, upload-time = "2026-02-19T22:52:00.628Z" },
-    { url = "https://files.pythonhosted.org/packages/7b/f1/17b76e508e27ca1c5de2f5284a3ca24fce701cb18803f20dd32322dd72e1/mink-1.1.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:5dd7ea03a464ceba19f43e8fab8a4ca5d872febcb3a17527a6944db65b18b9e7", size = 70650, upload-time = "2026-02-19T22:52:01.668Z" },
-    { url = "https://files.pythonhosted.org/packages/c8/fc/8ead0efa16391ae2a39bc9101ae3f9ec5e29fd0edbbd8153efc00017c64c/mink-1.1.0-cp312-cp312-win32.whl", hash = "sha256:93556fedc3dd9f98dc6e3272d938ec71da2a4706e58668a587b620bc15194b7e", size = 71561, upload-time = "2026-02-19T22:52:03.721Z" },
-    { url = "https://files.pythonhosted.org/packages/99/7f/cfba1085a845ce188259d25c72d3180c4f7431c566125f6b171f2fd62d06/mink-1.1.0-cp312-cp312-win_amd64.whl", hash = "sha256:22efa22b554d8e1076890afbb3a7223d2ca249fae97d631d10fbbf71bc2c3c56", size = 72320, upload-time = "2026-02-19T22:52:05.702Z" },
-    { url = "https://files.pythonhosted.org/packages/98/ff/d71fd73ee6506a647c18abc80bd1669f98b9f8eb3012f14e560c81c7bd51/mink-1.1.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:18f8fd87e5200d7c0ece7f7144647f882b6125147df4e49a20896e51ef2a01b9", size = 69190, upload-time = "2026-02-19T22:52:06.929Z" },
-    { url = "https://files.pythonhosted.org/packages/a4/df/b79cef8fd2e6a84698be343333fd12a9add8c757c54b00c0705c099f9d64/mink-1.1.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:15ed3b3662cf794e05729c748906d87080a2633b1e82bc1a6365a68313eeae58", size = 67764, upload-time = "2026-02-19T22:52:08.12Z" },
-    { url = "https://files.pythonhosted.org/packages/34/9c/7ff76edecaa94551d28bd3864bcd867b81f5e72bc60292fea768ca2f6314/mink-1.1.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:4ae80916d3bd25003d214b488a313781385ad577b9085b715b2b0bc37d014ff5", size = 66867, upload-time = "2026-02-19T22:23:40.934Z" },
-    { url = "https://files.pythonhosted.org/packages/36/bc/fb1a26dae8a96f1997e62cdbd64fa64a3ab91607687bc3ab036d5d547b49/mink-1.1.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:7338119f6e5b5ce8c3464f6c908f2dbdba5780682bdf49387512cf16b597ea89", size = 70469, upload-time = "2026-02-19T22:52:10.269Z" },
-    { url = "https://files.pythonhosted.org/packages/20/7e/eea61521375432f63b18d83d3d941a7a85f855814d95c4b302df5ec1f643/mink-1.1.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ab440637caa215b4aeb5720111d1eb23d2ff2349814e756851ab777dea7d901a", size = 69614, upload-time = "2026-02-19T22:52:11.486Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/8a/2000a2101dac173639d111668ce5359806bde8fd14b581e618627a52f514/mink-1.1.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:db9269d97e674a9668dcedd063e522ebff3532e61c57f25efedfd6596599353d", size = 69602, upload-time = "2026-02-19T22:52:12.498Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/59/942b4798a8d861926ff8529cba3661ec5dc54d1932c4c9ddbffc3b726ba2/mink-1.1.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:0e1167a0d5ebb3791e177a0502c91cf6b937719f0b2aa49194398be37484a4b8", size = 70645, upload-time = "2026-02-19T22:52:13.668Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/c8/166fcf4e9e2936f2aa237572cbe8263cc42aa322b9607f7ba0937c189358/mink-1.1.0-cp313-cp313-win32.whl", hash = "sha256:1c7a214a8dc748eb7308b25dc6c7f124ad746c4977c87d0a02a63c0c29be9ff6", size = 71547, upload-time = "2026-02-19T22:52:14.918Z" },
-    { url = "https://files.pythonhosted.org/packages/bd/6f/57709a92ff4b9c6f0be36bf6bc62ddd8c697f9263cb560bb9e9dbdd0a766/mink-1.1.0-cp313-cp313-win_amd64.whl", hash = "sha256:0bdf77a25834a5cf8e8b855abfc702df12c1adff5305dec00f61272b2abd0747", size = 72316, upload-time = "2026-02-19T22:52:16.224Z" },
-]
-
-[[package]]
-name = "mink"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
-]
 dependencies = [
-    { name = "mujoco", version = "3.14.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "qpsolvers", version = "4.13.0", source = { registry = "https://pypi.org/simple" }, extra = ["daqp"] },
+    { name = "mujoco", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
+    { name = "mujoco", version = "3.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
+    { name = "qpsolvers", extra = ["daqp"] },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f8/1c/6725f3410890998f9e04f91426687d0da2b4750abcf032f100133b45b409/mink-1.3.0.tar.gz", hash = "sha256:e9d34c97e21cd6c48f6b4071e080dbd34a0b9184520067b56728aac51c008d2d", size = 63819, upload-time = "2026-08-18T00:11:50.374Z" }
@@ -3147,8 +3083,7 @@ dependencies = [
     { name = "joblib" },
     { name = "loop-rate-limiters" },
     { name = "matplotlib" },
-    { name = "mink", version = "1.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
-    { name = "mink", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
+    { name = "mink" },
     { name = "mjviser" },
     { name = "ml-collections" },
     { name = "mujoco", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
@@ -3310,8 +3245,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "matplotlib", marker = "extra == 'rl'", specifier = ">=3.9.0" },
     { name = "mediapy", marker = "python_full_version >= '3.10' and sys_platform != 'win32' and extra == 'mjx'", specifier = ">=1.2.0" },
-    { name = "mink", marker = "python_full_version < '3.14'", specifier = ">=1.0.0" },
-    { name = "mink", marker = "python_full_version >= '3.14'", specifier = ">=1.3.0" },
+    { name = "mink", specifier = ">=1.3.0" },
     { name = "mjlab", marker = "python_full_version >= '3.10' and python_full_version < '3.14' and extra == 'mjlab'", specifier = ">=1.6.0" },
     { name = "mjviser", specifier = ">=0.0.14,<0.0.17" },
     { name = "ml-collections", specifier = ">=0.1.1" },
@@ -5228,51 +5162,14 @@ wheels = [
 
 [[package]]
 name = "qpsolvers"
-version = "4.11.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin'",
-    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'darwin'",
-    "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version == '3.11.*' and sys_platform == 'win32'",
-    "python_full_version == '3.11.*' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or python_full_version >= '3.14'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "numpy", version = "2.5.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' and python_full_version < '3.14'" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or python_full_version >= '3.14'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' and python_full_version < '3.14'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/20/8d/d90b0aebb793d0e5093e7ed6b8b7c61bac0779a475e2c44ff312d30de871/qpsolvers-4.11.0.tar.gz", hash = "sha256:c6c036c775fb4f1048f586217412bbe67b5c128ece525ea2fe237b96eb3e29f2", size = 242117, upload-time = "2026-03-16T15:59:53.419Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/36/bb438a1ab5270be8a0d294a2734b31ebfabe8b1b41fde08f43966118b7e2/qpsolvers-4.11.0-py3-none-any.whl", hash = "sha256:02ced5690e17036802662f9054dcd8270fc8f4b8c3bddffbfcecd71a6353db00", size = 101875, upload-time = "2026-03-16T15:59:51.054Z" },
-]
-
-[package.optional-dependencies]
-daqp = [
-    { name = "daqp" },
-]
-
-[[package]]
-name = "qpsolvers"
 version = "4.13.0"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
-]
 dependencies = [
-    { name = "numpy", version = "2.5.5", source = { registry = "https://pypi.org/simple" } },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" } },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d1/aa/4d60a7065de30f07d7ead935eed364cf94fb0ad5607ddf1461f2bdf7ba17/qpsolvers-4.13.0.tar.gz", hash = "sha256:e86c4c16bf7c16fdbb8e6c0e4050bc1bfef72a25755211be66a492ac4c939a1c", size = 77317, upload-time = "2026-07-19T07:46:03.087Z" }
 wheels = [
