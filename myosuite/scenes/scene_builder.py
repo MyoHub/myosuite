@@ -13,8 +13,9 @@ from typing import Any
 
 import mujoco
 
-from myosuite.scenes.library import (
-    SCENES,
+from myosuite.core.model_builder import add_free_body_to_spec
+from myosuite.scenes.library import SCENES
+from myosuite.scenes.specs import (
     FixtureSpec,
     FloorSpec,
     ObjectSpec,
@@ -160,15 +161,15 @@ def _attach_object_to_spec(
     obj: ObjectSpec,
     pos: tuple[float, float, float],
 ) -> None:
-    body = mj_spec.worldbody.add_body(name=body_name, pos=list(pos))
-    body.add_freejoint()
-    geom = body.add_geom()
-    geom.type = _geom_type_enum(obj.shape)
-    geom.size = _object_geom_size(obj)
-    geom.mass = float(obj.mass)
-    geom.rgba = list(obj.rgba)
-    geom.contype = 1
-    geom.conaffinity = 1
+    add_free_body_to_spec(
+        mj_spec,
+        body_name,
+        pos=pos,
+        geom_type=int(_geom_type_enum(obj.shape)),
+        geom_size=_object_geom_size(obj),
+        rgba=obj.rgba,
+        mass=float(obj.mass),
+    )
 
 
 def apply_scene_to_spec(

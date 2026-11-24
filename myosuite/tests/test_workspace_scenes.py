@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from myosuite.core.model_builder import ModelBuilder
-from myosuite.physics.quat_math import euler2quat
+from myosuite.physics.quat_math import euler2quat, quat_from_euler_xyz
 from myosuite.scenes import (
     FixtureSpec,
     FloorSpec,
@@ -25,7 +25,6 @@ from myosuite.scenes import (
     apply_scene_to_spec,
     get_scene,
     make_workspace_scene,
-    quat_from_euler_xyz,
     scene_to_mjcf_xml,
     scene_to_mjlab_cfg,
 )
@@ -250,3 +249,63 @@ def test_cpu_and_mjlab_scene_pose_quat_collision_and_site_parity() -> None:
             np.testing.assert_allclose(
                 site_xpos[env_i, mj_sid], cpu_data.site_xpos[cpu_sid], atol=1e-6
             )
+
+
+def test_scene_object_shares_model_builder_free_body_contract_and_acyclic_imports() -> (
+    None
+):
+    import ast
+    from pathlib import Path
+
+    import myosuite.scenes as scenes_pkg
+    import myosuite.scenes.library as library_mod
+    import myosuite.scenes.workspaces as workspaces_mod
+
+    assert not hasattr(scenes_pkg, "quat_from_euler_xyz")
+    assert not hasattr(library_mod, "quat_from_euler_xyz")
+
+    ws_tree = ast.parse(Path(workspaces_mod.__file__).read_text(encoding="utf-8"))
+    ws_imports = {
+        node.module
+        for node in ast.walk(ws_tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    assert "myosuite.scenes.library" not in ws_imports
+
+    scene_model = mujoco.MjModel.from_xml_string(
+        scene_to_mjcf_xml(
+            SceneSpec(
+                floor=FloorSpec(kind="none"),
+                objects=[
+                    ObjectSpec(
+                        name="prop",
+                        shape="box",
+                        size=0.04,
+                        mass=0.25,
+                        rgba=(0.2, 0.4, 0.8, 1.0),
+                    )
+                ],
+            )
+        )
+    )
+    builder_model, _ = (
+        ModelBuilder()
+        .add_free_body(
+            "prop",
+            pos=(0.0, 0.0, 0.04),
+            geom_type=mujoco.mjtGeom.mjGEOM_BOX,
+            geom_size=(0.04, 0.04, 0.04),
+            rgba=(0.2, 0.4, 0.8, 1.0),
+            mass=0.25,
+        )
+        .build()
+    )
+    assert mujoco.mj_name2id(scene_model, mujoco.mjtObj.mjOBJ_JOINT, "prop_free") >= 0
+    assert mujoco.mj_name2id(scene_model, mujoco.mjtObj.mjOBJ_GEOM, "prop") >= 0
+    np.testing.assert_allclose(
+        scene_model.body_mass, builder_model.body_mass, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        scene_model.geom_size, builder_model.geom_size, atol=1e-12
+    )
+    np.testing.assert_allclose(scene_model.qpos0, builder_model.qpos0, atol=1e-12)

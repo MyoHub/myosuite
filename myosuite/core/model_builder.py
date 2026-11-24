@@ -348,6 +348,50 @@ def _get_parent_body(spec: mujoco.MjSpec, parent: str) -> mujoco.MjsBody:
     return body
 
 
+def add_free_body_to_spec(
+    spec: mujoco.MjSpec,
+    name: str,
+    *,
+    pos: _FloatVec3 = (0.0, 0.0, 0.0),
+    quat: _FloatVec4 = (1.0, 0.0, 0.0, 0.0),
+    geom_type: int = mujoco.mjtGeom.mjGEOM_SPHERE,
+    geom_size: _FloatVec3 = (0.02, 0.0, 0.0),
+    rgba: _FloatVec4 = (0.8, 0.8, 0.2, 1.0),
+    mass: float | None = None,
+    condim: int = 3,
+) -> mujoco.MjsBody:
+    """Populate a free-floating rigid body (``freejoint`` + single geom) on *spec*.
+
+    Args:
+        spec: Target ``MjSpec`` modified in place.
+        name: Body and geom name (freejoint is named ``f"{name}_free"``).
+        pos: World position ``(x, y, z)`` [m].
+        quat: World orientation ``(w, x, y, z)``.
+        geom_type: MuJoCo ``mjtGeom`` enum value.
+        geom_size: 3-element MuJoCo geom size sequence [m].
+        rgba: RGBA colour sequence.
+        mass: Optional body mass [kg] (``None`` defers to density).
+        condim: Contact dimensionality (default ``3``).
+
+    Returns:
+        The newly added ``MjsBody``.
+    """
+    body = spec.worldbody.add_body(name=name)
+    body.pos = np.asarray(pos, dtype=float)
+    body.quat = np.asarray(quat, dtype=float)
+    geom = body.add_geom(
+        name=name,
+        type=geom_type,
+        size=np.asarray(geom_size, dtype=float),
+        rgba=np.asarray(rgba, dtype=float),
+    )
+    geom.condim = condim
+    if mass is not None:
+        geom.mass = float(mass)
+    body.add_freejoint(name=f"{name}_free")
+    return body
+
+
 def _add_mesh_body_to_spec(spec: mujoco.MjSpec, mb: _MeshBodySpec) -> None:
     """Add a mesh body with optional texture/material to *spec* in-place.
 
@@ -901,19 +945,17 @@ class ModelBuilder:
             spec.attach(frag_spec, prefix="", suffix="", frame=frame)
 
         for fb in self._free_bodies:
-            body = spec.worldbody.add_body(name=fb.name)
-            body.pos = fb.pos
-            body.quat = fb.quat
-            geom = body.add_geom(
-                name=fb.name,
-                type=fb.geom_type,
-                size=fb.geom_size,
+            add_free_body_to_spec(
+                spec,
+                fb.name,
+                pos=fb.pos,
+                quat=fb.quat,
+                geom_type=fb.geom_type,
+                geom_size=fb.geom_size,
                 rgba=fb.rgba,
+                mass=fb.mass,
+                condim=fb.condim,
             )
-            geom.condim = fb.condim
-            if fb.mass is not None:
-                geom.mass = fb.mass
-            body.add_freejoint(name=fb.name + "_free")
 
         for mb in self._mesh_bodies:
             _add_mesh_body_to_spec(spec, mb)

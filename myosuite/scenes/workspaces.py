@@ -10,12 +10,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from myosuite.scenes.library import (
+from myosuite.physics.quat_math import quat_from_euler_xyz
+from myosuite.scenes.specs import (
     FixtureSpec,
     FloorSpec,
     SceneSpec,
     SiteMarkerSpec,
-    quat_from_euler_xyz,
 )
 
 
