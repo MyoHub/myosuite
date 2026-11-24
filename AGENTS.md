@@ -48,7 +48,7 @@ add minimal comments and descriptions in the code / python files
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
 - **Training/learning implementations:** read `docs/wiki/training-guidelines.md` before adding trainers, world models, algorithm-specific evaluation, or method-specific dependencies.
   - Method-specific code (network architectures, trainers, buffers, self-play pools) goes in `training/<method>/`, not `myosuite/`, even when it only serves to load that method's checkpoints. Reviewers check placement against the guidelines' *Boundary* section.
-  - A new method ships with a benchmark against PPO on the same envs, seeds and budget, saying how it differs (guidelines, *Benchmark against PPO*).
+  - A new method ships with PPO comparisons on all four [required benchmark environments](docs/wiki/training-guidelines.md#benchmark-against-ppo), with matched seeds and budgets. CPU training and evaluation are mandatory; both CPU and GPU (mjlab) are preferred. Reviewers verify coverage, results and linked human approval for any exception.
 
 ### CPU Env Contract
 
