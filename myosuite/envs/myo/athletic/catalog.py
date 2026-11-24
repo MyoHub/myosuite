@@ -12,6 +12,7 @@ separate ``…Elastic-v0`` id with its own physics).
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Any
 from collections.abc import Iterable
@@ -34,6 +35,7 @@ from myosuite.envs.myo.athletic.specs import (
     TaskSpec,
     TendonKind,
     TermRef,
+    ensure_tendons_applied,
 )
 from myosuite.envs.myo.tasks.basic.full_body.athletic_contract import AthleticSpec
 from myosuite.envs.myo.tasks.basic.full_body.jumps import (
@@ -422,6 +424,31 @@ TASKS: dict[str, TaskSpec] = {
 JUDGED_EVENTS = frozenset({"long_jump", "high_jump"})
 
 
+@functools.cache
+def plant_available(key: str) -> bool:
+    """Whether the installed myo_sim provides this plant's model (released myo_sim ships ``myofullbody``)."""
+    plant = PLANTS[key]
+    try:
+        if plant.load_spec is not None:
+            plant.load_spec()
+        else:
+            import myo_sim
+
+            myo_sim.load_spec(key)
+    except (ValueError, FileNotFoundError, ImportError):
+        return False
+    return True
+
+
+def tendons_applied(bundle: AthleticBundle) -> bool:
+    """Whether the bundle's series element is applied (elastic is not yet)."""
+    try:
+        ensure_tendons_applied(bundle)
+    except NotImplementedError:
+        return False
+    return True
+
+
 def jump_spec(task: str) -> JumpSpec:
     """The JumpSpec (event geometry, judge and reward weights) of a jump task."""
     return TASKS[task].extra["jump"]
@@ -511,9 +538,13 @@ def register_athletic_matrix(
         env_id = bundle.env_id()
         if bundle.task.kind in JUDGED_EVENTS:
             _LOG.info(
-                "athletic %s: the jump judge runs on the fullbody C env; not registered here",
+                "athletic %s: judged event, registered by athletic.combined (events.AthleticEventEnv)",
                 env_id,
             )
+            continue
+        if not tendons_applied(bundle) or not plant_available(bundle.plant.key):
+            # an id must build the physics it names: no elastic ids before the series element is applied,
+            # no ids for skeletons the installed myo_sim does not ship
             continue
         if "cpu" in backends and bundle.plant.model_recipe in _CPU_RECIPES:
             try:

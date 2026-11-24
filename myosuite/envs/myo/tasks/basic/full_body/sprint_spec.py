@@ -85,10 +85,25 @@ class FullbodySimpleSprintTask(TaskConfig):
 
 
 _FULLBODY_SIMPLE_SPRINT = FullbodySimpleSprintTask()
-register_env(
-    env_id="myoFullbodySimpleSprint-v0",
-    entry_point="myosuite.envs.myo.athletic.factory:AthleticModularTaskEnv",
-    max_episode_steps=_FULLBODY_SIMPLE_SPRINT.max_episode_steps,
-    config=_FULLBODY_SIMPLE_SPRINT.to_env_config(env_id="myoFullbodySimpleSprint-v0"),
-    kwargs={"task_config": _FULLBODY_SIMPLE_SPRINT},
-)
+
+
+def _register_fullbody_simple_sprint() -> None:
+    # only when the installed myo_sim ships myofullbody_simple (released myo_sim ships myofullbody only)
+    import myo_sim  # type: ignore[import-untyped]
+
+    try:
+        myo_sim.load_spec("myofullbody_simple")
+    except ValueError:
+        return
+    register_env(
+        env_id="myoFullbodySimpleSprint-v0",
+        entry_point="myosuite.envs.myo.athletic.factory:AthleticModularTaskEnv",
+        max_episode_steps=_FULLBODY_SIMPLE_SPRINT.max_episode_steps,
+        config=_FULLBODY_SIMPLE_SPRINT.to_env_config(
+            env_id="myoFullbodySimpleSprint-v0"
+        ),
+        kwargs={"task_config": _FULLBODY_SIMPLE_SPRINT},
+    )
+
+
+_register_fullbody_simple_sprint()

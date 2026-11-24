@@ -101,6 +101,10 @@ def test_zero_control_rollout_stays_bounded(recipe_name: str) -> None:
         model = _build(recipe_name)
     except (FileNotFoundError, ImportError) as e:
         pytest.skip(f"dependency unavailable for {recipe_name!r}: {e}")
+    except ValueError as e:
+        if "Unknown model" not in str(e):
+            raise
+        pytest.skip(f"model not in the installed myo_sim for {recipe_name!r}: {e}")
     data = mujoco.MjData(model)
     mujoco.mj_resetData(model, data)
     if model.nu:

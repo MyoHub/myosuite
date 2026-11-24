@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import functools
 import logging
+
+import numpy as np
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -89,7 +91,19 @@ def task_config_from_bundle(bundle: AthleticBundle) -> TaskConfig:
             ]
         )
 
-    return _AthleticTask()
+    task_cfg = _AthleticTask()
+    if bundle.task.scene == "hurdles":
+        # the hurdles as static colliders (World Athletics men's 110 m layout) and their marks for the
+        # nearest_hurdle observation
+        from myosuite.envs.myo.athletic.events import HurdleLayout, hurdle_scene
+
+        layout = HurdleLayout()
+        task_cfg.scene = hurdle_scene(layout, spec.heading_dir)
+        task_cfg.obs.extra.update(
+            hurdle_positions=tuple(float(x) for x in layout.positions()),
+            hurdle_height=layout.height_m,
+        )
+    return task_cfg
 
 
 def sprint_ppo_runner_cfg(bundle: AthleticBundle | None = None) -> Any:
@@ -449,11 +463,38 @@ class AthleticModularTaskEnv(ModularTaskEnv):
         # n_substeps in the spec is for the spec's sim_dt (Bolt: 1e-4 s); the compiled MuJoCo model keeps its own
         # timestep. Keep that timestep (rounded so a whole number of substeps spans ctrl_dt), so one step is
         # ctrl_dt of simulated time rather than n_substeps * the model's timestep.
+        self._command = (
+            task_config.reward.extra
+            if task_config.reward.extra.get("task_key") == "locomotion"
+            else None
+        )
         ctrl_dt = float(task_config.backend.ctrl_dt)
         if abs(self.frame_skip * self.model.opt.timestep - ctrl_dt) > 1e-9:
             n = max(1, round(ctrl_dt / float(self.model.opt.timestep)))
             self.frame_skip = n
             self.model.opt.timestep = ctrl_dt / n
+
+    def reset_task(self, np_random: np.random.Generator) -> dict[str, Any]:
+        """Locomotion: sample the episode's velocity command (speed, heading) into ``task_state``."""
+        task_state = super().reset_task(np_random)
+        ex = self._command
+        if ex is not None:
+            hx, hy = ex["heading_dir"]
+            half = np.radians(float(ex.get("heading_range_deg", 0.0))) / 2.0
+            turn = float(np_random.uniform(-half, half))
+            c, s = np.cos(turn), np.sin(turn)
+            task_state["heading_dir"] = (float(c * hx - s * hy), float(s * hx + c * hy))
+            stand = float(np_random.uniform()) < float(ex.get("stand_prob", 0.0))
+            task_state["target_speed"] = (
+                0.0
+                if stand
+                else float(
+                    np_random.uniform(
+                        ex.get("speed_min", 0.0), ex.get("speed_max", 1.0)
+                    )
+                )
+            )
+        return task_state
 
 
 def make_athletic_env(
