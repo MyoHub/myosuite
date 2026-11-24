@@ -86,12 +86,12 @@ repos:
         stages: [commit-msg]
         always_run: true
 
-      # Local Claude review (REVIEW.md + ownership check) before a push. Runs only where the `claude` CLI is
-      # installed; advisory by default. MYO_CLAUDE_REVIEW=0 skips it, =strict blocks the push on a fail.
+      # Local review (pre-commit on the branch + agent review against REVIEW.md) before a push. Skips the review where the agent CLI is
+      # not installed; advisory by default. MYO_REVIEW=0 skips it, =strict blocks the push on a fail.
       - id: claude-review
-        name: Claude review (REVIEW.md, myo_sim ownership)
+        name: Local review (REVIEW.md, ownership)
         language: system
-        entry: scripts/claude_review.sh --hook
+        entry: scripts/review/local_review.sh --hook
         stages: [pre-push]
         pass_filenames: false
         always_run: true

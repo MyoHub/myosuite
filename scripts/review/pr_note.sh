@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Writes the "Local checks" block of a pull request description from the records that scripts/claude_review.sh keeps
+# Writes the "Local checks" block of a pull request description from the records that scripts/review/local_review.sh keeps
 # per commit (in .git/myo-review/). The records are self-reported by the author's machine; they are not proof.
 #
 #   scripts/review/pr_note.sh print [sha]    print the block (default: HEAD)
@@ -22,12 +22,12 @@ line() {  # line <label> <check>
 }
 block() {
   echo "$start"
-  echo "**Local checks** for \`${sha:0:10}\` (self-reported by \`scripts/claude_review.sh\`; see REVIEW.md)"
+  echo "**Local checks** for \`${sha:0:10}\` (self-reported by \`scripts/review/local_review.sh\`; see REVIEW.md)"
   echo
   echo "| Check | Result | By | When (UTC) |"
   echo "|---|---|---|---|"
   line "pre-commit hooks (branch changes)" precommit
-  line "Claude review (REVIEW.md, ownership)" review
+  line "Agent review (REVIEW.md, ownership)" review
   local f="$rec/$sha.review"
   if [[ -f "$f" ]] && grep -q '^---$' "$f"; then
     echo; echo "<details><summary>Review output</summary>"; echo
@@ -59,5 +59,5 @@ case "$cmd" in
     fi
     # REST, not `gh pr edit`: the latter fails on repos with classic Projects (GraphQL projectCards).
     gh api -X PATCH "repos/{owner}/{repo}/pulls/$num" -f body="$body" >/dev/null && echo "pr_note: updated the Local checks block of PR #$num" >&2 ;;
-  *) echo "usage: pr_note.sh print|update [sha]" >&2; exit 2 ;;
+  *) echo "usage: pr_note.sh print [sha] | update [sha] [branch]" >&2; exit 2 ;;
 esac

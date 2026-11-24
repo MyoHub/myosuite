@@ -2,13 +2,13 @@
 
 ## Code Review Rules
 
-The review rules for every reviewer (people, Claude Code Review, Codex, local `scripts/claude_review.sh`) are in [REVIEW.md](REVIEW.md). Read it before reviewing or opening a pull request.
+The review rules for every reviewer (people, Claude Code Review, Codex, Antigravity/Gemini, local `scripts/review/local_review.sh`) are in [REVIEW.md](REVIEW.md). Read it before reviewing or opening a pull request.
 
 ### Core-team PR review and merge policy
 
 | Change | Gate |
 |---|---|
-| Routine docs, changelog, wording (`docs/**`, `*.md`; not `REVIEW.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.github/`, `scripts/review/`) | Auto-merge after the local checks (`scripts/claude_review.sh`) |
+| Routine docs, changelog, wording (`docs/**`, `*.md`; not `REVIEW.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.github/`, `scripts/review/`) | Auto-merge after the local checks (`scripts/review/local_review.sh`) |
 | Bug fix preserving supported contracts | Approval from a person other than the PR opener, after verified reproduction, regression checks and the local checks |
 | Correct fix intentionally changing behavior or compatibility | Human approval of the consequences, then merge after checks |
 | New feature, architecture, design or agent instructions | Human agreement on scope and implementation approach before coding; human implementation approval before merge |

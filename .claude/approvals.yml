@@ -8,7 +8,7 @@ rules:
     paths: ["docs/**", "**/*.md"]
     verdict: { claude: comments, seats: 0 }
   - purpose: "Review rules, agent instructions, hooks, CI and dependencies take one approval from a person who did not open the pull request."
-    paths: ["**/.claude/**", "**/REVIEW.md", "**/AGENTS.md", "**/CLAUDE.md", "**/.gitattributes", "**/.gitmodules", ".github/**", ".pre-commit-config.yaml", "scripts/review/**", "**/pyproject.toml", "**/{requirements,constraints}*.txt", "**/requirements/*.txt", "**/uv.lock"]
+    paths: ["**/.claude/**", "**/.agents/**", "**/REVIEW.md", "**/AGENTS.md", "**/CLAUDE.md", "**/GEMINI.md", "**/.gitattributes", "**/.gitmodules", ".github/**", ".pre-commit-config.yaml", "scripts/review/**", "**/pyproject.toml", "**/{requirements,constraints}*.txt", "**/requirements/*.txt", "**/uv.lock"]
     nested: inherit
     verdict: { claude: comments, seats: [{ count: 1, from: [humans, "!pr/opened_by"] }] }
   - purpose: "A pull request opened by a bot or an agent account is blocked: a person opens it."
