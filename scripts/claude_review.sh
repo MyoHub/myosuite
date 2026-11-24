@@ -23,7 +23,11 @@ base="${MYO_REVIEW_BASE:-}"
 if [[ -z "$base" ]]; then
   for b in myohub/dev origin/dev; do git rev-parse -q --verify "$b" >/dev/null && { base=$b; break; }; done
 fi
-[[ -z "$base" ]] && { echo "set MYO_REVIEW_BASE" >&2; exit 1; }
+if [[ -z "$base" ]]; then
+  echo "claude_review: no base branch found; set MYO_REVIEW_BASE" >&2
+  ((hook)) && [[ "$mode" != "strict" ]] && exit 0
+  exit 1
+fi
 head="${PRE_COMMIT_TO_REF:-$(git rev-parse HEAD)}"
 head="$(git rev-parse "$head")"
 mb="$(git merge-base "$base" "$head")"
@@ -87,8 +91,7 @@ fi
 # 3. Update the PR description, when the branch already has an open PR
 "$root/scripts/review/pr_note.sh" update "$head" || true
 
-if [[ "$mode" == "strict" ]] && ! grep -qx 'status: pass' "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null \
-   || { [[ "$mode" == "strict" ]] && [[ "$(grep -hx 'status: pass' "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null | wc -l)" -lt 2 ]]; }; then
+if [[ "$mode" == "strict" ]] && [[ "$(cat "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null | grep -cx 'status: pass')" -lt 2 ]]; then
   echo "claude_review: pre-commit and the review must both pass (MYO_CLAUDE_REVIEW=strict)" >&2; exit 1
 fi
 exit 0

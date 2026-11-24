@@ -31,7 +31,8 @@ The mirror file in `myo_sim` states the same ownership split from the library si
 
 - Tests, lint and this review run locally through pre-commit (`pre-commit install` installs the pre-push review). State
   in the PR what ran and what did not.
-- Documentation (`docs/**`, `*.md`) may auto-merge. Everything else needs one approval from a person other than the one
+- Documentation (`docs/**`, `*.md`) may auto-merge, except `REVIEW.md`, `AGENTS.md`, `CLAUDE.md` and files under `.claude/`,
+  which take an approval like code. Everything else needs one approval from a person other than the one
   who opened the pull request.
 
 - A pull request is opened by a person, under their own GitHub account, who owns its design and answers for it. Agents may
