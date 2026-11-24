@@ -57,6 +57,7 @@ case "$cmd" in
     else
       body="$body"$'\n\n'"$new"
     fi
-    gh pr edit "$num" --body "$body" >/dev/null && echo "pr_note: updated the Local checks block of PR #$num" >&2 ;;
+    # REST, not `gh pr edit`: the latter fails on repos with classic Projects (GraphQL projectCards).
+    gh api -X PATCH "repos/{owner}/{repo}/pulls/$num" -f body="$body" >/dev/null && echo "pr_note: updated the Local checks block of PR #$num" >&2 ;;
   *) echo "usage: pr_note.sh print|update [sha]" >&2; exit 2 ;;
 esac
