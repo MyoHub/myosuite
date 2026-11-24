@@ -91,12 +91,12 @@ touch files outside the change. List what you changed and what you left for the 
     gemini) am=default; ((fix)) && am=auto_edit; gx=(); [[ -d "$other" ]] && gx=(--include-directories "$other")
             gemini -p "$prompt" ${gx[@]+"${gx[@]}"} --approval-mode "$am" >"$tmp" || true ;;
   esac
-  cat "$tmp"
+  echo >>"$tmp"; cat "$tmp"
   if ((fix)); then
     echo; echo "local_review: fixes are uncommitted; review, commit, then run scripts/review/local_review.sh to record the check."
     exit 0   # a review of a dirty tree is not recorded against a commit
   fi
-  verdict="$(grep -o '^VERDICT: [a-z]*' "$tmp" | tail -1 | cut -d' ' -f2)"
+  verdict="$(grep -o '^VERDICT: [a-z]*' "$tmp" | tail -1 | cut -d' ' -f2 || true)"
   record review "${verdict:-no verdict}" "$tmp" "$agent"
 fi
 
