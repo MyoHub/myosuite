@@ -48,14 +48,25 @@ Agents must check attribution and license requirements before adding or modifyin
 
 ## Benchmark against PPO
 
-Every new method under `training/<method>/` includes a benchmark against PPO, the registered default trainer (`myo_ppo_runner_cfg` through `scripts/train_mjlab.py`). Run the method's own trainer and the PPO baseline side by side so the comparison is like for like:
+Every new method under `training/<method>/` includes a benchmark against PPO on **all four tasks** below. CPU training and evaluation are the minimum requirement; benchmarking both CPU and GPU (mjlab) is preferred. GPU-only results or CPU playback of a GPU-trained policy do not satisfy the CPU requirement.
 
-- Use the same registered `env_id`s, at least one and preferably two, with unmodified observations, actions and rewards. Report any task-side change separately.
+| Task | Registered environment | Definition |
+|---|---|---|
+| Elbow random reaching (random target joint angle) | `myoElbowPose1D6MRandom-v0` | [Basic task registration](../../myosuite/envs/myo/tasks/basic/__init__.py) |
+| Single-arm MyoChallenge pick and place | `myoChallengeRelocateP1-v0` | [Challenge task registration](../../myosuite/envs/myo/tasks/challenge/__init__.py) |
+| Fullbody random directional locomotion | `myoFullBodyDirectional-v0` | [Directional task](../../myosuite/envs/myo/tasks/mimic/cpu.py) |
+| Fullbody motion mimic | `myoMimic-v0` (default `myofullbody` model and `supermimic` preset) | [Mimic task registration](../../myosuite/envs/myo/tasks/mimic/__init__.py) |
+
+Use the registered defaults, including randomized targets/headings and the motion distribution. `myoMimicFullbody-v0` is random-target site tracking, not a substitute for motion mimic. Any task or backend exception requires explicit human approval linked in the PR and an explanation in the method's README; missing results must not be presented as benchmark completion.
+
+Run the method's own trainer and PPO side by side on each backend being reported: CPU PPO through `scripts/train_sb3.py --algo ppo`, and GPU PPO through `scripts/train_mjlab.py` with the registered default runner (`myo_ppo_runner_cfg`). Compare within each backend and report CPU and GPU results separately:
+
+- Use the four registered `env_id`s above, with unmodified observations, actions and rewards. Report any task-side change separately.
 - Use the same seeds, at least three per arm, and the same budget in environment steps. Report wall-clock time and hardware too.
 - Report final success rate or return as mean ± std over seeds, learning curves against environment steps and against wall-clock time, and peak memory or GPU hours.
 - State in one sentence how the method differs, with the numbers that show it: for example better final performance, more sample-efficient, faster in wall-clock, more robust, or able to do something PPO cannot.
 
-Put the table and curves in the method's README. Pin the checkpoints and evaluation logs on Hugging Face at a revision (see CLAUDE.md, *Model weights*). For methods where PPO is not the natural reference (imitation or offline learning, for example), add the closest standard baseline, such as behaviour cloning, and keep PPO as the common reference row.
+Put the table and curves in the method's README. Pin the checkpoints and evaluation logs on Hugging Face at a revision (see [AGENTS.md](../../AGENTS.md), *Model weights*). For methods where PPO is not the natural reference (imitation or offline learning, for example), add the closest standard baseline, such as behaviour cloning, and keep PPO as the common reference row.
 
 ## Boundary
 
