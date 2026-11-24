@@ -84,7 +84,7 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 
 ### Ownership and minimum-change review
 
-The ownership (`myo_sim` vs MyoSuite) and minimum-change rules live in [REVIEW.md](REVIEW.md). Apply them when writing code, not only when reviewing it.
+The ownership (`myo_sim` vs MyoSuite) and minimum-change rules live in [REVIEW.md](REVIEW.md). Apply them when writing code, not only when reviewing it. Decide repository ownership before choosing an internal module: anatomical assembly and model mechanics belong in `myo_sim`; `ModelBuilder`/scene recipes assemble tasks by consuming its public APIs. Record cross-repo reuse and prerequisite release evidence before approval.
 
 ### Code Quality
 
