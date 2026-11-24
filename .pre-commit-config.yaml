@@ -1,6 +1,6 @@
 # Install commit-msg + prepare-commit-msg so `pre-commit install` wires both:
 #   pre-commit install
-default_install_hook_types: [pre-commit, prepare-commit-msg, commit-msg]
+default_install_hook_types: [pre-commit, prepare-commit-msg, commit-msg, pre-push]
 # Keep ordinary lint hooks off message stages.
 default_stages: [pre-commit]
 
@@ -85,3 +85,14 @@ repos:
         entry: python scripts/reject_ai_coauthor.py
         stages: [commit-msg]
         always_run: true
+
+      # Local Claude review (REVIEW.md + ownership check) before a push. Runs only where the `claude` CLI is
+      # installed; advisory by default. MYO_CLAUDE_REVIEW=0 skips it, =strict blocks the push on a fail.
+      - id: claude-review
+        name: Claude review (REVIEW.md, myo_sim ownership)
+        language: system
+        entry: scripts/claude_review.sh --hook
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+        verbose: true

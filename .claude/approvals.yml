@@ -1,0 +1,21 @@
+version: 1
+mode: observe
+rules:
+  - purpose: "Every change takes one human reviewer who is not an author; two when the ownership check does not pass. Claude never approves."
+    paths: ["**"]
+    verdict: { claude: comments, seats: [{ count: 2, from: [humans, "!pr/authors"] }] }
+    advisory: ["claude/code_review"]
+    override:
+      - { if: "repo/ownership = pass", verdict: { claude: comments, seats: [{ count: 1, from: [humans, "!pr/authors"] }] } }
+  - purpose: "A pull request opened by a bot or an agent account is blocked: a person opens it. PR Steward may push fixes to it."
+    paths: ["**"]
+    if: "pr/opened_by = bots"
+    verdict: { claude: blocks }
+  - purpose: "A change to the review rules or agent instructions takes two human reviewers who are not authors."
+    paths: ["**/.claude/**", "**/REVIEW.md", "**/AGENTS.md", "**/CLAUDE.md", "**/.gitattributes", "**/.gitmodules", ".github/**", ".pre-commit-config.yaml"]
+    nested: inherit
+    verdict: { claude: comments, seats: [{ count: 2, from: [humans, "!pr/authors"] }] }
+  - purpose: "A change to a dependency file takes two human reviewers who are not authors."
+    paths: ["**/pyproject.toml", "**/{requirements,constraints}*.txt", "**/requirements/*.txt", "**/uv.lock", "**/setup.py", "**/setup.cfg"]
+    nested: inherit
+    verdict: { claude: comments, seats: [{ count: 2, from: [humans, "!pr/authors"] }] }

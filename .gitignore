@@ -148,7 +148,9 @@ MUJOCO_LOG.TXT
 outputs/vaf_fullbody/activations.npy
 exports/
 outputs/
-.claude/
+.claude/*
+!.claude/approvals.yml
+!.claude/classifiers/
 _untracked/
 myosuite/composer/
 myosuite/agents/
