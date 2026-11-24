@@ -208,10 +208,13 @@ jobs:
           set -euo pipefail
           echo "testmon: $TESTMON"
           # Log runner memory every 30 s, so an out-of-memory runner loss shows its trend.
-          # Stopped on exit, so it never holds the step's output open.
-          (while sleep 30; do free -m | awk 'NR==2 {print "[mem] used " $3 " MB / " $2 " MB"}'; done) &
-          mem_logger=$!
-          trap 'pkill -P "$mem_logger" 2>/dev/null; kill "$mem_logger" 2>/dev/null || true' EXIT
+          # Stopped on exit (with its sleep), so it never holds the step's output open.
+          # Needs free and pkill, so it is skipped where either is missing (e.g. Git Bash on Windows).
+          if command -v free > /dev/null && command -v pkill > /dev/null; then
+            (while sleep 30; do free -m | awk 'NR==2 {print "[mem] used " $3 " MB / " $2 " MB"}'; done) &
+            mem_logger=$!
+            trap 'pkill -P "$mem_logger" 2>/dev/null; kill "$mem_logger" 2>/dev/null || true' EXIT
+          fi
           case "$TESTMON" in
             select)
               # These guards include import-time and subprocess behaviour testmon
