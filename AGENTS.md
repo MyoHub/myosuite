@@ -76,24 +76,26 @@ The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `t
 
 ### Package Boundaries and Motion Analysis
 
-Use these boundaries for new code and incremental refactors. `motion/` is the target home for motion data and fitting; it is not yet implemented. Reuse existing APIs until the relevant migration lands; do not create a parallel implementation or move unrelated files as part of a feature.
+Use these boundaries for new code and small, compatible refactors. This PR defines ownership and dependency rules; migrations remain separate changes.
 
 | Location | Responsibility |
 |---|---|
-| `core/` | Environment configuration, registration and model composition (`make_env`, `ModelBuilder`, recipes). |
-| `physics/` | Shared numerical and physical primitives: quaternion operations, joint couplings and muscle mechanics. |
-| `motion/` (target) | Motion containers, file formats, transforms and source-independent retargeting. Reuse `MotionClip` for model-coordinate trajectories. |
-| `biomechanics/` | Scientific analysis and control: inverse dynamics, static optimization, CMC, EMG, effort, uncertainty and diagnostics. |
-| `integrations/` | Source-specific adapters and calibration (e.g. InstantHMR, GVHMR, SMPL+H, MANO); keep reusable fitting in the motion layer. |
+| `myo_sim` | Anatomical assets/composition, reusable model mechanics and physical transforms. MyoSuite consumes its public APIs. |
+| `core/` | Environment configuration, registration and task assembly (`make_env`, `ModelBuilder`, recipes), delegating anatomical composition to `myo_sim`. |
+| `physics/` | Shared numerical helpers and compatibility imports; delegate canonical model mechanics to `myo_sim`. |
+| `motion/` (target) | Small, flat subpackage: `clip.py` (motion contracts), `io.py` (model-coordinate trajectory I/O), `transforms.py` (trajectory transforms). |
+| `biomechanics/` | Scientific fitting, analysis and control: IK/retargeting solvers, inverse dynamics, static optimization, CMC, EMG, effort and diagnostics. |
+| `integrations/` | Lightweight source-specific readers, adapters and calibration (e.g. markers, InstantHMR, GVHMR, SMPL+H, MANO); call shared fitting APIs. |
 | `viz/` | Rendering and visual reconstruction, including muscle meshes, skin and Blender. |
-| `scripts/`, `tools/` | Thin workflows, batch execution, worker selection and reports; isolate perception inference dependencies in standalone tools. |
+| `scripts/`, `tools/` | Thin workflows, batch execution and reports; isolate heavyweight perception inference in standalone tools with their own dependencies. |
 
-- **Separate algorithms from workflows.** Numerical solvers must not own dataset traversal, caches, report writing or rendering. Compose load → normalize → retarget → analyze → render in a thin workflow; do not import visualization or environment implementations into reusable motion/analysis algorithms.
-- **Explicit data contracts.** Document units, timing, coordinate frames, quaternion order, joint ordering and missing-data masks at conversion boundaries. Keep marker observations and source body-model poses distinct from model-coordinate trajectories. Return structured convergence/residual/quality diagnostics alongside results; document model mutation and failure policy.
-- **Preserve numerical intent.** Site IK and coupling-aware landmark fitting have different objectives. Do not merge solvers solely because both perform IK; prove equivalent constraint handling and numerical behavior before consolidation.
-- **Small, compatible migrations.** Extract workflow code first, consolidate motion ownership next, and address import/dependency costs separately. Keep compatibility imports for moved public APIs, update callers and documentation, and verify serialization, public imports and numerical behavior.
-- **Dependencies and public APIs.** Avoid new eager heavyweight imports and private cross-package imports; expose a deliberate shared API instead. Audit actual runtime use before changing dependency extras. Test allowed internal dependencies, not just third-party import roots.
-- Preserve the CPU/mjlab contract and existing `ModelBuilder`/term abstractions. Do not introduce another registration mechanism, deep package hierarchy or plugin framework for this reorganization.
+- **Reuse existing motion APIs.** `motion/` is not implemented yet. Reuse `MotionClip` in `core/trajectory_io.py` and transforms in `core/trajectory_yaw.py` until a separate migration lands. Prefer `motion` to `mocap`: these contracts also serve simulation and playback. Keep task-specific sampling in tasks; consolidate reference-motion implementations only after comparing their contracts.
+- **Allowed dependencies.** Consumers may import shared motion contracts; motion must not import environments, trainers, visualization or source adapters. Adapters call reusable fitting/analysis APIs; those algorithms must not import adapters, environment implementations or visualization. Workflows compose these layers. MyoSuite imports public `myo_sim` APIs, never the reverse. Define allowed module imports rather than assuming every directory is one dependency tier.
+- **Separate algorithms from workflows.** Numerical solvers must not own dataset traversal, caches, reports or rendering. Policy loading/export is reusable runtime functionality consumed by benchmarks, not owned by them.
+- **Explicit data contracts.** Document units, timing, coordinate frames, quaternion order, joint ordering and missing-data masks. Keep marker observations and source body-model poses distinct from model-coordinate trajectories. Compose EMG with optional kinematic data; support EMG-only trials. Return structured convergence/residual/quality diagnostics and document mutation/failure policy.
+- **Preserve numerical intent.** Site IK and coupling-aware landmark fitting have different objectives. Share contracts and demonstrated common primitives; do not merge solvers without proving equivalent constraint handling and numerical behavior.
+- **Small, compatible migrations.** Extract workflows first, then consolidate shared motion contracts. Preserve old public imports, serialization and checkpoint compatibility, update callers/docs, and verify numerical behavior. Keep lightweight readers installable without heavy perception stacks; avoid eager heavyweight and private cross-package imports. Test internal dependency boundaries as well as third-party imports.
+- **Separate design decisions.** Broader folder renames, CPU/GPU task co-location, moving PPO presets/entry points, test relocation or wheel exclusions, dependency-extra changes, and MuJoCo/myo-sim upgrades require separate proposals and validation. Preserve current training commands/default runners and the CPU/mjlab contract. Audit all runtime consumers (including reference-motion downloads) before changing extras; measure transitive installs and Python/platform coverage before claiming installation improvements. This guidance does not commit the broader layout to v3.2.0.
 
 ### Workflow
 
