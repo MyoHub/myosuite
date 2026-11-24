@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -103,9 +104,11 @@ def sprint_ppo_runner_cfg(bundle: AthleticBundle | None = None) -> Any:
             hidden_dims=(256, 256, 128),
             activation="elu",
             obs_normalization=True,
-            init_noise_std=1.0,
-            noise_std_type="scalar",
-            stochastic=True,
+            distribution_cfg={
+                "class_name": "GaussianDistribution",
+                "init_std": 1.0,
+                "std_type": "scalar",
+            },
         ),
         critic=RslRlModelCfg(
             hidden_dims=(256, 256, 128),
@@ -159,6 +162,26 @@ def mjlab_env_cfg_from_bundle(
     return _make_generic_athletic_env_cfg(
         bundle, num_envs=num_envs, visual=visual, **kwargs
     )
+
+
+@functools.cache
+def _plant_muscle_targets(plant_key: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Muscle actuator names and their tendons, in actuator order (one compile per plant)."""
+    from myosuite.envs.myo.athletic.catalog import PLANTS
+    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        _muscle_actuator_names,
+        _muscle_tendon_names,
+    )
+
+    plant = PLANTS[plant_key]
+    if plant.load_spec is not None:
+        spec = plant.load_spec()
+    else:
+        import myo_sim
+
+        spec = myo_sim.load_spec(plant_key)
+    model = spec.compile()
+    return _muscle_actuator_names(model), _muscle_tendon_names(model)
 
 
 def _make_generic_athletic_env_cfg(
@@ -280,7 +303,27 @@ def _make_generic_athletic_env_cfg(
         thr = float(torch.cos(torch.tensor(spec.facing_angle_deg * 3.14159265 / 180.0)))
         return (speed > 0.3) & (cos_ang < thr)
 
-    entity_cfg = EntityCfg(spec_fn=_spec_fn, init_state=_init_state())
+    if bundle.action_kind == "bolt_muscle":
+        entity_cfg = EntityCfg(spec_fn=_spec_fn, init_state=_init_state())
+    else:
+        from mjlab.actuator import XmlActuatorCfg
+        from mjlab.entity import EntityArticulationInfoCfg
+        from mjlab.actuator.actuator import TransmissionType
+
+        muscle_names, tendon_names = _plant_muscle_targets(plant.key)
+        entity_cfg = EntityCfg(
+            spec_fn=_spec_fn,
+            init_state=_init_state(),
+            articulation=EntityArticulationInfoCfg(
+                actuators=(
+                    XmlActuatorCfg(
+                        command_field="effort",
+                        target_names_expr=tendon_names,
+                        transmission_type=TransmissionType.TENDON,
+                    ),
+                )
+            ),
+        )
     scene_cfg = SceneCfg(
         num_envs=num_envs, env_spacing=3.0, entities={entity: entity_cfg}
     )
@@ -307,7 +350,11 @@ def _make_generic_athletic_env_cfg(
         )
 
         actions = {
-            "muscles": MyoMuscleActivationActionCfg(entity_name=entity),
+            "muscles": MyoMuscleActivationActionCfg(
+                entity_name=entity,
+                actuator_names=muscle_names,
+                tendon_names=tendon_names,
+            ),
         }
 
     rewards = {

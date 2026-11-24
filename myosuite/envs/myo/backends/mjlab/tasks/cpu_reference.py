@@ -20,7 +20,7 @@ from typing import Any
 import gymnasium as gym
 import mujoco
 import numpy as np
-from mjlab.actuator import XmlMuscleActuatorCfg
+from mjlab.actuator import XmlActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.sim import MujocoCfg
@@ -407,7 +407,8 @@ def robot_entity_cfg(
     """
     info = compiled_info(task)
     actuators = tuple(
-        XmlMuscleActuatorCfg(
+        XmlActuatorCfg(
+            command_field="effort",
             target_names_expr=tuple(f"^{n}$" for n in info.actuator_targets[trn_type]),
             transmission_type=trn,
         )

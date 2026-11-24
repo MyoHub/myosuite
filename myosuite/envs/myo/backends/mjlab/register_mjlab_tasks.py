@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mjlab.actuator import XmlMuscleActuatorCfg as _XmlWrappedActuatorCfg
+from mjlab.actuator import XmlActuatorCfg as _XmlWrappedActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import events as mdp_events
@@ -852,9 +852,11 @@ def _sprint_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
             hidden_dims=(256, 256, 128),
             activation="elu",
             obs_normalization=True,
-            init_noise_std=1.0,
-            noise_std_type="scalar",
-            stochastic=True,
+            distribution_cfg={
+                "class_name": "GaussianDistribution",
+                "init_std": 1.0,
+                "std_type": "scalar",
+            },
         ),
         critic=RslRlModelCfg(
             hidden_dims=(256, 256, 128),
