@@ -40,7 +40,7 @@ git diff --quiet "$mb" "$head" && exit 0
 rec="$(git rev-parse --git-common-dir)/myo-review"; mkdir -p "$rec"
 who="$(git config user.name || echo unknown)"
 now="$(date -u +%Y-%m-%dT%H:%MZ)"
-dirty=""; git diff --quiet HEAD -- 2>/dev/null || dirty=" (uncommitted changes in the working tree)"
+dirty=""; [[ -n "$(git status --porcelain --untracked-files=normal)" ]] && dirty=" (uncommitted changes in the working tree)"
 [[ "$head" != "$(git rev-parse HEAD)" ]] && dirty=" (checked the working tree, not the pushed commit)"
 record() {  # record <check> <status> <detail-file|-> [via]
   { echo "status: $2$dirty"; echo "by: $who${4:+ via $4}"; echo "at: $now"; echo "base: $base @ ${mb:0:10}"
@@ -61,7 +61,7 @@ if ((!fix)); then
   fi
 fi
 
-# 2. Claude review
+# 2. Agent review (Claude, Codex or Gemini CLI)
 if [[ "$mode" == "0" ]]; then
   record review "not run (MYO_REVIEW=0)" -
 elif ! command -v "$agent" >/dev/null 2>&1; then
@@ -96,7 +96,7 @@ touch files outside the change. List what you changed and what you left for the 
     echo; echo "local_review: fixes are uncommitted; review, commit, then run scripts/review/local_review.sh to record the check."
     exit 0   # a review of a dirty tree is not recorded against a commit
   fi
-  verdict="$(grep -o '^VERDICT: [a-z]*' "$tmp" | tail -1 | cut -d' ' -f2 || true)"
+  verdict="$(grep -oE 'VERDICT: (pass|fail)' "$tmp" | tail -1 | cut -d' ' -f2 || true)"
   record review "${verdict:-no verdict}" "$tmp" "$agent"
 fi
 
