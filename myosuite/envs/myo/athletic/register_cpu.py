@@ -14,3 +14,8 @@ register_athletic_matrix(
     plants=("myofullbody", "myofullbody_simple"),
     backends={"cpu"},
 )
+
+# Judged single events and combined events (pentathlon) on the public fullbody.
+from myosuite.envs.myo.athletic.combined import register_events_and_combined  # noqa: E402
+
+register_events_and_combined(("myofullbody",))

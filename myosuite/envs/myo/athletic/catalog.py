@@ -128,6 +128,7 @@ PLANTS: dict[str, PlantSpec] = {
         aliases=("myoFullbodySprint-v0",),
         capabilities=frozenset(
             {
+                "hands",
                 "lanes",
                 "hop",
                 "hurdles",

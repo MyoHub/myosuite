@@ -446,6 +446,14 @@ class AthleticModularTaskEnv(ModularTaskEnv):
         super().__init__(task_config, render_mode=render_mode, **kwargs)
         self.tendons = tendons
         self.model_name = baked_model
+        # n_substeps in the spec is for the spec's sim_dt (Bolt: 1e-4 s); the compiled MuJoCo model keeps its own
+        # timestep. Keep that timestep (rounded so a whole number of substeps spans ctrl_dt), so one step is
+        # ctrl_dt of simulated time rather than n_substeps * the model's timestep.
+        ctrl_dt = float(task_config.backend.ctrl_dt)
+        if abs(self.frame_skip * self.model.opt.timestep - ctrl_dt) > 1e-9:
+            n = max(1, round(ctrl_dt / float(self.model.opt.timestep)))
+            self.frame_skip = n
+            self.model.opt.timestep = ctrl_dt / n
 
 
 def make_athletic_env(
