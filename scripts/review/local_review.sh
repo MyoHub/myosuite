@@ -10,7 +10,6 @@
 #
 # Env: MYO_REVIEW_BASE (default: myohub/dev, else origin/dev), MYO_SIM_ROOT (sibling myo_sim checkout for
 # cross-repo search; default $root/../myo_sim), MYO_REVIEW=0 to skip the review, =strict to block the push unless both checks pass
-# (MYO_CLAUDE_REVIEW is the deprecated name of MYO_REVIEW);
 # MYO_REVIEW_AGENT=claude|codex|gemini picks the reviewing CLI (default claude).
 # It never commits or pushes. Without --fix it is read-only.
 set -euo pipefail
@@ -18,7 +17,7 @@ set -euo pipefail
 hook=0; fix=0
 [[ "${1:-}" == "--hook" ]] && hook=1
 [[ "${1:-}" == "--fix" ]] && fix=1
-mode="${MYO_REVIEW:-${MYO_CLAUDE_REVIEW:-advisory}}"
+mode="${MYO_REVIEW:-advisory}"
 agent="${MYO_REVIEW_AGENT:-claude}"
 case "$agent" in claude|codex|gemini) ;; *) echo "MYO_REVIEW_AGENT must be claude, codex or gemini" >&2; exit 2;; esac
 
