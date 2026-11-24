@@ -29,6 +29,7 @@ if [[ -z "$base" ]]; then
   exit 1
 fi
 head="${PRE_COMMIT_TO_REF:-$(git rev-parse HEAD)}"
+[[ "$head" =~ ^0+$ ]] && exit 0   # pushing a branch deletion
 head="$(git rev-parse "$head")"
 mb="$(git merge-base "$base" "$head")"
 git diff --quiet "$mb" "$head" && exit 0
@@ -91,7 +92,7 @@ fi
 # 3. Update the PR description, when the branch already has an open PR
 "$root/scripts/review/pr_note.sh" update "$head" "${PRE_COMMIT_REMOTE_BRANCH:-}" || true
 
-if [[ "$mode" == "strict" ]] && [[ "$(head -qn1 "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null | grep -cx 'status: pass')" -lt 2 ]]; then
+if [[ "$mode" == "strict" ]] && [[ "$(awk 'FNR==1' "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null | grep -cx 'status: pass')" -lt 2 ]]; then
   echo "claude_review: pre-commit and the review must both pass (MYO_CLAUDE_REVIEW=strict)" >&2; exit 1
 fi
 exit 0
