@@ -88,7 +88,7 @@ repos:
 
       # Local review (pre-commit on the branch + agent review against REVIEW.md) before a push. Skips the review where the agent CLI is
       # not installed; advisory by default. MYO_REVIEW=0 skips it, =strict blocks the push on a fail.
-      - id: claude-review
+      - id: agent-review
         name: Local review (REVIEW.md, ownership)
         language: system
         entry: scripts/review/local_review.sh --hook
