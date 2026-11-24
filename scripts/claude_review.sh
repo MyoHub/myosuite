@@ -37,7 +37,7 @@ to look for existing primitives. Treat the latest commit message body as the pul
 Report findings ranked by severity, each with file:line, the existing symbol or myo_sim API to use, and the fix.
 End with exactly one line: 'VERDICT: pass' or 'VERDICT: fail'. Do not edit files."
 
-out="$(claude -p "$prompt" "${extra[@]}" \
+out="$(claude -p "$prompt" ${extra[@]+"${extra[@]}"} \
   --allowedTools "Read" "Grep" "Glob" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git merge-base:*)")"
 printf '%s\n' "$out"
 if [[ "$mode" == "strict" ]] && grep -q '^VERDICT: fail' <<<"$out"; then
