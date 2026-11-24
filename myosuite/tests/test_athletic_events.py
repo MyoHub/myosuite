@@ -120,3 +120,29 @@ def test_pentathlon_random_mode_draws_events() -> None:
     env = make_combined("tf_pentathlon", model="myofullbody", mode="random")
     drawn = {env.reset(seed=s)[1]["event_index"] for s in range(12)}
     assert len(drawn) > 1
+
+
+def test_event_ids_follow_the_athletic_scheme() -> None:
+    from myosuite.envs.myo.athletic.catalog import PLANTS
+    from myosuite.envs.myo.athletic.events import event_env_id
+
+    fb, fbs = PLANTS["myofullbody"], PLANTS["myofullbody_simple"]
+    assert event_env_id(fb, "100m") == "myoFullbody100m-v0"
+    assert event_env_id(fb, "tf_pentathlon") == "myoFullbodyTFPentathlon-v0"
+    assert (
+        event_env_id(fbs, "tf_pentathlon", "elastic")
+        == "myoFullbodySimpleTFPentathlonElastic-v0"
+    )
+
+
+def test_elastic_tendons_are_refused_until_applied() -> None:
+    import gymnasium as gym
+
+    import myosuite.envs.myo.athletic.register_cpu  # noqa: F401
+
+    with pytest.raises(NotImplementedError, match="elastic"):
+        make_event("100m", model="myofullbody", tendons="elastic")
+    with pytest.raises(NotImplementedError, match="elastic"):
+        make_combined("tf_pentathlon", model="myofullbody", tendons="elastic")
+    assert "myoFullbodyTFPentathlon-v0" in gym.registry
+    assert "myoFullbodyTFPentathlonElastic-v0" not in gym.registry

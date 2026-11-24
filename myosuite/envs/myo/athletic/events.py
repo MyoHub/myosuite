@@ -25,6 +25,12 @@ import gymnasium as gym
 import mujoco
 import numpy as np
 
+from myosuite.envs.myo.athletic.specs import (
+    DEFAULT_TENDONS,
+    PlantSpec,
+    TendonKind,
+    ensure_tendons_applied,
+)
 from myosuite.envs.myo.tasks.basic.full_body.jumps import (
     HIGH_JUMP,
     LONG_JUMP,
@@ -305,7 +311,13 @@ class AthleticEventEnv(gym.Env):
     ``info["event"]["performance"]`` (s for track, m for jumps) and ``info["event"]["points"]`` are set.
     """
 
-    def __init__(self, event: EventSpec | str, model: str | None = None, **kwargs: Any):
+    def __init__(
+        self,
+        event: EventSpec | str,
+        model: str | None = None,
+        tendons: TendonKind = DEFAULT_TENDONS,
+        **kwargs: Any,
+    ):
         from myosuite.envs.myo.athletic.catalog import TASKS, athletic_bundle
         from myosuite.envs.myo.athletic.factory import (
             AthleticModularTaskEnv,
@@ -317,7 +329,8 @@ class AthleticEventEnv(gym.Env):
             raise NotImplementedError(
                 f"{event.title}: {event.kind} events need {sorted(event.requires)} on the plant; not available yet"
             )
-        bundle = athletic_bundle(event.base_task, model)
+        bundle = athletic_bundle(event.base_task, model, tendons)
+        ensure_tendons_applied(bundle)
         task = replace(TASKS[event.base_task], episode_length_s=event.time_limit_s)
         bundle = replace(bundle, task=task)
         cfg = task_config_from_bundle(bundle)
@@ -485,6 +498,23 @@ class AthleticEventEnv(gym.Env):
         return obs, float(reward), bool(terminated), bool(truncated), info
 
 
-def make_event(event: str, model: str | None = None, **kwargs: Any) -> AthleticEventEnv:
-    """A single judged event, e.g. ``make_event("110m_hurdles")`` on ``myofullbody``."""
-    return AthleticEventEnv(event, model, **kwargs)
+def event_env_id(
+    plant: PlantSpec, key: str, tendons: TendonKind = DEFAULT_TENDONS
+) -> str:
+    """Gymnasium id of an event or combined event on a plant, same scheme as the athletic tasks:
+    ``myo<Plant><Event>[Elastic]-v0`` (``myoFullbody100m-v0``, ``myoFullbodySimpleTFPentathlonElastic-v0``)."""
+    title = {"tf_pentathlon": "TFPentathlon"}.get(
+        key, "".join(p[:1].upper() + p[1:] for p in key.split("_"))
+    )
+    suffix = "Elastic" if tendons == "elastic" else ""
+    return f"myo{plant.env_id_prefix}{title}{suffix}-v0"
+
+
+def make_event(
+    event: str,
+    model: str | None = None,
+    tendons: TendonKind = DEFAULT_TENDONS,
+    **kwargs: Any,
+) -> AthleticEventEnv:
+    """A single judged event, e.g. ``make_event("110m_hurdles")`` on ``myofullbody`` with rigid tendons."""
+    return AthleticEventEnv(event, model, tendons, **kwargs)

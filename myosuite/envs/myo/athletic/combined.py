@@ -33,6 +33,13 @@ from myosuite.envs.myo.athletic.events import (
     RUNNABLE_KINDS,
     AthleticEventEnv,
     EventSpec,
+    event_env_id,
+)
+from myosuite.envs.myo.athletic.specs import (
+    DEFAULT_TENDONS,
+    AthleticBundle,
+    TendonKind,
+    ensure_tendons_applied,
 )
 
 
@@ -97,9 +104,10 @@ class CombinedEventEnv(gym.Env):
         combined: CombinedEventSpec | str,
         model: str | None = None,
         mode: Literal["sequence", "random"] = "sequence",
+        tendons: TendonKind = DEFAULT_TENDONS,
         **kwargs: Any,
     ):
-        from myosuite.envs.myo.athletic.catalog import DEFAULT_MODEL, PLANTS
+        from myosuite.envs.myo.athletic.catalog import DEFAULT_MODEL, PLANTS, TASKS
 
         combined = COMBINED_EVENTS[combined] if isinstance(combined, str) else combined
         plant = PLANTS[model or DEFAULT_MODEL]
@@ -109,12 +117,15 @@ class CombinedEventEnv(gym.Env):
                 f"{combined.title} on {plant.key}: events {missing} need capabilities the plant does not "
                 "provide yet (hands, implements, pole)"
             )
+        ensure_tendons_applied(
+            AthleticBundle(task=TASKS["sprint"], plant=plant, tendons=tendons)
+        )
         if mode not in ("sequence", "random"):
             raise ValueError(f"mode must be 'sequence' or 'random', got {mode!r}")
         self.combined = combined
         self.mode = mode
         self.events = [
-            AthleticEventEnv(e, plant.key, **kwargs) for e in combined.specs()
+            AthleticEventEnv(e, plant.key, tendons, **kwargs) for e in combined.specs()
         ]
         n = len(self.events)
         base = self.events[0].observation_space.shape[0]
@@ -174,57 +185,63 @@ class CombinedEventEnv(gym.Env):
 
 
 def make_combined(
-    combined: str = "tf_pentathlon", model: str | None = None, **kwargs: Any
+    combined: str = "tf_pentathlon",
+    model: str | None = None,
+    tendons: TendonKind = DEFAULT_TENDONS,
+    **kwargs: Any,
 ) -> CombinedEventEnv:
     """A combined event on one plant, e.g. ``make_combined("tf_pentathlon", model="myofullbody")``."""
-    return CombinedEventEnv(combined, model, **kwargs)
-
-
-def _title_id(key: str) -> str:
-    return {"tf_pentathlon": "TFPentathlon"}.get(
-        key, "".join(p[:1].upper() + p[1:] for p in key.split("_"))
-    )
+    return CombinedEventEnv(combined, model, tendons=tendons, **kwargs)
 
 
 def register_events_and_combined(
     plants: tuple[str, ...] = ("myofullbody",),
+    tendons: tuple[TendonKind, ...] = ("rigid", "elastic"),
 ) -> list[str]:
     """Register the runnable single events and combined events as CPU Gymnasium ids.
 
-    Ids: ``myo<Plant><Event>-v0`` (``myoFullbody100m-v0``, ``myoFullbodyLongJump-v0``, ...) and
-    ``myo<Plant><Combined>-v0`` (``myoFullbodyTFPentathlon-v0``). Episode limits are set by the events
-    themselves (their ``time_limit_s``); the registered step limit only bounds them.
+    Ids follow the athletic scheme (:func:`~myosuite.envs.myo.athletic.events.event_env_id`):
+    ``myoFullbody100m-v0``, ``myoFullbodyLongJump-v0``, ``myoFullbodyTFPentathlon-v0``; elastic tendons add
+    ``Elastic``. A tendon variant is registered only once its series element is applied, so no id builds a
+    different physics than it names. Episode limits come from the events (``time_limit_s``).
     """
     from myosuite.core.registry import register_env
-    from myosuite.envs.myo.athletic.catalog import PLANTS
+    from myosuite.envs.myo.athletic.catalog import PLANTS, TASKS
 
     ids: list[str] = []
     ctrl_dt = 1.0 / 30.0
     for pk in plants:
         plant = PLANTS[pk]
-        for ev in EVENTS.values():
-            if ev.kind not in RUNNABLE_KINDS or not ev.requires.issubset(
-                plant.capabilities
-            ):
+        for kind in tendons:
+            try:
+                ensure_tendons_applied(
+                    AthleticBundle(task=TASKS["sprint"], plant=plant, tendons=kind)
+                )
+            except NotImplementedError:
                 continue
-            env_id = f"myo{plant.env_id_prefix}{_title_id(ev.key)}-v0"
-            register_env(
-                env_id=env_id,
-                entry_point="myosuite.envs.myo.athletic.events:AthleticEventEnv",
-                max_episode_steps=int(ev.time_limit_s / ctrl_dt) + 10,
-                kwargs={"event": ev.key, "model": pk},
-            )
-            ids.append(env_id)
-        for ce in COMBINED_EVENTS.values():
-            if ce.missing(plant.capabilities):
-                continue
-            env_id = f"myo{plant.env_id_prefix}{_title_id(ce.key)}-v0"
-            total = sum(e.time_limit_s for e in ce.specs())
-            register_env(
-                env_id=env_id,
-                entry_point="myosuite.envs.myo.athletic.combined:CombinedEventEnv",
-                max_episode_steps=int(total / ctrl_dt) + 10 * len(ce.events),
-                kwargs={"combined": ce.key, "model": pk},
-            )
-            ids.append(env_id)
+            for ev in EVENTS.values():
+                if ev.kind not in RUNNABLE_KINDS or not ev.requires.issubset(
+                    plant.capabilities
+                ):
+                    continue
+                env_id = event_env_id(plant, ev.key, kind)
+                register_env(
+                    env_id=env_id,
+                    entry_point="myosuite.envs.myo.athletic.events:AthleticEventEnv",
+                    max_episode_steps=int(ev.time_limit_s / ctrl_dt) + 10,
+                    kwargs={"event": ev.key, "model": pk, "tendons": kind},
+                )
+                ids.append(env_id)
+            for ce in COMBINED_EVENTS.values():
+                if ce.missing(plant.capabilities):
+                    continue
+                env_id = event_env_id(plant, ce.key, kind)
+                total = sum(e.time_limit_s for e in ce.specs())
+                register_env(
+                    env_id=env_id,
+                    entry_point="myosuite.envs.myo.athletic.combined:CombinedEventEnv",
+                    max_episode_steps=int(total / ctrl_dt) + 10 * len(ce.events),
+                    kwargs={"combined": ce.key, "model": pk, "tendons": kind},
+                )
+                ids.append(env_id)
     return ids
