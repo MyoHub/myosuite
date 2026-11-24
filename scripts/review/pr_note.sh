@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Writes the "Local checks" block of a pull request description from the records that scripts/claude_review.sh keeps
+# per commit (in .git/myo-review/). The records are self-reported by the author's machine; they are not proof.
+#
+#   scripts/review/pr_note.sh print [sha]    print the block (default: HEAD)
+#   scripts/review/pr_note.sh update [sha]   replace the block in the open PR of the current branch (needs `gh`)
+#   gh pr create --body "$(scripts/review/pr_note.sh print)"   when opening a PR by hand
+set -euo pipefail
+cmd="${1:-print}"; sha="$(git rev-parse "${2:-HEAD}")"
+rec="$(git rev-parse --git-common-dir)/myo-review"
+start='<!-- myo-review:start -->'; end='<!-- myo-review:end -->'
+
+field() { [[ -f "$1" ]] && sed -n "s/^$2: //p" "$1" | head -1; }
+line() {  # line <label> <check>
+  local f="$rec/$sha.$2"
+  if [[ -f "$f" ]]; then
+    echo "| $1 | $(field "$f" status) | $(field "$f" by) | $(field "$f" at) |"
+  else
+    echo "| $1 | **not run** on this commit | | |"
+  fi
+}
+block() {
+  echo "$start"
+  echo "**Local checks** for \`${sha:0:10}\` (self-reported by \`scripts/claude_review.sh\`; see REVIEW.md)"
+  echo
+  echo "| Check | Result | By | When (UTC) |"
+  echo "|---|---|---|---|"
+  line "pre-commit hooks (branch changes)" precommit
+  line "Claude review (REVIEW.md, ownership)" review
+  local f="$rec/$sha.review"
+  if [[ -f "$f" ]] && grep -q '^---$' "$f"; then
+    echo; echo "<details><summary>Review output</summary>"; echo
+    sed '1,/^---$/d' "$f" | head -c 20000
+    echo; echo "</details>"
+  fi
+  echo "$end"
+}
+
+case "$cmd" in
+  print) block ;;
+  update)
+    command -v gh >/dev/null 2>&1 || exit 0
+    branch="$(git rev-parse --abbrev-ref HEAD)"
+    num="$(gh pr view "$branch" --json number,state -q 'select(.state=="OPEN") | .number' 2>/dev/null || true)"
+    if [[ -z "$num" ]]; then
+      echo "pr_note: no open PR for $branch yet; open it with: gh pr create --body \"\$(scripts/review/pr_note.sh print)\"" >&2
+      exit 0
+    fi
+    body="$(gh pr view "$num" --json body -q .body)"
+    new="$(block)"
+    if grep -qF "$start" <<<"$body"; then
+      body="$(awk -v s="$start" -v e="$end" -v n="$new" '
+        $0==s {print n; skip=1; next} $0==e {skip=0; next} !skip {print}' <<<"$body")"
+    else
+      body="$body"$'\n\n'"$new"
+    fi
+    gh pr edit "$num" --body "$body" >/dev/null && echo "pr_note: updated the Local checks block of PR #$num" >&2 ;;
+  *) echo "usage: pr_note.sh print|update [sha]" >&2; exit 2 ;;
+esac
