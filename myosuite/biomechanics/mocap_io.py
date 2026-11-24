@@ -10,26 +10,30 @@ generalized-force projection lives in :mod:`myosuite.biomechanics.external_loads
 
 from __future__ import annotations
 
-from myosuite.biomechanics.external_loads import force_plates_to_qfrc
-from myosuite.integrations.capture import (
-    C3DTrial,
-    ForcePlateData,
-    MarkerClip,
-    fill_marker_gaps,
-    open_c3d,
-    read_c3d_trial,
-    read_markers,
-    write_trc,
-)
+import importlib
+from typing import Any
 
-__all__ = [
-    "C3DTrial",
-    "ForcePlateData",
-    "MarkerClip",
-    "fill_marker_gaps",
-    "force_plates_to_qfrc",
-    "open_c3d",
-    "read_c3d_trial",
-    "read_markers",
-    "write_trc",
-]
+_EXPORTS: dict[str, str] = {
+    "C3DTrial": "myosuite.integrations.capture.markers",
+    "ForcePlateData": "myosuite.integrations.capture.markers",
+    "MarkerClip": "myosuite.integrations.capture.markers",
+    "fill_marker_gaps": "myosuite.integrations.capture.markers",
+    "force_plates_to_qfrc": "myosuite.biomechanics.external_loads",
+    "open_c3d": "myosuite.integrations.capture.markers",
+    "read_c3d_trial": "myosuite.integrations.capture.markers",
+    "read_markers": "myosuite.integrations.capture.markers",
+    "write_trc": "myosuite.integrations.capture.markers",
+}
+
+__all__ = sorted(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    if name in _EXPORTS:
+        mod = importlib.import_module(_EXPORTS[name])
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
