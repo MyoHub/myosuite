@@ -49,8 +49,8 @@ case "$cmd" in
     body="$(gh pr view "$num" --json body -q .body)"
     new="$(block)"
     if grep -qF "$start" <<<"$body"; then
-      body="$(awk -v s="$start" -v e="$end" -v n="$new" '
-        $0==s {print n; skip=1; next} $0==e {skip=0; next} !skip {print}' <<<"$body")"
+      body="$(S="$start" E="$end" N="$new" awk '
+        $0==ENVIRON["S"] {print ENVIRON["N"]; skip=1; next} $0==ENVIRON["E"] {skip=0; next} !skip {print}' <<<"$body")"
     else
       body="$body"$'\n\n'"$new"
     fi

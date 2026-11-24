@@ -34,7 +34,7 @@ who="$(git config user.name || echo unknown)"
 now="$(date -u +%Y-%m-%dT%H:%MZ)"
 record() {  # record <check> <status> <detail-file|->
   { echo "status: $2"; echo "by: $who"; echo "at: $now"; echo "base: $base @ ${mb:0:10}"
-    [[ "$3" != "-" ]] && { echo "---"; cat "$3"; }; } > "$rec/$head.$1"
+    if [[ "$3" != "-" ]]; then echo "---"; cat "$3"; fi; } > "$rec/$head.$1"
 }
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
 
@@ -87,7 +87,8 @@ fi
 # 3. Update the PR description, when the branch already has an open PR
 "$root/scripts/review/pr_note.sh" update "$head" || true
 
-if [[ "$mode" == "strict" ]] && grep -q '^status: fail' "$rec/$head".* 2>/dev/null; then
-  echo "claude_review: a check failed (MYO_CLAUDE_REVIEW=strict)" >&2; exit 1
+if [[ "$mode" == "strict" ]] && ! grep -qx 'status: pass' "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null \
+   || { [[ "$mode" == "strict" ]] && [[ "$(grep -hx 'status: pass' "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null | wc -l)" -lt 2 ]]; }; then
+  echo "claude_review: pre-commit and the review must both pass (MYO_CLAUDE_REVIEW=strict)" >&2; exit 1
 fi
 exit 0
