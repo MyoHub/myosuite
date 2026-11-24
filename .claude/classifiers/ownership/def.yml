@@ -1,6 +1,0 @@
-version: 1
-description: "Does the change respect the myo_sim / MyoSuite ownership split and state its reuse evidence?"
-model: opus
-tools: [findings, code]
-outputs:
-  result: { type: criteria, values: [pass, fail] }

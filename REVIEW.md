@@ -1,6 +1,6 @@
 # Review rules
 
-These rules apply to every reviewer of a MyoSuite pull request: people, Claude Code Review, PR Steward, Codex and the local
+These rules apply to every reviewer of a MyoSuite pull request: people, Claude Code Review, Codex and the local
 `scripts/claude_review.sh`. `AGENTS.md` (imported by `CLAUDE.md`) points here; edit this file, not copies of it.
 The mirror file in `myo_sim` states the same ownership split from the library side.
 
@@ -27,10 +27,16 @@ The mirror file in `myo_sim` states the same ownership split from the library si
 - Every code PR and updated review summary must state the owner, reused primitives, necessary new logic and code removed/simplified (or why none can be removed), with compatibility and validation evidence. Missing evidence needs revision before approval. Added/deleted line counts inform review; they are not a correctness quota.
 - Reviewers must check the actual diff and imports against that evidence. Existing lint/tests do not establish absence of duplication or correct ownership; do not describe them as enforcing this semantic review gate.
 
-## Authorship of pull requests
+## Checks, approval and authorship
+
+- Tests, lint and this review run locally through pre-commit (`pre-commit install` installs the pre-push review). State
+  in the PR what ran and what did not.
+- Documentation (`docs/**`, `*.md`) may auto-merge. Everything else needs one approval from a person other than the one
+  who opened the pull request.
 
 - A pull request is opened by a person, under their own GitHub account, who owns its design and answers for it. Agents may
-  write code locally for that person, and PR Steward may push follow-up fixes (CI, conflicts, review comments), but an agent
+  write code locally for that person, and `scripts/claude_review.sh --fix` may prepare
+  follow-up fixes for the author to commit, but an agent
   or bot account must not open the pull request. Commits keep the human attribution rules of `AGENTS.md` (no AI co-author
   trailers: CLA).
 - A bot's or an agent's clean review is not a human approval of design or implementation.

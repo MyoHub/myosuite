@@ -150,7 +150,6 @@ exports/
 outputs/
 .claude/*
 !.claude/approvals.yml
-!.claude/classifiers/
 _untracked/
 myosuite/composer/
 myosuite/agents/
