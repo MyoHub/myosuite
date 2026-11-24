@@ -2,7 +2,7 @@
 
 These rules apply to every reviewer of a MyoSuite pull request: people, Claude Code Review, Codex, Antigravity/Gemini and the local
 `scripts/review/local_review.sh`. `AGENTS.md` (imported by `CLAUDE.md`) points here; edit this file, not copies of it.
-The mirror file in `myo_sim` states the same ownership split from the library side.
+The matching [myo_sim agent instructions](https://github.com/MyoHub/myo_sim/blob/dev/AGENTS.md#repository-ownership) state the split from the library side.
 
 ## Scope
 
@@ -20,6 +20,10 @@ The mirror file in `myo_sim` states the same ownership split from the library si
 
 ## Ownership and minimum-change rules
 
+- **Composition boundary:** `myo_sim` owns anatomical assembly (parts, mirroring, tendons and model mechanics). MyoSuite's `ModelBuilder` and scene recipes select/configure those APIs and assemble task objects, targets, fixtures and backend wiring; their existence does not make anatomical transforms MyoSuite-owned.
+- **Physics and validation boundary:** model-only mechanics (e.g. fatigue and joint couplings) and dataset-free structural model checks belong in `myo_sim`. Environment state/action adapters, motion/EMG analysis and experiment evaluation stay in MyoSuite. Preserve thin compatibility imports when migrating existing public APIs.
+- **Dependency direction:** MyoSuite consumes public `myo_sim` APIs; `myo_sim` must work without importing MyoSuite, its environments or its trainers. Method-specific trainers/networks belong in top-level `training/<method>/`, outside the installable MyoSuite package.
+
 - Decide the owner before adding code. `myo_sim` owns reusable model construction and anatomical/physical transforms: geometry and segment scaling, mass/inertia, muscle/tendon parameters and model-only calibration. MyoSuite owns measurement/source adapters, scientific analysis and experiment workflows, task configuration and CPU/mjlab wiring. A workflow estimating subject parameters may stay in MyoSuite; reusable anatomical/physical model transformations must use the canonical `myo_sim` API. Task settings, sensor calibration and experimental control parameters remain with their workflow. The split holds both ways: a pull request to `myo_sim` must not bring task, reward, training or experiment logic into the library.
 - Search both repositories and the relevant dependency APIs before adding a helper, class, wrapper or solver. Record the existing symbols considered and why configuration, composition or a small extension does not suffice. Review behavior and constraints, not a guessed similarity percentage.
 - Prefer the smallest compatible change. Reuse the current composition/physics primitives and public APIs; remove superseded code and update callers within the compatible migration; document any staged compatibility period. Keep only deliberate compatibility facades, not a second algorithm hidden behind a fallback. Preserve distinct numerical objectives when equivalence has not been demonstrated.
@@ -28,6 +32,8 @@ The mirror file in `myo_sim` states the same ownership split from the library si
 - Reviewers must check the actual diff and imports against that evidence. Existing lint/tests do not establish absence of duplication or correct ownership; do not describe them as enforcing this semantic review gate.
 
 ## Checks, approval and authorship
+
+- The local review hook is advisory by default; a successful push is not ownership approval. Missing cross-repository access or ownership evidence remains unverified and needs revision before approval.
 
 - Tests, lint and this review run locally through pre-commit (`pre-commit install` installs the pre-push review). State
   in the PR what ran and what did not.
