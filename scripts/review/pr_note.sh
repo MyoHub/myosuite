@@ -3,7 +3,8 @@
 # per commit (in .git/myo-review/). The records are self-reported by the author's machine; they are not proof.
 #
 #   scripts/review/pr_note.sh print [sha]    print the block (default: HEAD)
-#   scripts/review/pr_note.sh update [sha]   replace the block in the open PR of the current branch (needs `gh`)
+#   scripts/review/pr_note.sh update [sha] [branch]   replace the block in the open PR of <branch> (default: the
+#                                            current branch; needs `gh`)
 #   gh pr create --body "$(scripts/review/pr_note.sh print)"   when opening a PR by hand
 set -euo pipefail
 cmd="${1:-print}"; sha="$(git rev-parse "${2:-HEAD}")"
@@ -30,7 +31,9 @@ block() {
   local f="$rec/$sha.review"
   if [[ -f "$f" ]] && grep -q '^---$' "$f"; then
     echo; echo "<details><summary>Review output</summary>"; echo
-    sed '1,/^---$/d' "$f" | head -c 20000
+    n="$(sed '1,/^---$/d' "$f" | wc -l)"
+    sed '1,/^---$/d' "$f" | head -n 300
+    [[ "$n" -gt 300 ]] && printf '\n(truncated: %s more lines; run scripts/review/pr_note.sh print locally)\n' "$((n-300))"
     echo; echo "</details>"
   fi
   echo "$end"
@@ -40,7 +43,7 @@ case "$cmd" in
   print) block ;;
   update)
     command -v gh >/dev/null 2>&1 || exit 0
-    branch="$(git rev-parse --abbrev-ref HEAD)"
+    branch="${3:-$(git rev-parse --abbrev-ref HEAD)}"; branch="${branch#refs/heads/}"
     num="$(gh pr view "$branch" --json number,state -q 'select(.state=="OPEN") | .number' 2>/dev/null || true)"
     if [[ -z "$num" ]]; then
       echo "pr_note: no open PR for $branch yet; open it with: gh pr create --body \"\$(scripts/review/pr_note.sh print)\"" >&2

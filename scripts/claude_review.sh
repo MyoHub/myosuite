@@ -89,7 +89,7 @@ touch files outside the change. List what you changed and what you left for the 
 fi
 
 # 3. Update the PR description, when the branch already has an open PR
-"$root/scripts/review/pr_note.sh" update "$head" || true
+"$root/scripts/review/pr_note.sh" update "$head" "${PRE_COMMIT_REMOTE_BRANCH:-}" || true
 
 if [[ "$mode" == "strict" ]] && [[ "$(cat "$rec/$head.precommit" "$rec/$head.review" 2>/dev/null | grep -cx 'status: pass')" -lt 2 ]]; then
   echo "claude_review: pre-commit and the review must both pass (MYO_CLAUDE_REVIEW=strict)" >&2; exit 1
