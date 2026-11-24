@@ -43,7 +43,6 @@ TaskKind = Literal[
     "curve",
     "vertical",
     "locomotion",
-    "imitate",
     "uphill_sprint",
     "long_jump",
     "high_jump",
@@ -145,7 +144,6 @@ class PlantSpec:
                 "vertical",
                 "carioca",
                 "locomotion",
-                "imitate",
                 "jumps",
             }
         )

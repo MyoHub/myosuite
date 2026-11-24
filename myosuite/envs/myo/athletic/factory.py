@@ -51,8 +51,6 @@ def task_config_from_bundle(bundle: AthleticBundle) -> TaskConfig:
     reward_term = "sprint"
     if bundle.task.kind == "locomotion":
         reward_term = "heading"
-    elif bundle.task.kind == "imitate":
-        reward_term = "pose"
     elif bundle.task.kind == "vertical":
         reward_term = "sprint"
     elif bundle.task.kind == "curve":

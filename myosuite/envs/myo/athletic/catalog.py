@@ -108,7 +108,6 @@ PLANTS: dict[str, PlantSpec] = {
                 "vertical",
                 "carioca",
                 "locomotion",
-                "imitate",
                 "jumps",
             }
         ),
@@ -139,7 +138,6 @@ PLANTS: dict[str, PlantSpec] = {
                 "vertical",
                 "carioca",
                 "locomotion",
-                "imitate",
                 "jumps",
             }
         ),
@@ -314,23 +312,6 @@ TASKS: dict[str, TaskSpec] = {
             "stand_prob": 0.1,
             "track_sigma": 0.5,
         },
-    ),
-    "imitate": TaskSpec(
-        key="imitate",
-        kind="imitate",
-        athletic=_LANE,
-        heading_mode="forward",
-        reward_terms=(
-            TermRef("rew_imitate_q", weight=1.0),
-            TermRef("rew_imitate_u", weight=0.1),
-            TermRef("rew_limit", weight=_LANE.lambda_limit),
-        ),
-        terminations=("time_out", "fallen"),
-        obs_keys=("joint_pos", "joint_vel", "muscle_act", "ref_q", "ref_u", "time"),
-        scene=None,
-        pose_key="starting_pose_run",
-        requires=frozenset({"imitate"}),
-        extra={"clip_path": None},
     ),
     "uphill_sprint": TaskSpec(
         key="uphill_sprint",

@@ -65,7 +65,6 @@ def test_catalog_covers_msk_envs_sweep():
         "curve",
         "vertical",
         "locomotion",
-        "imitate",
         "uphill_sprint",
     }
     assert expected <= set(TASKS)
@@ -154,7 +153,6 @@ def test_lane_family_bundles_build_cfg(task_key):
         "curve",
         "vertical",
         "locomotion",
-        "imitate",
     ],
 )
 def test_scene_stateful_bundles_build_cfg(task_key):
