@@ -31,7 +31,7 @@ block() {
   local f="$rec/$sha.review"
   if [[ -f "$f" ]] && grep -q '^---$' "$f"; then
     echo; echo "<details><summary>Review output</summary>"; echo
-    n="$(sed '1,/^---$/d' "$f" | wc -l)"
+    n="$(sed '1,/^---$/d' "$f" | wc -l | tr -d ' ')"
     sed '1,/^---$/d' "$f" | head -n 300
     [[ "$n" -gt 300 ]] && printf '\n(truncated: %s more lines; run scripts/review/pr_note.sh print locally)\n' "$((n-300))"
     echo; echo "</details>"
