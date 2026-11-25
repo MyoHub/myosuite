@@ -37,6 +37,7 @@ from myosuite.biomechanics.retarget import (
 )
 from myosuite.core.body_scaling import inherited_scales, scale_spec
 from myosuite.core.trajectory_io import MotionClip
+from myosuite.physics.joint_coupling import JointCouplings
 
 if TYPE_CHECKING:
     from myosuite.viz.muscle_meshes import MuscleMeshReconstruction
@@ -704,12 +705,42 @@ def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
         rot_offsets.append(R_cal.T @ d.xmat[m.body(o.body).id].reshape(3, 3))
 
     orientations = _orientation_targets(m, d, imap.orientations, source_attr="name")
+    extra_girdle_posture: list[tuple[str, float, float]] = []
+    existing_posture_names = {jn for jn, _, _ in imap.posture} | {
+        h.joint for h in imap.hinges
+    }
+    couplings = JointCouplings.from_model(m)
+    driven = np.zeros(m.nv, bool)
+    driven[couplings.dep_dof] = driven[couplings.locked_dof] = True
+    for side in ("_l", "_r"):
+        for base in (
+            "sternoclavicular_r1",
+            "sternoclavicular_r2",
+            "sternoclavicular_r3",
+            "acromioclavicular",
+            "gh_ap",
+            "gh_si",
+            "gh_ml",
+        ):
+            jn = f"{base}{side}"
+            jid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, jn)
+            if (
+                jid >= 0
+                and jn not in existing_posture_names
+                and not driven[m.jnt_dofadr[jid]]
+            ):
+                ref_val = (
+                    0.0
+                    if int(m.jnt_type[jid]) == int(mujoco.mjtJoint.mjJNT_BALL)
+                    else float(q[m.jnt_qposadr[jid]])
+                )
+                extra_girdle_posture.append((jn, ref_val, 0.05))
     lmap = LandmarkMap(
         name=imap.name, version=imap.version, landmarks=landmarks,
         orientations=orientations, feet=imap.feet, twist_pairs=imap.twist_pairs,
         twist_reference=imap.twist_reference, coupling_term=imap.coupling_term,
         period_joint=imap.period_joint,
-        posture=imap.posture + tuple((h.joint, 0.0, h.weight) for h in imap.hinges),
+        posture=imap.posture + tuple(extra_girdle_posture) + tuple((h.joint, 0.0, h.weight) for h in imap.hinges),
     )  # fmt: skip
     leg_len = float(
         0.5
@@ -889,7 +920,9 @@ class InstantHMRSource:
             for k, (h, tab) in enumerate(zip(imap.hinges, c.hinge_table)):
                 a, b, e = (jw[:, _JIDX[j]] for j in h.mhr)
                 theta = _smooth(_segment_angle(a, b, e), self.target_sigma * fps)
-                posture[:, len(imap.posture) + k] = np.interp(theta, tab[1], tab[0])
+                posture[:, len(lmap.posture) - len(imap.hinges) + k] = np.interp(
+                    theta, tab[1], tab[0]
+                )
 
         contact = _foot_contacts(
             sole,

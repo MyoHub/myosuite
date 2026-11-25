@@ -385,8 +385,10 @@ def test_attach_spec_hand_from_arm():
     assert isinstance(hand_spec, mujoco.MjSpec)
     model, _ = ModelBuilder().attach_spec(hand_spec, name="hand").build()
     assert isinstance(model, mujoco.MjModel)
-    # MyoHand: 23 joints driven by 39 muscles, including the finger joints.
-    assert (model.njnt, model.nu) == (23, 39)
+    import myo_sim
+
+    m_ref, _ = myo_sim.load("myohand_r")
+    assert (model.njnt, model.nu) == (m_ref.njnt, m_ref.nu)
     joint_names = {
         mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
         for i in range(model.njnt)
@@ -456,11 +458,13 @@ def test_attach_fragment_hand_routes_through_compose():
     in the legacy myo_sim hand/myohand.xml.
     """
     import mujoco
+    import myo_sim
     from myosuite.core.model_builder import ModelBuilder
 
     model, _ = ModelBuilder().attach_fragment("hand").build()
-    assert model.njnt == 23
-    assert model.nu == 39
+    m_ref, _ = myo_sim.load("myohand_r")
+    assert model.njnt == m_ref.njnt
+    assert model.nu == m_ref.nu
     joint_names = [
         mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
         for i in range(model.njnt)

@@ -22,6 +22,32 @@ from myosuite.terms.base_obs import pose_error_obs
 from myosuite.terms.base_reward import pose_reward
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
+_LEGACY_HAND_POSE_JOINTS: tuple[str, ...] = (
+    "pro_sup_r",
+    "deviation_r",
+    "flexion_r",
+    "cmc_flexion_r",
+    "cmc_abduction_r",
+    "mp_flexion_r",
+    "ip_flexion_r",
+    "mcp2_flexion_r",
+    "mcp2_abduction_r",
+    "pm2_flexion_r",
+    "md2_flexion_r",
+    "mcp3_flexion_r",
+    "mcp3_abduction_r",
+    "pm3_flexion_r",
+    "md3_flexion_r",
+    "mcp4_flexion_r",
+    "mcp4_abduction_r",
+    "pm4_flexion_r",
+    "md4_flexion_r",
+    "mcp5_flexion_r",
+    "mcp5_abduction_r",
+    "pm5_flexion_r",
+    "md5_flexion_r",
+)
+
 
 class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Pose-tracking task for musculoskeletal (or motor) MuJoCo models.
@@ -142,12 +168,16 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 jnt_ranges.append(jnt_range)
             self._target_jnt_ids: list[int] | None = jnt_ids
             self._target_jnt_range: np.ndarray | None = np.array(jnt_ranges)
-            self.target_jnt_value = np.mean(self._target_jnt_range, axis=1)
+            self.target_jnt_value = self._expand_target_pose(
+                np.mean(self._target_jnt_range, axis=1)
+            )
         else:
             self._target_jnt_ids = None
             self._target_jnt_range = None
             self.target_jnt_value = (
-                np.array(target_jnt_value) if target_jnt_value is not None else None
+                self._expand_target_pose(np.array(target_jnt_value, dtype=float))
+                if target_jnt_value is not None
+                else None
             )
 
         # ── Visualisation sites ───────────────────────────────────────────
@@ -233,6 +263,35 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
     # ── Private helpers ────────────────────────────────────────────────────
 
+    def _expand_target_pose(self, tgt: np.ndarray) -> np.ndarray:
+        """Map a compact joint target vector onto full ``(nq,)`` coordinates when needed."""
+        if tgt.size == self.model.nq:
+            return tgt.copy()
+        jids: list[int] | None = None
+        if self._target_jnt_ids is not None and tgt.shape == (
+            len(self._target_jnt_ids),
+        ):
+            jids = self._target_jnt_ids
+        elif tgt.shape == (len(_LEGACY_HAND_POSE_JOINTS),):
+            cand = [
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, jn)
+                for jn in _LEGACY_HAND_POSE_JOINTS
+            ]
+            if all(jid >= 0 for jid in cand):
+                jids = cand
+        if jids is None:
+            return tgt.copy()
+        expanded = self.model.qpos0.copy()
+        for jid, val in zip(jids, tgt):
+            expanded[self.model.jnt_qposadr[jid]] = val
+        try:
+            from myo_sim.scaling import assemble_qpos
+
+            expanded = assemble_qpos(self.model, self.data, expanded)
+        except ImportError:
+            pass
+        return expanded
+
     def _get_target_pose(self) -> np.ndarray:
         """Sample a target pose from the joint range.
 
@@ -242,10 +301,11 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if self.target_type == "fixed":
             return self.target_jnt_value.copy()
         if self.target_type == "generate":
-            return self.np_random.uniform(
+            sampled = self.np_random.uniform(
                 low=self._target_jnt_range[:, 0],
                 high=self._target_jnt_range[:, 1],
             )
+            return self._expand_target_pose(sampled)
         raise TypeError(f"Unknown target_type: {self.target_type!r}")
 
     def _update_target(self, restore_sim: bool = False) -> None:

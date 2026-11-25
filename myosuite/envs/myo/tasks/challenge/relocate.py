@@ -27,6 +27,103 @@ from myosuite.terms.mimic_track import rotation_angle
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
+def _populate_missing_thorax_anchors(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Add missing v0.3.0 scapulothoracic thorax anchors onto thorax_stub."""
+    if (
+        spec.tendon("sc_anterior_ligament_r") is None
+        or spec.site("sc_anterior_ligament-P1_r") is not None
+    ):
+        return spec
+    stub = spec.body("thorax_stub")
+    if stub is None:
+        return spec
+    from myo_sim.build.compose import build_spec
+
+    ref_spec = build_spec("myoarm_r")
+    ref_model = ref_spec.compile()
+    ref_data = mujoco.MjData(ref_model)
+    mujoco.mj_kinematics(ref_model, ref_data)
+
+    clav_id = ref_model.body("clavicle_r").id
+    arm_bodies: set[int] = set()
+    for bid in range(1, ref_model.nbody):
+        cur = bid
+        while cur > 0:
+            if cur == clav_id:
+                arm_bodies.add(bid)
+                break
+            cur = int(ref_model.body_parentid[cur])
+
+    needed_sites: set[str] = set()
+    needed_geoms: set[str] = {"scapulothoracic_ellipsoid_r"}
+    for t in spec.tendons:
+        ref_t = mujoco.mj_name2id(ref_model, mujoco.mjtObj.mjOBJ_TENDON, t.name)
+        if ref_t < 0:
+            continue
+        adr, num = int(ref_model.tendon_adr[ref_t]), int(ref_model.tendon_num[ref_t])
+        for w in range(adr, adr + num):
+            wtype = int(ref_model.wrap_type[w])
+            objid = int(ref_model.wrap_objid[w])
+            if wtype == int(mujoco.mjtWrap.mjWRAP_SITE) and objid >= 0:
+                needed_sites.add(ref_model.site(objid).name)
+            elif (
+                wtype
+                in (
+                    int(mujoco.mjtWrap.mjWRAP_SPHERE),
+                    int(mujoco.mjtWrap.mjWRAP_CYLINDER),
+                )
+                and objid >= 0
+            ):
+                needed_geoms.add(ref_model.geom(objid).name)
+                prm = float(ref_model.wrap_prm[w])
+                if prm >= 0:
+                    needed_sites.add(ref_model.site(int(round(prm))).name)
+
+    for sname in sorted(needed_sites):
+        if not sname or spec.site(sname) is not None:
+            continue
+        sid = mujoco.mj_name2id(ref_model, mujoco.mjtObj.mjOBJ_SITE, sname)
+        if sid >= 0 and int(ref_model.site_bodyid[sid]) not in arm_bodies:
+            stub.add_site(name=sname, pos=ref_data.site_xpos[sid].tolist())
+
+    for gname in sorted(needed_geoms):
+        if not gname or spec.geom(gname) is not None:
+            continue
+        gid = mujoco.mj_name2id(ref_model, mujoco.mjtObj.mjOBJ_GEOM, gname)
+        if gid >= 0 and int(ref_model.geom_bodyid[gid]) not in arm_bodies:
+            gquat = np.zeros(4)
+            mujoco.mju_mat2Quat(gquat, ref_data.geom_xmat[gid])
+            stub.add_geom(
+                name=gname,
+                type=int(ref_model.geom_type[gid]),
+                size=ref_model.geom_size[gid].tolist(),
+                pos=ref_data.geom_xpos[gid].tolist(),
+                quat=gquat.tolist(),
+                group=int(ref_model.geom_group[gid]),
+                rgba=ref_model.geom_rgba[gid].tolist(),
+                contype=0,
+                conaffinity=0,
+            )
+
+    existing_pairs = {(p.geomname1, p.geomname2) for p in spec.pairs}
+    for p in ref_spec.pairs:
+        if (
+            "scapulothoracic_ellipsoid_r" in (p.geomname1, p.geomname2)
+            and (p.geomname1, p.geomname2) not in existing_pairs
+            and spec.geom(p.geomname1) is not None
+            and spec.geom(p.geomname2) is not None
+        ):
+            added = spec.add_pair()
+            added.geomname1 = p.geomname1
+            added.geomname2 = p.geomname2
+            added.condim = p.condim
+            added.friction = list(p.friction)
+            added.solref = list(p.solref)
+            added.solimp = list(p.solimp)
+            added.margin = p.margin
+    return spec
+
+
 class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     """Relocate object to target pose; migrated from BaseV0 for parity."""
 
@@ -93,7 +190,11 @@ class RelocateEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if target_xyz_range is None or target_rxryrz_range is None:
             raise ValueError("target_xyz_range and target_rxryrz_range required")
 
-        self.model, self._mj_spec = ModelBuilder.from_xml_file(model_path).build()
+        self.model, self._mj_spec = (
+            ModelBuilder.from_xml_file(model_path)
+            .apply_transform(_populate_missing_thorax_anchors)
+            .build()
+        )
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 

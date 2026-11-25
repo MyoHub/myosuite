@@ -457,23 +457,34 @@ def _build_native_mimic_fullbody_spec(
     import myo_sim
 
     spec = myo_sim.load_spec(str(config.get("model_name", NATIVE_FULLBODY_MODEL)))
-    if config.disable_fingers:
-        # From the spec: compiling here would leave its sizes stale after the deletions,
-        # and MjSpec.attach checks keyframes against those.
-        joint_pool = frozenset(joint.name for joint in spec.joints)
-        actuator_pool = frozenset(actuator.name for actuator in spec.actuators)
-        joint_tokens = tuple(
-            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
-        )
-        muscle_tokens = tuple(
-            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
-        )
+    disable_fingers = bool(config.disable_fingers)
+    if disable_fingers:
+        try:
+            from myo_sim.build.hand import weld_hand_fingers
+        except ImportError:
+            weld_hand_fingers = None
+        if weld_hand_fingers is not None:
+            weld_hand_fingers(spec)
+            disable_fingers = False
+            joint_tokens = ()
+            muscle_tokens = ()
+        else:
+            # From the spec: compiling here would leave its sizes stale after the deletions,
+            # and MjSpec.attach checks keyframes against those.
+            joint_pool = frozenset(joint.name for joint in spec.joints)
+            actuator_pool = frozenset(actuator.name for actuator in spec.actuators)
+            joint_tokens = tuple(
+                _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
+            )
+            muscle_tokens = tuple(
+                _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
+            )
     else:
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS
 
     return _apply_mimic_fullbody_spec_changes(
-        spec, bool(config.disable_fingers), joint_tokens, muscle_tokens
+        spec, disable_fingers, joint_tokens, muscle_tokens
     )
 
 

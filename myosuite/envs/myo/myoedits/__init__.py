@@ -23,35 +23,43 @@ def edit_fn_arm_reaching(
 ) -> None:
     spec.stat.extent = _REACH_CAMERA_EXTENT
     spec.stat.center = _REACH_CAMERA_CENTER
-    # Get the positions of each body of each digit. Names carry myo_sim's
-    # "_r" (right-side) suffix — this model is built via the "full_arm"
-    # recipe (myo_sim.load_spec("myoarm_r")), not the legacy bare-named XML.
-    root_list = ["firstmc_r", "secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r"]
+    try:
+        from myo_sim.build.hand import weld_hand_fingers
+    except ImportError:
+        weld_hand_fingers = None
 
-    if remove_wrist:
-        root_list = ["lunate_r"]
-        spec.delete(spec.joint("pro_sup_r"))
+    if weld_hand_fingers is not None:
+        weld_hand_fingers(spec, sides=("r",), weld_wrist=bool(remove_wrist))
+    else:
+        # Get the positions of each body of each digit. Names carry myo_sim's
+        # "_r" (right-side) suffix — this model is built via the "full_arm"
+        # recipe (myo_sim.load_spec("myoarm_r")), not the legacy bare-named XML.
+        root_list = ["firstmc_r", "secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r"]
 
-    for root in root_list:
-        recursive_immobilize(spec, None, spec.body(root), remove_sites=False)
+        if remove_wrist:
+            root_list = ["lunate_r"]
+            spec.delete(spec.joint("pro_sup_r"))
 
-    _m = spec.copy().compile()
-    _d = mujoco.MjData(_m)
-    mujoco.mj_step(_m, _d, nstep=100)
+        for root in root_list:
+            recursive_immobilize(spec, None, spec.body(root), remove_sites=False)
 
-    # Now that we immobilized fingers, som muscles have no effect and can be pruned. We check through the tendon
-    # moment arms to find them.
-    J_tendon = np.empty((_m.ntendon, _m.nv))
-    mujoco.mju_sparse2dense(
-        J_tendon, _d.ten_J, _m.ten_J_rownnz, _m.ten_J_rowadr, _m.ten_J_colind
-    )
+        _m = spec.copy().compile()
+        _d = mujoco.MjData(_m)
+        mujoco.mj_step(_m, _d, nstep=100)
 
-    for t in spec.tendons:
-        if np.sum(np.abs(J_tendon[_m.tendon(t.name).id, :])) < min_moment:
-            for a in spec.actuators:
-                if a.target == t.name:
-                    spec.delete(a)
-            spec.delete(t)
+        # Now that we immobilized fingers, som muscles have no effect and can be pruned. We check through the tendon
+        # moment arms to find them.
+        J_tendon = np.empty((_m.ntendon, _m.nv))
+        mujoco.mju_sparse2dense(
+            J_tendon, _d.ten_J, _m.ten_J_rownnz, _m.ten_J_rowadr, _m.ten_J_colind
+        )
+
+        for t in list(spec.tendons):
+            if np.sum(np.abs(J_tendon[_m.tendon(t.name).id, :])) < min_moment:
+                for a in list(spec.actuators):
+                    if a.target == t.name:
+                        spec.delete(a)
+                spec.delete(t)
 
     # Original site name, we'll duplicate the site to match both this site name and the one without the suffix
     og_site = spec.site("IFtip_r")

@@ -374,29 +374,41 @@ def _build_native_mimic_bimanual_spec(
 
     spec = myo_sim.load_spec("myoarms")
 
+    edit_cfg = config
     if config.disable_fingers:
-        model = spec.compile()
-        joint_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
-            for i in range(model.njnt)
-        )
-        actuator_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
-            for i in range(model.nu)
-        )
-        joint_tokens = tuple(
-            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
-        )
-        muscle_tokens = tuple(
-            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
-        )
+        try:
+            from myo_sim.build.hand import weld_hand_fingers
+        except ImportError:
+            weld_hand_fingers = None
+        if weld_hand_fingers is not None:
+            weld_hand_fingers(spec)
+            edit_cfg = config_dict.ConfigDict(config)
+            edit_cfg.disable_fingers = False
+            joint_tokens = ()
+            muscle_tokens = ()
+        else:
+            model = spec.compile()
+            joint_pool = frozenset(
+                mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
+                for i in range(model.njnt)
+            )
+            actuator_pool = frozenset(
+                mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
+                for i in range(model.nu)
+            )
+            joint_tokens = tuple(
+                _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
+            )
+            muscle_tokens = tuple(
+                _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
+            )
     else:
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS
 
     apply_mimic_bimanual_spec_edits(
         spec,
-        config,
+        edit_cfg,
         body2sites=_NATIVE_BODY2SITES_FOR_MIMIC,
         finger_joint_tokens=joint_tokens,
         finger_muscle_tokens=muscle_tokens,

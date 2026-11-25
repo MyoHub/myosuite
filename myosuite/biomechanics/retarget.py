@@ -288,18 +288,41 @@ class LandmarkIK:
         self.indep_qadr = self.red_qadr[self.bounded]
         self._jacp = np.empty((3, m.nv))
         self._jacr = np.empty((3, m.nv))
-        # posture priors: (reduced column, qpos address, value, weight)
+        # posture priors: 1-DoF (reduced column, qpos address, value, weight) and ball joints
+        post_1d_pairs = [
+            (idx, (j, v, w))
+            for idx, (j, v, w) in enumerate(lmap.posture)
+            if int(m.jnt_type[m.joint(j).id]) != int(mujoco.mjtJoint.mjJNT_BALL)
+        ]
+        self.post_1d_idx = np.array([idx for idx, _ in post_1d_pairs], np.int64)
+        post_1d = [item for _, item in post_1d_pairs]
         self.post_col = np.array(
-            [col[m.jnt_dofadr[m.joint(j).id]] for j, _, _ in lmap.posture], np.int64
+            [col[m.jnt_dofadr[m.joint(j).id]] for j, _, _ in post_1d], np.int64
         )
         self.post_qadr = np.array(
-            [m.jnt_qposadr[m.joint(j).id] for j, _, _ in lmap.posture], np.int64
+            [m.jnt_qposadr[m.joint(j).id] for j, _, _ in post_1d], np.int64
         )
-        self.post_ref = np.array([v for _, v, _ in lmap.posture])
-        self.post_w = np.array([w for _, _, w in lmap.posture])
+        self.post_ref = np.array([v for _, v, _ in post_1d], dtype=np.float64)
+        self.post_w = np.array([w for _, _, w in post_1d], dtype=np.float64)
+        self.post_ball: list[tuple[np.ndarray, int, np.ndarray, float]] = []
+        for j, _, w in lmap.posture:
+            jid = m.joint(j).id
+            if int(m.jnt_type[jid]) == int(mujoco.mjtJoint.mjJNT_BALL):
+                dadr, qadr = int(m.jnt_dofadr[jid]), int(m.jnt_qposadr[jid])
+                bcols = col[dadr : dadr + 3]
+                if (bcols < 0).any():
+                    raise ValueError("posture priors must be on independent joints")
+                self.post_ball.append(
+                    (bcols, qadr, m.qpos0[qadr : qadr + 4].copy(), float(w))
+                )
         if (self.post_col < 0).any():
             raise ValueError("posture priors must be on independent joints")
-        self.n_res = 3 * len(self.lm_body) + 3 * len(self.or_body) + len(self.post_w)
+        self.n_res = (
+            3 * len(self.lm_body)
+            + 3 * len(self.or_body)
+            + len(self.post_w)
+            + 3 * len(self.post_ball)
+        )
 
     # -- helpers
     def project(self, qpos: np.ndarray) -> np.ndarray:
@@ -367,8 +390,21 @@ class LandmarkIK:
             mujoco.mju_mulQuat(qerr, d.xquat[b], neg)
             res.append(W[k] @ _so3_log_quat(qerr))
         if len(self.post_w):
-            ref = self.post_ref if posture is None else posture
+            ref = (
+                self.post_ref
+                if posture is None
+                else (
+                    posture[self.post_1d_idx]
+                    if len(posture) != len(self.post_w)
+                    else posture
+                )
+            )
             res.append(self.post_w * (qpos[self.post_qadr] - ref))
+        for _, qadr, qref, bw in self.post_ball:
+            neg = np.empty(4)
+            mujoco.mju_negQuat(neg, qref)
+            mujoco.mju_mulQuat(qerr, neg, qpos[qadr : qadr + 4])
+            res.append(bw * _so3_log_quat(qerr))
         if prev is not None:
             dq = np.empty(m.nv)
             mujoco.mj_differentiatePos(m, dq, 1.0, prev, qpos)
@@ -376,7 +412,7 @@ class LandmarkIK:
         r = np.concatenate(res)
         if not jac:
             return r, None
-        J = np.empty((self.n_res, m.nv))
+        J = np.empty((3 * len(self.lm_body) + 3 * len(self.or_body), m.nv))
         for i, b in enumerate(self.lm_body):
             mujoco.mj_jac(m, d, self._jacp, None, p[i], b)
             J[3 * i : 3 * i + 3] = self._jacp * self.lm_w[i]
@@ -384,11 +420,15 @@ class LandmarkIK:
         for k, b in enumerate(self.or_body):
             mujoco.mj_jacBody(m, d, None, self._jacr, b)
             J[o + 3 * k : o + 3 * k + 3] = W[k] @ self._jacr
-        Jr = J[: o + 3 * len(self.or_body)] @ self._coupling_map(qpos)
+        Jr = J @ self._coupling_map(qpos)
         if len(self.post_w):
             Jp = np.zeros((len(self.post_w), self.nr))
             Jp[np.arange(len(self.post_w)), self.post_col] = self.post_w
             Jr = np.vstack([Jr, Jp])
+        for bcols, _, _, bw in self.post_ball:
+            Jb = np.zeros((3, self.nr))
+            Jb[np.arange(3), bcols] = bw
+            Jr = np.vstack([Jr, Jb])
         if prev is not None:
             Jr = np.vstack([Jr, self.config.smooth_weight * np.eye(self.nr)])
         return r, Jr

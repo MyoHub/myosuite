@@ -1235,9 +1235,9 @@ def test_reconstruct_muscle_meshes_volumetric_static_opt_and_glb(
         target_sigma=0.0,
     )
     mus = recon.muscles
-    assert mus.num_muscles == 80
+    assert mus.num_muscles == m_leg.nu
     assert isinstance(mus.vertices, np.ndarray)
-    assert mus.vertices.shape[:2] == (T, 80)
+    assert mus.vertices.shape[:2] == (T, m_leg.nu)
     assert mus.faces.ndim == 2 and mus.faces.shape[1] == 3
     assert np.isfinite(mus.activation).all()
     assert float(mus.activation.min()) >= 0.0
@@ -1273,7 +1273,7 @@ def test_reconstruct_muscle_meshes_volumetric_static_opt_and_glb(
     npz_path = mus.save_npz(tmp_path / "leg_muscles.npz")
     with np.load(npz_path, allow_pickle=False) as d:
         assert d["vertices"].shape == mus.vertices.shape
-        assert d["activation"].shape == (T, 80)
+        assert d["activation"].shape == (T, m_leg.nu)
         assert list(d["muscle_names"])[rf_idx] == "recfem_r"
 
 
