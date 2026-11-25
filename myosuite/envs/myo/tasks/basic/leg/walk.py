@@ -24,14 +24,14 @@ from myosuite.core.body_scaling import scale_spec
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.terms.base_reward import (
+from myosuite.core.terms.base_reward import (
     locomotion_solved,
     locomotion_streak,
     locomotion_sustained,
     walk_env_reward,
 )
 from myosuite.physics.quat_math import quat2mat
-from myosuite.terms.base_obs import com_linear_velocity
+from myosuite.core.terms.base_obs import com_linear_velocity
 
 
 class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):

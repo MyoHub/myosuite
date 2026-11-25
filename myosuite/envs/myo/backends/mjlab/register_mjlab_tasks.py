@@ -50,7 +50,7 @@ from myosuite.core.config import TaskConfig
 from myosuite.physics.joint_coupling import JointCouplings
 from myosuite.physics.quat import quat_yaw
 from myosuite.envs.myo.assets._resolve import resolve_elbow_xml as _resolve_elbow_xml
-from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,

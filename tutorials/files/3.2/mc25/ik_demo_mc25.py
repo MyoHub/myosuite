@@ -23,7 +23,7 @@ from myosuite.envs.myo.assets._resolve import resolve_arm_xml
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     TableTennisEnv as TableTennisEnvV0,
 )
-from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
 
 _XML_TABLETENNIS = str(
     resolve_model_xml_path(resolve_arm_xml("myoarm_tabletennis.xml"))

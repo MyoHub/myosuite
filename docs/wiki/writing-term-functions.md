@@ -2,7 +2,7 @@
 
 Term functions are pure functions that read physics state through an `EnvAccessor` and run identically on CPU (numpy) and mjlab (torch), and on the experimental MJX path (jax.numpy).
 
-All term functions live in `myosuite/terms/`.
+All backend-agnostic term functions live in `myosuite/core/terms/` (with backward-compatible aliases at `myosuite/terms/`).
 
 ## Signatures
 
@@ -60,7 +60,7 @@ def pose_tracking_reward(
             "done": xp.zeros_like(dist, dtype=bool)}
 ```
 
-Select terms by name or pass the function. A name `"foo"` resolves to `foo_obs` / `foo_reward` in `myosuite/terms/`;
+Select terms by name or pass the function. A name `"foo"` resolves to `foo_obs` / `foo_reward` in `myosuite/core/terms/`;
 a function is labelled by its `__name__`, which is also the key of `RewardSpec.weights`:
 
 ```python

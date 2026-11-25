@@ -6,7 +6,7 @@
 
 Provides:
 - ``MjxEnvAccessor``: wraps ``mjx.Data`` and implements the ``EnvAccessor``
-  protocol so that term functions in ``myosuite/terms/`` work on the MJX path.
+  protocol so that term functions in ``myosuite/core/terms/`` work on the MJX path.
 - ``MyoMjxEnvBase``: thin template base that handles ``reset()`` / ``step()``
   boilerplate (physics step, auto-reset, obs/reward assembly) and delegates
   task logic to subclass template methods.
@@ -46,7 +46,7 @@ from mujoco import mjx
 from myosuite.core.protocols import PhysicsPath
 from myosuite.envs.myo.backends.mjx import brax_env
 from myosuite.envs.myo.backends.mjx.brax_env import State
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
 
 EXPERIMENTAL_WARNING = (
     "The MyoSuite MJX backend is experimental and may not be maintained "
@@ -69,7 +69,7 @@ class MjxEnvAccessor:
 
     Wraps a read-only snapshot of ``mjx.Model`` + ``mjx.Data`` and returns
     ``jax.Array`` from every accessor method so that term functions in
-    ``myosuite/terms/`` remain backend-agnostic.
+    ``myosuite/core/terms/`` remain backend-agnostic.
 
     Args:
         model: Compiled MJX model (device-side).

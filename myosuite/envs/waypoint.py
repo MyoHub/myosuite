@@ -7,7 +7,7 @@
 The registered ``myoFullBodyWaypoint-v0`` (MyoFullBody, random routes on flat
 ground) has an mjlab twin built from its registration. For a custom scene, pass a
 model recipe and an ``edit_fn`` (twin-compatible) or a compiled model (CPU only).
-The goal logic lives in :mod:`myosuite.terms.waypoint`, shared with the twin.
+The goal logic lives in :mod:`myosuite.core.terms.waypoint`, shared with the twin.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from numpy.typing import ArrayLike
 from myosuite.core.model_builder import build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.muscle_stages import CtrlStageHost
-from myosuite.terms.base_obs import joint_vel_obs, muscle_act_obs
-from myosuite.terms.waypoint import (
+from myosuite.core.terms.base_obs import joint_vel_obs, muscle_act_obs
+from myosuite.core.terms.waypoint import (
     WaypointRewardCfg,
     WaypointRouteCfg,
     distance_to_next,

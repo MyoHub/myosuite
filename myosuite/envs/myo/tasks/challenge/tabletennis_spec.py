@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import mujoco
 
-from myosuite.utils.spec_processing import (
+from myosuite.core.builder.spec_processing import (
     recursive_immobilize,
     recursive_mirror,
     recursive_remove_contacts,

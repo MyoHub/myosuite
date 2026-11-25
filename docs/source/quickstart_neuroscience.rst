@@ -257,7 +257,7 @@ raise a ``TypeError`` instead of ignoring the wrapper.
 
    from myosuite import make_env
    from myosuite.envs.wrappers import MotorNoiseWrapper
-   from myosuite.terms.base_action import MotorNoiseCfg
+   from myosuite.core.terms.base_action import MotorNoiseCfg
 
    # Levels 0.103 (signal-dependent) and 0.185 (constant), after van Beers et al. (2004).
    env = MotorNoiseWrapper(make_env('myoElbowPose1D6MRandom-v0'), MotorNoiseCfg.van_beers_2004())

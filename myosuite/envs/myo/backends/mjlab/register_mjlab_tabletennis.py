@@ -59,7 +59,7 @@ from myosuite.envs.myo.backends.mjlab.tasks.rl import (
 from myosuite.envs.myo.tasks.challenge.tabletennis import (
     ContactTrajIssue,
 )
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
 
 logger = logging.getLogger(__name__)
 

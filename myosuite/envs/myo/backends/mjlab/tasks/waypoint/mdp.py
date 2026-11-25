@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""MDP terms of the waypoint twin; the goal logic is :mod:`myosuite.terms.waypoint`."""
+"""MDP terms of the waypoint twin; the goal logic is :mod:`myosuite.core.terms.waypoint`."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import (
 )
 from myosuite.envs.waypoint import WaypointTaskCfg
 from myosuite.physics.joint_coupling import project_joint_couplings
-from myosuite.terms.base_obs import joint_vel_obs, muscle_act_obs
-from myosuite.terms.waypoint import (
+from myosuite.core.terms.base_obs import joint_vel_obs, muscle_act_obs
+from myosuite.core.terms.waypoint import (
     distance_to_next,
     heading_yaw,
     perturb_qpos,
@@ -69,7 +69,7 @@ class WaypointCommand(CommandTerm):
     """Routes drawn (or restored) at reset and advanced by :func:`advance_route`.
 
     The command is the route, ``(N, 2W)``. ``state`` holds the last step's
-    :func:`~myosuite.terms.waypoint.waypoint_progress` result plus ``failed``.
+    :func:`~myosuite.core.terms.waypoint.waypoint_progress` result plus ``failed``.
     """
 
     cfg: WaypointCommandCfg

@@ -40,7 +40,7 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.physics.quat_math_jax import quat2mat
-from myosuite.terms.base_obs import com_linear_velocity
+from myosuite.core.terms.base_obs import com_linear_velocity
 
 
 class MjxWalkEnv(MyoMjxEnvBase):

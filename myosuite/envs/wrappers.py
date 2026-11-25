@@ -417,7 +417,7 @@ class MotorNoiseWrapper(
     constant_std * n2, 0, 1)`` with independent standard normals per muscle and
     control step, drawn from the env's seeded ``np_random`` after the env's
     action-to-excitation map and before fatigue (see
-    :class:`~myosuite.terms.base_action.MotorNoiseCfg`). A disabled config draws
+    :class:`~myosuite.core.terms.base_action.MotorNoiseCfg`). A disabled config draws
     nothing, so the random stream of the env is unchanged.
 
     Example::
@@ -428,13 +428,13 @@ class MotorNoiseWrapper(
 
     Args:
         env: Env whose pipeline runs muscle stages.
-        motor_noise: A :class:`~myosuite.terms.base_action.MotorNoiseCfg`, a dict
+        motor_noise: A :class:`~myosuite.core.terms.base_action.MotorNoiseCfg`, a dict
             of its fields or ``None`` (off). Call ``env.set_motor_noise(...)`` to
             change the levels during a run.
     """
 
     def __init__(self, env: gym.Env, motor_noise: Any = None) -> None:
-        from myosuite.terms.base_action import MotorNoiseCfg  # noqa: PLC0415
+        from myosuite.core.terms.base_action import MotorNoiseCfg  # noqa: PLC0415
 
         RecordConstructorArgs.__init__(self, motor_noise=motor_noise)
         gym.Wrapper.__init__(self, env)
@@ -452,7 +452,7 @@ class MotorNoiseWrapper(
         Unlike assigning ``env.motor_noise``, which only reaches this wrapper when it
         is the outermost one, the call is forwarded through the wrappers on top.
         """
-        from myosuite.terms.base_action import MotorNoiseCfg  # noqa: PLC0415
+        from myosuite.core.terms.base_action import MotorNoiseCfg  # noqa: PLC0415
 
         self.motor_noise = MotorNoiseCfg.from_value(motor_noise)
 

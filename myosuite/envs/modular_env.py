@@ -45,7 +45,7 @@ from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.model_recipes import _MUSCLEMIMIC_NAMES, _musclemimic_build
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.muscle_stages import CtrlStageHost
-from myosuite.terms.base_reward import locomotion_streak, locomotion_sustained
+from myosuite.core.terms.base_reward import locomotion_streak, locomotion_sustained
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def _load_obs_fn(key: str) -> Any:
     """Resolve an observation term key to its callable.
 
     Convention: ``key`` maps to ``<key>_obs`` in
-    ``myosuite.terms.base_obs``.
+    ``myosuite.core.terms.base_obs``.
 
     Args:
         key: Observation term name (e.g. ``"joint_pos"``).
@@ -74,12 +74,12 @@ def _load_obs_fn(key: str) -> Any:
     Raises:
         AttributeError: If no matching function exists in ``base_obs``.
     """
-    mod = importlib.import_module("myosuite.terms.base_obs")
+    mod = importlib.import_module("myosuite.core.terms.base_obs")
     fn_name = f"{key}{_OBS_TERM_SUFFIX}"
     if not hasattr(mod, fn_name):
         raise AttributeError(
             f"Observation term {key!r} not found: expected function "
-            f"{fn_name!r} in myosuite.terms.base_obs. "
+            f"{fn_name!r} in myosuite.core.terms.base_obs. "
             f"Available: {[n for n in dir(mod) if n.endswith(_OBS_TERM_SUFFIX)]}"
         )
     return getattr(mod, fn_name)
@@ -89,7 +89,7 @@ def _load_reward_fn(term: str) -> Any:
     """Resolve a reward term name to its callable.
 
     Convention: ``term`` maps to ``<term>_reward`` in
-    ``myosuite.terms.base_reward``, with a fallback to an exact
+    ``myosuite.core.terms.base_reward``, with a fallback to an exact
     match for terms like ``"act_reg"`` and ``"joint_penalty"`` that do
     not follow the ``_reward`` suffix pattern.
 
@@ -102,14 +102,14 @@ def _load_reward_fn(term: str) -> Any:
     Raises:
         AttributeError: If no matching function can be found.
     """
-    mod = importlib.import_module("myosuite.terms.base_reward")
+    mod = importlib.import_module("myosuite.core.terms.base_reward")
     # Try <term>_reward first, then exact match
     for fn_name in (f"{term}{_REWARD_TERM_SUFFIX}", term):
         if hasattr(mod, fn_name):
             return getattr(mod, fn_name)
     available = [n for n in dir(mod) if not n.startswith("_")]
     raise AttributeError(
-        f"Reward term {term!r} not found in myosuite.terms.base_reward. "
+        f"Reward term {term!r} not found in myosuite.core.terms.base_reward. "
         f"Available: {available}"
     )
 
@@ -243,11 +243,11 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
 
     The observation vector is assembled by calling each named function in
     ``task_config.obs.keys`` (resolved from
-    ``myosuite.terms.base_obs``) and concatenating the results.
+    ``myosuite.core.terms.base_obs``) and concatenating the results.
 
     The reward scalar is the weighted sum of each term in
     ``task_config.reward.terms`` (resolved from
-    ``myosuite.terms.base_reward``).  The ``"done"`` flag is ``True``
+    ``myosuite.core.terms.base_reward``).  The ``"done"`` flag is ``True``
     if any reward term returns ``"done": True``.
 
     Args:

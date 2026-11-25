@@ -5,7 +5,7 @@
 """Manager terms of the ``myoMimic-v0`` twin.
 
 Each term reads the shared tracking state of the motion command and calls a pure term
-of :mod:`myosuite.terms.mimic_track`. The pure function is attached as ``func.pure``
+of :mod:`myosuite.core.terms.mimic_track`. The pure function is attached as ``func.pure``
 (called with ``(xp, state, features, ref, **params)`` minus ``command_name``), so a
 learning method can score states it did not simulate with the env cfg's own terms
 and params.
@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 
-from myosuite.terms import mimic_track as mt
+from myosuite.core.terms import mimic_track as mt
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv

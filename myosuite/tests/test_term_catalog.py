@@ -7,6 +7,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+from pathlib import Path
 import pkgutil
 import subprocess
 import sys
@@ -84,21 +85,50 @@ def test_catalog_cli_json_markdown_and_import_footprint(
 
 
 def test_catalog_covers_term_modules() -> None:
-    import myosuite.terms as terms
+    import myosuite.core.terms as core_terms
+    import myosuite.terms as legacy_terms
 
-    # Enumerate files independently: new modules must be classified explicitly.
-    discovered = {
-        module.name
-        for module in pkgutil.walk_packages(terms.__path__, terms.__name__ + ".")
-        if not module.ispkg
-        and module.name != "myosuite.terms.catalog"
-        and not module.name.rsplit(".", 1)[-1].startswith("_")
-    }
+    # Enumerate canonical modules under core.terms plus any non-shim modules still
+    # living under myosuite.terms (e.g. chase_tag_vs_{obs,reward} until task co-location).
+    discovered: set[str] = set()
+    for pkg in (core_terms, legacy_terms):
+        for module in pkgutil.walk_packages(pkg.__path__, pkg.__name__ + "."):
+            if (
+                module.ispkg
+                or module.name == "myosuite.terms.catalog"
+                or module.name.rsplit(".", 1)[-1].startswith("_")
+            ):
+                continue
+            loaded = importlib.import_module(module.name)
+            if loaded.__name__ == module.name:
+                discovered.add(module.name)
+
     indexed = [name for names in TERM_MODULES.values() for name in names]
     assert len(indexed) == len(set(indexed)), "Term modules must have one category"
     assert (
         set(indexed) == discovered
     ), "Update TERM_MODULES for added/moved/removed modules"
+
+    from myosuite.terms.catalog import _MJLAB_MDP_MODULES
+
+    pkg_root = Path(core_terms.__file__).resolve().parents[2]
+    mdp_dir = pkg_root / "envs/backends/mjlab/tasks/mdp"
+    if not list(mdp_dir.glob("*.py")):
+        mdp_dir = pkg_root / "envs/myo/backends/mjlab/tasks/mdp"
+    on_disk_stems = {p.stem for p in mdp_dir.glob("*.py") if not p.name.startswith("_")}
+    configured_stems = {m.rsplit(".", 1)[-1] for m in _MJLAB_MDP_MODULES}
+    assert (
+        configured_stems == on_disk_stems
+    ), f"Sync _MJLAB_MDP_MODULES with {mdp_dir}: {configured_stems} vs {on_disk_stems}"
+
+    # CLI -m invocation check
+    proc = subprocess.run(
+        [sys.executable, "-m", "myosuite.terms.catalog", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0 and "--kind" in proc.stdout, proc.stderr
 
 
 def test_catalog_covers_public_wrappers() -> None:

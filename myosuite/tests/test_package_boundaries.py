@@ -39,10 +39,12 @@ _FORBIDDEN_EXTERNAL_IMPORTS = frozenset({"training", "tools", "scripts"})
 # Allowed runtime imports between myosuite.<src> and myosuite.<dst> subpackages.
 # "__root__" denotes myosuite/__init__.py and myosuite/version.py.
 _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
-    "__root__": frozenset({"__root__", "core", "envs", "utils"}),
+    "__root__": frozenset(
+        {"__root__", "core", "envs", "logger", "scenes", "terms", "utils"}
+    ),
     # Foundation & numerical helpers
-    "core": frozenset({"__root__", "core"}),
-    "physics": frozenset({"__root__", "core", "physics"}),
+    "core": frozenset({"__root__", "core", "physics"}),
+    "physics": frozenset({"__root__", "physics"}),
     "scenes": frozenset({"__root__", "core", "scenes"}),
     "terms": frozenset({"__root__", "core", "physics", "terms"}),
     # Solvers & lightweight source/ecosystem adapters
@@ -93,21 +95,17 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
     ),
 }
 
-# Pre-existing cross-layer runtime edges on dev (31 edges), burned down as migrations land.
+# Pre-existing cross-layer runtime edges on dev (27 edges), burned down as migrations land.
 # Do not add entries here; place new runtime logic in its canonical layer.
 _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
     {
         ("biomechanics/retarget_instanthmr.py", "viz"),
         ("core/config.py", "envs"),
         ("core/model_builder.py", "envs"),
-        ("core/model_builder.py", "utils"),
         ("core/model_recipes.py", "envs"),
         ("core/model_recipes.py", "integrations"),
-        ("core/model_recipes.py", "utils"),
         ("core/registry.py", "envs"),
         ("core/retargeting.py", "integrations"),
-        ("core/retargeting.py", "physics"),
-        ("core/trajectory_yaw.py", "physics"),
         ("envs/gymnasium_env.py", "viz"),
         ("envs/heightfields.py", "viz"),
         ("envs/multi_agent_modular_env.py", "viz"),
@@ -130,6 +128,35 @@ _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
         ("viz/mjlab_play.py", "utils"),
     }
 )
+
+_COMPATIBILITY_MODULE_SHIMS: tuple[tuple[str, str], ...] = (
+    ("myosuite.scenes.library", "myosuite.core.builder.scene_library"),
+    ("myosuite.scenes.scene_builder", "myosuite.core.builder.scene_builder"),
+    ("myosuite.envs.myo.myoedits.model_editor", "myosuite.core.builder.model_editor"),
+    ("myosuite.utils.spec_processing", "myosuite.core.builder.spec_processing"),
+    ("myosuite.utils.mujoco_geom_utils", "myosuite.core.builder.mujoco_geom_utils"),
+    ("myosuite.utils.mujoco_joint_utils", "myosuite.core.builder.mujoco_joint_utils"),
+    ("myosuite.utils.asset_path_resolver", "myosuite.core.builder.asset_path_resolver"),
+    ("myosuite.utils.colored_noise", "myosuite.physics.colored_noise"),
+    ("myosuite.terms._array", "myosuite.core.terms._array"),
+    ("myosuite.terms.base_action", "myosuite.core.terms.base_action"),
+    ("myosuite.terms.base_event", "myosuite.core.terms.base_event"),
+    ("myosuite.terms.base_obs", "myosuite.core.terms.base_obs"),
+    ("myosuite.terms.base_reward", "myosuite.core.terms.base_reward"),
+    ("myosuite.terms.base_termination", "myosuite.core.terms.base_termination"),
+    ("myosuite.terms.mimic_obs", "myosuite.core.terms.mimic_obs"),
+    ("myosuite.terms.mimic_reward", "myosuite.core.terms.mimic_reward"),
+    ("myosuite.terms.mimic_track", "myosuite.core.terms.mimic_track"),
+    (
+        "myosuite.terms.opponent_relative_obs",
+        "myosuite.core.terms.opponent_relative_obs",
+    ),
+    ("myosuite.terms.waypoint", "myosuite.core.terms.waypoint"),
+    ("myosuite.terms.multiplayer.common", "myosuite.core.terms.multiplayer.common"),
+    ("myosuite.terms.multiplayer.heading", "myosuite.core.terms.multiplayer.heading"),
+)
+
+_OPTIONAL_TOP_LEVEL_DEPS = frozenset({"jax", "mink", "torch", "onnxruntime"})
 
 
 def _runtime_python_files() -> list[Path]:
@@ -223,23 +250,20 @@ def _runtime_imports(py_file: Path) -> list[str]:
             if node.level == 0:
                 if node.module:
                     imports.append(node.module)
-                    if node.module == "myosuite":
+                    if node.module == "myosuite" or node.module.startswith("myosuite."):
                         for alias in node.names:
                             if alias.name != "*":
-                                imports.append(f"myosuite.{alias.name}")
+                                imports.append(f"{node.module}.{alias.name}")
             else:
+                base_mod = _resolve_relative_module(
+                    rel_parts, is_pkg, node.module, node.level
+                )
                 if node.module:
-                    imports.append(
-                        _resolve_relative_module(
-                            rel_parts, is_pkg, node.module, node.level
-                        )
-                    )
-                else:
-                    for alias in node.names:
+                    imports.append(base_mod)
+                for alias in node.names:
+                    if alias.name != "*":
                         imports.append(
-                            _resolve_relative_module(
-                                rel_parts, is_pkg, alias.name, node.level
-                            )
+                            f"{base_mod}.{alias.name}" if base_mod else alias.name
                         )
         elif (
             isinstance(node, ast.Call)
@@ -317,12 +341,27 @@ def test_myosuite_never_imports_out_of_wheel_or_test_packages() -> None:
 
 def test_myosuite_internal_import_dag() -> None:
     """Enforce the upward module import DAG across ``myosuite/``."""
+    shim_map = dict(_COMPATIBILITY_MODULE_SHIMS)
+    shim_imports: list[str] = []
     violations: set[tuple[str, str]] = set()
     for path in _runtime_python_files():
         rel = path.relative_to(_PACKAGE)
+        rel_posix = rel.as_posix()
         src_sub = rel.parts[0] if len(rel.parts) > 1 else "__root__"
         allowed = _ALLOWED_INTERNAL_IMPORTS[src_sub]
+        is_shim_or_facade = (
+            f"myosuite.{rel_posix.removesuffix('.py').replace('/', '.')}" in shim_map
+            or rel_posix
+            in {
+                "scenes/__init__.py",
+                "terms/__init__.py",
+                "terms/multiplayer/__init__.py",
+            }
+        )
         for mod in _runtime_imports(path):
+            if not is_shim_or_facade and mod in shim_map:
+                shim_imports.append(f"{rel_posix} -> {mod} (use {shim_map[mod]})")
+            mod = shim_map.get(mod, mod)
             parts = mod.split(".")
             if parts[0] != "myosuite" or len(parts) < 2:
                 continue
@@ -332,6 +371,10 @@ def test_myosuite_internal_import_dag() -> None:
             if dst_sub not in allowed:
                 violations.add((rel.as_posix(), dst_sub))
 
+    assert not shim_imports, (
+        "Non-facade runtime modules must import canonical paths rather than compatibility shims:\n  "
+        + "\n  ".join(sorted(shim_imports))
+    )
     unexpected = sorted(violations - _LEGACY_CROSS_IMPORTS)
     assert not unexpected, (
         "Forbidden cross-subpackage runtime imports detected (see docs/wiki/repository-map.md):\n  "
@@ -359,6 +402,8 @@ def test_runtime_imports_checks_type_checking_else_and_import_module(
         "else:\n"
         "    import myosuite.envs\n"
         "from myosuite import logger, make_env\n"
+        "from myosuite.terms import mimic_track\n"
+        "from ..utils import asset_path_resolver\n"
         "importlib.import_module('myosuite.integrations')\n"
         "importlib.import_module('.submod', package='myosuite.biomechanics')\n",
         encoding="utf-8",
@@ -369,5 +414,70 @@ def test_runtime_imports_checks_type_checking_else_and_import_module(
     assert "myosuite.envs" in found
     assert "myosuite.logger" in found
     assert "myosuite.make_env" in found
+    assert "myosuite.terms.mimic_track" in found
+    assert "myosuite.utils.asset_path_resolver" in found
     assert "myosuite.integrations" in found
     assert "myosuite.biomechanics.submod" in found
+
+
+def test_compatibility_shims_are_pure_aliases() -> None:
+    """Every migrated shim must resolve to the identical module object and define zero new classes/functions."""
+    import importlib
+
+    for legacy_mod, canonical_mod in _COMPATIBILITY_MODULE_SHIMS:
+        shim_file = _REPO / f"{legacy_mod.replace('.', '/')}.py"
+        assert shim_file.is_file(), f"Missing shim file: {shim_file}"
+        tree = ast.parse(shim_file.read_text(encoding="utf-8"), filename=str(shim_file))
+        defs = [
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        ]
+        assert (
+            not defs
+        ), f"Compatibility shim {shim_file} must not define classes/functions: {defs}"
+        try:
+            legacy = importlib.import_module(legacy_mod)
+            canonical = importlib.import_module(canonical_mod)
+        except ModuleNotFoundError as exc:
+            missing_top = (exc.name or "").split(".")[0]
+            if missing_top in _OPTIONAL_TOP_LEVEL_DEPS:
+                continue
+            raise
+        assert (
+            legacy is canonical
+        ), f"{legacy_mod} ({legacy!r}) is not identical to {canonical_mod} ({canonical!r})"
+
+    for scene_file in (_PACKAGE / "scenes").rglob("*.py"):
+        tree = ast.parse(
+            scene_file.read_text(encoding="utf-8"), filename=str(scene_file)
+        )
+        defs = [
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        ]
+        assert not defs, f"Closed facade {scene_file} must not define new logic: {defs}"
+
+
+def test_scenes_package_binds_library_submodule_in_fresh_process() -> None:
+    """Legacy package attribute access (``myosuite.scenes.library``, ``myosuite.terms.*``, ``myosuite.utils.*``) works in a fresh interpreter."""
+    import sys
+
+    code = (
+        "import myosuite, myosuite.scenes as s; "
+        "assert hasattr(s, 'library') and s.library.SCENES; "
+        "assert myosuite.utils.spec_processing is not None; "
+        "assert myosuite.utils.asset_path_resolver is not None; "
+        "assert myosuite.terms.waypoint is not None; "
+        "assert myosuite.terms.opponent_relative_obs is not None; "
+        "assert myosuite.terms.multiplayer.heading is not None"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr

@@ -16,7 +16,7 @@ on it.
 
 .. code-block:: text
 
-                         myosuite/terms/          ← shared obs/reward/action terms
+                         myosuite/core/terms/     ← shared obs/reward/action terms
                               │
            ┌──────────────────┼──────────────────┐
            ▼                  ▼                  ▼
@@ -51,7 +51,7 @@ Train with ``python scripts/train_mjlab.py <env_id> --env.scene.num-envs 1024``.
 Terms
 -----
 
-Pure functions in ``myosuite/terms/``:
+Pure functions in ``myosuite/core/terms/``:
 
 * ``base_obs.py`` — observation terms (``foo`` → ``foo_obs``)
 * ``base_reward.py`` — reward terms (``foo`` → ``foo_reward``)

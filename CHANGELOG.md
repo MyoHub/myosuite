@@ -29,6 +29,10 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Fixed
 
+* `myosuite.terms.catalog.catalog(include_mjlab=True)` now scans the six modules under
+  `backends.mjlab.tasks.mdp.*` (`action_map`, `actions`, `commands`, `events`, `observations`,
+  `terminations`); previously it attempted to import the nonexistent `backends.mjlab.mdp` package
+  and silently returned no `mjlab` entries ([#936]).
 * `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
   per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
@@ -37,6 +41,11 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **Foundation consolidation (`myosuite.core.builder`, `myosuite.core.terms`, `myosuite.physics.colored_noise`) ([#936]).**
+  Consolidated MJCF/scene assembly helpers (`scene_library`, `scene_builder`, `model_editor`, `spec_processing`,
+  `mujoco_geom_utils`, `mujoco_joint_utils`, `asset_path_resolver`) into `myosuite/core/builder/`, pure backend-agnostic
+  MDP term modules into `myosuite/core/terms/`, and `colored_noise` into `myosuite/physics/colored_noise.py`, keeping
+  `sys.modules`-identical compatibility aliases at all former `myosuite.scenes.*`, `myosuite.terms.*`, and `myosuite.utils.*` paths.
 * **`myosuite.tests` excluded from built wheels ([#935]).** Set `include-package-data = false` with explicit runtime
   subpackage discovery in `pyproject.toml` so published wheels ship only runtime `myosuite.*` subpackages and exclude
   `myosuite/tests/**` fixtures/baselines (~2 MB wheel reduction). Running `pytest --pyargs myosuite.tests...` or
@@ -424,6 +433,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
 [#935]: https://github.com/MyoHub/myosuite/pull/935
+[#936]: https://github.com/MyoHub/myosuite/pull/936
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.

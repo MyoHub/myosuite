@@ -3,7 +3,7 @@ Apache License 2.0), at commit 8a6244b0178eb2cf1b5a14a903d82ebba867b792, from wh
 motion-tracking task are ported: the motion library and reset sampling in this package
 (myosuite/envs/myo/tasks/mimic/tracking/), the motion command of its mjlab twin
 (myosuite/envs/myo/backends/mjlab/tasks/mimic_tracking/) and the tracking terms in
-myosuite/terms/mimic_track.py; every ported file names its source in its docstring. The paths below
+myosuite/core/terms/mimic_track.py; every ported file names its source in its docstring. The paths below
 are muscle-supermimic's. MyoSuite's changes: the body is myo_sim's myofullbody, the reference
 kinematics use MuJoCo, the joint couplings use myosuite.physics.joint_coupling, the terms are
 backend-agnostic and the task is configured through make_env options. Not ported: the MS-Human-700

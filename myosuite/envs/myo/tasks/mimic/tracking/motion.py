@@ -47,7 +47,7 @@ import numpy as np
 
 from myosuite.core.model_names import resolve_model_names
 from myosuite.physics.joint_coupling import project_joint_couplings
-from myosuite.terms import mimic_track as mt
+from myosuite.core.terms import mimic_track as mt
 
 from .models import ModelInfo, root_offset
 
@@ -261,7 +261,7 @@ class MotionLib:
         bin_clip, bin_start: Clip and first frame of each bin.
         frame_bin: Bin of every frame.
             Terminal scoring frames belong to the preceding transition bin.
-        frames: Per-frame arrays: the :class:`~myosuite.terms.mimic_track.TrackRef`
+        frames: Per-frame arrays: the :class:`~myosuite.core.terms.mimic_track.TrackRef`
             fields plus ``body_pos`` / ``body_lin_vel`` (tracked bodies, world) and
             ``reset_qpos`` / ``reset_qvel`` (the full state written at a reset, joints
             clamped to their ranges).

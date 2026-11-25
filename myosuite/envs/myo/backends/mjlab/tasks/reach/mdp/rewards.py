@@ -12,7 +12,7 @@ import torch
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.terms.base_reward import leg_reach_reward, multi_site_reach_reward
+from myosuite.core.terms.base_reward import leg_reach_reward, multi_site_reach_reward
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv

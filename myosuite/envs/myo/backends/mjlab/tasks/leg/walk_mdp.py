@@ -25,8 +25,8 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.terms.base_obs import com_linear_velocity
-from myosuite.terms.base_reward import (
+from myosuite.core.terms.base_obs import com_linear_velocity
+from myosuite.core.terms.base_reward import (
     locomotion_solved,
     locomotion_streak,
     locomotion_sustained,

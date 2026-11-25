@@ -18,10 +18,10 @@ from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.utils.reach_workspace import reachable_target_points
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
-from myosuite.terms.base_action import (
+from myosuite.core.terms.base_action import (
     sigmoid_muscle_activation,
 )
-from myosuite.terms.base_reward import multi_site_reach_reward
+from myosuite.core.terms.base_reward import multi_site_reach_reward
 
 
 class ReachEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):

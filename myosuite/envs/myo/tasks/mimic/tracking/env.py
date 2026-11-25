@@ -17,7 +17,7 @@ from gymnasium.utils import EzPickle
 
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.muscle_stages import CtrlStageHost
-from myosuite.terms import mimic_track as mt
+from myosuite.core.terms import mimic_track as mt
 
 from .config import DEFAULT_PRESET, MimicTaskCfg, resolve_task
 from .models import DEFAULT_MODEL, TOUCH_SENSOR, ModelInfo, compiled_scene, model_cfg
@@ -144,7 +144,7 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
 
     # ------------------------------------------------------------------ state
     def track_state(self) -> mt.TrackState:
-        """The body state of :mod:`myosuite.terms.mimic_track` (needs fresh derived data)."""
+        """The body state of :mod:`myosuite.core.terms.mimic_track` (needs fresh derived data)."""
         _m, d, info = self.model, self.data, self.info
         root_q = d.qpos[info.root_qadr : info.root_qadr + 7]
         ids = self._tracked

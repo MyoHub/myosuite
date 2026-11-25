@@ -23,9 +23,9 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     mean_effort,
     solved_step_count,
 )
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
 from myosuite.utils import seed_envs
-from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
+from myosuite.core.builder.mujoco_geom_utils import refresh_geom_derived_fields
 from myosuite.physics.quat_math import mat2euler
 
 CONTACT_TRAJ_MIN_LENGTH = 100

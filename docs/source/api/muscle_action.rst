@@ -1,7 +1,7 @@
 Muscle Action Term
 ==================
 
-.. automodule:: myosuite.terms.base_action
+.. automodule:: myosuite.core.terms.base_action
    :members:
    :undoc-members:
    :show-inheritance:

@@ -21,7 +21,7 @@ import mujoco
 from ml_collections import config_dict
 
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
-from myosuite.terms.mimic_obs import resolve_mimic_site_ids
+from myosuite.core.terms.mimic_obs import resolve_mimic_site_ids
 
 
 class MjxMuscleMimicBase(MyoMjxEnvBase):

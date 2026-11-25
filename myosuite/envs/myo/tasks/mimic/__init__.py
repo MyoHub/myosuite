@@ -21,7 +21,7 @@ import math
 import myosuite.core.registry as _registry
 from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
 from myosuite.envs.waypoint import WaypointTaskCfg
-from myosuite.terms.waypoint import WaypointRouteCfg
+from myosuite.core.terms.waypoint import WaypointRouteCfg
 
 _BIMANUAL_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicBimanualEnv"
 _FULLBODY_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv"

@@ -27,8 +27,8 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     mean_effort,
     solved_step_count,
 )
-from myosuite.terms.base_action import sigmoid_muscle_activation
-from myosuite.utils.spec_processing import (
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.builder.spec_processing import (
     recursive_immobilize,
     recursive_mirror,
     recursive_remove_contacts,

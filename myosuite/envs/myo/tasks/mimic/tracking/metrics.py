@@ -33,7 +33,7 @@ from typing import Any
 
 import numpy as np
 
-from myosuite.terms import mimic_track as mt
+from myosuite.core.terms import mimic_track as mt
 
 VALIDATION_REL_SITE = 0.5
 """MuscleMimic's validation threshold of the mean relative site deviation (m)."""

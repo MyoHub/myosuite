@@ -18,12 +18,12 @@ from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
 from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
     ChaseTagVsModelMeta,
 )
-from myosuite.terms.base_obs import (
+from myosuite.core.terms.base_obs import (
     qpos_for_joints,
     qvel_for_joints,
     sensor_vel3,
 )
-from myosuite.terms.opponent_relative_obs import relative_pose_obs
+from myosuite.core.terms.opponent_relative_obs import relative_pose_obs
 
 CHASER_ID = "agent_0"
 RUNNER_ID = "agent_1"

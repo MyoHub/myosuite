@@ -17,7 +17,7 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleActionMixin
-from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
+from myosuite.core.builder.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class ObjHoldFixedEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):

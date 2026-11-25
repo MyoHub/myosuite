@@ -17,7 +17,7 @@ import pathlib
 import warnings
 import xml.etree.ElementTree as ET
 
-from myosuite.utils.asset_path_resolver import write_patched_xml
+from myosuite.core.builder.asset_path_resolver import write_patched_xml
 
 _ASSETS_ROOT = pathlib.Path(__file__).parent
 

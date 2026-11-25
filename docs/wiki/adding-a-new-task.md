@@ -81,9 +81,9 @@ subclass to write.
    working around the gap in the task config.
 
 2. **Check available term names** before inventing new ones:
-   - Obs: `myosuite/terms/base_obs.py` — `ObsSpec.keys` entry `"foo"` resolves
+   - Obs: `myosuite/core/terms/base_obs.py` — `ObsSpec.keys` entry `"foo"` resolves
      to function `foo_obs`.
-   - Reward: `myosuite/terms/base_reward.py` — `RewardSpec.terms` entry
+   - Reward: `myosuite/core/terms/base_reward.py` — `RewardSpec.terms` entry
      `"foo"` resolves to function `foo_reward` (or a bare `foo` function).
    - A term can also be passed as a function instead of a name (see the examples in the term-functions page).
    - If you need a new term, write it there as a pure function:

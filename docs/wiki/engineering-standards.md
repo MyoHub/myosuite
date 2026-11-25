@@ -18,12 +18,12 @@ Before any new class, function, or wrapper:
 
 | Kind of code | Canonical location (see [repository-map.md](repository-map.md)) |
 |---|---|
-| Obs / reward / action / event / termination term functions | `myosuite/terms/` |
-| Physics math (quat, fatigue, joint couplings, running stats) | `myosuite/physics/` |
+| Obs / reward / action / event / termination term functions | `myosuite/core/terms/` |
+| Physics math (quat, fatigue, colored noise, joint couplings, running stats) | `myosuite/physics/` |
 | Numerical biomechanics solvers (IK, ID, SO, CMC, EMG, effort) | `myosuite/biomechanics/` |
 | Lightweight format/dataset readers & `musclemimic` runtime adapters | `myosuite/integrations/` (heavy CV inference → `tools/`) |
 | Muscle noise / fatigue / reafferentation / sarcopenia (wrappers and stages) | `myosuite/envs/wrappers.py`, `myosuite/envs/muscle_stages.py` |
-| Building an env on either backend (`make_env`, `EnvConfig`, `ModelBuilder`) | `myosuite/core/registry.py`, `myosuite/core/config.py`, `myosuite/core/model_builder.py` |
+| Building an env (`make_env`, `EnvConfig`), `ModelBuilder`, scene/spec assembly | `myosuite/core/registry.py`, `myosuite/core/config.py`, `myosuite/core/model_builder.py`, `myosuite/core/builder/` |
 | Rendering, rollout video, muscle meshes, skinning, Blender/USD | `myosuite/viz/` |
 | mjlab action/obs/event wiring | `myosuite/envs/myo/backends/mjlab/` |
 | RL trainers, replay buffers, world models | `training/<method>/` (**never** inside `myosuite/`) |
@@ -161,7 +161,7 @@ pre-commit hook blocks new imports of them.
 
 ## Terms Organization (what actually exists)
 
-Term functions live in `myosuite/terms/`, grouped by term *kind* (not motor
+Term functions live in `myosuite/core/terms/`, grouped by term *kind* (not motor
 domain):
 
 | File | Contents |
@@ -188,7 +188,7 @@ parity is mostly a matter of using the same terms on both sides.
 1. Write the env class in `envs/myo/tasks/<collection>/<effector>/<task>.py`,
    subclassing `MyoGymnasiumEnv`. Implement `_get_obs_dict`, `get_reward_dict`,
    `reset_task`; override `step`/`reset` only if needed.
-2. Reuse term helpers from `myosuite/terms/` where they fit.
+2. Reuse term helpers from `myosuite/core/terms/` where they fit.
 3. Register with `registry.register_env(...)` in the suite `__init__.py`.
 4. Add the env ID to `test_registry.py`; add a CPU parity baseline.
 5. Muscle noise, fatigue, reafferentation and sarcopenia are **wrappers**, not env

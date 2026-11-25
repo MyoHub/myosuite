@@ -43,7 +43,7 @@ from myosuite.integrations.musclemimic.two_agent_scene import (
     mj_name2id_strict,
     two_agent_standing_qpos,
 )
-from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
 
 logger = logging.getLogger(__name__)
 

@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 import mujoco
 import numpy as np
 
-from myosuite.utils.asset_path_resolver import get_sim_asset_root
+from myosuite.core.builder.asset_path_resolver import get_sim_asset_root
 
 if TYPE_CHECKING:
     from ml_collections import config_dict

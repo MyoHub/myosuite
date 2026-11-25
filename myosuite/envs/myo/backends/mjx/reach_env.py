@@ -5,7 +5,7 @@
 """MJX reach environment — fingertip reaching task.
 
 Replaces ``playground_reach_v0.py``.  Delegates obs and reward computation
-to the shared term functions in ``myosuite/terms/``, accessed via
+to the shared term functions in ``myosuite/core/terms/``, accessed via
 ``MjxEnvAccessor``.
 
 Config keys (in addition to ``MyoMjxEnvBase`` defaults):
@@ -37,7 +37,7 @@ from mujoco import mjx
 
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
-from myosuite.terms.base_obs import tip_pos_obs
+from myosuite.core.terms.base_obs import tip_pos_obs
 from myosuite.utils.reach_workspace import reachable_target_points
 from myosuite.utils.step_timing import first_step_after
 from myosuite.utils.target_ranges import resolve_site_target_ranges

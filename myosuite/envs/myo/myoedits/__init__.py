@@ -8,7 +8,7 @@ import mujoco
 
 import myosuite.core.registry as _registry
 from myosuite.envs.wrappers import condition_wrapper_specs
-from myosuite.utils.spec_processing import recursive_immobilize
+from myosuite.core.builder.spec_processing import recursive_immobilize
 import numpy as np
 
 # Arm Reaching ==============================

@@ -23,8 +23,8 @@ from myosuite.envs.heightfields import ChaseTagField
 from myosuite.envs.myo.tasks.challenge.challenge_common import MuscleActionMixin
 from myosuite.envs.myo.tasks.mimic.chasetag_obs import chasetag_obs_blocks
 from myosuite.physics.quat_math import euler2quat, quat2euler, quat2mat
-from myosuite.terms.base_action import sigmoid_muscle_activation
-from myosuite.utils.colored_noise import ColoredNoiseProcess
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
+from myosuite.physics.colored_noise import ColoredNoiseProcess
 
 
 class Task(Enum):

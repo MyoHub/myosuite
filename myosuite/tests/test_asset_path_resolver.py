@@ -19,12 +19,13 @@ import pytest
 from PIL import Image
 
 import myosuite
-from myosuite.utils import asset_path_resolver as apr
+from myosuite.core.builder import asset_path_resolver as apr
 from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
-_ASSETS = Path(apr.__file__).resolve().parents[1] / "envs" / "myo" / "assets"
+_ASSETS = Path(myosuite.__file__).resolve().parent / "envs" / "myo" / "assets"
+assert _ASSETS.is_dir()
 _TETRA = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nf 1 3 2\nf 1 2 4\nf 1 4 3\nf 2 3 4\n"
 _PYRAMID = "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nv .5 .5 1\nf 1 3 2\nf 1 4 3\nf 1 2 5\nf 2 3 5\nf 3 4 5\nf 4 1 5\n"
 
@@ -65,9 +66,9 @@ def test_simhive_folder_is_not_read(
     """
     package = tmp_path / "myosuite"
     (package / "simhive" / "myo_sim" / "meshes").mkdir(parents=True)
-    (package / "utils").mkdir()
+    (package / "core" / "builder").mkdir(parents=True)
     monkeypatch.setattr(
-        apr, "__file__", str(package / "utils" / "asset_path_resolver.py")
+        apr, "__file__", str(package / "core" / "builder" / "asset_path_resolver.py")
     )
 
     pip_root = apr._pip_myo_sim_models_root()

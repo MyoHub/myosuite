@@ -62,7 +62,7 @@ The Verification list below does not cover these. `test_obs_contract.py`, `test_
   - Never use `np.random.*`, `random.*` or an unseeded `default_rng()`.
   - Clear all per-episode state: reward dicts, buffers, counters.
 - **Mocap targets.** After `mj_resetData`, write a mocap target into `data.mocap_pos` / `data.mocap_quat`. Writing only `model.body_pos` takes effect at the *next* reset.
-- **Runtime model edits.** After editing a compiled model's `geom_type/size/pos/quat` or `body_mass`, call `myosuite.utils.mujoco_geom_utils.refresh_geom_derived_fields(model, spec, body_ids)`.
+- **Runtime model edits.** After editing a compiled model's `geom_type/size/pos/quat` or `body_mass`, call `myosuite.core.builder.mujoco_geom_utils.refresh_geom_derived_fields(model, spec, body_ids)`.
   - Otherwise the collision bounds and inertia go stale, and MuJoCo ≥ 3.8 silently culls contacts against the stale bounds.
 
 ### mjlab Non-Negotiables
@@ -105,8 +105,8 @@ Enforced in CI by `myosuite/tests/test_package_boundaries.py` and `myosuite/test
 | Location | Responsibility |
 |---|---|
 | `myo_sim` | Anatomical assets/composition, reusable model mechanics and physical transforms. MyoSuite consumes its public APIs — never the reverse. |
-| `core/` | Environment configuration, registration and task assembly (`make_env`, `ModelBuilder`, recipes), delegating anatomical composition to `myo_sim`. (`scenes/` and `terms/` remain active today until migrated into `core/builder/` and `core/terms/`.) |
-| `physics/` | Shared numerical helpers and compatibility imports (`quat*`, `running_stats`, `joint_coupling`, `fatigue_jax`); delegate canonical model mechanics to `myo_sim`. |
+| `core/` | Environment configuration, registration, scene/spec assembly (`make_env`, `ModelBuilder`, recipes, `core/builder/`), and pure backend-agnostic MDP terms (`core/terms/`), delegating anatomical composition to `myo_sim`. (`scenes/`, migrated `terms/*`, `utils/{spec_processing,mujoco_geom_utils,mujoco_joint_utils,asset_path_resolver,colored_noise}.py`, and `envs/myo/myoedits/model_editor.py` are now backward-compatible alias shims closed to new definitions.) |
+| `physics/` | Shared numerical helpers and compatibility imports (`quat*`, `running_stats`, `colored_noise`, `joint_coupling`, `fatigue_jax`); delegate canonical model mechanics to `myo_sim`. |
 | `motion/` *(planned target)* | Small, flat subpackage for `MotionClip`, model-coordinate trajectory `io.py`, `transforms.py`, playback/reference contracts, `hf_cache.py`, and composable `KinematicTrial` / `EMGTrial`. Until implemented, reuse `MotionClip` in `core/trajectory_io.py` and transforms in `core/trajectory_yaw.py`. |
 | `biomechanics/` | Scientific fitting, analysis and control: IK/retargeting solvers, inverse dynamics, static optimization, CMC, EMG processing, external-load wrench mapping, effort and diagnostics. Must not import `envs`, `integrations`, or `viz`. |
 | `integrations/` | Lightweight source-specific readers, adapters and calibration (markers, InstantHMR, GVHMR, SMPL+H, MANO, OpenSim `.mot`/`.sto`) plus third-party runtime bridges (`musclemimic`); call shared fitting and policy APIs. |

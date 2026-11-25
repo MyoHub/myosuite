@@ -56,7 +56,7 @@ from myosuite.integrations.musclemimic.steering import (
     step_compass,
     wall_repulsion,
 )
-from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
+from myosuite.core.terms.multiplayer.heading import heading_yaw, role_heading_xy
 
 AGENTS: tuple[str, str] = ("agent_0", "agent_1")
 PREFIX: dict[str, str] = {"agent_0": "a0_", "agent_1": "a1_"}

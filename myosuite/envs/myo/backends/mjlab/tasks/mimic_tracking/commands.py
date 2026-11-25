@@ -28,7 +28,7 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_
 from myosuite.envs.myo.tasks.mimic.tracking.config import MimicTaskCfg
 from myosuite.envs.myo.tasks.mimic.tracking.models import ModelInfo, model_cfg
 from myosuite.envs.myo.tasks.mimic.tracking.motion import MotionLib, load_motion_lib
-from myosuite.terms import mimic_track as mt
+from myosuite.core.terms import mimic_track as mt
 
 if TYPE_CHECKING:
     from mjlab.entity import Entity

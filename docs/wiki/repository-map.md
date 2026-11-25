@@ -9,10 +9,10 @@
 
 | Layer | Subpackage / Directory | Status | Responsibility | Allowed `myosuite.*` Runtime Imports |
 | :--- | :--- | :--- | :--- | :--- |
-| **Foundation** | `myosuite/core/` | Active | `EnvConfig`, `registry`, `make_env`, `ModelBuilder`, recipes, muscle conditions/scaling facades, trajectory I/O | `core` |
-| **Numerical Math** | `myosuite/physics/` | Active | Shared numerical helpers and compatibility imports (`quat*`, `running_stats`, `joint_coupling`, `fatigue_jax`); canonical model mechanics live in `myo_sim` | `core`, `physics` |
-| **MDP Terms** | `myosuite/terms/` | Active | Pure backend-agnostic MDP term functions (`base_obs`, `base_reward`, `base_action`, `base_event`, `base_termination`, `mimic_*`, `multiplayer/`) + `myosuite-terms` catalog | `core`, `physics`, `terms` |
-| **Scene Assembly** | `myosuite/scenes/` | Active | Scene library and `SceneBuilder` helpers | `core`, `scenes` |
+| **Foundation** | `myosuite/core/` | Active | `EnvConfig`, `registry`, `make_env`, `ModelBuilder`, recipes, scene/spec `builder/`, pure MDP `terms/`, muscle conditions/scaling facades, trajectory I/O | `core`, `physics` |
+| **Numerical Math** | `myosuite/physics/` | Active | Shared numerical helpers and compatibility imports (`quat*`, `running_stats`, `colored_noise`, `joint_coupling`, `fatigue_jax`); canonical model mechanics live in `myo_sim` | `physics` |
+| **MDP Terms (Shim + Catalog)** | `myosuite/terms/` | Facade *(+ catalog & ChaseTag terms)* | Backward-compatible aliases to `core/terms/`, `myosuite-terms` CLI (`catalog.py`), and ChaseTag task terms (`multiplayer/chase_tag_vs_*`) | `core`, `physics`, `terms` |
+| **Scene Assembly (Shim)** | `myosuite/scenes/` | Closed facade | Backward-compatible aliases to `core/builder/{scene_library,scene_builder}.py` | `core`, `scenes` |
 | **Motion & Trials** | `myosuite/motion/` | *Planned target* | Flat motion contract subpackage (`MotionClip`, trajectory `io.py`, `transforms.py`, playback/reference contracts, `hf_cache.py`, composable `KinematicTrial` / `EMGTrial`); today use `core/trajectory_io.py` and `core/trajectory_yaw.py` | `core`, `physics`, `motion` |
 | **Scientific Analysis** | `myosuite/biomechanics/` | Active | Site IK (`mink`), coupling-aware landmark IK, inverse dynamics, static optimization, CEINMS, CMC, EMG processing, external-load wrench mapping, effort, observability/uncertainty | `core`, `physics`, `biomechanics` |
 | **Ecosystem Bridges** | `myosuite/integrations/` | Active | Lightweight source-specific readers/adapters (markers, InstantHMR, GVHMR, SMPL+H, MANO, OpenSim `.mot`/`.sto`) and `musclemimic` runtime bridges | `core`, `terms`, `physics`, `biomechanics`, `utils`, `integrations` *(+ `motion`, `policies` once created)* |
@@ -42,9 +42,9 @@ tools/             # standalone data/perception CLIs with isolated dependencies 
 
 | Directory | Contents |
 |---|---|
-| `core/` | Registry and `make_env`, config dataclasses (`EnvConfig`, `TaskConfig`), model builder/recipes, muscle conditions |
-| `terms/` | Backend-agnostic pure term functions (obs, reward, action, event, termination) |
-| `physics/` | Model-level runtime math — quaternions, running stats, fatigue, joint couplings. No backend imports. |
+| `core/` | Registry and `make_env`, config dataclasses (`EnvConfig`, `TaskConfig`), `ModelBuilder`/recipes, `core/builder/` (scenes, MJCF spec/geom/joint/asset helpers), `core/terms/` (backend-agnostic MDP terms), muscle conditions/scaling facades |
+| `terms/` | Backward-compatible aliases to `core/terms/` plus `catalog.py` (`myosuite-terms`) and ChaseTag multiplayer terms |
+| `physics/` | Model-level runtime math — quaternions, running stats, colored noise, fatigue, joint couplings. No backend imports. |
 | `biomechanics/` | Musculoskeletal analysis of motions (inverse kinematics and dynamics, static optimization, CMC, OpenSim motions). NumPy / SciPy / MuJoCo only. |
 | `envs/` | `gymnasium_env.py` (CPU base), `modular_env.py` and `multi_agent_modular_env.py` (data-driven envs), `wrappers.py` and `muscle_stages.py` (muscle noise / fatigue / reafferentation / sarcopenia as wrappers) |
 | `envs/myo/tasks/` | Task definitions organized by collection (`basic/`, `challenge/`, `mimic/`) |
@@ -54,7 +54,7 @@ tools/             # standalone data/perception CLIs with isolated dependencies 
 | `viz/` | Rendering and visualization; `blender_render.py` (USD export and Blender studio scene), `muscle_tubes.py` (volumetric muscle geometry) and `skin.py` (`.skn` body skin; bundled skin in `assets/`) |
 | `integrations/` | Third-party integrations (musclemimic) |
 | `logger/` | Rollout logging / grouped datasets |
-| `scenes/` | Scene assembly helpers |
+| `scenes/` | Backward-compatible aliases to `core/builder/` |
 | `tests/` | Test suites (tiers 1–3, see pyproject markers); `tests/benchmarks/` holds the throughput benchmarks |
 
 ## Task Layout (as it exists)
@@ -92,8 +92,8 @@ guaranteed long-term.)
 | Goal | Go to |
 |---|---|
 | Add/change CPU env registration | `myosuite/core/registry.py` + the suite `__init__.py` |
-| Add/change model composition | `myosuite/core/model_builder.py`, `model_recipes.py` |
-| Add/change a term function | `myosuite/terms/base_*.py` |
+| Add/change model or scene composition | `myosuite/core/model_builder.py`, `model_recipes.py`, `core/builder/` |
+| Add/change a term function | `myosuite/core/terms/base_*.py` |
 | Add/change biomechanics math | `myosuite/physics/` |
 | Analyse a motion (IK, ID, static optimization, CMC), retarget motion data (SMPL+H, InstantHMR), muscle effort of rollouts | `myosuite/biomechanics/`, `tools/instanthmr/` |
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |

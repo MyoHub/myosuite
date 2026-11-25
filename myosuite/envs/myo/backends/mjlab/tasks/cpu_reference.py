@@ -37,7 +37,7 @@ from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.muscle_conditions import apply_sarcopenia_to_spec
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
 from myosuite.physics.joint_coupling import JointCouplings
-from myosuite.terms.base_action import MotorNoiseCfg
+from myosuite.core.terms.base_action import MotorNoiseCfg
 
 _CONDITION_WRAPPERS = {
     "sarcopenia": "SarcopeniaWrapper",

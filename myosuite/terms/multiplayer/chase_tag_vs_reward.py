@@ -22,15 +22,15 @@ from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
 from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
     ChaseTagVsModelMeta,
 )
-from myosuite.terms.base_obs import qpos_for_joints, qvel_for_joints
-from myosuite.terms.base_termination import pelvis_fall_termination
-from myosuite.terms.mimic_reward import (
+from myosuite.core.terms.base_obs import qpos_for_joints, qvel_for_joints
+from myosuite.core.terms.base_termination import pelvis_fall_termination
+from myosuite.core.terms.mimic_reward import (
     mimic_joint_pos_reward,
     mimic_joint_vel_reward,
     mimic_root_vel_reward,
 )
 from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
-from myosuite.terms.multiplayer.heading import role_heading_xy
+from myosuite.core.terms.multiplayer.heading import role_heading_xy
 
 CHASER_ID = "agent_0"
 RUNNER_ID = "agent_1"

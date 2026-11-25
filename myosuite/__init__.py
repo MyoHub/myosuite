@@ -112,11 +112,17 @@ def register_all_envs() -> dict[str, list[str]]:
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy ``from myosuite import make_env`` (the factory lives in ``myosuite.core``)."""
+    """Lazy ``make_env`` and legacy compatibility subpackage attribute access."""
     if name == "make_env":
         from myosuite.core.registry import make_env
 
         return make_env
+    if name in ("logger", "scenes", "terms", "utils"):
+        import importlib
+
+        mod = importlib.import_module(f"myosuite.{name}")
+        globals()[name] = mod
+        return mod
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

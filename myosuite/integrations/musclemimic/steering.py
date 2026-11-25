@@ -6,7 +6,7 @@
 
 Controller code for :mod:`~myosuite.integrations.musclemimic.steered_teacher`,
 not a term function; the role heading itself is in
-:mod:`myosuite.terms.multiplayer.heading`.
+:mod:`myosuite.core.terms.multiplayer.heading`.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import math
 
 import numpy as np
 
-from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
+from myosuite.core.terms.multiplayer.heading import heading_yaw, role_heading_xy
 
 COMPASS_LABELS: tuple[str, ...] = ("E", "NE", "N", "NW", "W", "SW", "S", "SE")
 COMPASS_STEP = math.pi / 4.0

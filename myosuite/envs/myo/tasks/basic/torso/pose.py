@@ -18,7 +18,7 @@ from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.assets._resolve import warn_torso_pip_calibration_divergence
-from myosuite.terms.base_action import (
+from myosuite.core.terms.base_action import (
     sigmoid_muscle_activation,
 )
 
