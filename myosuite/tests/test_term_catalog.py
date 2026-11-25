@@ -10,6 +10,7 @@ import json
 import pkgutil
 import subprocess
 import sys
+from typing import Any
 
 import pytest
 
@@ -40,6 +41,46 @@ def test_catalog_discovers_all_kinds_and_features() -> None:
     action_names = {e.name for e in catalog(kind="action")}
     assert "sigmoid_muscle_activation" in action_names
     assert "muscle_normalize_action" in action_names
+
+
+def test_the_mjlab_scan_finds_the_shared_mdp_terms() -> None:
+    pytest.importorskip("mjlab")
+    names = {e.name for e in catalog(kind="mjlab", include_mjlab=True)}
+    assert {"DistributionMatchingReward", "sync_forward"} <= names
+
+
+def test_the_mjlab_scan_skips_a_missing_dependency_but_raises_a_broken_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("mjlab")
+    import myosuite.terms.catalog as catalog_module
+
+    scan = catalog_module._scan_module
+
+    def rewards_fail_on(
+        missing: str, error: type[ImportError] = ModuleNotFoundError
+    ) -> Any:
+        def fake(mod_name: str, kind: str) -> Any:
+            if mod_name.endswith(".rewards"):
+                raise error(f"No module named {missing!r}", name=missing)
+            return scan(mod_name, kind)
+
+        return fake
+
+    monkeypatch.setattr(catalog_module, "_scan_module", rewards_fail_on("warp_extra"))
+    names = {e.name for e in catalog_module._scan_mjlab_optional()}
+    assert "sync_forward" in names and "DistributionMatchingReward" not in names
+    monkeypatch.setattr(
+        catalog_module, "_scan_module", rewards_fail_on("myosuite.not_there")
+    )
+    with pytest.raises(ModuleNotFoundError, match="myosuite.not_there"):
+        catalog_module._scan_mjlab_optional()
+    # an installed mjlab that lacks a name (an API change) is raised as well
+    monkeypatch.setattr(
+        catalog_module, "_scan_module", rewards_fail_on("mjlab.managers", ImportError)
+    )
+    with pytest.raises(ImportError, match="mjlab.managers"):
+        catalog_module._scan_mjlab_optional()
 
 
 def test_catalog_search_and_invalid_regex() -> None:

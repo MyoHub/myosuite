@@ -21,6 +21,7 @@ import dataclasses
 import importlib
 import inspect
 import json
+import pkgutil
 import re
 import sys
 from collections.abc import Sequence
@@ -285,11 +286,44 @@ def _scan_features() -> list[CatalogEntry]:
     return entries
 
 
+_MJLAB_MDP = "myosuite.envs.myo.backends.mjlab.tasks.mdp"
+
+
+def _missing_dependency(error: ImportError) -> bool:
+    """Whether *error* reports a missing optional module outside MyoSuite.
+
+    An error without a module name also counts: MyoSuite's own guards raise
+    ``ImportError("... pip install 'myosuite[...]'")`` without one. An installed module
+    that lacks a name (``cannot import name``, an API change) is a broken import.
+    """
+    if error.name is None:
+        return True
+    return (
+        isinstance(error, ModuleNotFoundError)
+        and error.name.split(".")[0] != "myosuite"
+    )
+
+
 def _scan_mjlab_optional() -> list[CatalogEntry]:
+    """The shared mjlab MDP terms, module by module (the package only re-exports them), when mjlab is installed.
+
+    A module whose optional dependency is missing is left out and the others are listed; a broken MyoSuite import
+    is raised, so that a term cannot drop out of the listing unnoticed.
+    """
     try:
-        return _scan_module("myosuite.envs.myo.backends.mjlab.mdp", "mjlab")
-    except ImportError:
-        return []
+        package = importlib.import_module(_MJLAB_MDP)
+    except ImportError as error:
+        if _missing_dependency(error):
+            return []
+        raise
+    entries: list[CatalogEntry] = []
+    for info in pkgutil.iter_modules(package.__path__):
+        try:
+            entries.extend(_scan_module(f"{_MJLAB_MDP}.{info.name}", "mjlab"))
+        except ImportError as error:
+            if not _missing_dependency(error):
+                raise
+    return entries
 
 
 def catalog(

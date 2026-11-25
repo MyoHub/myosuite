@@ -11,6 +11,7 @@
 | [mjlab-design-guide.md](mjlab-design-guide.md) | Before writing any mjlab backend code |
 | [cross-backend-contract.md](cross-backend-contract.md) | Before exporting a policy across backends |
 | [writing-term-functions.md](writing-term-functions.md) | Writing obs/reward/action term functions |
+| [distribution-matching-reward.md](distribution-matching-reward.md) | A reward for matching a distribution of a movement feature |
 | [training-guidelines.md](training-guidelines.md) | Before adding training/learning methods or dependencies |
 | [performance-cards.md](performance-cards.md) | Reporting measured timing, memory and quality across independent training seeds |
 | [training/supermimic/README.md](../../training/supermimic/README.md) | Training, evaluating and fine-tuning with myoSuperMimic (a training project, not in the package) |
