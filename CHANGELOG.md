@@ -397,6 +397,13 @@ Changes since **v3.1.0** (2026-11-11).
 * `myoChallengeSoccerP1/P2-v0` (and variants) sets `rwd_dict["sparse"] = float(goal_scored)` instead of `float(done)` so falls no longer award sparse points, enforces `min_agent_spawn_distance` between the root and the ball at reset, and defaults `goalkeeper_policy` to `"stationary"` when goalkeeper probabilities sum below 1.
 * `RunTrackEnv` (`myoChallengeOslRunFixed/Random-v0`) stores `ACTUATOR_PARAM` and `OSL_PARAM_LIST` per environment instance rather than mutating shared class-level containers, and seeds `self.np_random` before constructing `TrackField`.
 * `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) perturbs and clips only `jnt_limited` coordinates instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset.
+* **The two-agent env ends a diverged episode.** `ModularMultiAgentTaskEnv` (`myoChallengeChaseTagFBVs-v0`) had no
+  divergence check, and `MjInstabilityTerminationWrapper` found none to call, so after MuJoCo reset a diverged
+  simulation to `qpos0` the match went on from that state and could be scored as a tag. Its `step` now uses the same
+  check as `MyoGymnasiumEnv` (`mj_diverged`): the diverged step deals no damage, sees no falls, pays no positive
+  reward or `info["score"]` (even on the final time-limit step of an `EVADE` bout) to either agent and terminates
+  both; `info["mj_unstable"]` is on every step so evaluators can record diverged bouts as void/draw, and
+  `env.unwrapped.mj_instability_termination = False` switches it off.
 
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
