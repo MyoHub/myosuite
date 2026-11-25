@@ -22,7 +22,7 @@ import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation as np_R
 
-from myosuite.core.trajectory_io import (
+from myosuite.motion.io import (
     MotionClip,
     expand_motion_clip_to_model,
     read_npz_names,

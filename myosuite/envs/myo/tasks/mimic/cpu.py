@@ -337,7 +337,7 @@ class MuscleMimicFullbodyDirectionalEnv(_MuscleMimicCpuBase):
         """Load CW + CCW circular walking clips and precompute phase-matched frames."""
         from huggingface_hub import hf_hub_download
         from myosuite.core.hf_io import pinned_revision
-        from myosuite.core.trajectory_io import (
+        from myosuite.motion.io import (
             expand_motion_clip_to_model,
             load_motion_clip,
         )

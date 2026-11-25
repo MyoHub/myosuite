@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Literal
 
 import mujoco
@@ -147,3 +148,65 @@ def held_mass_qfrc(
     if site is not None:
         return force_at_site(model, qpos, site, force)
     return force_at_body(model, qpos, body, force, point=point)
+
+
+def apply_body_wrenches_to_qfrc(
+    model: mujoco.MjModel,
+    qpos: np.ndarray,
+    loads: Sequence[tuple[int, np.ndarray, np.ndarray]],
+) -> np.ndarray:
+    """Map world-origin wrenches ``(body_id, force_T3, torque_origin_T3)`` onto ``(T, nv)`` generalized forces.
+
+    Args:
+        model: Compiled MuJoCo model.
+        qpos: ``(T, nq)`` trajectory poses.
+        loads: Sequence of ``(body_id, force, torque_about_world_origin)`` arrays of shape ``(T, 3)``.
+
+    Returns:
+        ``(T, nv)`` generalized force array accumulated via ``mj_applyFT``.
+    """
+    qpos_arr = np.asarray(qpos, dtype=np.float64)
+    if (
+        qpos_arr.ndim != 2
+        or qpos_arr.shape[1] != model.nq
+        or not np.all(np.isfinite(qpos_arr))
+    ):
+        raise ValueError(
+            f"qpos must be finite with shape (T, {model.nq}), got {qpos_arr.shape}"
+        )
+    n_steps = qpos_arr.shape[0]
+    checked_loads: list[tuple[int, np.ndarray, np.ndarray]] = []
+    for body_id, f_raw, tau0_raw in loads:
+        f_arr = np.asarray(f_raw, dtype=np.float64)
+        tau0_arr = np.asarray(tau0_raw, dtype=np.float64)
+        if f_arr.shape != (n_steps, 3) or not np.all(np.isfinite(f_arr)):
+            raise ValueError(
+                f"force array must be finite with shape ({n_steps}, 3), got {f_arr.shape}"
+            )
+        if tau0_arr.shape != (n_steps, 3) or not np.all(np.isfinite(tau0_arr)):
+            raise ValueError(
+                f"torque array must be finite with shape ({n_steps}, 3), got {tau0_arr.shape}"
+            )
+        checked_loads.append((int(body_id), f_arr, tau0_arr))
+    data = mujoco.MjData(model)
+    origin = np.zeros(3)
+    out = np.zeros((n_steps, model.nv), dtype=np.float64)
+    for t in range(n_steps):
+        data.qpos[:] = qpos_arr[t]
+        mujoco.mj_kinematics(model, data)
+        mujoco.mj_comPos(model, data)
+        qfrc = out[t]
+        for body_id, f_arr, tau0_arr in checked_loads:
+            if np.any(f_arr[t]) or np.any(tau0_arr[t]):
+                mujoco.mj_applyFT(
+                    model, data, f_arr[t], tau0_arr[t], origin, body_id, qfrc
+                )
+    return out
+
+
+__all__ = [
+    "apply_body_wrenches_to_qfrc",
+    "force_at_body",
+    "force_at_site",
+    "held_mass_qfrc",
+]

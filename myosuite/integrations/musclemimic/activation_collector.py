@@ -20,7 +20,7 @@ Typical usage::
         fullbody_obs_adapter_params_from_metadata,
         read_checkpoint_config_metadata,
     )
-    from myosuite.core.trajectory_io import (
+    from myosuite.motion.io import (
         load_motion_clip, resolve_motion_path,
     )
     from myosuite.integrations.musclemimic.activation_collector import (
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
         LocalPolicyRunner,
         OnnxPolicyRunner,
     )
-    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.motion.io import MotionClip
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def _cache_metadata(
     config: CollectionConfig,
     policy_cache_key: str,
 ) -> str:
-    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.motion.io import MotionClip
 
     model_bytes = np.empty(mujoco.mj_sizeModel(model), dtype=np.uint8)
     mujoco.mj_saveModel(model, buffer=model_bytes)

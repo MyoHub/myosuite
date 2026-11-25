@@ -24,7 +24,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
 )
 from myosuite.integrations.musclemimic.fullbody_local_policy import FullbodyStateAdapter
 from myosuite.physics.quat_math import quat2yaw
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.motion.io import MotionClip
 
 MIMIC_SITES = tuple(FULLBODY_BODY2SITES_FOR_MIMIC.values())
 

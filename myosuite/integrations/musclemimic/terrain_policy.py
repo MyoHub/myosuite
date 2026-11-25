@@ -26,7 +26,7 @@ from myosuite.integrations.musclemimic.terrain_observation import (
     TerrainObservation,
 )
 from myosuite.core.hf_io import HF_REVISIONS
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.motion.io import MotionClip
 
 TERRA_REPO = "merc-s/TERRA-4B"
 # Tested release revision of the TERRA-4B model card (training seed 0, update 24416).

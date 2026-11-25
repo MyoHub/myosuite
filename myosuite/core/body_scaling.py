@@ -10,13 +10,14 @@ import importlib
 import os
 from collections.abc import Mapping
 from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 import numpy as np
 from numpy.typing import ArrayLike
 
-from myosuite.core.retargeting import retarget
+if TYPE_CHECKING:
+    from myosuite.integrations.marker_retarget import retarget
 
 Scales = Mapping[str, Any] | str | os.PathLike[str]
 
@@ -102,6 +103,8 @@ def _factors(scale: float | ArrayLike) -> np.ndarray:
 def __getattr__(name: str) -> Any:
     if name == "_scale_spec":
         return scale_spec
+    if name == "retarget":
+        return importlib.import_module("myosuite.integrations.marker_retarget").retarget
     raise AttributeError(name)
 
 

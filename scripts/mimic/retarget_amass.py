@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Retarget AMASS SMPL+H motions onto a task model (``myosuite.biomechanics.retarget_smplh``).
+"""Retarget AMASS SMPL+H motions onto a task model (``myosuite.integrations.retarget_smplh``).
 
     python scripts/mimic/retarget_amass.py /path/to/amass/KIT --trim 3 \
         --body-models /path/to/amass/body_models/smplh --model myofullbody --workers 12
@@ -78,7 +78,7 @@ def _init(model_name: str, version: str, body_models: str, trim: int) -> None:
 
     warnings.filterwarnings("ignore")
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
-    from myosuite.biomechanics import retarget_smplh as rs  # noqa: PLC0415
+    from myosuite.integrations import retarget_smplh as rs  # noqa: PLC0415
     from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
         compiled_body,
         kinematic_fingerprint,
@@ -262,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         {"source": r["source"], "error": r["error"]} for r in results if "error" in r
     ]
     summary = rt.summarize(metas) if metas else rt.empty_summary()
-    from myosuite.biomechanics import retarget_smplh as rs  # noqa: PLC0415
+    from myosuite.integrations import retarget_smplh as rs  # noqa: PLC0415
 
     lmap = rs.SMPLH_MAPS[args.model]
     summary.update(model=args.model, model_version=version, landmark_map=lmap.name,

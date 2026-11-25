@@ -369,7 +369,7 @@ def _mjlab_onnx_main(
     from myosuite.integrations.musclemimic.model_versions import (
         checkpoint_models_version,
     )
-    from myosuite.core.trajectory_io import (
+    from myosuite.motion.io import (
         expand_motion_clip_to_model,
         load_motion_clip,
         resolve_motion_path,
@@ -591,7 +591,7 @@ def _mjlab_play_main(argv: list[str]) -> int:
         )
 
         if _known.motion_path:
-            from myosuite.core.trajectory_io import (
+            from myosuite.motion.io import (
                 load_motion_clip,
                 resolve_motion_path,
             )

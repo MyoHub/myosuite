@@ -175,7 +175,7 @@ def kinematic_fingerprint(name: str) -> str:
     from myosuite.biomechanics.retarget import (  # noqa: PLC0415
         kinematic_fingerprint as fingerprint,
     )
-    from myosuite.biomechanics.retarget_smplh import (  # noqa: PLC0415
+    from myosuite.integrations.retarget_smplh import (  # noqa: PLC0415
         SMPLH_MAPS,
         landmark_bodies,
     )

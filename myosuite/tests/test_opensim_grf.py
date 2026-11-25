@@ -166,3 +166,80 @@ def test_opensim_grf_rejects_non_ground_frame_and_unmatched_loads() -> None:
     """
     with pytest.raises(ValueError, match="no ExternalForce entries matched"):
         opensim_grf_to_qfrc(model, qpos, time, grf, unmatched_xml)
+
+
+def test_opensim_grf_preserves_pure_couple_torque_when_force_is_zero() -> None:
+    """Finite free moments in zero-force frames are applied, while non-finite inactive torques are masked."""
+    model = mujoco.MjModel.from_xml_string(_FLOATING_FOOT_XML)
+    time = np.array([0.0, 0.01])
+    qpos = np.tile(model.qpos0, (2, 1))
+    values = np.array(
+        [
+            # Frame 0: zero force, finite pure couple (0, 3.5, -1.2), NaN COP
+            [0.0, 0.0, 0.0, np.nan, np.nan, np.nan, 0.0, 3.5, -1.2],
+            # Frame 1: zero force, NaN torque and COP -> masked to zero
+            [0.0, 0.0, 0.0, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
+        ],
+        dtype=np.float64,
+    )
+    grf = OpenSimMotion(
+        time=time,
+        labels=(
+            "f_vx",
+            "f_vy",
+            "f_vz",
+            "f_px",
+            "f_py",
+            "f_pz",
+            "t_x",
+            "t_y",
+            "t_z",
+        ),
+        values=values,
+        in_degrees=False,
+    )
+    with_point_xml = """
+    <ExternalLoads><objects><ExternalForce name="couple_with_cop">
+      <applied_to_body>calcn_r</applied_to_body>
+      <force_expressed_in_body>ground</force_expressed_in_body>
+      <point_expressed_in_body>ground</point_expressed_in_body>
+      <force_identifier>f_v</force_identifier>
+      <point_identifier>f_p</point_identifier>
+      <torque_identifier>t_</torque_identifier>
+    </ExternalForce></objects></ExternalLoads>
+    """
+    without_point_xml = """
+    <ExternalLoads><objects><ExternalForce name="couple_no_cop">
+      <applied_to_body>calcn_r</applied_to_body>
+      <force_expressed_in_body>ground</force_expressed_in_body>
+      <force_identifier>f_v</force_identifier>
+      <torque_identifier>t_</torque_identifier>
+    </ExternalForce></objects></ExternalLoads>
+    """
+    g_quat = (1.0, 0.0, 0.0, 0.0)
+    qfrc_cop = opensim_grf_to_qfrc(
+        model, qpos, time, grf, with_point_xml, ground_quat=g_quat
+    )
+    qfrc_no_cop = opensim_grf_to_qfrc(
+        model, qpos, time, grf, without_point_xml, ground_quat=g_quat
+    )
+
+    data = mujoco.MjData(model)
+    data.qpos[:] = qpos[0]
+    mujoco.mj_kinematics(model, data)
+    mujoco.mj_comPos(model, data)
+    expected0 = np.zeros(model.nv)
+    mujoco.mj_applyFT(
+        model,
+        data,
+        np.zeros(3),
+        np.array([0.0, 3.5, -1.2]),
+        np.zeros(3),
+        model.body("calcn_r").id,
+        expected0,
+    )
+    assert np.linalg.norm(expected0) > 0.0
+    np.testing.assert_allclose(qfrc_cop[0], expected0, atol=1e-12)
+    np.testing.assert_allclose(qfrc_no_cop[0], expected0, atol=1e-12)
+    np.testing.assert_allclose(qfrc_cop[1], 0.0, atol=1e-12)
+    np.testing.assert_allclose(qfrc_no_cop[1], 0.0, atol=1e-12)

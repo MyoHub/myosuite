@@ -19,7 +19,7 @@ Two target-sourcing modes
     model's tracking config.  Matches the CPU / MJX behaviour when no motion
     clip is supplied.
 
-**Trajectory (when a** :class:`~myosuite.core.trajectory_io.MotionClip` **is provided)**
+**Trajectory (when a** :class:`~myosuite.motion.io.MotionClip` **is provided)**
     Targets are taken from the clip's ``site_xpos`` array, one frame per
     control step since each environment's last reset (mjlab's integer
     ``episode_length_buf``).  Each of the N parallel environments starts at a
@@ -44,7 +44,7 @@ Two target-sourcing modes
 Usage::
 
     from pathlib import Path
-    from myosuite.core.trajectory_io import load_motion_clip
+    from myosuite.motion.io import load_motion_clip
     from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
 
     clip = load_motion_clip(Path("walk.npz"), expected_nq=69, expected_nv=68)
@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.motion.io import MotionClip
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
     MjlabEntityAccessor,
 )
@@ -786,7 +786,7 @@ def _resolve_mimic_mjlab_ids(
     if clip_bank:
         if ctrl_dt is None:
             raise ValueError("ctrl_dt must be provided when clip is given")
-        from myosuite.core.trajectory_io import expand_motion_clip_to_model
+        from myosuite.motion.io import expand_motion_clip_to_model
         from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
             ClipTrajectorySource,
             MultiClipTrajectorySource,
@@ -1899,7 +1899,7 @@ def register_mimic_mjlab_tasks_with_clip(
     Args:
         register_mjlab_task: mjlab task registry function.
         rl_cfg_fn: Callable returning a default RL runner config.
-        clip: Loaded :class:`~myosuite.core.trajectory_io.MotionClip` with
+        clip: Loaded :class:`~myosuite.motion.io.MotionClip` with
               ``site_xpos`` populated, or a tuple/list of such clips: every env
               then draws its clip and start frame on each reset.
         action_mode: Muscle action interpretation. Leave as ``"sigmoid"`` for
@@ -2340,7 +2340,7 @@ def register_mimic_mjlab_tasks_with_sar(
         rl_cfg_fn: Callable returning a default RL runner config.
         sar_dir: Directory written by
             :func:`~myosuite.integrations.musclemimic.sar_extraction.save_synergy_model`.
-        clip: Optional :class:`~myosuite.core.trajectory_io.MotionClip` for
+        clip: Optional :class:`~myosuite.motion.io.MotionClip` for
               trajectory-mode targets (same as
               :func:`register_mimic_mjlab_tasks_with_clip`).
 

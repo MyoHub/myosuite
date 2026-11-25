@@ -269,7 +269,7 @@ def export_rollout(
             )
         clip = None
         if config.motion is not None:
-            from myosuite.core.trajectory_io import (
+            from myosuite.motion.io import (
                 expand_motion_clip_to_model,
                 load_motion_clip,
             )

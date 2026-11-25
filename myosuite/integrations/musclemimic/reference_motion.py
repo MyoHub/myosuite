@@ -20,7 +20,7 @@ from scipy.spatial.transform import Rotation, Slerp
 from scipy.ndimage import gaussian_filter1d
 from scipy.optimize import least_squares
 
-from myosuite.core.trajectory_io import (
+from myosuite.motion.io import (
     MotionClip,
     expand_motion_clip_to_model,
     motion_clip_from_states,

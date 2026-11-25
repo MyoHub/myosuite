@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from myosuite.core.hf_dataset_cache import setup_named_demo_cache
+from myosuite.motion.hf_cache import setup_named_demo_cache
 from myosuite.core.hf_io import default_musclemimic_cache_root
 
 logger = logging.getLogger(__name__)

@@ -12,7 +12,7 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
-from myosuite.core.retargeting import retarget
+from myosuite.integrations.marker_retarget import retarget
 
 FPS = 100.0
 UPPER, FOREARM = 0.3, 0.25  # segment lengths in metres

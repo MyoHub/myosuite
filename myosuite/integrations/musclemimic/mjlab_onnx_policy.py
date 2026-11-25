@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from myosuite.integrations.musclemimic.fullbody_obs_torch import (
         TorchFullbodyObsAdapter,
     )
-    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.motion.io import MotionClip
 
 logger = logging.getLogger(__name__)
 
