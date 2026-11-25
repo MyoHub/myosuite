@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from myosuite.terms._array import xp_asarray as _xp_asarray
+
 if TYPE_CHECKING:
     from myosuite.core.protocols import EnvAccessor
 
@@ -48,25 +50,6 @@ _WALK_W_JOINT: float = 5.0  # dense weight: joint angle regularisation
 # ── heading_reward ───────────────────────────────────────────────────────────
 _HEADING_FALL_HEIGHT: float = 0.7  # pelvis z (m) below which the agent has fallen
 _HEADING_FALL_PENALTY: float = 1.0  # dense reward subtracted on fall
-
-
-def _xp_asarray(
-    xp: Any,
-    value: Any,
-    *,
-    dtype: Any | None = None,
-    device: Any | None = None,
-) -> Any:
-    """Convert *value* to the backend array type used by *xp*."""
-
-    if getattr(xp, "__name__", "") == "torch":
-        tensor = (
-            xp.as_tensor(value, device=device)
-            if device is not None
-            else xp.as_tensor(value)
-        )
-        return tensor.to(dtype=dtype) if dtype is not None else tensor
-    return xp.asarray(value, dtype=dtype) if dtype is not None else xp.asarray(value)
 
 
 def _maybe_item(value: Any) -> Any:
