@@ -125,7 +125,7 @@ def default_roots(max_levels: int = 4) -> tuple[Path, ...]:
     return (cwd,)
 
 
-def _ckpt_step(path: Path) -> int | None:
+def checkpoint_step(path: Path) -> int | None:
     """Return numeric step suffix from ``model_<step>.pt``, or ``None`` if non-numeric."""
     suffix = path.stem.split("_")[-1]
     return int(suffix) if suffix.isdigit() else None
@@ -163,11 +163,11 @@ def find_checkpoint(
             (
                 c
                 for c in (root / "logs" / "rsl_rl" / experiment).glob("*/model_*.pt")
-                if _ckpt_step(c) is not None and _run_is_for(c.parent, env_id)
+                if checkpoint_step(c) is not None and _run_is_for(c.parent, env_id)
             )
             if experiment
             else [],
-            key=lambda c: (c.parent.name, _ckpt_step(c) or 0),
+            key=lambda c: (c.parent.name, checkpoint_step(c) or 0),
         )
         if runs:
             return runs[-1]
@@ -178,9 +178,9 @@ def find_checkpoint(
                 for c in (root / "baselines" / "checkpoints" / env_id).glob(
                     "model_*.pt"
                 )
-                if _ckpt_step(c) is not None
+                if checkpoint_step(c) is not None
             ),
-            key=lambda c: _ckpt_step(c) or 0,
+            key=lambda c: checkpoint_step(c) or 0,
         )
         if baseline:
             return baseline[-1]
@@ -192,8 +192,8 @@ def find_checkpoint(
 
         check_contract(env_id, hf_dir)
         hf_ckpts = sorted(
-            (c for c in hf_dir.glob("model_*.pt") if _ckpt_step(c) is not None),
-            key=lambda c: _ckpt_step(c) or 0,
+            (c for c in hf_dir.glob("model_*.pt") if checkpoint_step(c) is not None),
+            key=lambda c: checkpoint_step(c) or 0,
         )
         if hf_ckpts:
             return hf_ckpts[-1]
@@ -243,11 +243,17 @@ def find_vec_normalize(checkpoint: str | Path) -> Path | None:
 
     Returns:
         ``<stem>_vecnormalize.pkl``, ``vecnormalize.pkl`` or ``vec_normalize.pkl``
-        in the checkpoint's directory (the first that exists), or ``None``.
+        in the checkpoint's directory (the first that exists), or ``None``. For a
+        ``CheckpointCallback`` snapshot ``<name>_<steps>_steps.zip`` its own
+        ``<name>_vecnormalize_<steps>_steps.pkl`` comes first.
     """
     checkpoint = Path(checkpoint)
-    for name in _VEC_NORMALIZE_NAMES:
-        candidate = checkpoint.with_name(name.format(stem=checkpoint.stem))
+    names = [name.format(stem=checkpoint.stem) for name in _VEC_NORMALIZE_NAMES]
+    snapshot = re.fullmatch(r"(.+)_(\d+_steps)", checkpoint.stem)
+    if snapshot:  # SB3 CheckpointCallback: <name>_vecnormalize_<steps>_steps.pkl
+        names.insert(0, f"{snapshot[1]}_vecnormalize_{snapshot[2]}.pkl")
+    for name in names:
+        candidate = checkpoint.with_name(name)
         if candidate.is_file():
             return candidate
     return None
@@ -340,10 +346,10 @@ def load_policy(
         return random_policy
     if checkpoint.is_dir():
         step_ckpts = [
-            c for c in checkpoint.glob("model_*.pt") if _ckpt_step(c) is not None
+            c for c in checkpoint.glob("model_*.pt") if checkpoint_step(c) is not None
         ]
         if step_ckpts:
-            checkpoint = max(step_ckpts, key=lambda c: _ckpt_step(c) or 0)
+            checkpoint = max(step_ckpts, key=lambda c: checkpoint_step(c) or 0)
         else:
             any_ckpts = sorted(checkpoint.glob("model_*.pt"))
             if not any_ckpts:

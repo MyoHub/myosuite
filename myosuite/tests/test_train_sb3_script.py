@@ -50,6 +50,42 @@ def test_train_sb3_saves_a_loadable_policy(tmp_path: Path, algo: str) -> None:
     assert model.action_space.shape[0] > 0
 
 
+def test_train_sb3_saves_snapshots_for_a_mixture(tmp_path: Path) -> None:
+    from myosuite.utils.checkpoint_utils import find_vec_normalize
+    from myosuite.utils.policy_mixture import select_snapshots
+
+    train_sb3 = _load()
+    out = tmp_path / "model"
+    argv = ["myoFingerReachFixed-v0", "--timesteps", "256", "--eval-episodes", "0"]
+    train_sb3.main([*argv, "--normalize", "--snapshot-freq", "64", "--out", str(out)])
+    # PPO collects 2048 steps per update, so the run is 2048 steps long
+    snapshots = select_snapshots(tmp_path / "model_snapshots", 2, last=0.5)
+    assert [p.name for p in snapshots] == [
+        "model_1088_steps.zip",
+        "model_2048_steps.zip",
+    ]
+    assert find_vec_normalize(snapshots[0]).name == "model_vecnormalize_1088_steps.pkl"
+    # the snapshots run as a mixture through the existing loader, each with its own normaliser
+    from myosuite import make_env
+    from myosuite.utils.checkpoint_utils import load_policy
+    from myosuite.utils.policy_mixture import PolicyMixture
+
+    env = make_env("myoFingerReachFixed-v0")
+    mixture = PolicyMixture(
+        [load_policy(env, p, strict=True) for p in snapshots], seed=0
+    )
+    obs, _ = env.reset(seed=0)
+    drawn = mixture.index.copy()
+    for _ in range(
+        3
+    ):  # within an episode the snapshot stays; it is redrawn when the episode ends
+        obs, _, terminated, truncated, _ = env.step(mixture(obs))
+        assert (mixture.index == drawn).all()
+        if terminated or truncated:
+            mixture.redraw()
+            obs, _ = env.reset()
+
+
 @pytest.mark.parametrize("normalize", [False, True])
 def test_cli_vectorizers_preserve_seeded_episodes(normalize: bool) -> None:
     script = _load()

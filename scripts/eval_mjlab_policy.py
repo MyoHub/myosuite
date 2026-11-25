@@ -33,6 +33,12 @@ A checkpoint trained through an action map (e.g. DynSyn muscle synergies, traine
 ``training/dynsyn``) is evaluated with the map of its training run, at its training
 progress, read from the checkpoint (see ``myosuite.utils.action_map``).
 
+``--mixture`` evaluates a mixture of snapshots of the run (one per episode, drawn
+uniformly), e.g. for a reward that depends on the policy's own distribution (see
+``myosuite.utils.policy_mixture``)::
+
+    python scripts/eval_mjlab_policy.py myoElbowPose1D6MRandom-v0 --checkpoint RUN --mixture 10
+
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
 metric that every task twin logs during training too).
@@ -46,7 +52,6 @@ from __future__ import annotations
 
 import inspect
 import os
-import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,7 +62,13 @@ import numpy as np
 import tyro
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
+from myosuite.utils.checkpoint_utils import checkpoint_step
 from myosuite.utils.feature_cli import parse_feature_args
+from myosuite.utils.policy_mixture import (
+    PolicyMixture,
+    select_snapshots,
+    snapshot_step,
+)
 
 
 @dataclass(frozen=True)
@@ -70,6 +81,12 @@ class EvalConfig:
     checkout), else a local ``baselines/checkpoints/<env_id>``,
     else the env's default policy downloaded from the Hugging Face baselines repo (see
     ``myosuite.utils.checkpoint_utils.find_checkpoint``)."""
+    mixture: int = 1
+    """Above 1: run each episode with one of this many snapshots of the run directory
+    (``--checkpoint``), spread evenly over the last ``--mixture-last`` of training
+    (see ``myosuite.utils.policy_mixture``)."""
+    mixture_last: float = 0.5
+    """Share of training the ``--mixture`` snapshots are taken from."""
     backend: Literal["cpu", "mjlab"] = "cpu"
     """Roll out in the CPU gymnasium env or in the mjlab env."""
     episodes: int = 10
@@ -152,8 +169,8 @@ def _resolve_checkpoint(env_id: str, path: Path | None) -> Path:
     if path.is_file():
         return path
     ckpts = sorted(
-        (c for c in path.glob("model_*.pt") if re.fullmatch(r"model_\d+", c.stem)),
-        key=lambda c: int(c.stem.split("_")[-1]),
+        (c for c in path.glob("model_*.pt") if snapshot_step(c) is not None),
+        key=snapshot_step,
     )
     if not ckpts:
         raise FileNotFoundError(f"No model_<iter>.pt in {path}")
@@ -900,6 +917,28 @@ def _check_stochastic(cfg: EvalConfig, policy) -> None:
         )
 
 
+def _snapshots(cfg: EvalConfig, checkpoint: Path) -> list[Path]:
+    """The checkpoints to mix: *checkpoint* alone, or ``--mixture`` snapshots of its run."""
+    if cfg.mixture <= 1:
+        return [checkpoint]
+    try:  # the snapshots of the checkpoint's run, up to the checkpoint
+        paths = select_snapshots(
+            checkpoint.parent,
+            cfg.mixture,
+            cfg.mixture_last,
+            until=checkpoint_step(checkpoint),
+        )
+    except ValueError as err:
+        raise SystemExit(f"--mixture: {err}") from err
+    if any(p.suffix != ".pt" for p in paths):
+        raise SystemExit(
+            "--mixture evaluates RSL-RL model_<iteration>.pt snapshots. Load SB3 snapshots "
+            "(train_sb3.py --snapshot-freq) with myosuite.utils.checkpoint_utils.load_policy "
+            "and run them with myosuite.utils.policy_mixture.PolicyMixture."
+        )
+    return paths
+
+
 def evaluate_cpu(
     cfg: EvalConfig, checkpoint: Path, features: tuple = (), trained: Any = None
 ) -> None:
@@ -921,13 +960,16 @@ def evaluate_cpu(
             )
             for env in envs
         ]
-    policy = load_rslrl_policy(
-        checkpoint,
-        envs[0].action_space.shape[0],
-        action_map_applied=trained is not None,
-    )
-    _check_stochastic(cfg, policy)
-    policy.seed(cfg.seed)
+    policies = [
+        load_rslrl_policy(
+            path, envs[0].action_space.shape[0], action_map_applied=trained is not None
+        )
+        for path in _snapshots(cfg, checkpoint)
+    ]
+    for k, policy in enumerate(policies):
+        _check_stochastic(cfg, policy)
+        policy.seed(cfg.seed + k)
+    mixture = PolicyMixture(policies, n_envs, cfg.seed)
     grid = (
         GridRenderer(
             envs[0].unwrapped.model,
@@ -951,7 +993,7 @@ def evaluate_cpu(
     ep_return, ep_length = np.zeros(n_envs), np.zeros(n_envs, dtype=int)
     done_count = np.zeros(n_envs, dtype=int)
     while (done_count < per_env).any():
-        actions = policy.act(obs, cfg.stochastic)
+        actions = mixture.apply(lambda p, o: p.act(o, cfg.stochastic), obs)
         for i, env in enumerate(envs):
             if done_count[i] >= per_env:
                 continue
@@ -965,6 +1007,7 @@ def evaluate_cpu(
                     successes.append(float(bool(info["solved"])))
                 ep_return[i], ep_length[i] = 0.0, 0
                 done_count[i] += 1
+                mixture.redraw([i])
                 if done_count[i] < per_env:
                     seed = cfg.seed + i * per_env + int(done_count[i])
                     obs[i] = env.reset(seed=seed)[0]
@@ -1036,12 +1079,17 @@ def evaluate_mjlab(
         else None
     )
     frames: list[np.ndarray] = []
-    policy = load_rslrl_policy(
-        checkpoint,
-        env.action_manager.total_action_dim,
-        action_map_applied=trained is not None,
-    ).to(device)
-    _check_stochastic(cfg, policy)
+    policies = [
+        load_rslrl_policy(
+            path,
+            env.action_manager.total_action_dim,
+            action_map_applied=trained is not None,
+        ).to(device)
+        for path in _snapshots(cfg, checkpoint)
+    ]
+    for policy in policies:
+        _check_stochastic(cfg, policy)
+    mixture = PolicyMixture(policies, n_envs, cfg.seed)
     has_success = "success" in env.metrics_manager.active_terms
 
     obs, _ = env.reset()
@@ -1053,8 +1101,9 @@ def evaluate_mjlab(
     successes: list[float] = []
     with torch.no_grad():
         for _ in range(per_env * env.max_episode_length):
-            act = policy.sample if cfg.stochastic else policy
-            obs, rew, terminated, truncated, _ = env.step(act(_actor_obs(obs)))
+            act = (lambda p, o: p.sample(o)) if cfg.stochastic else (lambda p, o: p(o))
+            action = mixture.apply(act, _actor_obs(obs))
+            obs, rew, terminated, truncated, _ = env.step(action)
             if grid is not None:
                 frames.append(grid.render())
             recording = episodes_done < per_env
@@ -1070,6 +1119,8 @@ def evaluate_mjlab(
             ep_return[finished] = 0.0
             ep_length[finished] = 0
             episodes_done += finished.long()
+            if len(policies) > 1:
+                mixture.redraw(finished.nonzero().flatten().tolist())
             if bool((episodes_done >= per_env).all()):
                 break
     step_dt = env.step_dt
@@ -1097,6 +1148,14 @@ def main() -> None:
             f"Action map: {trained.action_map.kind} ({trained.action_map.action_dim} "
             f"actions, as trained after {trained.env_steps:.4g} env steps)"
         )
+    if cfg.mixture > 1:
+        if trained is not None:
+            raise SystemExit(
+                "--mixture: the action map is frozen at one training step, so "
+                "snapshots of a run with an action map cannot be mixed."
+            )
+        names = ", ".join(p.name for p in _snapshots(cfg, checkpoint))
+        print(f"mixture of {cfg.mixture} snapshots: {names}")
     if cfg.backend == "cpu":
         evaluate_cpu(cfg, checkpoint, features, trained)
     else:
