@@ -155,3 +155,8 @@ def test_catalog_tracks_live_signatures(monkeypatch: pytest.MonkeyPatch) -> None
     )
     assert entry.summary == "Current parameter documentation."
     assert [(param.name, param.default) for param in entry.params] == [("gain", "0.25")]
+
+
+def test_dataclass_params_leave_out_fields_outside_init() -> None:
+    entry = next(e for e in catalog(kind="reward") if e.name == "GaussianMixtureSpec")
+    assert "_cache" not in [param.name for param in entry.params]

@@ -40,6 +40,7 @@ TERM_MODULES: dict[str, tuple[str, ...]] = {
     "reward": (
         "myosuite.terms.base_reward",
         "myosuite.terms.mimic_reward",
+        "myosuite.terms.distribution_reward",
     ),
     "action": ("myosuite.terms.base_action",),
     "event": ("myosuite.terms.base_event",),
@@ -191,6 +192,8 @@ def _extract_callable_params(fn: Any) -> tuple[ParamSpec, ...]:
 def _extract_dataclass_params(cls: type[Any]) -> tuple[ParamSpec, ...]:
     specs: list[ParamSpec] = []
     for f in dataclasses.fields(cls):
+        if not f.init:
+            continue  # internal state, not a constructor parameter
         has_val = f.default is not dataclasses.MISSING
         has_fac = f.default_factory is not dataclasses.MISSING
         default_str: str | None = None
