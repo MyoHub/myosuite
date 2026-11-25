@@ -56,6 +56,20 @@ class EnvAccessor(Protocol):
         """Cartesian positions of sites in world frame. Shape: (len(site_ids), 3)."""
         ...
 
+    def site_xmat(self, site_ids: Any) -> Any:
+        """Orientations of sites in world frame, as rotation matrices whose columns are the site's axes.
+
+        Shape: (len(site_ids), 3, 3), or (N, len(site_ids), 3, 3) for batched envs.
+        """
+        ...
+
+    def site_ang_vel(self, site_ids: Any) -> Any:
+        """Angular velocities of sites in world frame (rad/s): the angular velocity of each site's body.
+
+        Shape: (len(site_ids), 3), or (N, len(site_ids), 3) for batched envs.
+        """
+        ...
+
     def time(self) -> Any:
         """Simulation time in seconds."""
         ...

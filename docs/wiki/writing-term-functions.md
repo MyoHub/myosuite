@@ -38,6 +38,8 @@ Access physics state via `accessor.*` only — never `mujoco.MjData` directly:
 qpos  = accessor.joint_pos()          # (nq,) or (N, nq)
 qvel  = accessor.joint_vel()          # (nv,) or (N, nv)
 sites = accessor.site_xpos(site_ids)  # (K, 3)
+frame = accessor.site_xmat(site_ids)  # (K, 3, 3), the site's axes as columns
+spin  = accessor.site_ang_vel(site_ids)  # (K, 3), the site's body's angular velocity, world frame
 t     = accessor.time()
 ```
 
