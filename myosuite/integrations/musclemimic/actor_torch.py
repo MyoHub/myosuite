@@ -49,6 +49,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from myosuite.integrations.musclemimic.actor_tree import (
+    residual_block_indices as _residual_block_indices,
+)
+from myosuite.integrations.musclemimic.actor_tree import (
+    sorted_prefix_indices as _sorted_prefix_indices,
+)
+
 if TYPE_CHECKING:
     from myosuite.integrations.musclemimic.fullbody_local_policy import (
         LocalPolicyArtifacts,
@@ -106,31 +113,6 @@ def _read_res_block(actor: dict[str, Any], idx: int) -> _ResBlockWeights:
         ),
         gate_raw=float(np.asarray(gate, dtype=np.float32).reshape(())),
     )
-
-
-def _residual_block_indices(actor: dict[str, Any]) -> list[int]:
-    """Return sorted residual block indices present in an actor tree."""
-    indices: list[int] = []
-    suffix = "_layer0_dense"
-    for key in actor:
-        if not key.startswith("block") or not key.endswith(suffix):
-            continue
-        idx = key[len("block") : -len(suffix)]
-        if idx.isdigit():
-            indices.append(int(idx))
-    return sorted(indices)
-
-
-def _sorted_prefix_indices(tree: dict[str, Any], prefix: str) -> list[int]:
-    """Return sorted integer suffixes for keys like ``f"{prefix}{i}"``."""
-    indices: list[int] = []
-    for key in tree:
-        if not key.startswith(prefix):
-            continue
-        suffix = key[len(prefix) :]
-        if suffix.isdigit():
-            indices.append(int(suffix))
-    return sorted(indices)
 
 
 def _linear_from_jax(kernel: np.ndarray, bias: np.ndarray) -> nn.Linear:
@@ -467,6 +449,7 @@ class BCActorNet(nn.Module):
 
 try:
     from collections.abc import Sequence as _Sequence
+
     from rsl_rl.models.mlp_model import MLPModel as _MLPModel
     from rsl_rl.modules.distribution import Distribution as _Distribution
     from rsl_rl.utils import resolve_callable as _resolve_callable
