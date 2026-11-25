@@ -4,6 +4,10 @@ Append-only record of PRs to `dev` that introduced a new feature or a
 critical/breaking change, and why. Routine fixes, refactors, and doc edits
 don't get an entry here.
 
+## [2026-11-15] feature | subject geometry scaling facade (`make_env(scales=...)`)
+
+- Delegated model-layer geometry and OpenSim scaling (`myosuite.core.body_scaling`) to `myo_sim` (`MyoHub/myo_sim#149`), keeping `make_env("myoLegWalk-v0", scales=..., total_mass=...)` across CPU and mjlab, skin binding, and checkpoint manifest provenance in MyoSuite. See [scaling-migration.md](scaling-migration.md).
+
 ## [2026-11-15] feature | canonical differential IK (`solve_ik`) and marker retargeting (`retarget`)
 
 - Added `myosuite.biomechanics.inverse_kinematics.solve_ik` (re-exported at `myosuite.physics.inverse_kinematics`) on `mink` and `myosuite.core.retargeting.retarget` with `.trc`/`.c3d` marker readers (`myosuite.integrations.capture.markers`). See [library-usage.md](library-usage.md).
