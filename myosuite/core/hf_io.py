@@ -321,7 +321,29 @@ def default_musclemimic_cache_root() -> Path:
     return Path.home() / ".musclemimic" / "caches" / "AMASS"
 
 
+def is_gated_or_transient_hf_error(exc: BaseException) -> bool:
+    """Return ``True`` when *exc* is a gated-dataset or transient Hub HTTP (429 / 5xx) error.
+
+    404, bad revision, and missing-entry errors return ``False`` so callers re-raise real bugs.
+
+    Args:
+        exc: Exception raised while downloading Hugging Face assets.
+
+    Returns:
+        Whether *exc* should be treated as an unavailable gated/transient Hub resource.
+    """
+    try:
+        from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+    except ImportError:
+        return False
+    if isinstance(exc, GatedRepoError):
+        return True
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return isinstance(exc, HfHubHTTPError) and (status == 429 or (status or 0) >= 500)
+
+
 __all__ = [
+    "is_gated_or_transient_hf_error",
     "BASELINES_REPO_ID",
     "HF_REVISIONS",
     "pinned_revision",

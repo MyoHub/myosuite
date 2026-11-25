@@ -9,7 +9,7 @@
 ## Work Loop
 
 1. Implement following [engineering-standards.md](engineering-standards.md).
-2. Verify correctness (tests, diffs). Run the commands in [CLAUDE.md](../../CLAUDE.md).
+2. Verify correctness (tests, diffs). Run the commands in [AGENTS.md](../../AGENTS.md).
 3. Update any wiki page affected by the change.
 4. If this change is going into a PR to `dev` introducing a new feature or a
    critical/breaking change, append an entry to [docs/wiki/log.md](log.md). Routine

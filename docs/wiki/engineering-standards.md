@@ -1,6 +1,6 @@
 # Engineering Standards
 
-> **Source of truth priority:** code and tests → [CLAUDE.md](../../CLAUDE.md) → this wiki.
+> **Source of truth priority:** code and tests → [AGENTS.md](../../AGENTS.md) → this wiki.
 > If this page disagrees with the code, the code wins — please fix this page.
 
 ## Design Principles
@@ -16,15 +16,17 @@ Before any new class, function, or wrapper:
 2. Check [library-usage.md](library-usage.md) — confirm no library already provides it.
 3. Compare the existing behavior and constraints; extend or import it when it satisfies the requirement. Record this evidence in the PR.
 
-| Kind of code | Canonical location |
+| Kind of code | Canonical location (see [repository-map.md](repository-map.md)) |
 |---|---|
 | Obs / reward / action / event / termination term functions | `myosuite/terms/` |
-| Physics math (quat, fatigue, min-jerk) | `myosuite/physics/` |
+| Physics math (quat, fatigue, joint couplings, running stats) | `myosuite/physics/` |
+| Numerical biomechanics solvers (IK, ID, SO, CMC, EMG, effort) | `myosuite/biomechanics/` |
+| Lightweight format/dataset readers & `musclemimic` runtime adapters | `myosuite/integrations/` (heavy CV inference → `tools/`) |
 | Muscle noise / fatigue / reafferentation / sarcopenia (wrappers and stages) | `myosuite/envs/wrappers.py`, `myosuite/envs/muscle_stages.py` |
-| Building an env on either backend (`make_env`, `EnvConfig`) | `myosuite/core/registry.py`, `myosuite/core/config.py` |
-| Generic utilities | `myosuite/utils/` |
-| MuscleMimic helpers | `myosuite/integrations/musclemimic/` |
+| Building an env on either backend (`make_env`, `EnvConfig`, `ModelBuilder`) | `myosuite/core/registry.py`, `myosuite/core/config.py`, `myosuite/core/model_builder.py` |
+| Rendering, rollout video, muscle meshes, skinning, Blender/USD | `myosuite/viz/` |
 | mjlab action/obs/event wiring | `myosuite/envs/myo/backends/mjlab/` |
+| RL trainers, replay buffers, world models | `training/<method>/` (**never** inside `myosuite/`) |
 
 ## Python Standards
 
@@ -136,7 +138,7 @@ Read [mjlab-design-guide.md](mjlab-design-guide.md) and
 - The full **CPU env contract** (physics step via `_step_physics`, float32 unclipped observations, `reset(seed=...)`
   fully determining the episode, mocap targets, runtime model edits) and the **mjlab rules** (physics options from
   the CPU model, root velocities, anchored joint-name regexes, per-episode state, step order, vectorised terms) are
-  in [CLAUDE.md](../../CLAUDE.md); `test_obs_contract.py`, `test_reset_reproducibility.py` and
+  in [AGENTS.md](../../AGENTS.md); `test_obs_contract.py`, `test_reset_reproducibility.py` and
   `test_runtime_geometry_consistency.py` check them.
 
 ### Base classes (what actually exists)
@@ -212,7 +214,7 @@ walked through in [adding-a-new-task.md](adding-a-new-task.md).
 `pytest myosuite/tests/test_parity.py -v` after every env change. CPU parity is
 gated at `atol ≤ 1e-6` (some contact-rich envs are relaxed); regressions block
 PRs. To regenerate a baseline after an
-*intentional* change (with the package versions CI resolves, see [CLAUDE.md](../../CLAUDE.md)):
+*intentional* change (with the package versions CI resolves, see [AGENTS.md](../../AGENTS.md)):
 
 ```bash
 python scripts/generate_parity_baselines.py --env-id <env-id>

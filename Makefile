@@ -1,5 +1,5 @@
 # MyoSuite — developer convenience targets.
-# Mirrors the verification checklist in CLAUDE.md so it runs with a single command.
+# Mirrors the verification checklist in AGENTS.md so it runs with a single command.
 
 .PHONY: lint test-tier1 test-tier2 test-core parity-check test-regression verify
 
@@ -23,9 +23,11 @@ test-tier1:
 test-tier2:
 	pytest myosuite/tests/ -m "tier2 and not slow" -v
 
-# Core test suite from CLAUDE.md verification checklist
+# Core test suite from AGENTS.md verification checklist
 test-core:
-	pytest myosuite/tests/test_model_builder.py \
+	pytest myosuite/tests/test_package_boundaries.py \
+	       myosuite/tests/test_package_discovery.py \
+	       myosuite/tests/test_model_builder.py \
 	       myosuite/tests/test_terms_cpu.py \
 	       myosuite/tests/test_fragment_compat.py \
 	       myosuite/tests/test_parity.py \

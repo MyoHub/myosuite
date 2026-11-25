@@ -227,6 +227,8 @@ jobs:
                 myosuite/tests/test_parity.py \
                 myosuite/tests/test_registry.py \
                 myosuite/tests/test_import_footprint.py \
+                myosuite/tests/test_package_boundaries.py \
+                myosuite/tests/test_package_discovery.py \
                 myosuite/tests/test_mjlab_warning_filters.py \
                 myosuite/tests/test_train_mjlab.py
               # Exit code 5: no test is affected by the change.

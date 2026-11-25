@@ -4,7 +4,7 @@
 The CLA check requires every author and co-author to have signed the CLA.
 AI tools cannot sign it, so a commit whose Author or Committer is Cursor
 Agent (or another AI identity), and Co-Authored-By trailers for Cursor,
-Claude, Codex, Gemini, etc., break CI. Soft guidance in CLAUDE.md is not
+Claude, Codex, Gemini, etc., break CI. Soft guidance in AGENTS.md is not
 enough — some tools set the author identity or inject trailers after the
 message is composed.
 

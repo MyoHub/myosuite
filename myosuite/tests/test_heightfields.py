@@ -14,8 +14,8 @@ import pytest
 import myosuite  # noqa: F401  (registers the envs)
 from myosuite.envs.heightfields import ChaseTagField, HeightField, TrackField
 from myosuite.physics.quat_math import euler2mat, quat2euler
-from myosuite.tests.test_envs import assert_close
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+from myosuite.utils.dict_utils import assert_nested_close
 from myosuite import make_env
 
 pytestmark = pytest.mark.tier2
@@ -69,7 +69,7 @@ def test_chasetagfield() -> None:
     heightfield2 = _create_chasetagfield(seed)
     heightfield2.sample()
     data2 = heightfield2.hfield.data.copy()
-    assert_close(data, data2)
+    assert_nested_close(data, data2)
 
 
 def test_trackfield() -> None:
@@ -80,7 +80,7 @@ def test_trackfield() -> None:
     heightfield2 = _create_trackfield(seed)
     heightfield2.sample()
     data2 = heightfield2.hfield.data.copy()
-    assert_close(data, data2)
+    assert_nested_close(data, data2)
 
 
 def _reference_heightmap(field: HeightField) -> np.ndarray:

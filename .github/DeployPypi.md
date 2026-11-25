@@ -30,14 +30,8 @@ python3 -m twine upload --repository pypi dist/*
 ### Verify proper upload
 
 ```bash
-conda create --name test_myosuite python=3.11
-conda activate test_myosuite
-pip install myosuite
-python3 -c "import myosuite; print(f'MyoSuite version: {myosuite.__version__}')"
-pip install pytest
-python3 -m pytest -o addopts= --pyargs myosuite.tests.test_myo
-conda deactivate
-conda remove --name test_myosuite --all
+./.github/test_deploy.sh               # verifies PyPI myosuite==<version.py>
+./.github/test_deploy.sh dist/*.whl    # or verify the built wheel locally before upload
 ```
 
 ### Create a newly tagged release

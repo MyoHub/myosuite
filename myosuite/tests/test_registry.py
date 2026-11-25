@@ -55,7 +55,7 @@ def test_env_resets_and_steps(env_id: str) -> None:
     import gymnasium as gym
 
     def _assert_finite(value: object) -> None:
-        # ModularMultiAgentTaskEnv returns per-agent dicts (CLAUDE.md exception);
+        # ModularMultiAgentTaskEnv returns per-agent dicts (AGENTS.md exception);
         # everything else returns a flat array-like.
         if isinstance(value, dict):
             for v in value.values():

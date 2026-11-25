@@ -17,4 +17,4 @@
 | [agent-workflow.md](agent-workflow.md) | Required agent workflow and subagent strategy |
 | [log.md](log.md) | Append-only log of PRs to `dev` with new features / critical changes |
 
-**Source of truth priority:** code and tests → [CLAUDE.md](../../CLAUDE.md) → this wiki.
+**Source of truth priority:** code and tests → [AGENTS.md](../../AGENTS.md) → this wiki.

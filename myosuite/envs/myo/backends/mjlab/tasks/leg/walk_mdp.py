@@ -99,7 +99,7 @@ def _com(env: ManagerBasedRlEnv, model: WalkModel) -> torch.Tensor:
 
 def com_velocity(env: ManagerBasedRlEnv, model: WalkModel) -> torch.Tensor:
     """CPU ``_get_com_velocity``: planar centre-of-mass velocity, negated (the model faces -y)."""
-    data = env.sim.data  # no entity.data API for cvel / subtree_com (CLAUDE.md)
+    data = env.sim.data  # no entity.data API for cvel / subtree_com (AGENTS.md)
     velocity = com_linear_velocity(
         torch, model.mass, data.cvel, data.xipos, data.subtree_com[:, model.rootid]
     )

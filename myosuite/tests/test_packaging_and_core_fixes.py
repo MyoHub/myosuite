@@ -162,3 +162,214 @@ def test_pyproject_supports_gymnasium_1_4_and_numpy_2_5() -> None:
     assert deps["numpy"].contains("2.2.6")
     assert deps["numpy"].contains("2.4.6")
     assert deps["numpy"].contains("2.5.5")
+
+
+@pytest.mark.skipif(
+    __import__("sys").platform == "win32",
+    reason="POSIX bash script test",
+)
+def test_pr_note_and_local_review_shell_syntax_and_fake_gh(tmp_path: Path) -> None:
+    """``pr_note.sh`` and ``local_review.sh`` parse cleanly and ``pr_note.sh`` resolves fork/origin PRs in an isolated repo."""
+    import os
+    import shutil
+    import subprocess
+
+    if shutil.which("bash") is None or shutil.which("jq") is None:
+        pytest.skip("bash and jq required")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    pr_note = repo_root / "scripts" / "review" / "pr_note.sh"
+    local_rev = repo_root / "scripts" / "review" / "local_review.sh"
+    test_deploy = repo_root / ".github" / "test_deploy.sh"
+    for script in (pr_note, local_rev, test_deploy):
+        chk = subprocess.run(
+            ["bash", "-n", str(script)], capture_output=True, text=True
+        )
+        assert chk.returncode == 0, chk.stderr
+
+    git_dir = tmp_path / "repo"
+    git_dir.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "test-branch"],
+        cwd=git_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=git_dir, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=git_dir, check=True
+    )
+    (git_dir / "README.md").write_text("hi\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=git_dir, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=git_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "remote",
+            "add",
+            "upstream",
+            "https://github.com/staleorg/inaccessible.git",
+        ],
+        cwd=git_dir,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/MyoHub/myosuite.git"],
+        cwd=git_dir,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "myfork", "https://github.com/forkuser/myosuite.git"],
+        cwd=git_dir,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "branch.test-branch.remote", "myfork"],
+        cwd=git_dir,
+        check=True,
+    )
+
+    out_print = subprocess.run(
+        ["bash", str(pr_note), "print"],
+        cwd=git_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "<!-- myo-review:start -->" in out_print.stdout
+    assert "Local checks" in out_print.stdout
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    patched_file = tmp_path / "patched_body.txt"
+    fake_gh = fake_bin / "gh"
+    fake_gh.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+jq_expr=""
+method="GET"
+endpoint=""
+body_val=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    api) shift ;;
+    --paginate) shift ;;
+    -X) method="$2"; shift 2 ;;
+    --jq) jq_expr="$2"; shift 2 ;;
+    -f) body_val="${{2#body=}}"; shift 2 ;;
+    *) endpoint="$1"; shift ;;
+  esac
+done
+if [[ "$method" == "PATCH" ]]; then
+  printf '%s' "$body_val" > "{patched_file}"
+  echo '{{}}'
+  exit 0
+fi
+if [[ "$endpoint" == "repos/staleorg/inaccessible/"* ]]; then
+  echo '{{"message": "Not Found", "status": "404"}}'
+  exit 1
+elif [[ "$endpoint" == "repos/MyoHub/myosuite/pulls?state=open&head=forkuser%3Atest-branch"* ]]; then
+  json='[{{"number": 935, "head": {{"ref": "test-branch", "repo": {{"full_name": "forkuser/myosuite"}}}}}}]'
+elif [[ "$endpoint" == *"/pulls?state=open"* ]]; then
+  json='[]'
+elif [[ "$endpoint" == "repos/MyoHub/myosuite/pulls/935" ]]; then
+  json='{{"body": "## Summary\\nHello PR\\n\\n<!-- myo-review:start -->\\nold\\n<!-- myo-review:end -->"}}'
+elif [[ "$endpoint" == "repos/forkuser/myosuite" ]]; then
+  json='{{"full_name": "forkuser/myosuite", "parent": {{"full_name": "MyoHub/myosuite"}}}}'
+else
+  json='{{"full_name": "MyoHub/myosuite"}}'
+fi
+if [[ -n "$jq_expr" ]]; then
+  jq -r "$jq_expr" <<<"$json"
+else
+  echo "$json"
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+
+    env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
+    body_res = subprocess.run(
+        ["bash", str(pr_note), "body", "test-branch"],
+        cwd=git_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "## Summary" in body_res.stdout
+    assert "Hello PR" in body_res.stdout
+    assert "<!-- myo-review:start -->" not in body_res.stdout
+
+    upd_res = subprocess.run(
+        ["bash", str(pr_note), "update", "HEAD", "test-branch"],
+        cwd=git_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "updated the Local checks block of PR #935" in upd_res.stderr
+    patched = patched_file.read_text(encoding="utf-8")
+    assert "Hello PR" in patched and "**Local checks**" in patched
+
+    # --record-stdin rejects symbolic --head HEAD and missing --via
+    sym_res = subprocess.run(
+        ["bash", str(local_rev), "--record-stdin", "--head", "HEAD", "--via", "claude"],
+        cwd=git_dir,
+        capture_output=True,
+        text=True,
+    )
+    assert sym_res.returncode == 2
+    no_via_res = subprocess.run(
+        ["bash", str(local_rev), "--record-stdin", "--head", "abcdef123456"],
+        cwd=git_dir,
+        capture_output=True,
+        text=True,
+    )
+    assert no_via_res.returncode == 2
+
+    # --print-prompt delivers commit log, unified diff hunks, and a readable diff file for read-only IDE reviewers
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=git_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    (git_dir / "README.md").write_text("hi\nsecond line\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=git_dir, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "feat: add second line\n\nDetailed body."],
+        cwd=git_dir,
+        check=True,
+        capture_output=True,
+    )
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=git_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    prompt_res = subprocess.run(
+        ["bash", str(local_rev), "--print-prompt"],
+        cwd=git_dir,
+        env={**env, "MYO_REVIEW_BASE": base_sha},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert head_sha in prompt_res.stderr
+    assert "feat: add second line" in prompt_res.stdout
+    assert "+second line" in prompt_res.stdout
+    diff_path = git_dir / ".git" / "myo-review" / f"prompt-{head_sha}.diff"
+    assert str(diff_path) in prompt_res.stdout
+    assert diff_path.is_file()
+    assert "+second line" in diff_path.read_text(encoding="utf-8")

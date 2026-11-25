@@ -1,8 +1,10 @@
-# Agent Instructions (AGENTS.md; CLAUDE.md imports this file)
+# Agent Instructions
 
 ## Code Review Rules
 
-The review rules for every reviewer (people, Claude Code Review, Codex, Antigravity/Gemini, local `scripts/review/local_review.sh`) are in [REVIEW.md](REVIEW.md). Read it before reviewing or opening a pull request.
+The single source of truth for review rules across all reviewers (people, Claude Code, Codex, Antigravity/Gemini, VS Code / Cursor / Copilot IDE sessions, and local `scripts/review/local_review.sh`) is [REVIEW.md](REVIEW.md). Read it before reviewing or opening a pull request; edit [REVIEW.md](REVIEW.md) directly rather than duplicating rules into IDE-specific files.
+
+- **Running `local_review.sh` from CLI or IDE (VS Code Claude Code, Cursor, Antigravity, Copilot):** `scripts/review/local_review.sh` auto-discovers `claude`, `codex`, `gemini`, and `agy` on `$PATH`, `~/.local/bin`, and inside VS Code / Remote-SSH / Cursor extensions (`~/.vscode*/extensions/anthropic.claude-code-*/resources/native-binary/claude`, `openai.chatgpt-*`). If no CLI binary can run (e.g. IDE-only authentication), spawn a fresh **read-only** reviewer subagent (`.claude/agents/myo-reviewer.md` in Claude Code or `research` in Antigravity — never self-review in the authoring context) with `scripts/review/local_review.sh --print-prompt` and pipe its unmodified output to `scripts/review/local_review.sh --record-stdin --head <sha> --via <agent-name>` (using the `<sha>` printed by `--print-prompt`).
 
 ### Core-team PR review and merge policy
 
@@ -49,7 +51,7 @@ add minimal comments and descriptions in the code / python files
 
 ### CPU Env Contract
 
-The CLAUDE.md verification list does not cover these. `test_obs_contract.py`, `test_reset_reproducibility.py` and `test_runtime_geometry_consistency.py` check them.
+The Verification list below does not cover these. `test_obs_contract.py`, `test_reset_reproducibility.py` and `test_runtime_geometry_consistency.py` check them.
 
 - **Step overrides.**
   - Advance physics with `self._step_physics()`, which runs `mj_step` and then `mj_forward`. Finish with `self._finalize_step(obs_dict, rwd_dict)`.
@@ -98,26 +100,29 @@ The ownership (`myo_sim` vs MyoSuite) and minimum-change rules live in [REVIEW.m
 
 ### Package Boundaries and Motion Analysis
 
-Use these boundaries for new code and small, compatible refactors. This PR defines ownership and dependency rules; migrations remain separate changes.
+Enforced in CI by `myosuite/tests/test_package_boundaries.py` and `myosuite/tests/test_package_discovery.py`; see [docs/wiki/repository-map.md](docs/wiki/repository-map.md) for the full directory map and allowed-import matrix. Use today's active owners below until each follow-up migration PR lands and turns its superseded path into a closed forwarding facade.
 
 | Location | Responsibility |
 |---|---|
-| `myo_sim` | Anatomical assets/composition, reusable model mechanics and physical transforms. MyoSuite consumes its public APIs. |
-| `core/` | Environment configuration, registration and task assembly (`make_env`, `ModelBuilder`, recipes), delegating anatomical composition to `myo_sim`. |
-| `physics/` | Shared numerical helpers and compatibility imports; delegate canonical model mechanics to `myo_sim`. |
-| `motion/` (target) | Small, flat subpackage: `clip.py` (motion contracts), `io.py` (model-coordinate trajectory I/O), `transforms.py` (trajectory transforms). |
-| `biomechanics/` | Scientific fitting, analysis and control: IK/retargeting solvers, inverse dynamics, static optimization, CMC, EMG, effort and diagnostics. |
-| `integrations/` | Lightweight source-specific readers, adapters and calibration (e.g. markers, InstantHMR, GVHMR, SMPL+H, MANO); call shared fitting APIs. |
-| `viz/` | Rendering and visual reconstruction, including muscle meshes, skin and Blender. |
-| `scripts/`, `tools/` | Thin workflows, batch execution and reports; isolate heavyweight perception inference in standalone tools with their own dependencies. |
+| `myo_sim` | Anatomical assets/composition, reusable model mechanics and physical transforms. MyoSuite consumes its public APIs — never the reverse. |
+| `core/` | Environment configuration, registration and task assembly (`make_env`, `ModelBuilder`, recipes), delegating anatomical composition to `myo_sim`. (`scenes/` and `terms/` remain active today until migrated into `core/builder/` and `core/terms/`.) |
+| `physics/` | Shared numerical helpers and compatibility imports (`quat*`, `running_stats`, `joint_coupling`, `fatigue_jax`); delegate canonical model mechanics to `myo_sim`. |
+| `motion/` *(planned target)* | Small, flat subpackage for `MotionClip`, model-coordinate trajectory `io.py`, `transforms.py`, playback/reference contracts, `hf_cache.py`, and composable `KinematicTrial` / `EMGTrial`. Until implemented, reuse `MotionClip` in `core/trajectory_io.py` and transforms in `core/trajectory_yaw.py`. |
+| `biomechanics/` | Scientific fitting, analysis and control: IK/retargeting solvers, inverse dynamics, static optimization, CMC, EMG processing, external-load wrench mapping, effort and diagnostics. Must not import `envs`, `integrations`, or `viz`. |
+| `integrations/` | Lightweight source-specific readers, adapters and calibration (markers, InstantHMR, GVHMR, SMPL+H, MANO, OpenSim `.mot`/`.sto`) plus third-party runtime bridges (`musclemimic`); call shared fitting and policy APIs. |
+| `policies/` *(planned target)* | Reusable runtime checkpoint/ONNX loading, `export_onnx`, checkpoint manifests and `action_map` runtime wrappers (today in `myosuite/utils/`); kept separate from `benchmarks/` so `envs`, `integrations` and `viz` can load policies without upward cycles. |
+| `envs/` | CPU `MyoGymnasiumEnv` (`gymnasium_env.py`), `wrappers.py`, `muscle_stages.py`, and task/backend implementations (today under `envs/myo/{tasks,backends,myoedits,assets}/`; planned flattening to `envs/{backends,tasks,assets}/` in a dedicated migration PR). |
+| `viz/` | Rendering and visual reconstruction, including interactive/offscreen playback, muscle meshes/tubes, skin and Blender/USD. |
+| `benchmarks/` *(planned target)* | Standardized evaluation suites (`paired_replay`, `push_*`, `performance_card`, `examine_env`, rollout logging — today in `utils/` and `logger/`). Lower layers (`core`, `physics`, `biomechanics`, `integrations`, `envs`, `viz`) must never import evaluation suites. |
+| `scripts/`, `tools/`, `training/` | Thin workflows/reports (`scripts/`), standalone perception extractors (`tools/<tool>/`), and RL trainers/buffers/models (`training/<method>/`, [docs/wiki/training-guidelines.md](docs/wiki/training-guidelines.md)). Runtime modules inside `myosuite/` must **never** import `training`, `tools`, `scripts`, or `myosuite.tests` (and `myosuite.tests` is excluded from built wheels). |
 
-- **Reuse existing motion APIs.** `motion/` is not implemented yet. Reuse `MotionClip` in `core/trajectory_io.py` and transforms in `core/trajectory_yaw.py` until a separate migration lands. Prefer `motion` to `mocap`: these contracts also serve simulation and playback. Keep task-specific sampling in tasks; consolidate reference-motion implementations only after comparing their contracts.
-- **Allowed dependencies.** Consumers may import shared motion contracts; motion must not import environments, trainers, visualization or source adapters. Adapters call reusable fitting/analysis APIs; those algorithms must not import adapters, environment implementations or visualization. Workflows compose these layers. MyoSuite imports public `myo_sim` APIs, never the reverse. Define allowed module imports rather than assuming every directory is one dependency tier.
+- **Reuse existing motion APIs.** `motion/` is not implemented in this branch yet: reuse `MotionClip` in `core/trajectory_io.py` and transforms in `core/trajectory_yaw.py` until the motion migration lands. Prefer `motion` to `mocap`: these contracts also serve simulation and playback. Keep task-specific sampling in tasks; consolidate reference-motion implementations only after comparing their contracts.
+- **Allowed dependencies.** Consumers may import shared motion contracts; motion must not import environments, trainers, visualization or source adapters. Adapters (`integrations/`) call reusable fitting/analysis (`biomechanics/`) and runtime policy APIs; solvers must not import adapters, environment implementations or visualization. Workflows compose these layers. MyoSuite imports public `myo_sim` APIs, never the reverse. `myosuite/tests/test_package_boundaries.py` enforces the exact module-import DAG and tracks the legacy cross-layer allowlist so removed violations cannot return.
 - **Separate algorithms from workflows.** Numerical solvers must not own dataset traversal, caches, reports or rendering. Policy loading/export is reusable runtime functionality consumed by benchmarks, not owned by them.
-- **Explicit data contracts.** Document units, timing, coordinate frames, quaternion order, joint ordering and missing-data masks. Keep marker observations and source body-model poses distinct from model-coordinate trajectories. Compose EMG with optional kinematic data; support EMG-only trials. Return structured convergence/residual/quality diagnostics and document mutation/failure policy.
+- **Explicit data contracts.** Document units, timing, coordinate frames, `wxyz` quaternion order, joint ordering and missing-data masks. Keep marker observations and source body-model poses distinct from model-coordinate trajectories. Compose EMG (`EMGTrial`) with optional kinematic data (`kinematics: KinematicTrial | None = None`) and explicit/unknown `units`; support standalone EMG-only trials. Return structured convergence/residual/quality diagnostics and document mutation/failure policy.
 - **Preserve numerical intent.** Site IK and coupling-aware landmark fitting have different objectives. Share contracts and demonstrated common primitives; do not merge solvers without proving equivalent constraint handling and numerical behavior.
-- **Small, compatible migrations.** Extract workflows first, then consolidate shared motion contracts. Preserve old public imports, serialization and checkpoint compatibility, update callers/docs, and verify numerical behavior. Keep lightweight readers installable without heavy perception stacks; avoid eager heavyweight and private cross-package imports. Test internal dependency boundaries as well as third-party imports.
-- **Separate design decisions.** Broader folder renames, CPU/GPU task co-location, moving PPO presets/entry points, test relocation or wheel exclusions, dependency-extra changes, and MuJoCo/myo-sim upgrades require separate proposals and validation. Preserve current training commands/default runners and the CPU/mjlab contract. Audit all runtime consumers (including reference-motion downloads) before changing extras; measure transitive installs and Python/platform coverage before claiming installation improvements. This guidance does not commit the broader layout to v3.2.0.
+- **Small, compatible migrations.** Migrate one concern per PR (`#936`–`#942` stack, aligned with `#895`), turning superseded paths into thin backward-compatible aliases only when their replacement lands. Preserve old public imports, CLI entry points, serialization and checkpoint compatibility, update callers/docs, and verify numerical behavior. Keep lightweight readers installable without heavy perception stacks; avoid eager heavyweight and private cross-package imports. Test internal dependency boundaries as well as third-party imports.
+- **Separate design decisions.** Broader folder renames, CPU/GPU task co-location, moving PPO presets/entry points, test relocation or wheel exclusions, dependency-extra changes, and MuJoCo/myo-sim upgrades require separate PRs, explicit validation, and maintainer sign-off. Preserve current training commands/default runners and the CPU/mjlab contract. Audit all runtime consumers (including reference-motion downloads) before changing extras, and measure transitive installs and Python/platform coverage before claiming installation improvements.
 
 ### Workflow
 
@@ -137,7 +142,7 @@ Use these boundaries for new code and small, compatible refactors. This PR defin
 - **Branching and CI.** Branch from `dev` and open PRs against `dev`.
   - Isolated or agent worktrees may start from `main`, so create the branch from `dev` explicitly.
   - CI runs for non-draft pull requests into `main` and `dev` (a draft stays quiet until it is marked ready) that touch code; docs, markdown, `training/` and tooling-config changes skip it. Run the Verification block below locally before pushing.
-  - A PR into `dev` runs Ubuntu / Python 3.11 as two parallel jobs, `mjlab` and `cpu` (`conftest.py` marks every module that uses mjlab / MuJoCo Warp with `mjlab`), and the tutorials only when it touches `tutorials/`. Python-only PRs can select affected tests with pytest-testmon, against the record of the last push to `dev`. The five Verification modules below plus `test_term_catalog.py`, `test_import_footprint.py`, `test_mjlab_warning_filters.py` and `test_train_mjlab.py` still run without testmon selection in their applicable group. Registration modules, `__init__.py`, data files under `myosuite/`, `tutorials/`, dependencies and test plumbing run the full job. The SQLite record is checkpointed before caching; a busy checkpoint fails the job. The push to `dev` after a merge, release PRs into `main` and the nightly run cover the full matrix: 3.11 on macOS, Ubuntu and Windows, 3.10, 3.14 and 3.15 on Ubuntu, the tutorials, and (nightly) the `slow` tests.
+  - A PR into `dev` runs Ubuntu / Python 3.11 as two parallel jobs, `mjlab` and `cpu` (`conftest.py` marks every module that uses mjlab / MuJoCo Warp with `mjlab`), and the tutorials only when it touches `tutorials/`. Python-only PRs can select affected tests with pytest-testmon, against the record of the last push to `dev`. The six Verification modules below plus `test_package_discovery.py`, `test_term_catalog.py`, `test_import_footprint.py`, `test_mjlab_warning_filters.py` and `test_train_mjlab.py` still run without testmon selection in their applicable group. Registration modules, `__init__.py`, data files under `myosuite/`, `tutorials/`, dependencies and test plumbing run the full job. The SQLite record is checkpointed before caching; a busy checkpoint fails the job. The push to `dev` after a merge, release PRs into `main` and the nightly run cover the full matrix: 3.11 on macOS, Ubuntu and Windows, 3.10, 3.14 and 3.15 on Ubuntu, the tutorials, and (nightly) the `slow` tests.
 - **Parity baselines.** Regenerate (`scripts/generate_parity_baselines.py --env-id <id>`) only the envs your change intentionally alters.
   - Generate them only with the package versions CI resolves. CI installs with `uv pip install -e ".[...]"` and sets `UV_NO_SYNC=true` so tests and tutorial subprocesses keep that fresh resolution. Its dependency report records the tested versions; `uv.lock` is not used for this job.
   - Never skip a case as "non-deterministic" without checking that a replay really differs between processes.
@@ -161,6 +166,7 @@ This is a maintainer check, not an automated code-review finding.
 
 ```bash
 pre-commit run --all-files
+pytest myosuite/tests/test_package_boundaries.py myosuite/tests/test_package_discovery.py -v
 pytest myosuite/tests/test_model_builder.py -v
 pytest myosuite/tests/test_terms_cpu.py -v
 pytest myosuite/tests/test_fragment_compat.py -v
@@ -183,4 +189,4 @@ commit `68a77811`) — there is no `test_boxing_registry.py` / `test_saber_env.p
 - `docs/wiki/mjlab-design-guide.md` — canonical mjlab patterns; read before writing any mjlab code.
 - `docs/wiki/cross-backend-contract.md` — obs/action/timing invariants for policy portability.
 - `docs/wiki/training-guidelines.md` — placement and dependency-isolation rules for training/learning methods.
-- `docs/wiki/repository-map.md` — where everything lives.
+- `docs/wiki/repository-map.md` — subpackage ownership, allowed-import DAG, and directory map.
