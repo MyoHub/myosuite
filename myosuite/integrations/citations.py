@@ -98,12 +98,25 @@ KINESIS_CITATION = IntegrationCitation(
 }""",
 )
 
+MOTOR_CITATION = IntegrationCitation(
+    key="motor",
+    name="MOTOR",
+    project_url="https://github.com/Babon-Innovations-b-v/motor",
+    bibtex="""@unpublished{Kardolus2026MOTOR,
+  title={{MOTOR}: Musculoskeletal Optimisation Through Open Robotics Simulation},
+  author={Kardolus, J. P.},
+  note={Working draft, https://github.com/Babon-Innovations-b-v/motor},
+  year={2026}
+}""",
+)
+
 INTEGRATION_CITATIONS = (
     MUSCLEMIMIC_CITATION,
     AMASS_CITATION,
     KIT_MOTION_DATABASE_CITATION,
     GMR_CITATION,
     KINESIS_CITATION,
+    MOTOR_CITATION,
 )
 INTEGRATION_CITATIONS_BY_KEY = {
     citation.key: citation for citation in INTEGRATION_CITATIONS
@@ -127,6 +140,7 @@ __all__ = [
     "IntegrationCitation",
     "KINESIS_CITATION",
     "KIT_MOTION_DATABASE_CITATION",
+    "MOTOR_CITATION",
     "MUSCLEMIMIC_CITATION",
     "get_integration_citation",
 ]
