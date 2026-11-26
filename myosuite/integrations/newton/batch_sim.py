@@ -389,6 +389,55 @@ class NewtonBatchSim:
         self.solver.mjw_model.site_pos.assign(site_pos_np)
         self._refresh_derived()
 
+    def set_geom_pos(
+        self,
+        geom_id_or_name: int | str,
+        pos: Any,
+        env_ids: Sequence[int] | np.ndarray | None = None,
+    ) -> None:
+        """Update authored collision geom local position across all or selected worlds."""
+        gid = (
+            self.accessor.geom_id(geom_id_or_name)
+            if isinstance(geom_id_or_name, str)
+            else int(geom_id_or_name) % int(self.reference_model.ngeom)
+        )
+        pos_arr = np.asarray(pos, dtype=np.float32)
+        if env_ids is None and pos_arr.ndim == 1:
+            self.reference_model.geom_pos[gid] = pos_arr
+        conv_gid = int(self.mapping.src_to_conv_geom[gid])
+        if conv_gid < 0:
+            return
+        if env_ids is None and pos_arr.ndim == 1:
+            self.solver.mj_model.geom_pos[conv_gid] = pos_arr
+        gpos_np = self.solver.mjw_model.geom_pos.numpy().copy()
+        if gpos_np.shape[0] == 1 and self.num_envs > 1:
+            gpos_np[0, conv_gid] = pos_arr[0] if pos_arr.ndim == 2 else pos_arr
+        elif env_ids is None:
+            gpos_np[:, conv_gid] = np.broadcast_to(pos_arr, (self.num_envs, 3))
+        else:
+            gpos_np[np.asarray(env_ids), conv_gid] = pos_arr
+        self.solver.mjw_model.geom_pos.assign(gpos_np)
+        self._refresh_derived()
+
+    def set_hfield_data(self, heights: Any, hfield_id: int = 0) -> None:
+        """Upload heightfield elevation samples into MuJoCo and MuJoCo-Warp buffers."""
+        if int(self.reference_model.nhfield) <= int(hfield_id):
+            raise ValueError(
+                f"hfield_id={hfield_id} out of range for nhfield={self.reference_model.nhfield}."
+            )
+        hid = int(hfield_id)
+        adr = int(self.reference_model.hfield_adr[hid])
+        nrow = int(self.reference_model.hfield_nrow[hid])
+        ncol = int(self.reference_model.hfield_ncol[hid])
+        flat = np.asarray(heights, dtype=np.float32).reshape(nrow * ncol)
+        self.reference_model.hfield_data[adr : adr + nrow * ncol] = flat
+        conv_adr = int(self.solver.mj_model.hfield_adr[hid])
+        self.solver.mj_model.hfield_data[conv_adr : conv_adr + nrow * ncol] = flat
+        mjw_hf = self.solver.mjw_model.hfield_data.numpy().copy()
+        mjw_hf[conv_adr : conv_adr + nrow * ncol] = flat
+        self.solver.mjw_model.hfield_data.assign(mjw_hf)
+        self._refresh_derived()
+
     def set_mocap_pose(
         self,
         mocap_id: int,

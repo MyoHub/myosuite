@@ -174,6 +174,7 @@ class IndexMapping:
     src_to_conv_act: np.ndarray
     src_to_conv_site: np.ndarray
     src_to_conv_body: np.ndarray = None  # type: ignore[assignment]
+    src_to_conv_geom: np.ndarray = None  # type: ignore[assignment]
 
     @classmethod
     def build(
@@ -181,24 +182,56 @@ class IndexMapping:
     ) -> IndexMapping:
         """Build exact index permutations between ``reference`` and ``solver.mj_model``."""
         converted = solver.mj_model
+        src_to_conv_body = np.zeros(reference.nbody, dtype=np.intp)
+        conv_to_src_body = np.zeros(converted.nbody, dtype=np.intp)
+        body_map = solver.mjc_body_to_newton.numpy()[0]
+        raw_body_labels = getattr(newton_model.mujoco, "body_label", None)
+        for conv_b in range(1, converted.nbody):
+            nb = int(body_map[conv_b])
+            if nb < 0:
+                continue
+            b_name = (
+                raw_body_labels[nb]
+                if (raw_body_labels is not None and raw_body_labels[nb])
+                else newton_model.body_label[nb].rsplit("/", 1)[-1]
+            )
+            orig_b = int(reference.body(b_name).id)
+            src_to_conv_body[orig_b] = conv_b
+            conv_to_src_body[conv_b] = orig_b
+
         labels = newton_model.mujoco.joint_dof_label
         dofs = solver.mjc_jnt_to_newton_dof.numpy()[0]
         joints = solver.mjc_jnt_to_newton_jnt.numpy()[0]
-        source_jnt = {reference.joint(r).name: r for r in range(reference.njnt)}
+        source_jnt = {
+            reference.joint(r).name: r
+            for r in range(reference.njnt)
+            if reference.joint(r).name
+        }
+        unnamed_jnts: dict[int, list[int]] = {}
+        for r in range(reference.njnt):
+            if not reference.joint(r).name:
+                unnamed_jnts.setdefault(int(reference.jnt_bodyid[r]), []).append(r)
         merged = _merged_dof_sources(reference, newton_model)
 
         conv_to_src_qpos = np.full(converted.nq, -1, dtype=np.intp)
         conv_to_src_qvel = np.full(converted.nv, -1, dtype=np.intp)
         for row in range(converted.njnt):
             dof = int(dofs[row])
-            if dof >= 0 and labels[dof]:
+            if (
+                dof >= 0
+                and labels[dof]
+                and labels[dof].rsplit("/", 1)[-1] in source_jnt
+            ):
                 orig = source_jnt[labels[dof].rsplit("/", 1)[-1]]
             elif dof in merged:
                 orig = merged[dof]
             else:
-                orig = source_jnt[
-                    newton_model.joint_label[int(joints[row])].rsplit("/", 1)[-1]
-                ]
+                j_name = newton_model.joint_label[int(joints[row])].rsplit("/", 1)[-1]
+                if j_name in source_jnt:
+                    orig = source_jnt[j_name]
+                else:
+                    src_b = int(conv_to_src_body[int(converted.jnt_bodyid[row])])
+                    orig = unnamed_jnts[src_b].pop(0)
             jtype = int(converted.jnt_type[row])
             q_w = {
                 int(mujoco.mjtJoint.mjJNT_FREE): 7,
@@ -248,41 +281,73 @@ class IndexMapping:
                     conv_adr, conv_adr + num
                 )
 
+        raw_shape_labels = getattr(newton_model.mujoco, "shape_label", None)
         if converted.nsite == 0:
-            conv_to_src_site = np.empty(0, dtype=np.intp)
             src_to_conv_site = np.empty(0, dtype=np.intp)
         else:
             site_map = getattr(
                 solver, "mjc_site_to_newton_shape", solver._mjc_site_to_newton_shape
             )
             site_shapes = site_map.numpy()[0]
-            raw_shape_labels = getattr(newton_model.mujoco, "shape_label", None)
-            conv_to_src_site = np.array(
-                [
-                    reference.site(
-                        raw_shape_labels[int(s)]
-                        if (raw_shape_labels is not None and raw_shape_labels[int(s)])
-                        else newton_model.shape_label[int(s)].rsplit("/", 1)[-1]
-                    ).id
-                    for s in site_shapes[: converted.nsite]
-                ],
-                dtype=np.intp,
-            )
+            named_sites = {
+                reference.site(r).name: r
+                for r in range(reference.nsite)
+                if reference.site(r).name
+            }
+            unnamed_sites: dict[int, list[int]] = {}
+            for r in range(reference.nsite):
+                if not reference.site(r).name:
+                    unnamed_sites.setdefault(int(reference.site_bodyid[r]), []).append(
+                        r
+                    )
+            conv_to_src_site = np.empty(converted.nsite, dtype=np.intp)
+            for conv_s in range(converted.nsite):
+                s = int(site_shapes[conv_s])
+                s_name = (
+                    raw_shape_labels[s]
+                    if (raw_shape_labels is not None and raw_shape_labels[s])
+                    else newton_model.shape_label[s].rsplit("/", 1)[-1]
+                )
+                if s_name in named_sites:
+                    conv_to_src_site[conv_s] = named_sites[s_name]
+                else:
+                    src_b = int(conv_to_src_body[int(converted.site_bodyid[conv_s])])
+                    conv_to_src_site[conv_s] = unnamed_sites[src_b].pop(0)
             src_to_conv_site = np.argsort(conv_to_src_site)
 
-        src_to_conv_body = np.zeros(reference.nbody, dtype=np.intp)
-        body_map = solver.mjc_body_to_newton.numpy()[0]
-        raw_body_labels = getattr(newton_model.mujoco, "body_label", None)
-        for conv_b in range(1, converted.nbody):
-            nb = int(body_map[conv_b])
-            if nb < 0:
-                continue
-            b_name = (
-                raw_body_labels[nb]
-                if (raw_body_labels is not None and raw_body_labels[nb])
-                else newton_model.body_label[nb].rsplit("/", 1)[-1]
-            )
-            src_to_conv_body[reference.body(b_name).id] = conv_b
+        src_to_conv_geom = np.full(reference.ngeom, -1, dtype=np.intp)
+        if converted.ngeom > 0 and solver.mjc_geom_to_newton_shape is not None:
+            geom_shapes = solver.mjc_geom_to_newton_shape.numpy()[0]
+            named_geoms = {
+                reference.geom(r).name: r
+                for r in range(reference.ngeom)
+                if reference.geom(r).name
+            }
+            unnamed_geoms: dict[int, list[int]] = {}
+            for r in range(reference.ngeom):
+                if not reference.geom(r).name and (
+                    int(reference.geom_contype[r]) != 0
+                    or int(reference.geom_conaffinity[r]) != 0
+                ):
+                    unnamed_geoms.setdefault(int(reference.geom_bodyid[r]), []).append(
+                        r
+                    )
+            for conv_g in range(converted.ngeom):
+                s = int(geom_shapes[conv_g])
+                if s < 0:
+                    continue
+                g_name = (
+                    raw_shape_labels[s]
+                    if (raw_shape_labels is not None and raw_shape_labels[s])
+                    else newton_model.shape_label[s].rsplit("/", 1)[-1]
+                )
+                if g_name in named_geoms:
+                    src_to_conv_geom[named_geoms[g_name]] = conv_g
+                else:
+                    src_b = int(conv_to_src_body[int(converted.geom_bodyid[conv_g])])
+                    cands = unnamed_geoms.get(src_b, [])
+                    if cands:
+                        src_to_conv_geom[cands.pop(0)] = conv_g
 
         return cls(
             conv_to_src_qpos=conv_to_src_qpos,
@@ -294,6 +359,7 @@ class IndexMapping:
             src_to_conv_act=src_to_conv_act,
             src_to_conv_site=src_to_conv_site,
             src_to_conv_body=src_to_conv_body,
+            src_to_conv_geom=src_to_conv_geom,
         )
 
 
@@ -333,6 +399,14 @@ class NewtonAccessor(EnvAccessor):
         if sid == -1:
             raise ValueError(f"Site {name!r} not found in model")
         return int(sid)
+
+    def geom_id(self, name: str) -> int:
+        gid = mujoco.mj_name2id(
+            self._sim.reference_model, mujoco.mjtObj.mjOBJ_GEOM, name
+        )
+        if gid == -1:
+            raise ValueError(f"Geom {name!r} not found in model")
+        return int(gid)
 
     def time(self) -> np.ndarray:
         return self._sim.solver.mjw_data.time.numpy().copy()

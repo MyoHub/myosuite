@@ -87,7 +87,7 @@ def apply_sarcopenia(
     Args:
         accessor: Environment state accessor; must expose ``.model`` attribute.
         task_state: Current task state dict (returned unchanged).
-        force_scale: Fraction of original peak force to retain (0–1).
+        force_scale: Fraction of original peak force to retain (0â€“1).
         **kwargs: Unused extra keyword arguments.
 
     Returns:
@@ -98,3 +98,54 @@ def apply_sarcopenia(
 
         apply_sarcopenia_to_model(accessor.model, force_scale=force_scale)
     return task_state
+
+
+_TERRAIN_SAMPLES = 10_000
+
+
+def terrain_heights(
+    terrain: str, variant: str | None, rng: np.random.Generator
+) -> np.ndarray:
+    """Sample ``(10000,)`` heightfield elevations matching ``LegTerrainEnvV0.reset``."""
+    if terrain == "rough":
+        rough = rng.uniform(low=-0.5, high=0.5, size=(_TERRAIN_SAMPLES,))
+        normalized = (rough - rough.min()) / (rough.max() - rough.min())
+        return normalized * 0.08 - 0.02
+    if terrain == "hilly":
+        flat_length, frequency = 3000, 3
+        scalar = 0.63 if variant == "fixed" else float(rng.uniform(0.53, 0.73))
+        combined = np.concatenate(
+            (
+                -2 * np.ones(flat_length),
+                -2
+                + 0.5
+                * (
+                    np.sin(
+                        np.linspace(
+                            0, frequency * np.pi, _TERRAIN_SAMPLES - flat_length
+                        )
+                        + np.pi / 2
+                    )
+                    - 1
+                ),
+            )
+        )
+        normalized = (combined - combined.min()) / (combined.max() - combined.min())
+        return np.flip(normalized.reshape(100, 100) * scalar, (0, 1)).reshape(
+            _TERRAIN_SAMPLES
+        )
+    if terrain == "stairs":
+        num_stairs, stair_height = 12, 0.1
+        flat = 5200 - (_TERRAIN_SAMPLES - 5200) % num_stairs
+        stairs_width = (_TERRAIN_SAMPLES - flat) // num_stairs
+        scalar = 2.5 if variant == "fixed" else float(rng.uniform(1.5, 3.5))
+        parts = [
+            np.full((int(stairs_width // 100), 100), -2 + stair_height * j)
+            for j in range(num_stairs)
+        ]
+        data = np.concatenate([np.full((int(flat // 100), 100), -2)] + parts, axis=0)
+        normalized = (data + 2) / (2 + stair_height * num_stairs)
+        return np.flip(normalized.reshape(100, 100) * scalar, (0, 1)).reshape(
+            _TERRAIN_SAMPLES
+        )
+    raise ValueError(f"Unknown terrain {terrain!r}")
