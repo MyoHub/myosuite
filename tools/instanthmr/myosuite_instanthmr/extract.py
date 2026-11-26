@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,8 @@ import numpy as np
 MHR70_NUM_JOINTS = 70
 _LEFT_HIP_IDX = 9
 _RIGHT_HIP_IDX = 10
+_LEFT_ANKLE_IDX = 13
+_RIGHT_ANKLE_IDX = 14
 
 
 def box_iou(a: Sequence[float] | np.ndarray, b: Sequence[float] | np.ndarray) -> float:
@@ -53,10 +55,100 @@ class TrackerConfig:
     pos_margin_m: float = 0.6
     min_confidence: float = 0.0
     init_bbox: tuple[float, float, float, float] | None = None
+    selection_mode: str = "bbox_area"
+    min_swing_speed_mps: float = 0.25
 
 
 def _hip_root(joints_3d_cam: np.ndarray) -> np.ndarray:
     return 0.5 * (joints_3d_cam[_LEFT_HIP_IDX] + joints_3d_cam[_RIGHT_HIP_IDX])
+
+
+def _valid_candidates(
+    persons: Sequence[Any], min_confidence: float
+) -> list[tuple[Any, np.ndarray, np.ndarray, np.ndarray]]:
+    out: list[tuple[Any, np.ndarray, np.ndarray, np.ndarray]] = []
+    for p in persons:
+        score = float(getattr(p, "score", getattr(p, "confidence", 1.0)))
+        if score < min_confidence:
+            continue
+        box = np.asarray(p.bbox, dtype=np.float64)
+        if box.shape != (4,) or not np.isfinite(box).all():
+            continue
+        if (box[2] - box[0]) <= 0.0 or (box[3] - box[1]) <= 0.0:
+            continue
+        joints = np.asarray(p.joints_3d_cam, dtype=np.float64)
+        if joints.shape != (MHR70_NUM_JOINTS, 3) or not np.isfinite(joints).all():
+            continue
+        hip = _hip_root(joints)
+        rel_ankles = joints[[_LEFT_ANKLE_IDX, _RIGHT_ANKLE_IDX]] - hip[None, :]
+        out.append((p, box, hip, rel_ankles))
+    return out
+
+
+def select_initial_walking_bbox(
+    frame_persons: Sequence[Sequence[Any]],
+    fps: float,
+    config: TrackerConfig | None = None,
+) -> tuple[int, tuple[float, float, float, float]] | None:
+    """Find ``(start_frame, bbox)`` of the person with strongest 3D ankle-to-hip swing."""
+    cfg = config or TrackerConfig()
+    horizon = min(len(frame_persons), max(2, int(round(1.5 * fps))))
+    tracks: list[dict[str, Any]] = []
+    completed: list[dict[str, Any]] = []
+    max_step_disp = cfg.max_speed_mps / max(fps, 1e-6) + cfg.pos_margin_m
+
+    for t in range(horizon):
+        cands = _valid_candidates(frame_persons[t], cfg.min_confidence)
+        used = set()
+        next_tracks: list[dict[str, Any]] = []
+        for tr in tracks:
+            best_idx = -1
+            best_iou = -1.0
+            for idx, (_, box, hip, _) in enumerate(cands):
+                if idx in used:
+                    continue
+                iou = box_iou(tr["last_box"], box)
+                disp = float(np.linalg.norm(hip - tr["last_hip"]))
+                if iou >= cfg.min_iou and disp <= max_step_disp and iou > best_iou:
+                    best_iou = iou
+                    best_idx = idx
+            if best_idx >= 0:
+                used.add(best_idx)
+                _, box, hip, rel_ankles = cands[best_idx]
+                dt = (t - tr["last_t"]) / max(fps, 1e-6)
+                swing_v = float(
+                    np.linalg.norm(rel_ankles - tr["last_ankles"], axis=-1).mean() / dt
+                )
+                tr["swings"].append(swing_v)
+                tr["last_box"] = box
+                tr["last_hip"] = hip
+                tr["last_ankles"] = rel_ankles
+                tr["last_t"] = t
+                next_tracks.append(tr)
+            else:
+                completed.append(tr)
+        for idx, (_, box, hip, rel_ankles) in enumerate(cands):
+            if idx not in used:
+                next_tracks.append(
+                    {
+                        "start_t": t,
+                        "init_box": tuple(float(x) for x in box),
+                        "last_box": box,
+                        "last_hip": hip,
+                        "last_ankles": rel_ankles,
+                        "last_t": t,
+                        "swings": [],
+                    }
+                )
+        tracks = next_tracks
+
+    all_tracks = [tr for tr in (*completed, *tracks) if tr["swings"]]
+    if not all_tracks:
+        return None
+    best = max(all_tracks, key=lambda tr: float(np.median(tr["swings"])))
+    if float(np.median(best["swings"])) < cfg.min_swing_speed_mps:
+        return None
+    return int(best["start_t"]), best["init_box"]
 
 
 class SubjectTracker:
@@ -154,15 +246,28 @@ def extract_predictions(
     """Convert per-frame ``PosePipeline`` outputs into an MHR70 clip dictionary."""
     if not np.isfinite(fps) or fps <= 0:
         raise ValueError(f"fps must be finite and positive, got {fps}")
-    tracker = SubjectTracker(config)
+    cfg = config or TrackerConfig()
+    if cfg.selection_mode not in ("bbox_area", "leg_swing"):
+        raise ValueError(
+            "selection_mode must be 'bbox_area' or 'leg_swing', "
+            f"got {cfg.selection_mode!r}"
+        )
+    frames = [list(getattr(res, "persons", res)) for res in frame_results]
+    lock_frame = 0
+    if cfg.selection_mode == "leg_swing" and cfg.init_bbox is None:
+        selected = select_initial_walking_bbox(frames, fps, cfg)
+        if selected is not None:
+            lock_frame, init_box = selected
+            cfg = replace(cfg, init_bbox=init_box)
+
+    tracker = SubjectTracker(cfg)
     joints_list: list[np.ndarray] = []
     bboxes_list: list[np.ndarray] = []
     shapes_list: list[np.ndarray | None] = []
     valid_list: list[bool] = []
 
-    for res in frame_results:
-        persons = getattr(res, "persons", res)
-        chosen = tracker.step(persons, fps)
+    for t, persons in enumerate(frames):
+        chosen = tracker.step(persons, fps) if t >= lock_frame else None
         if chosen is not None:
             joints_list.append(np.asarray(chosen.joints_3d_cam, dtype=np.float32))
             bboxes_list.append(np.asarray(chosen.bbox, dtype=np.float32))
@@ -281,6 +386,18 @@ def main(argv: list[str] | None = None) -> int:
         metavar=("X1", "Y1", "X2", "Y2"),
         help="Optional initial bounding box selecting the target person",
     )
+    p.add_argument(
+        "--selection-mode",
+        choices=("bbox_area", "leg_swing"),
+        default="bbox_area",
+        help="Initial subject selection rule (default: bbox_area)",
+    )
+    p.add_argument(
+        "--min-swing-speed-mps",
+        type=float,
+        default=0.25,
+        help="Minimum 3D ankle-to-hip swing speed (m/s) for leg_swing selection",
+    )
     args = p.parse_args(argv)
 
     out_npz = args.output or args.video.with_name(f"{args.video.stem}_mhr70.npz")
@@ -290,6 +407,8 @@ def main(argv: list[str] | None = None) -> int:
         max_gap_s=args.max_gap_s,
         max_speed_mps=args.max_speed_mps,
         init_bbox=tuple(args.init_bbox) if args.init_bbox is not None else None,
+        selection_mode=args.selection_mode,
+        min_swing_speed_mps=args.min_swing_speed_mps,
     )
     written = extract_video_clip(
         args.video,
