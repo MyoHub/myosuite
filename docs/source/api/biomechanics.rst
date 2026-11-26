@@ -102,10 +102,10 @@ Muscle effort, EMG & movement quality
 .. automodule:: myosuite.biomechanics.kinematic_metrics
    :members:
 
-Participant strength calibration
---------------------------------
+Participant model calibration
+-----------------------------
 
-Participant strength, mass and geometry calibration in :mod:`myosuite.biomechanics.calibration`, documented on :doc:`/participant_calibration`.
+Participant strength, mass, geometry and fatigue calibration in :mod:`myosuite.biomechanics.calibration`, documented on :doc:`/participant_calibration`.
 
 Muscle mesh reconstruction
 --------------------------
