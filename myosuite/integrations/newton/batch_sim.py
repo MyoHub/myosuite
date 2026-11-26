@@ -62,6 +62,7 @@ class NewtonBatchSim:
         normalize_act: int | bool | None = None,
         max_episode_steps: int | None = None,
         excitation_stages: Sequence[ExcitationStage] = (),
+        action_cfg: Any | None = None,
         obs_terms: Sequence[Callable[[EnvAccessor], Any]] | None = None,
         reward_fn: Callable[[EnvAccessor], Any] | None = None,
         terminated_fn: Callable[[EnvAccessor], Any] | None = None,
@@ -130,7 +131,12 @@ class NewtonBatchSim:
         self.control = self.model.control()
         self._muscle_ind = muscle_mask(self.reference_model)
         self._stages = list(excitation_stages)
+        self._action_cfg_init = action_cfg
+        self._seed_init = seed
         self.accessor = NewtonAccessor(self)
+        self._torch_accessor: Any | None = None
+        self._action_pipeline: Any | None = None
+        self._conv_to_src_ctrl_torch: Any | None = None
 
         if obs_terms is None:
             default_terms: list[Callable[[EnvAccessor], Any]] = [
@@ -274,12 +280,157 @@ class NewtonBatchSim:
         self.step_count[selected] = 0
         for stage in self._stages:
             stage.reset(None if env_ids is None else selected)
+        if self._action_pipeline is not None:
+            if seed is not None:
+                self._action_pipeline.seed(seed)
+            self._action_pipeline.reset(None if env_ids is None else selected)
 
         self._refresh_derived()
         return self._compute_obs(), {
             "time": self.accessor.time(),
             "step_count": self.step_count.copy(),
         }
+
+    @property
+    def torch_accessor(self) -> Any:
+        """Lazily constructed zero-copy PyTorch :class:`TorchNewtonAccessor`."""
+        if self._torch_accessor is None:
+            from myosuite.integrations.newton.torch_pipeline import (  # noqa: PLC0415
+                TorchNewtonAccessor,
+            )
+
+            self._torch_accessor = TorchNewtonAccessor(self)
+        return self._torch_accessor
+
+    @property
+    def action_pipeline(self) -> Any:
+        """Lazily constructed PyTorch :class:`NewtonActionPipeline`."""
+        if self._action_pipeline is None:
+            import torch  # noqa: PLC0415
+
+            from myosuite.integrations.newton.torch_pipeline import (  # noqa: PLC0415
+                NewtonActionCfg,
+                NewtonActionPipeline,
+            )
+
+            cfg = self._action_cfg_init
+            if cfg is None:
+                cfg = NewtonActionCfg(
+                    normalize_act=self.normalize_act,
+                    excitation_stages=tuple((lambda s=st: s) for st in self._stages),
+                )
+            t_acc = self.torch_accessor
+            self._action_pipeline = NewtonActionPipeline(
+                self.reference_model,
+                cfg,
+                num_envs=self.num_envs,
+                ctrl_dt=self.ctrl_dt,
+                device=t_acc.device,
+                seed=self._seed_init,
+            )
+            self._conv_to_src_ctrl_torch = torch.as_tensor(
+                self.mapping.conv_to_src_ctrl,
+                dtype=torch.long,
+                device=t_acc.device,
+            )
+        return self._action_pipeline
+
+    def set_site_pos(
+        self,
+        site_id_or_name: int | str,
+        pos: Any,
+        env_ids: Sequence[int] | np.ndarray | None = None,
+    ) -> None:
+        """Update authored site local position across all or selected worlds."""
+        sid = (
+            self.accessor.site_id(site_id_or_name)
+            if isinstance(site_id_or_name, str)
+            else int(site_id_or_name)
+        )
+        conv_sid = int(self.mapping.src_to_conv_site[sid])
+        site_pos_np = self.solver.mjw_model.site_pos.numpy().copy()
+        pos_arr = np.asarray(pos, dtype=np.float32)
+        if site_pos_np.shape[0] == 1 and self.num_envs > 1:
+            if pos_arr.ndim == 2:
+                pos_arr = pos_arr[0]
+            site_pos_np[0, conv_sid] = pos_arr
+        elif env_ids is None:
+            site_pos_np[:, conv_sid] = np.broadcast_to(pos_arr, (self.num_envs, 3))
+        else:
+            sel = np.asarray(env_ids)
+            site_pos_np[sel, conv_sid] = pos_arr
+        self.solver.mjw_model.site_pos.assign(site_pos_np)
+        self._refresh_derived()
+
+    def set_mocap_pose(
+        self,
+        mocap_id: int,
+        pos: Any | None = None,
+        quat: Any | None = None,
+        env_ids: Sequence[int] | np.ndarray | None = None,
+    ) -> None:
+        """Update mocap body world pose (``wxyz`` quaternion) across worlds."""
+        if int(self.solver.mj_model.nmocap) <= int(mocap_id):
+            raise ValueError(
+                f"mocap_id={mocap_id} out of range for nmocap={self.solver.mj_model.nmocap}."
+            )
+        sel = slice(None) if env_ids is None else np.asarray(env_ids)
+        if pos is not None:
+            mpos = self.solver.mjw_data.mocap_pos.numpy().copy()
+            mpos[sel, int(mocap_id)] = np.asarray(pos, dtype=np.float32)
+            self.solver.mjw_data.mocap_pos.assign(mpos)
+        if quat is not None:
+            mquat = self.solver.mjw_data.mocap_quat.numpy().copy()
+            mquat[sel, int(mocap_id)] = np.asarray(quat, dtype=np.float32)
+            self.solver.mjw_data.mocap_quat.assign(mquat)
+        self._refresh_derived()
+
+    def _compute_obs_torch(self) -> Any:
+        import torch  # noqa: PLC0415
+
+        t_acc = self.torch_accessor
+        parts = [term(t_acc).reshape(self.num_envs, -1) for term in self._obs_terms]
+        if not parts:
+            return torch.zeros(
+                (self.num_envs, 0), dtype=torch.float32, device=t_acc.device
+            )
+        return torch.cat(parts, dim=-1).to(dtype=torch.float32)
+
+    def step_torch(self, actions: Any) -> tuple[Any, Any, Any, Any, dict[str, Any]]:
+        """Advance ``frame_skip`` substeps using zero-copy PyTorch tensors on device."""
+        import torch  # noqa: PLC0415
+
+        pipeline = self.action_pipeline
+        t_acc = self.torch_accessor
+        pipeline.write_to_control(actions, self.control, self._conv_to_src_ctrl_torch)
+        for _ in range(self.frame_skip):
+            self.solver.step(
+                self.state_in, self.state_out, self.control, None, self.sim_dt
+            )
+            self.state_in, self.state_out = self.state_out, self.state_in
+        self._refresh_derived()
+        self.step_count += 1
+
+        obs = self._compute_obs_torch()
+        reward = (
+            self._reward_fn(t_acc).reshape(self.num_envs).to(dtype=torch.float32)
+            if self._reward_fn is not None
+            else torch.zeros(self.num_envs, dtype=torch.float32, device=t_acc.device)
+        )
+        terminated = (
+            self._terminated_fn(t_acc).reshape(self.num_envs).to(dtype=torch.bool)
+            if self._terminated_fn is not None
+            else torch.zeros(self.num_envs, dtype=torch.bool, device=t_acc.device)
+        )
+        truncated = torch.as_tensor(
+            self.step_count >= int(self.max_episode_steps)
+            if self.max_episode_steps is not None
+            else np.zeros(self.num_envs, dtype=bool),
+            dtype=torch.bool,
+            device=t_acc.device,
+        )
+        info = {"time": t_acc.time(), "step_count": self.step_count.copy()}
+        return obs, reward, terminated, truncated, info
 
     def step(
         self, actions: np.ndarray

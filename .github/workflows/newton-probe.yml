@@ -71,6 +71,7 @@ jobs:
           NEWTON_VERSION: ${{ inputs.newton_version }}
         run: |
           uv venv --python 3.12
+          uv pip install --extra-index-url https://download.pytorch.org/whl/cpu torch
           uv pip install "newton[sim]${NEWTON_VERSION:+==$NEWTON_VERSION}" "pytest" -e .
 
       - name: Run Newton integration tests
