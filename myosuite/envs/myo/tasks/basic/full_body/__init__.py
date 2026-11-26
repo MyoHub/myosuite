@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import importlib
 import math
+from typing import Any
 
 import myosuite.core.registry as _registry
 from myosuite.envs.myo.tasks.basic.full_body.waypoint import (
@@ -41,8 +43,32 @@ _registry.register_env(
     },
 )
 
+_LAZY_REFERENCE_EXPORTS = frozenset(
+    {
+        "GaitParameters",
+        "compose_waypoint_reference",
+        "gait_cycle",
+        "plan_waypoint_reference",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Load waypoint reference helpers lazily so ``import myosuite`` skips ``scipy.spatial``."""
+    if name in _LAZY_REFERENCE_EXPORTS:
+        mod = importlib.import_module(f"{__name__}.waypoint_reference")
+        value = getattr(mod, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "FULLBODY_WAYPOINT_TASK",
+    "GaitParameters",
     "WaypointEnv",
     "WaypointTaskCfg",
+    "compose_waypoint_reference",
+    "gait_cycle",
+    "plan_waypoint_reference",
 ]

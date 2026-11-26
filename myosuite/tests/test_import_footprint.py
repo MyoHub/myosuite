@@ -33,7 +33,7 @@ _MUSCLEMIMIC_SOURCES = (
     f"{_MUSCLEMIMIC}.fullbody_native_playback",
     f"{_MUSCLEMIMIC}.terrain_observation",
     f"{_MUSCLEMIMIC}.terrain_policy",
-    f"{_MUSCLEMIMIC}.reference_motion",
+    "myosuite.envs.myo.tasks.basic.full_body.waypoint_reference",
     "myosuite.core.playback_contract",
 )
 
