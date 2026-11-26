@@ -58,7 +58,7 @@ Training (CPU)
 
 Walkthrough: ``tutorials/2.1_Train_SB3_Policy.ipynb``.
 
-From the command line (the CPU counterpart of ``scripts/train_mjlab.py``)::
+From the command line (the CPU counterpart of ``scripts/train_mjlab.py``, backed by the standalone ``training/ppo/`` package — run directly from a source checkout with ``pip install -e ".[rl]"``, or add ``pip install --no-deps -e training/ppo`` for the ``myosuite-ppo sb3`` CLI)::
 
    python scripts/train_sb3.py myoElbowPose1D6MRandom-v0 --timesteps 500000
 

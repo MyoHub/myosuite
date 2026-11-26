@@ -224,7 +224,7 @@ def _rollout_score(
     ``solved`` is the flag of the last step, as in ``train_sb3.py``'s evaluation:
     reaching a target on the way through it is not a success.
     """
-    from myosuite.utils.sb3_sweep import solved_from_info
+    from myosuite.benchmarks import solved_from_info
 
     obs, _ = env.reset(seed=seed)
     episode_return = 0.0
@@ -324,7 +324,7 @@ def render_one(
         frames: list[np.ndarray] = []
         ep_r = 0.0
         solved = False
-        from myosuite.utils.sb3_sweep import solved_from_info
+        from myosuite.benchmarks import solved_from_info
 
         for step in range(max_steps):
             action = policy(obs)

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-ppo"
+version = "0.1.0"
+description = "Reference PPO trainers (CPU Stable-Baselines3 and GPU mjlab RSL-RL) for MyoSuite"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+# Requires a MyoSuite revision shipping `myosuite.policies` and `myosuite.envs.feature_cli`
+# (the `dev` branch or a local checkout via `pip install --no-deps -e training/ppo`).
+dependencies = [
+    "myosuite @ git+https://github.com/MyoHub/myosuite.git@dev",
+    "numpy",
+]
+
+[project.optional-dependencies]
+cpu = ["stable-baselines3>=2.7.1"]
+mjlab = [
+    "myosuite[mjlab] @ git+https://github.com/MyoHub/myosuite.git@dev",
+    "torch",
+    "tyro",
+]
+onnx = [
+    "myosuite[onnx] @ git+https://github.com/MyoHub/myosuite.git@dev",
+    "onnx",
+]
+test = ["pytest"]
+
+[project.scripts]
+myosuite-ppo = "myosuite_ppo.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_ppo*"]

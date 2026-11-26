@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
-from myosuite.utils.sb3_sweep import (
+_PPO_SRC = str(Path(__file__).resolve().parents[1])
+if _PPO_SRC not in sys.path:
+    sys.path.insert(0, _PPO_SRC)
+
+from myosuite_ppo.sb3_sweep import (  # noqa: E402
     WinnerPpoConfig,
     budget_for,
     improved,
