@@ -8,7 +8,7 @@
 Kept outside ``myosuite/`` so pre- and post-release CI jobs can verify an
 isolated wheel install from an empty temporary directory without a repository
 checkout on ``sys.path`` (where ``myosuite.tests`` is intentionally absent),
-reusing :func:`myosuite.utils.env_check.check_single_env`.
+reusing :func:`myosuite.benchmarks.env_check.check_single_env`.
 """
 
 from __future__ import annotations
@@ -19,9 +19,9 @@ import importlib.util
 import gymnasium as gym
 
 import myosuite
+from myosuite.benchmarks.env_check import check_single_env, is_multi_agent_env_spec
 from myosuite.core.hf_io import is_gated_or_transient_hf_error
 from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
-from myosuite.utils.env_check import check_single_env, is_multi_agent_env_spec
 
 
 def verify_single_env(env_id: str, *, seed: int = 1234, steps: int = 3) -> None:

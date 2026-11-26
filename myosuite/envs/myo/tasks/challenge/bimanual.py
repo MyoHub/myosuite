@@ -24,7 +24,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     solved_step_count,
 )
 from myosuite.core.terms.base_action import sigmoid_muscle_activation
-from myosuite.utils import seed_envs
+from myosuite.core.seeding import seed_envs
 from myosuite.core.builder.mujoco_geom_utils import refresh_geom_derived_fields
 from myosuite.physics.quat_math import mat2euler
 

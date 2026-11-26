@@ -4,5 +4,5 @@
 # LICENSE file in the root directory of this source tree.
 """DynSyn muscle synergies for MyoSuite: grouping (:mod:`.groups`) and PPO training (:mod:`.train`).
 
-Playback needs only MyoSuite (:mod:`myosuite.utils.action_map`).
+Playback needs only MyoSuite (:mod:`myosuite.policies.action_map`).
 """

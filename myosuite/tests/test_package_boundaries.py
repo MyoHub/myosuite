@@ -25,17 +25,19 @@ _APPROVED_RUNTIME_SUBPACKAGES = frozenset(
         "terms",
         "scenes",
         "motion",
+        "policies",
         "biomechanics",
         "integrations",
         "envs",
         "viz",
+        "benchmarks",
         "logger",
         "utils",
     }
 )
 
 # Newly created subpackages must never accumulate legacy import exemptions.
-_ZERO_EXEMPTION_SUBPACKAGES = frozenset({"motion"})
+_ZERO_EXEMPTION_SUBPACKAGES = frozenset({"motion", "policies", "benchmarks"})
 
 # Out-of-wheel repository directories that runtime modules must never import.
 _FORBIDDEN_EXTERNAL_IMPORTS = frozenset({"training", "tools", "scripts"})
@@ -43,6 +45,7 @@ _FORBIDDEN_EXTERNAL_IMPORTS = frozenset({"training", "tools", "scripts"})
 # Allowed runtime imports between myosuite.<src> and myosuite.<dst> subpackages.
 # "__root__" denotes myosuite/__init__.py and myosuite/version.py.
 _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
+    # Legacy compatibility subpackages on `__root__` support lazy `import myosuite; myosuite.<pkg>.*`.
     "__root__": frozenset(
         {"__root__", "core", "envs", "logger", "scenes", "terms", "utils"}
     ),
@@ -52,11 +55,13 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
     "scenes": frozenset({"__root__", "core", "scenes"}),
     "terms": frozenset({"__root__", "core", "physics", "terms"}),
     "motion": frozenset({"__root__", "core", "physics", "motion"}),
+    "policies": frozenset(
+        {"__root__", "core", "terms", "physics", "motion", "biomechanics", "policies"}
+    ),
     # Solvers & lightweight source/ecosystem adapters
     "biomechanics": frozenset(
         {"__root__", "core", "physics", "motion", "biomechanics"}
     ),
-    # `integrations -> utils` remains allowed until `utils` policy helpers move into `policies/` (#938).
     "integrations": frozenset(
         {
             "__root__",
@@ -64,13 +69,12 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
             "terms",
             "physics",
             "motion",
+            "policies",
             "biomechanics",
-            "utils",
             "integrations",
         }
     ),
-    # Simulation environments & visualization (`envs -> utils` remains allowed until
-    # `utils` helpers move into `core/`, `policies/`, and `benchmarks/`).
+    # Simulation environments, visualization & evaluation suites
     "envs": frozenset(
         {
             "__root__",
@@ -79,9 +83,9 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
             "terms",
             "physics",
             "motion",
+            "policies",
             "biomechanics",
             "integrations",
-            "utils",
             "envs",
         }
     ),
@@ -92,13 +96,29 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
             "scenes",
             "physics",
             "motion",
+            "policies",
             "biomechanics",
             "envs",
             "viz",
         }
     ),
-    # Rollout logging & utilities (scheduled for split into core/policies/benchmarks)
-    "logger": frozenset({"__root__", "core", "physics", "motion", "logger"}),
+    "benchmarks": frozenset(
+        {
+            "__root__",
+            "core",
+            "terms",
+            "physics",
+            "motion",
+            "policies",
+            "biomechanics",
+            "integrations",
+            "envs",
+            "viz",
+            "benchmarks",
+        }
+    ),
+    # Closed backward-compatibility facade namespaces
+    "logger": frozenset({"__root__", "core", "physics", "motion", "viz", "logger"}),
     "utils": frozenset(
         {
             "__root__",
@@ -106,9 +126,11 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
             "terms",
             "physics",
             "motion",
+            "policies",
             "biomechanics",
             "envs",
             "viz",
+            "benchmarks",
             "utils",
         }
     ),
@@ -123,7 +145,7 @@ _COMPATIBILITY_REEXPORT_IMPORTS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-# Pre-existing cross-layer runtime edges on dev (25 edges), burned down as migrations land.
+# Pre-existing cross-layer runtime edges on dev (16 edges), burned down as migrations land.
 # Do not add entries here; place new runtime logic in its canonical layer.
 _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
     {
@@ -137,21 +159,12 @@ _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
         ("envs/heightfields.py", "viz"),
         ("envs/multi_agent_modular_env.py", "viz"),
         ("integrations/musclemimic/fbvs_player.py", "envs"),
-        ("integrations/musclemimic/fullbody_eval_cli.py", "envs"),
         ("integrations/musclemimic/fullbody_native_playback.py", "envs"),
         ("integrations/musclemimic/fullbody_native_playback.py", "viz"),
         ("integrations/musclemimic/mjlab_onnx_policy.py", "envs"),
-        ("logger/examine_logs.py", "utils"),
-        ("logger/grouped_datasets.py", "utils"),
         ("terms/multiplayer/chase_tag_vs_obs.py", "envs"),
         ("terms/multiplayer/chase_tag_vs_reward.py", "envs"),
-        ("utils/checkpoint_manifest.py", "integrations"),
-        ("utils/export_onnx.py", "integrations"),
-        ("utils/onnx_checkpoint.py", "integrations"),
-        ("utils/policy_utils.py", "logger"),
-        ("viz/blender_render.py", "utils"),
         ("viz/mjlab_play.py", "integrations"),
-        ("viz/mjlab_play.py", "utils"),
     }
 )
 
@@ -180,6 +193,7 @@ _COMPATIBILITY_MODULE_SHIMS: tuple[tuple[str, str], ...] = (
     ("myosuite.terms.waypoint", "myosuite.core.terms.waypoint"),
     ("myosuite.terms.multiplayer.common", "myosuite.core.terms.multiplayer.common"),
     ("myosuite.terms.multiplayer.heading", "myosuite.core.terms.multiplayer.heading"),
+    ("myosuite.terms.catalog", "myosuite.benchmarks.term_catalog"),
     ("myosuite.core.trajectory_io", "myosuite.motion.io"),
     ("myosuite.core.trajectory_yaw", "myosuite.motion.transforms"),
     ("myosuite.core.playback_contract", "myosuite.motion.playback"),
@@ -187,6 +201,10 @@ _COMPATIBILITY_MODULE_SHIMS: tuple[tuple[str, str], ...] = (
     ("myosuite.core.retargeting", "myosuite.integrations.marker_retarget"),
     ("myosuite.logger.reference_motion", "myosuite.motion.reference"),
     ("myosuite.logger.reference_motion_jax", "myosuite.motion.reference_jax"),
+    ("myosuite.logger.examine_logs", "myosuite.viz.examine_logs"),
+    ("myosuite.logger.examine_reference", "myosuite.viz.examine_reference"),
+    ("myosuite.logger.grouped_datasets", "myosuite.viz.grouped_datasets"),
+    ("myosuite.logger.roboset_logger", "myosuite.viz.roboset_logger"),
     ("myosuite.biomechanics.opensim_motion", "myosuite.integrations.opensim_motion"),
     ("myosuite.biomechanics.opensim_grf", "myosuite.integrations.opensim_grf"),
     ("myosuite.biomechanics.smplh", "myosuite.integrations.smplh"),
@@ -194,6 +212,46 @@ _COMPATIBILITY_MODULE_SHIMS: tuple[tuple[str, str], ...] = (
     ("myosuite.biomechanics.mano", "myosuite.integrations.mano"),
     ("myosuite.biomechanics.gvhmr", "myosuite.integrations.gvhmr"),
     ("myosuite.biomechanics.chumpy_pickle", "myosuite.integrations.chumpy_pickle"),
+    ("myosuite.utils.action_map", "myosuite.policies.action_map"),
+    ("myosuite.utils.checkpoint_manifest", "myosuite.policies.checkpoint_manifest"),
+    ("myosuite.utils.checkpoint_utils", "myosuite.policies.checkpoint_utils"),
+    ("myosuite.utils.deployment_manifest", "myosuite.policies.deployment_manifest"),
+    ("myosuite.utils.export_onnx", "myosuite.policies.export_onnx"),
+    ("myosuite.utils.onnx_checkpoint", "myosuite.policies.onnx_checkpoint"),
+    ("myosuite.utils.onnxruntime_utils", "myosuite.policies.onnxruntime_utils"),
+    ("myosuite.utils.rslrl_policy", "myosuite.policies.rslrl_policy"),
+    ("myosuite.integrations.musclemimic.actor_tree", "myosuite.policies.actor_tree"),
+    (
+        "myosuite.integrations.musclemimic.fullbody_checkpoint_io",
+        "myosuite.policies.checkpoint_ref",
+    ),
+    (
+        "myosuite.integrations.musclemimic.fullbody_eval_cli",
+        "myosuite.benchmarks.musclemimic_fullbody_eval_cli",
+    ),
+    ("myosuite.utils.examine_env", "myosuite.benchmarks.examine_env"),
+    ("myosuite.utils.examine_sim", "myosuite.benchmarks.examine_sim"),
+    ("myosuite.utils.env_check", "myosuite.benchmarks.env_check"),
+    ("myosuite.utils.paired_replay", "myosuite.benchmarks.paired_replay"),
+    ("myosuite.utils.performance_card", "myosuite.benchmarks.performance_card"),
+    ("myosuite.utils.push_metrics", "myosuite.benchmarks.push_metrics"),
+    ("myosuite.utils.push_protocol", "myosuite.benchmarks.push_protocol"),
+    ("myosuite.utils.push_recovery", "myosuite.benchmarks.push_recovery"),
+    ("myosuite.utils.push_results", "myosuite.benchmarks.push_results"),
+    ("myosuite.utils.push_scheduling", "myosuite.benchmarks.push_scheduling"),
+    ("myosuite.utils.dict_utils", "myosuite.core.dict_utils"),
+    ("myosuite.utils.import_utils", "myosuite.core.import_utils"),
+    ("myosuite.utils.path_utils", "myosuite.core.path_utils"),
+    ("myosuite.utils.prompt_utils", "myosuite.core.prompt_utils"),
+    ("myosuite.utils.reach_workspace", "myosuite.core.reach_workspace"),
+    ("myosuite.utils.step_timing", "myosuite.core.step_timing"),
+    ("myosuite.utils.target_ranges", "myosuite.core.target_ranges"),
+    ("myosuite.utils.tensor_utils", "myosuite.core.tensor_utils"),
+    ("myosuite.utils.feature_cli", "myosuite.envs.feature_cli"),
+    ("myosuite.utils.html", "myosuite.viz.html_embed"),
+    ("myosuite.utils.path_plotting", "myosuite.viz.path_plotting"),
+    ("myosuite.utils.policy_utils", "myosuite.viz.policy_playback"),
+    ("myosuite.utils.video_io", "myosuite.viz.video_io"),
 )
 
 _NON_SHIM_FACADE_TARGETS: dict[str, tuple[str, ...]] = {
@@ -203,6 +261,9 @@ _NON_SHIM_FACADE_TARGETS: dict[str, tuple[str, ...]] = {
         "myosuite.core.builder.scene_library",
     ),
     "terms/__init__.py": ("myosuite.core.terms", "myosuite.terms"),
+    "logger/__init__.py": (),
+    "utils/__init__.py": ("myosuite.core.seeding",),
+    "utils/gym.py": (),
 }
 
 _COMPATIBILITY_FACADE_FILES: frozenset[str] = frozenset(
@@ -311,11 +372,29 @@ def _runtime_imports(
         elif isinstance(node, ast.ImportFrom):
             if node.level == 0:
                 if node.module:
-                    imports.append(node.module)
-                    if node.module == "myosuite" or node.module.startswith("myosuite."):
+                    if node.module == "myosuite":
+                        imports.append(node.module)
                         for alias in node.names:
                             if alias.name != "*":
+                                imports.append(f"myosuite.{alias.name}")
+                    elif node.module.startswith("myosuite."):
+                        if any(a.name == "*" for a in node.names):
+                            imports.append(node.module)
+                        mod_rel = Path(
+                            *node.module.removeprefix("myosuite.").split(".")
+                        )
+                        for alias in node.names:
+                            if alias.name == "*":
+                                continue
+                            sub_py = _PACKAGE / mod_rel / f"{alias.name}.py"
+                            sub_pkg = _PACKAGE / mod_rel / alias.name / "__init__.py"
+                            if sub_py.is_file() or sub_pkg.is_file():
                                 imports.append(f"{node.module}.{alias.name}")
+                            else:
+                                imports.append(node.module)
+                                imports.append(f"{node.module}.{alias.name}")
+                    else:
+                        imports.append(node.module)
             else:
                 base_mod = _resolve_relative_module(
                     rel_parts, is_pkg, node.module, node.level
@@ -537,8 +616,7 @@ def test_compatibility_shims_are_pure_aliases() -> None:
         defs = [
             node.name
             for node in tree.body
-            if isinstance(node, (ast.AsyncFunctionDef, ast.ClassDef))
-            or (isinstance(node, ast.FunctionDef) and node.name != "__getattr__")
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         ]
         assert (
             not defs
@@ -555,7 +633,7 @@ def test_compatibility_shims_are_pure_aliases() -> None:
             legacy is canonical
         ), f"{legacy_mod} ({legacy!r}) is not identical to {canonical_mod} ({canonical!r})"
 
-    for closed_dir in ("scenes",):
+    for closed_dir in ("scenes", "logger"):
         on_disk = {
             p.relative_to(_PACKAGE).as_posix()
             for p in (_PACKAGE / closed_dir).rglob("*.py")
@@ -564,6 +642,18 @@ def test_compatibility_shims_are_pure_aliases() -> None:
         assert (
             not unlisted
         ), f"Closed namespace myosuite/{closed_dir}/ has non-facade files: {unlisted}"
+
+    utils_on_disk = {
+        p.relative_to(_PACKAGE).as_posix() for p in (_PACKAGE / "utils").rglob("*.py")
+    }
+    utils_allowed = _COMPATIBILITY_FACADE_FILES | {
+        "utils/sb3_callbacks.py",
+        "utils/sb3_sweep.py",
+    }
+    utils_unlisted = sorted(utils_on_disk - utils_allowed)
+    assert (
+        not utils_unlisted
+    ), f"Closed namespace myosuite/utils/ has unexpected files: {utils_unlisted}"
 
     for rel_facade in sorted(_COMPATIBILITY_FACADE_FILES):
         facade_file = _PACKAGE / rel_facade

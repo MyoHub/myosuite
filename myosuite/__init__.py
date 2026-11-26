@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from myosuite.utils import gym
+import gymnasium as gym
 
 from .version import __version_tuple__
 

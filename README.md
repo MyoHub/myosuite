@@ -65,8 +65,8 @@ Verify (replace "onscreen" with "offscreen" when running on a remote, headless m
 
 ```bash
 python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
-python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
-# macOS viewer: mjpython -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
+python -m myosuite.benchmarks.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
+# macOS viewer: mjpython -m myosuite.benchmarks.examine_env --env_name myoElbowPose1D6MRandom-v0 --render onscreen
 ```
 
 Run these from a directory that does not directly contain a folder named `myosuite` (for example not the parent of your clone); otherwise Python imports that folder as a namespace package and fails with `cannot import name ... from 'myosuite' (unknown location)`.

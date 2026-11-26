@@ -1,6 +1,6 @@
 Tensor Utilities
 ================
 
-.. automodule:: myosuite.utils.tensor_utils
+.. automodule:: myosuite.core.tensor_utils
    :members:
    :undoc-members:

@@ -25,7 +25,7 @@ import mujoco
 import numpy as np
 
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
-from myosuite.utils.action_map import DynSyn, DynSynGroups
+from myosuite.policies.action_map import DynSyn, DynSynGroups
 
 
 def record_muscle_lengths(

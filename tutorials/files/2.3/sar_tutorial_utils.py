@@ -13,8 +13,8 @@ import pandas as pd
 from sklearn.decomposition import PCA, FastICA
 from sklearn.preprocessing import MinMaxScaler
 
-from myosuite.utils.video_io import show_video as _video_show_video
-from myosuite.utils.video_io import write_video
+from myosuite.viz.video_io import show_video as _video_show_video
+from myosuite.viz.video_io import write_video
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure
@@ -38,7 +38,7 @@ plt.rcParams["font.family"] = "DejaVu Sans"
 def show_video(video_path, video_width=600):
     """Displays any mp4 video within the notebook (SAR default width 600).
 
-    Delegates to :func:`myosuite.utils.video_io.show_video`.
+    Delegates to :func:`myosuite.viz.video_io.show_video`.
     """
     return _video_show_video(video_path, video_width=video_width)
 

@@ -17,23 +17,23 @@ from typing import Any
 
 from myosuite import make_env
 from myosuite.envs.wrappers import PerturbationWrapper
-from myosuite.utils.checkpoint_utils import find_vec_normalize, load_policy
-from myosuite.utils.deployment_manifest import (
+from myosuite.policies.checkpoint_utils import find_vec_normalize, load_policy
+from myosuite.policies.deployment_manifest import (
     artifact_record,
     env_deployment_manifest,
     model_identity,
 )
-from myosuite.utils.paired_replay import ReplayPolicy
-from myosuite.utils.push_metrics import RecoveryCriteria
-from myosuite.utils.push_protocol import PushProtocol
-from myosuite.utils.push_recovery import run_paired_push
-from myosuite.utils.push_results import (
+from myosuite.benchmarks.paired_replay import ReplayPolicy
+from myosuite.benchmarks.push_metrics import RecoveryCriteria
+from myosuite.benchmarks.push_protocol import PushProtocol
+from myosuite.benchmarks.push_recovery import run_paired_push
+from myosuite.benchmarks.push_results import (
     save_trial,
     summarize_conditions,
     write_json,
     write_trials_csv,
 )
-from myosuite.utils.push_scheduling import ContactPhase
+from myosuite.benchmarks.push_scheduling import ContactPhase
 
 
 @dataclass(frozen=True)

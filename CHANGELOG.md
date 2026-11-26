@@ -50,6 +50,12 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **Runtime policy inference (`myosuite.policies`) separated from evaluation suites (`myosuite.benchmarks`) ([#938]).**
+  Moved reusable checkpoint/ONNX/Orbax loaders (`onnx_checkpoint`, `onnxruntime_utils`, `orbax_checkpoint`, `rslrl_policy`,
+  `checkpoint_utils`), `export_onnx`, `checkpoint_manifest`, `deployment_manifest`, and `action_map` into `myosuite/policies/`
+  (with no direct `envs` or `integrations` imports); moved evaluation suites (`paired_replay`, `push_*`, `performance_card`,
+  `examine_env`, `examine_sim`, `term_catalog`) into `myosuite/benchmarks/`; and relocated remaining `utils/` and `logger/`
+  helpers into `core/`, `envs/`, and `viz/` with `sys.modules` and `python -m` CLI forwarding aliases at all former paths.
 * **Foundation consolidation (`myosuite.core.builder`, `myosuite.core.terms`, `myosuite.physics.colored_noise`) ([#936]).**
   Consolidated MJCF/scene assembly helpers (`scene_library`, `scene_builder`, `model_editor`, `spec_processing`,
   `mujoco_geom_utils`, `mujoco_joint_utils`, `asset_path_resolver`) into `myosuite/core/builder/`, pure backend-agnostic
@@ -444,6 +450,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#935]: https://github.com/MyoHub/myosuite/pull/935
 [#936]: https://github.com/MyoHub/myosuite/pull/936
 [#937]: https://github.com/MyoHub/myosuite/pull/937
+[#938]: https://github.com/MyoHub/myosuite/pull/938
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.

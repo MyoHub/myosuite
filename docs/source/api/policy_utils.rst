@@ -1,7 +1,7 @@
 Policy Utilities
 ================
 
-.. automodule:: myosuite.utils.policy_utils
+.. automodule:: myosuite.viz.policy_playback
    :members:
    :undoc-members:
    :show-inheritance:

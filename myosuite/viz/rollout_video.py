@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """Record an offscreen MuJoCo rollout as video frames.
 
-Pair with :func:`myosuite.utils.video_io.write_video` to save the frames::
+Pair with :func:`myosuite.viz.video_io.write_video` to save the frames::
 
     frames = record_rollout(model, data, step, n_steps=300, camera=tracking_camera(model))
     write_video("rollout.mp4", frames, fps=round(1 / (model.opt.timestep * frame_skip)))

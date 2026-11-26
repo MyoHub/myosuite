@@ -18,7 +18,7 @@ from myosuite.envs.myo.backends.mjlab.tasks.mdp.commands import (
     UniformVectorCommand,
     UniformVectorCommandCfg,
 )
-from myosuite.utils.reach_workspace import reachable_target_points
+from myosuite.core.reach_workspace import reachable_target_points
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv

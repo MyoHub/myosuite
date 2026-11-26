@@ -16,7 +16,7 @@ from gymnasium.utils import EzPickle
 
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
-from myosuite.utils.reach_workspace import reachable_target_points
+from myosuite.core.reach_workspace import reachable_target_points
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.core.terms.base_action import (
     sigmoid_muscle_activation,

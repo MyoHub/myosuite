@@ -702,7 +702,7 @@ class FullbodyOnnxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         state_indices: np.ndarray | None = None,
         obs_backend: ObsBackend = "auto",
     ) -> None:
-        from myosuite.utils.onnxruntime_utils import require_onnxruntime
+        from myosuite.policies.onnxruntime_utils import require_onnxruntime
 
         ort = require_onnxruntime()
 
@@ -827,7 +827,7 @@ class FullbodyOrbaxMjlabPolicy(_FullbodyMjlabPolicyBridge):
         if artifacts is None:
             if checkpoint_path is None:
                 raise ValueError("checkpoint_path or artifacts must be provided.")
-            from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
+            from myosuite.policies.checkpoint_ref import (
                 resolve_checkpoint_ref,
             )
             from myosuite.integrations.musclemimic.fullbody_local_policy import (

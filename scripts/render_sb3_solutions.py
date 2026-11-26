@@ -201,7 +201,7 @@ def _sb3_policy(ckpt: Path) -> tuple[Policy, Path | None]:
     """
     from stable_baselines3 import PPO
 
-    from myosuite.utils.checkpoint_utils import (
+    from myosuite.policies.checkpoint_utils import (
         find_vec_normalize,
         load_vec_normalize,
         sb3_policy,

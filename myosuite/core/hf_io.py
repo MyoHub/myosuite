@@ -213,7 +213,7 @@ def download_baseline_checkpoint(
 ) -> Path | None:
     """Download env_id's default checkpoint from the baselines Hugging Face repo.
 
-    A thin wrapper the tutorials and :func:`myosuite.utils.checkpoint_utils.find_checkpoint`
+    A thin wrapper the tutorials and :func:`myosuite.policies.checkpoint_utils.find_checkpoint`
     fall back to when no local checkpoint exists (e.g. a fresh clone, or a pip install with
     ``baselines/`` gitignored). huggingface_hub caches downloads locally, so repeated calls
     for the same env are free after the first.

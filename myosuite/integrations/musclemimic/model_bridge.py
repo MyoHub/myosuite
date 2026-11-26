@@ -698,7 +698,7 @@ def make_fullbody_checkpoint_bridged_policy(
         observation/action contract.
     """
 
-    from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
+    from myosuite.policies.checkpoint_ref import (
         resolve_checkpoint_ref,
     )
     from myosuite.integrations.musclemimic.fullbody_local_policy import (

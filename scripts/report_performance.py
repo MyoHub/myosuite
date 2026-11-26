@@ -11,7 +11,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from myosuite.utils.performance_card import RunRecord, summarize_runs
+from myosuite.benchmarks.performance_card import RunRecord, summarize_runs
 
 
 def main(argv: Sequence[str] | None = None) -> int:

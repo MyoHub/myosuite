@@ -38,9 +38,9 @@ from mujoco import mjx
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.core.terms.base_obs import tip_pos_obs
-from myosuite.utils.reach_workspace import reachable_target_points
-from myosuite.utils.step_timing import first_step_after
-from myosuite.utils.target_ranges import resolve_site_target_ranges
+from myosuite.core.reach_workspace import reachable_target_points
+from myosuite.core.step_timing import first_step_after
+from myosuite.core.target_ranges import resolve_site_target_ranges
 
 # CPU ReachEnvV0 enables the far penalty/termination once data.time > 2 * ctrl_dt.
 _FAR_CHECK_DELAY_STEPS = 2

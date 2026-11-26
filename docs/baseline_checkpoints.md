@@ -15,7 +15,7 @@ unconverged, or not evaluated — see the notes below), so none is published as 
 Checkpoints are hosted on
 [myohub/myosuite-3-baselines](https://huggingface.co/myohub/myosuite-3-baselines) (Hugging Face)
 rather than in this git repository, and are downloaded automatically by the tutorials and
-`myosuite.utils.checkpoint_utils.find_checkpoint` the first time they're needed. Use one
+`myosuite.policies.checkpoint_utils.find_checkpoint` the first time they're needed. Use one
 directly::
 
     python scripts/eval_mjlab_policy.py <env_id> --backend cpu   # or mjlab

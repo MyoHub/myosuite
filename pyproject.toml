@@ -180,6 +180,8 @@ build-backend = "setuptools.build_meta"
 include-package-data = false
 packages = { find = { include = [
     "myosuite",
+    "myosuite.benchmarks",
+    "myosuite.benchmarks.*",
     "myosuite.biomechanics",
     "myosuite.biomechanics.*",
     "myosuite.core",
@@ -194,6 +196,8 @@ packages = { find = { include = [
     "myosuite.motion.*",
     "myosuite.physics",
     "myosuite.physics.*",
+    "myosuite.policies",
+    "myosuite.policies.*",
     "myosuite.scenes",
     "myosuite.scenes.*",
     "myosuite.terms",
@@ -212,6 +216,7 @@ packages = { find = { include = [
 [tool.setuptools.package-data]
 "myosuite" = [
     # Keep distribution size down by excluding `myosuite/agents/**` and `myosuite/tests/**`.
+    "benchmarks/**",
     "biomechanics/**",
     "core/**",
     "envs/**",
@@ -219,6 +224,7 @@ packages = { find = { include = [
     "logger/**",
     "motion/**",
     "physics/**",
+    "policies/**",
     "scenes/**",
     "terms/**",
     "utils/**",
@@ -238,10 +244,10 @@ packages = { find = { include = [
 ]
 
 [project.scripts]
-myosuite-export-onnx = "myosuite.utils.export_onnx:main"
-myosuite-terms = "myosuite.terms.catalog:main"
+myosuite-export-onnx = "myosuite.policies.export_onnx:main"
+myosuite-terms = "myosuite.benchmarks.term_catalog:main"
 # MuscleMimic full-body: native --path trajectory playback, preview, or MJX smoke.
-myosuite-musclemimic-fullbody-eval = "myosuite.integrations.musclemimic.fullbody_eval_cli:main"
+myosuite-musclemimic-fullbody-eval = "myosuite.benchmarks.musclemimic_fullbody_eval_cli:main"
 # Demo motion cache (HF); runs in MuscleMimic tree — see integrations/musclemimic/README.md.
 myosuite-musclemimic-setup-demo-cache = "myosuite.integrations.musclemimic.setup_demo_cache_cli:main"
 

@@ -12,10 +12,10 @@ import numpy as np
 import pytest
 
 import myosuite  # noqa: F401  (registers the envs)
+from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
+from myosuite.core.dict_utils import assert_nested_close
 from myosuite.envs.heightfields import ChaseTagField, HeightField, TrackField
 from myosuite.physics.quat_math import euler2mat, quat2euler
-from myosuite.utils.asset_path_resolver import resolve_model_xml_path
-from myosuite.utils.dict_utils import assert_nested_close
 from myosuite import make_env
 
 pytestmark = pytest.mark.tier2

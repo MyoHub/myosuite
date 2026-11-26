@@ -78,7 +78,7 @@ from myosuite.core.terms.mimic_reward import (
     MimicTrackingConfig,
     mimic_site_tracking_reward,
 )
-from myosuite.utils.reach_workspace import reachable_postures
+from myosuite.core.reach_workspace import reachable_postures
 
 if TYPE_CHECKING:
     from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
@@ -645,7 +645,7 @@ def _sync_mimic_mjlab_targets(
 
     Dispatches to trajectory-clip mode when ``cache["clip_source"]`` is set,
     otherwise draws each env's targets from the random-posture table
-    (:func:`~myosuite.utils.reach_workspace.reachable_postures`), once per
+    (:func:`~myosuite.core.reach_workspace.reachable_postures`), once per
     episode (on time regression).
 
     Args:

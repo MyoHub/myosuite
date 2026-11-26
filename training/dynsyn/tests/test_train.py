@@ -20,12 +20,12 @@ from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (  # noqa: E40
     action_map_term,
     apply_action_map,
 )
-from myosuite.utils.action_map import (  # noqa: E402
+from myosuite.policies.action_map import (  # noqa: E402
     DynSyn,
     DynSynGroups,
     trained_action_map,
 )
-from myosuite.utils.rslrl_policy import load_rslrl_policy  # noqa: E402
+from myosuite.policies.rslrl_policy import load_rslrl_policy  # noqa: E402
 from myosuite_dynsyn.train import (  # noqa: E402
     DynSynTrainConfig,
     resolve_dynsyn,

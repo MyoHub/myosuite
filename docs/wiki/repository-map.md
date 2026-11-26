@@ -9,19 +9,19 @@
 
 | Layer | Subpackage / Directory | Status | Responsibility | Allowed `myosuite.*` Runtime Imports |
 | :--- | :--- | :--- | :--- | :--- |
-| **Foundation** | `myosuite/core/` | Active | `EnvConfig`, `registry`, `make_env`, `ModelBuilder`, recipes, scene/spec `builder/`, pure MDP `terms/`, muscle conditions/scaling facades | `core`, `physics` |
+| **Foundation** | `myosuite/core/` | Active | `EnvConfig`, `registry`, `make_env`, `ModelBuilder`, recipes, `seeding`, `dict_utils`, `import_utils`, `path_utils`, `prompt_utils`, `reach_workspace`, `step_timing`, `target_ranges`, `tensor_utils`, scene/spec `builder/`, pure MDP `terms/`, muscle conditions/scaling facades | `core`, `physics` |
 | **Numerical Math** | `myosuite/physics/` | Active | Shared numerical helpers and compatibility imports (`quat*`, `running_stats`, `colored_noise`, `joint_coupling`, `fatigue_jax`); canonical model mechanics live in `myo_sim` | `physics` |
-| **MDP Terms (Shim + Catalog)** | `myosuite/terms/` | Facade *(+ catalog & ChaseTag terms)* | Backward-compatible aliases to `core/terms/`, `myosuite-terms` CLI (`catalog.py`), and ChaseTag task terms (`multiplayer/chase_tag_vs_*`) | `core`, `physics`, `terms` |
+| **MDP Terms (Shim)** | `myosuite/terms/` | Facade *(+ ChaseTag terms)* | Backward-compatible aliases to `core/terms/` and `benchmarks/term_catalog.py`, plus ChaseTag task terms (`multiplayer/chase_tag_vs_*`) | `core`, `physics`, `terms` |
 | **Scene Assembly (Shim)** | `myosuite/scenes/` | Closed facade | Backward-compatible aliases to `core/builder/{scene_library,scene_builder}.py` | `core`, `scenes` |
 | **Motion & Trials** | `myosuite/motion/` | Active | Flat motion contract subpackage (`MotionClip` & trajectory `io.py`, `transforms.py`, `playback.py`, `hf_cache.py`, `reference.py`, `reference_jax.py`, composable `KinematicTrial` / `EMGTrial`) | `core`, `physics`, `motion` |
 | **Scientific Analysis** | `myosuite/biomechanics/` | Active | Site IK (`mink`), coupling-aware landmark IK, inverse dynamics, static optimization, CEINMS, CMC, EMG processing, external-load wrench mapping (`external_loads.py`), effort, observability/uncertainty | `core`, `physics`, `motion`, `biomechanics` |
-| **Ecosystem Bridges** | `myosuite/integrations/` | Active | Lightweight source-specific readers/adapters (`capture/markers`, `marker_retarget`, `smplh`, `retarget_smplh`, `mano`, `gvhmr`, `opensim_motion`, `opensim_grf`, `chumpy_pickle`) and `musclemimic` runtime bridges *(InstantHMR adapter `biomechanics/retarget_instanthmr.py` migration deferred)* | `core`, `terms`, `physics`, `motion`, `biomechanics`, `utils`, `integrations` *(+ `policies` once created)* |
-| **Runtime Inference** | `myosuite/policies/` | *Planned target* | Reusable checkpoint/ONNX loading, `export_onnx`, checkpoint manifests and `action_map` runtime wrappers (today in `myosuite/utils/`) | `core`, `terms`, `physics`, `motion`, `biomechanics`, `policies` |
-| **Environments** | `myosuite/envs/` | Active | `gymnasium_env.py`, `modular_env.py`, `wrappers.py`, `muscle_stages.py`, and `envs/myo/{tasks,backends,myoedits,assets}/` | `core`, `scenes`, `terms`, `physics`, `motion`, `biomechanics`, `integrations`, `utils`, `envs` *(+ `policies` once created)* |
-| **Visualization** | `myosuite/viz/` | Active | Offscreen/interactive viewer, rollout playback/video I/O, volumetric `muscle_meshes`/`muscle_tubes`, `.skn`/`.glb` skinning, USD/Blender export | `core`, `scenes`, `physics`, `motion`, `biomechanics`, `envs`, `viz` *(+ `policies` once created)* |
-| **Evaluation Suites** | `myosuite/benchmarks/` | *Planned target* | Standardized evaluation suites (`paired_replay`, `push_*`, `performance_card`, `examine_env`, `env_check`, rollout logging — today in `utils/` and `logger/`) | `core`, `terms`, `physics`, `motion`, `biomechanics`, `integrations`, `envs`, `viz`, `benchmarks` *(+ `policies` once created)* |
-| **Rollout Logging** | `myosuite/logger/` | Active | Rollout trace/dataset logging (`examine_logs`, `examine_reference`, `grouped_datasets`, `roboset_logger`) and `reference_motion*` aliases | `core`, `physics`, `motion`, `logger` |
-| **Shared Utilities** | `myosuite/utils/` | Active | Shared runtime/CLI utilities (scheduled for split into `core/`, `policies/`, `envs/`, `viz/`, and `benchmarks/`) | `core`, `terms`, `physics`, `motion`, `biomechanics`, `envs`, `viz`, `utils` |
+| **Ecosystem Bridges** | `myosuite/integrations/` | Active | Lightweight source-specific readers/adapters (`capture/markers`, `marker_retarget`, `smplh`, `retarget_smplh`, `mano`, `gvhmr`, `opensim_motion`, `opensim_grf`, `chumpy_pickle`) and `musclemimic` runtime bridges *(InstantHMR adapter `biomechanics/retarget_instanthmr.py` migration deferred)* | `core`, `terms`, `physics`, `motion`, `policies`, `biomechanics`, `integrations` |
+| **Runtime Inference** | `myosuite/policies/` | Active | Reusable checkpoint/ONNX/Orbax loading (`onnx_checkpoint`, `onnxruntime_utils`, `orbax_checkpoint`, `rslrl_policy`, `checkpoint_utils`), `export_onnx` CLI, checkpoint/deployment manifests and `action_map` runtime wrappers | `core`, `terms`, `physics`, `motion`, `biomechanics`, `policies` |
+| **Environments** | `myosuite/envs/` | Active | `gymnasium_env.py`, `modular_env.py`, `wrappers.py`, `muscle_stages.py`, `feature_cli.py`, and `envs/myo/{tasks,backends,myoedits,assets}/` | `core`, `scenes`, `terms`, `physics`, `motion`, `policies`, `biomechanics`, `integrations`, `envs` |
+| **Visualization** | `myosuite/viz/` | Active | Offscreen/interactive viewer, rollout logging/plotting/video I/O (`roboset_logger`, `grouped_datasets`, `examine_logs`, `examine_reference`, `path_plotting`, `policy_playback`, `video_io`), volumetric `muscle_meshes`/`muscle_tubes`, `.skn`/`.glb` skinning, USD/Blender export | `core`, `scenes`, `physics`, `motion`, `policies`, `biomechanics`, `envs`, `viz` |
+| **Evaluation Suites** | `myosuite/benchmarks/` | Active | Standardized evaluation suites (`paired_replay`, `push_*`, `performance_card`, `examine_env`, `examine_sim`, `env_check`, `term_catalog` / `myosuite-terms`, `musclemimic_fullbody_eval_cli`) | `core`, `terms`, `physics`, `motion`, `policies`, `biomechanics`, `integrations`, `envs`, `viz`, `benchmarks` |
+| **Rollout Logging (Shim)** | `myosuite/logger/` | Closed facade | Backward-compatible aliases to `viz/` and `motion/` | `core`, `physics`, `motion`, `viz`, `logger` |
+| **Shared Utilities (Shim)** | `myosuite/utils/` | Closed facade *(+ legacy `sb3_*` until training isolation)* | Backward-compatible aliases to `core/`, `policies/`, `envs/`, `viz/`, and `benchmarks/` | `core`, `terms`, `physics`, `motion`, `policies`, `biomechanics`, `envs`, `viz`, `benchmarks`, `utils` |
 | **Out-of-Wheel RL** | `training/<method>/` | Active | Self-contained RL/control projects with independent `pyproject.toml` (`chasetag_teacher`, `dynsyn`, `supermimic`, ...); see [training-guidelines.md](training-guidelines.md) | Consumes `myosuite`; **never** imported by `myosuite/**` |
 | **Out-of-Wheel Tools** | `tools/<tool>/` | Active | Heavy CV/perception extractors (`instanthmr`) with independent `pyproject.toml` | Consumes `myosuite`; **never** imported by `myosuite/**` |
 
@@ -42,8 +42,8 @@ tools/             # standalone data/perception CLIs with isolated dependencies 
 
 | Directory | Contents |
 |---|---|
-| `core/` | Registry and `make_env`, config dataclasses (`EnvConfig`, `TaskConfig`), `ModelBuilder`/recipes, `core/builder/` (scenes, MJCF spec/geom/joint/asset helpers), `core/terms/` (backend-agnostic MDP terms), muscle conditions/scaling facades |
-| `terms/` | Backward-compatible aliases to `core/terms/` plus `catalog.py` (`myosuite-terms`) and ChaseTag multiplayer terms |
+| `core/` | Registry and `make_env`, config dataclasses (`EnvConfig`, `TaskConfig`), `ModelBuilder`/recipes, `seeding`, `dict_utils`, `import_utils`, `path_utils`, `prompt_utils`, `reach_workspace`, `step_timing`, `target_ranges`, `tensor_utils`, `core/builder/` (scenes, MJCF spec/geom/joint/asset helpers), `core/terms/` (backend-agnostic MDP terms), muscle conditions/scaling facades |
+| `terms/` | Backward-compatible aliases to `core/terms/` and `benchmarks/term_catalog.py`, plus ChaseTag multiplayer terms |
 | `physics/` | Model-level runtime math — quaternions, running stats, colored noise, fatigue, joint couplings. No backend imports. |
 | `motion/` | Model-coordinate `MotionClip` & trajectory I/O, yaw transforms, playback contracts, HF dataset cache, reference motions, and composable `KinematicTrial` / `EMGTrial` |
 | `biomechanics/` | Musculoskeletal analysis and fitting solvers (IK, ID, static optimization, CMC, EMG, external loads (`external_loads.py`), effort). NumPy / SciPy / MuJoCo only. |
@@ -52,9 +52,11 @@ tools/             # standalone data/perception CLIs with isolated dependencies 
 | `envs/myo/tasks/` | Task definitions organized by collection (`basic/`, `challenge/`, `mimic/`) |
 | `envs/myo/backends/` | `mjx/` (JAX) and `mjlab/` (Warp) execution backends |
 | `envs/myo/myoedits/` | Model-editing helpers and the registered edit variants |
-| `utils/` | Generic helpers — dict, xml, path, tensor, onnx export, plotting, `examine_env.py`, `env_check.py`. No domain math. Checkpoint playback: `rslrl_policy.py`, `checkpoint_manifest.py`, `action_map.py` (action maps such as DynSyn: policy actions -> per-muscle actions, CPU wrapper, checkpoint reading) |
-| `viz/` | Rendering and visualization; `blender_render.py` (USD export and Blender studio scene), `muscle_tubes.py` (volumetric muscle geometry) and `skin.py` (`.skn` body skin; bundled skin in `assets/`) |
-| `logger/` | Rollout logging / grouped datasets |
+| `policies/` | Checkpoint/ONNX/Orbax loading (`rslrl_policy.py`, `onnx_checkpoint.py`, `onnxruntime_utils.py`, `orbax_checkpoint.py`, `checkpoint_utils.py`), `export_onnx.py`, `checkpoint_manifest.py`, `deployment_manifest.py`, `action_map.py` |
+| `benchmarks/` | Evaluation suites (`paired_replay.py`, `push_*.py`, `performance_card.py`, `examine_env.py`, `examine_sim.py`, `env_check.py`, `term_catalog.py`) |
+| `utils/` | Backward-compatible aliases to `core/`, `policies/`, `envs/`, `viz/`, and `benchmarks/` (plus `sb3_*` helpers) |
+| `viz/` | Rendering, rollout logging/plotting (`roboset_logger.py`, `grouped_datasets.py`, `examine_logs.py`, `path_plotting.py`, `policy_playback.py`, `video_io.py`), `blender_render.py`, `muscle_tubes.py`, `muscle_meshes.py`, and `skin.py` |
+| `logger/` | Backward-compatible aliases to `viz/` and `motion/` |
 | `scenes/` | Backward-compatible aliases to `core/builder/` |
 | `tests/` | Test suites (tiers 1–3, see pyproject markers); `tests/benchmarks/` holds the throughput benchmarks |
 
@@ -101,8 +103,8 @@ guaranteed long-term.)
 | Add a CPU env (MyoGymnasiumEnv) | `envs/myo/tasks/basic/<effector>/` or `challenge/` |
 | Add the matched mjlab GPU task | `envs/myo/backends/mjlab/tasks/<family>/` (twins of CPU envs), `register_mjlab_*.py` (special tasks) |
 | Muscle noise, fatigue, reafferentation, sarcopenia | `envs/wrappers.py`, `envs/muscle_stages.py`; on mjlab `backends/mjlab/tasks/mdp/actions.py` |
-| Play a checkpoint trained through an action map (DynSyn) | `utils/action_map.py`; on mjlab `backends/mjlab/tasks/mdp/action_map.py`; training in `training/dynsyn/` |
-| `make_env` / `EnvConfig` (one entry point for both backends) | `core/registry.py`, `core/config.py`; `utils/feature_cli.py` for the `--feature` flags |
+| Play a checkpoint trained through an action map (DynSyn) | `policies/action_map.py`; on mjlab `backends/mjlab/tasks/mdp/action_map.py`; training in `training/dynsyn/` |
+| `make_env` / `EnvConfig` (one entry point for both backends) | `core/registry.py`, `core/config.py`; `envs/feature_cli.py` for the `--feature` flags |
 | Data-driven `TaskConfig` route (experimental) | `envs/myo/tasks/basic/specs/` + [adding-a-new-task.md](adding-a-new-task.md) |
 | Change the CPU step/reset loop | `myosuite/envs/gymnasium_env.py` |
 

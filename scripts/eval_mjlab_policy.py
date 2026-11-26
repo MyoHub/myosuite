@@ -31,7 +31,7 @@ Muscle-command features (the ones the checkpoint was trained with, see
 
 A checkpoint trained through an action map (e.g. DynSyn muscle synergies, trained with
 ``training/dynsyn``) is evaluated with the map of its training run, at its training
-progress, read from the checkpoint (see ``myosuite.utils.action_map``).
+progress, read from the checkpoint (see ``myosuite.policies.action_map``).
 
 Every run prints the success rate (share of episodes whose final step is
 "solved"; CPU: ``info["solved"]``, mjlab: the ``Episode_Metrics/success``
@@ -57,7 +57,7 @@ import numpy as np
 import tyro
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
-from myosuite.utils.feature_cli import parse_feature_args
+from myosuite.envs.feature_cli import parse_feature_args
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class EvalConfig:
     newest local ``logs/rsl_rl/...`` run (in the working directory or its parents up to the
     checkout), else a local ``baselines/checkpoints/<env_id>``,
     else the env's default policy downloaded from the Hugging Face baselines repo (see
-    ``myosuite.utils.checkpoint_utils.find_checkpoint``)."""
+    ``myosuite.policies.checkpoint_utils.find_checkpoint``)."""
     backend: Literal["cpu", "mjlab"] = "cpu"
     """Roll out in the CPU gymnasium env or in the mjlab env."""
     episodes: int = 10
@@ -137,9 +137,9 @@ class EvalConfig:
 def _resolve_checkpoint(env_id: str, path: Path | None) -> Path:
     """A checkpoint file, the newest ``model_<iter>.pt`` in a run directory, or (when *path*
     is ``None``) the newest local run / local baseline / Hugging Face default policy for
-    *env_id* (see :func:`myosuite.utils.checkpoint_utils.find_checkpoint`)."""
+    *env_id* (see :func:`myosuite.policies.checkpoint_utils.find_checkpoint`)."""
     if path is None:
-        from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
+        from myosuite.policies.checkpoint_utils import find_checkpoint  # noqa: PLC0415
 
         found = find_checkpoint(env_id)
         if found is None:
@@ -906,14 +906,14 @@ def evaluate_cpu(
     """Roll out ``cols x rows`` CPU envs in lockstep, ``episodes_per_env`` each."""
 
     import myosuite  # noqa: F401  (registers the CPU envs)
-    from myosuite.utils.rslrl_policy import load_rslrl_policy
+    from myosuite.policies.rslrl_policy import load_rslrl_policy
 
     cols, rows = _grid_shape(cfg)
     n_envs, per_env = cols * rows, _episodes_per_env(cfg)
     env_config = EnvConfig(cfg.env_id, features=features)
     envs = [make_env(env_config) for _ in range(n_envs)]
     if trained is not None:
-        from myosuite.utils.action_map import ActionMapWrapper  # noqa: PLC0415
+        from myosuite.policies.action_map import ActionMapWrapper  # noqa: PLC0415
 
         envs = [
             ActionMapWrapper(
@@ -997,7 +997,7 @@ def evaluate_mjlab(
     from mjlab.tasks.registry import load_env_cfg
 
     import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
-    from myosuite.utils.rslrl_policy import load_rslrl_policy
+    from myosuite.policies.rslrl_policy import load_rslrl_policy
 
     os.environ.setdefault("MUJOCO_GL", "egl")
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -1089,7 +1089,7 @@ def main() -> None:
     print(f"\n\ncheckpoint: {checkpoint}  backend: {cfg.backend}  env: {cfg.env_id}")
     if features:
         print("features: " + ", ".join(spec.name for spec in features))
-    from myosuite.utils.action_map import trained_action_map  # noqa: PLC0415
+    from myosuite.policies.action_map import trained_action_map  # noqa: PLC0415
 
     trained = trained_action_map(checkpoint)
     if trained is not None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from myosuite.utils.action_map import DynSyn, DynSynGroups
+from myosuite.policies.action_map import DynSyn, DynSynGroups
 from myosuite_dynsyn.groups import (
     fit_dynsyn,
     k_medoids,

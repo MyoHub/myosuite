@@ -18,7 +18,7 @@ repos:
       - id: mypy
         additional_dependencies: [numpy, mujoco]
         args: [--ignore-missing-imports, --strict-optional, --follow-imports=silent]
-        files: ^myosuite/(core|motion|terms|scenes|integrations/marker_retarget\.py|envs/gymnasium_env\.py)
+        files: ^myosuite/(core|motion|policies/(checkpoint_ref|actor_tree|orbax_checkpoint|onnxruntime_utils)\.py|benchmarks/term_catalog\.py|terms|scenes|integrations/marker_retarget\.py|envs/gymnasium_env\.py)
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.19.1

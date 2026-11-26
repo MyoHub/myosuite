@@ -11,7 +11,7 @@ retain that original record instead of regenerating it against a later model rel
 
 ```python
 from myosuite import make_env
-from myosuite.utils.checkpoint_manifest import write_manifest
+from myosuite.policies.checkpoint_manifest import write_manifest
 
 with make_env("myoElbowPose1D6MFixed-v0") as env:
     write_manifest("checkpoints/elbow", "myoElbowPose1D6MFixed-v0", env=env)
@@ -42,7 +42,7 @@ or the original file format. These hashes detect differences; they are not signa
 For a browser or custom deployment, use the compiled deployment model and explicit metadata:
 
 ```python
-from myosuite.utils.deployment_manifest import (
+from myosuite.policies.deployment_manifest import (
     artifact_record, build_deployment_manifest,
     validate_deployment_manifest, write_deployment_manifest,
 )
@@ -80,10 +80,10 @@ a reproducible deployment. `artifact_record` rejects default HF branches; use a 
 The ONNX CLI can attach a sidecar without changing existing export calls:
 
 ```bash
-python -m myosuite.utils.export_onnx export --framework rslrl \
+python -m myosuite.policies.export_onnx export --framework rslrl \
   --checkpoint model_200.pt --obs-dim 9 --act-dim 6 --output export/policy.onnx \
   --env myoElbowPose1D6MFixed-v0
-python -m myosuite.utils.export_onnx verify --onnx export/policy.onnx \
+python -m myosuite.policies.export_onnx verify --onnx export/policy.onnx \
   --env myoElbowPose1D6MFixed-v0
 ```
 

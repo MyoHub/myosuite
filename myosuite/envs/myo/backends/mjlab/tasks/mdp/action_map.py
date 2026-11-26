@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""mjlab action term that applies an :class:`~myosuite.utils.action_map.ActionMap`.
+"""mjlab action term that applies an :class:`~myosuite.policies.action_map.ActionMap`.
 
 :class:`ActionMapAction` sits in front of a task's muscle action term: the policy
 commands ``z``, the map turns it into one action per muscle, and the muscle term
@@ -22,7 +22,7 @@ from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp.actions import MyoActionCfg
-from myosuite.utils.action_map import (
+from myosuite.policies.action_map import (
     ActionMap,
     TrainedActionMap,
     action_map_from_manifest,
@@ -176,7 +176,7 @@ def apply_trained_action_map(
 
     Args:
         env_cfg: Env config to change.
-        trained: From :func:`myosuite.utils.action_map.trained_action_map`.
+        trained: From :func:`myosuite.policies.action_map.trained_action_map`.
         frozen: Stay there (evaluation). Otherwise training goes on from there, also
             with another ``num_envs``: the runner restores the step counter when it
             loads the checkpoint, and the offset makes up the difference.

@@ -115,7 +115,7 @@ def cpu_playback(checkpoint: str, episodes: int) -> None:
     from pathlib import Path
 
     import myosuite  # noqa: F401
-    from myosuite.utils.checkpoint_utils import load_policy
+    from myosuite.policies.checkpoint_utils import load_policy
 
     env = make_env(ENV_ID)
     policy = load_policy(env, Path(checkpoint))  # model_*.pt or its run directory
