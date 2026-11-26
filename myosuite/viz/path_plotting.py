@@ -7,13 +7,14 @@ import glob
 import pickle
 from pathlib import Path
 
-import numpy as np
-import h5py
-from PIL import Image
-import click
-from myosuite.core.dict_utils import flatten_dict, dict_numpify
-from myosuite.viz.video_io import write_video
 import json
+
+import click
+import numpy as np
+
+from myosuite.core.dict_utils import dict_numpify, flatten_dict
+from myosuite.core.import_utils import require_extra
+from myosuite.viz.video_io import write_video
 
 # TODO: Harmonize names, remove rollout_paths, use path for one and paths for multiple
 
@@ -30,10 +31,9 @@ def plot_horizon(paths, env, fileName_prefix=None):
     Saves:
         fileName_prefix + '_horizon.pdf'
     """
-    import matplotlib as mpl
-
+    mpl = require_extra("matplotlib", "viz", "plot_horizon")
     mpl.use("TkAgg")
-    import matplotlib.pyplot as plt
+    plt = require_extra("matplotlib.pyplot", "viz", "plot_horizon")
 
     plt.rcParams.update({"font.size": 5})
 
@@ -104,10 +104,9 @@ def plot(paths, env=None, fileName_prefix=""):
     Saves:
         fileName_prefix + path_name + '.pdf'
     """
-    import matplotlib as mpl
-
+    mpl = require_extra("matplotlib", "viz", "plot")
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
+    plt = require_extra("matplotlib.pyplot", "viz", "plot")
 
     plt.rcParams.update({"font.size": 5})
 
@@ -232,7 +231,9 @@ def render(rollout_path, render_format: str = "mp4", cam_names: list = ["left"])
     # resolve data format
     h5_handle = None
     if output_type == ".h5":
-        h5_handle = h5py.File(rollout_path, "r")
+        h5_handle = require_extra("h5py", "viz", "HDF5 rollout rendering").File(
+            rollout_path, "r"
+        )
         paths = h5_handle
     elif output_type == ".pickle":
         with Path(rollout_path).open("rb") as f:
@@ -287,7 +288,8 @@ def render(rollout_path, render_format: str = "mp4", cam_names: list = ["left"])
                 if render_format == "mp4":
                     frames[t, :, :, :] = frame_tile
                 elif render_format == "rgb":
-                    image = Image.fromarray(frame_tile)
+                    pil_img = require_extra("PIL.Image", "viz", "RGB rollout rendering")
+                    image = pil_img.fromarray(frame_tile)
                     image.save(file_name + f"_{i_path}-{t}.png")
                 else:
                     raise TypeError("Unknown format")
@@ -364,6 +366,7 @@ def path2dataset(path: dict, config_path=None) -> dict:
 def print_h5_schema(obj):
     "Recursively find all keys in an h5py.Group."
     keys = (obj.name,)
+    h5py = require_extra("h5py", "viz", "print_h5_schema")
     if isinstance(obj, h5py.Group):
         for key, value in obj.items():
             if isinstance(value, h5py.Group):
@@ -415,7 +418,9 @@ def pickle2h5(
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         output_path = str(Path(output_dir) / (output_name + ".h5"))
 
-        with h5py.File(output_path, "w") as paths_h5:
+        with require_extra("h5py", "viz", "pickle2h5").File(
+            output_path, "w"
+        ) as paths_h5:
             # Robohive path format
             if h5_format == "robohive":
                 for i_path, path in enumerate(paths):
@@ -470,7 +475,9 @@ def pickle2h5(
 
         # Read back and verify a few keys
         if verify_output:
-            with h5py.File(output_path, "r") as h5file:
+            with require_extra("h5py", "viz", "pickle2h5").File(
+                output_path, "r"
+            ) as h5file:
                 print("Printing schema read from output: ", output_path)
                 print_h5_schema(h5file)
 
@@ -581,7 +588,7 @@ def util_path_cli(
             max_paths=max_paths,
         )
     elif util == "h5schema":
-        with h5py.File(path, "r") as h5file:
+        with require_extra("h5py", "viz", "h5schema").File(path, "r") as h5file:
             print("Printing schema read from output: ", path)
             print_h5_schema(h5file)
     else:

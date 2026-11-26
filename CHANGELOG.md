@@ -22,7 +22,7 @@ Changes since **v3.1.0** (2026-11-11).
   `marker_retarget`) into `myosuite/integrations/` while placing `opensim_ground_quat` in `myosuite/integrations/opensim_motion.py` and OpenSim `ExternalLoads` parsing (`opensim_grf_to_qfrc`) in
   `myosuite/integrations/opensim_grf.py` over generic `apply_body_wrenches_to_qfrc` in `myosuite/biomechanics/external_loads.py`, keeping backward-compatible aliases at all former paths.
 * **Subject-specific muscle strength facade (`myosuite.core.muscle_strength`):** delegates native active/passive muscle force scaling (`scale_muscle_strength`, `scale_muscle_strength_spec`) and isometric maximal voluntary torque probing & bounded strength calibration (`MaxTorqueMeasurement`, `StrengthCalibration`, `strength_factor_from_body_mass`, `max_torque_terms`, `calibrate_muscle_strength`) lazily to `myo_sim.physics.muscle_strength` (`MyoHub/myo_sim#186`, `MyoHub/myo_sim#195`), while keeping legacy gain-only sarcopenia (`apply_sarcopenia_to_model`) available without `myo_sim.physics.muscle_strength` ([#649]).
-* **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink), now a core dependency: each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.integrations.marker_retarget.retarget(model, markers)` (aliased at `myosuite.core.retargeting.retarget`) fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
+* **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink) (installed via `pip install 'myosuite[biomechanics]'`): each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.integrations.marker_retarget.retarget(model, markers)` (aliased at `myosuite.core.retargeting.retarget`) fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
   CPU and mjlab. Cache keys track source contents, compiled models and preprocessing
@@ -54,6 +54,16 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **Minimal base dependencies with opt-in extras (`[viz]`, `[biomechanics]`, `[capture]`, `[onnx]`, `[examples]`, `[all]`) ([#942]).**
+  Slimmed default `pip install myosuite` dependencies from 25 declarations down to core CPU simulation packages
+  (`numpy`, `scipy`, `mujoco<4`, `myo-sim`, `gymnasium`, `huggingface_hub`, `click`, `termcolor`, `ml-collections`,
+  `colorednoise`, plus the Python >=3.11 `filelock` security floor — 31 resolved packages on Python 3.11 Linux vs 123
+  for `myosuite[all]`). Moved optional stacks into focused extras: `myosuite[viz]` (`imageio[ffmpeg]`, `h5py`,
+  `matplotlib`, `Pillow`, `mjviser<0.0.17`, `loop-rate-limiters`), `myosuite[biomechanics]` (`mink`, `osqp`),
+  `myosuite[capture]` (`ezc3d`), `myosuite[onnx]` (`onnxruntime`), `myosuite[examples]` (full tutorial/example bundle
+  combining `biomechanics`, `rl`, `viz`, `capture`, `onnx`, `pandas`, `scikit-learn`, `joblib`), and `myosuite[all]`
+  (`myosuite[examples,musclemimic]`), while including `viz`/`onnx` in `[musclemimic]` and `onnx` in `[mjlab]`.
+  Dropped `flatten_dict` in favor of `myosuite.core.dict_utils.flatten_dict`.
 * **SB3 training helpers extracted out of the runtime `myosuite` wheel (`myosuite.utils.sb3_*`) ([#941]).**
   `OnnxCheckpointCallback` (`myosuite.utils.sb3_callbacks`) and SB3 sweep helpers (`WinnerPpoConfig`, `budget_for`,
   `improved`, `improvement_threshold`, `is_excluded_env_id`, `parse_act_dim` in `myosuite.utils.sb3_sweep`) now live
@@ -473,6 +483,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#938]: https://github.com/MyoHub/myosuite/pull/938
 [#939]: https://github.com/MyoHub/myosuite/pull/939
 [#941]: https://github.com/MyoHub/myosuite/pull/941
+[#942]: https://github.com/MyoHub/myosuite/pull/942
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.

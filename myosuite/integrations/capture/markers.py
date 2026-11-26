@@ -94,12 +94,9 @@ def _read_trc(path: Path) -> _MarkerData:
 
 def _read_c3d(path: Path) -> _MarkerData:
     """C3D points through the optional ``ezc3d``; negative residuals mark gaps."""
-    try:
-        import ezc3d
-    except ImportError as exc:
-        raise ImportError(
-            "Reading .c3d files needs ezc3d: pip install 'myosuite[capture]'."
-        ) from exc
+    from myosuite.core.import_utils import require_extra
+
+    ezc3d = require_extra("ezc3d", "capture", "Reading .c3d files")
     capture = ezc3d.c3d(str(path))
     point = capture["parameters"]["POINT"]
     labels = list(point["LABELS"]["value"])

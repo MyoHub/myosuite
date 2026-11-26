@@ -33,12 +33,17 @@ import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-import mink
+import logging
+from typing import TYPE_CHECKING, Any
+
 import mujoco
 import numpy as np
-import logging
-from typing import Any
 from numpy.typing import ArrayLike
+
+from myosuite.core.import_utils import require_extra
+
+if TYPE_CHECKING:
+    import mink
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +375,8 @@ class _IKProblem:
             and j not in moving
             and _out_of_range(model, seed, j)
         ]
+        mink = require_extra("mink", "biomechanics", "solve_ik")
+        self._mink = mink
         self.model = model
         limited = model.jnt_limited.copy()
         try:
@@ -486,7 +493,7 @@ class _IKProblem:
                 if target.quat is not None
                 else _site_quat(data, target.site)
             )
-            task.set_target(mink.SE3(wxyz_xyz=np.concatenate([quat, pos])))
+            task.set_target(self._mink.SE3(wxyz_xyz=np.concatenate([quat, pos])))
 
     def _equality_task(self) -> mink.EqualityConstraintTask | None:
         """A cost on the active equality constraints that the selected DOFs change."""
@@ -502,7 +509,7 @@ class _IKProblem:
         )
         if not self._equality_ids:
             return None
-        return mink.EqualityConstraintTask(
+        return self._mink.EqualityConstraintTask(
             model, cost=self.equality_weight, equalities=self._equality_ids
         )
 
@@ -521,7 +528,7 @@ class _IKProblem:
             if cost <= 1e-24 or damping >= 1e12:
                 break
             try:
-                velocity = mink.solve_ik(
+                velocity = self._mink.solve_ik(
                     self.configuration,
                     self._tasks(),
                     1.0,
@@ -530,7 +537,7 @@ class _IKProblem:
                     limits=self.limits,
                     constraints=self.constraints,
                 )
-            except mink.NoSolutionFound:  # the QP failed: keep the closest pose
+            except self._mink.NoSolutionFound:  # the QP failed: keep the closest pose
                 break
             velocity[self._frozen] = 0.0  # held exactly, not up to QP round-off
             q = self.configuration.q

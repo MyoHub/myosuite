@@ -29,9 +29,11 @@ Installation
 
 .. code-block:: bash
 
-   pip install -U myosuite
+   pip install -U "myosuite[biomechanics,viz]"
+   # add [capture] on macOS / x86_64 to read .c3d optical marker trials directly:
+   pip install -U "myosuite[biomechanics,capture,viz]"
    # or with uv:
-   uv sync -p 3.11
+   uv sync -p 3.11 --extra biomechanics --extra viz
 
 See :doc:`install` for a from-source install and Python version support.
 

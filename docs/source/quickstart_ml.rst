@@ -15,6 +15,7 @@ Installation
 .. code-block:: bash
 
    pip install -e ".[rl]"
+   # Add video/rollout plotting (e.g. tutorials/2.1_Train_SB3_Policy.ipynb): pip install -e ".[rl,viz]"
    # GPU (NVIDIA, Linux or Windows): pip install -e ".[mjlab]"
 
 See :doc:`install` for matching the torch build to your driver's CUDA version.
@@ -56,7 +57,7 @@ Training (CPU)
    model.learn(total_timesteps=100_000)
    model.save("ppo_elbow_pose")
 
-Walkthrough: ``tutorials/2.1_Train_SB3_Policy.ipynb``.
+Walkthrough: ``tutorials/2.1_Train_SB3_Policy.ipynb`` (install ``pip install -e ".[rl,viz]"`` for video export).
 
 From the command line (the CPU counterpart of ``scripts/train_mjlab.py``, backed by the standalone ``training/ppo/`` package — run directly from a source checkout with ``pip install -e ".[rl]"``, or add ``pip install --no-deps -e training/ppo`` for the ``myosuite-ppo sb3`` CLI)::
 

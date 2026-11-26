@@ -136,6 +136,15 @@ def main(
     render_visuals,
     env_args,
 ):
+    from myosuite.core.import_utils import require_extra
+
+    if render == "offscreen" or render_visuals:
+        require_extra("imageio", "viz", "Offscreen rollout rendering")
+    if plot_paths:
+        require_extra("matplotlib", "viz", "--plot_paths")
+    if save_paths:
+        require_extra("h5py", "viz", "--save_paths")
+
     # seed and load environments
     np.random.seed(seed)
     envw = (

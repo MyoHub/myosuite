@@ -4,8 +4,8 @@ RL baselines
 CPU
 ---
 
-* **Stable-Baselines3** — ``tutorials/2.1_Train_SB3_Policy.ipynb`` (``pip install -e ".[rl]"``)
-* **MyoReflex** — ``tutorials/2.4_MyoReflex_Walk.ipynb``
+* **Stable-Baselines3** — ``tutorials/2.1_Train_SB3_Policy.ipynb`` (``pip install -e ".[rl,viz]"``)
+* **MyoReflex** — ``tutorials/2.4_MyoReflex_Walk.ipynb`` (``pip install -e ".[viz]"``)
 
 GPU
 ---

@@ -11,9 +11,11 @@ import pickle
 from sys import platform
 from typing import Any
 
-import h5py
+import sys
+
 import numpy as np
-from PIL import Image
+
+from myosuite.core.import_utils import require_extra
 
 from myosuite.core import tensor_utils
 from myosuite.core.dict_utils import flatten_dict, dict_numpify
@@ -226,7 +228,8 @@ class Trace:
                 if output_format == "mp4":
                     frames[t, :, :, :] = frame_tile
                 elif output_format == "rgb":
-                    image = Image.fromarray(frame_tile)
+                    pil_img = require_extra("PIL.Image", "viz", "RGB trace rendering")
+                    image = pil_img.fromarray(frame_tile)
                     file_name_rgb = os.path.join(
                         output_dir, grp + "-" + str(t) + ".png"
                     )
@@ -295,7 +298,8 @@ class Trace:
 
     def __repr__(self) -> str:
         disp = f"Trace_name: {self.root.keys()}\n"
-        if isinstance(self.trace, h5py.File):
+        _h5py = sys.modules.get("h5py")
+        if _h5py is not None and isinstance(self.trace, _h5py.File):
             for k, v in self.trace.items():
                 disp += v.__repr__() + "\n"
                 for kk, vv in v.items():
@@ -383,7 +387,9 @@ class Trace:
         # save
         trace_format = trace_name.split(".")[-1]
         if trace_format == "h5":
-            paths_h5 = h5py.File(trace_name, "w")
+            paths_h5 = require_extra("h5py", "viz", "HDF5 trace saving").File(
+                trace_name, "w"
+            )
             for grp_k, grp_v in self.trace.items():
                 trial = paths_h5.create_group(grp_k)
                 for dst_k, dst_v in grp_v.items():
@@ -413,7 +419,9 @@ class Trace:
         if trace_format == ".h5":
             trace = Trace(name=trace_name)
             trace.trace_type = TraceType.get_type(trace_type)
-            file_data = h5py.File(trace_path, "r")
+            file_data = require_extra("h5py", "viz", "HDF5 trace loading").File(
+                trace_path, "r"
+            )
             trace.trace = file_data  # load data
             trace.root[trace.name] = trace.trace  # build root
         else:

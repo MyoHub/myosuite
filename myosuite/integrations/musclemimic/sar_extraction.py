@@ -52,34 +52,21 @@ logger = logging.getLogger(__name__)
 SYNERGY_RANGE: tuple[float, float] = (-1.0, 1.0)
 """Range of a synergy coordinate, which is a policy action (as in the SAR paper)."""
 
-_SAR_SKLEARN_INSTALL = (
-    "scikit-learn is required for SAR (PCA / ICA). Install it in the same "
-    "environment as your Jupyter kernel, e.g. `pip install scikit-learn` or "
-    "`uv pip install scikit-learn` (MyoSuite also lists it in core "
-    "dependencies "
-    "— run `pip install -e .` from the repo if packages are missing)."
-)
-
 
 def _import_sklearn_pca():
-    """Lazy import of ``sklearn.decomposition.PCA`` with a clear error."""
-    try:
-        from sklearn.decomposition import PCA
+    """Lazy import of ``sklearn.decomposition.PCA`` via ``myosuite[musclemimic]``."""
+    from myosuite.core.import_utils import require_extra
 
-        return PCA
-    except ImportError as err:
-        raise ImportError(_SAR_SKLEARN_INSTALL) from err
+    return require_extra("sklearn.decomposition", "musclemimic", "SAR PCA").PCA
 
 
 def _import_sklearn_sar():
-    """Lazy import of PCA, FastICA, and MinMaxScaler with a clear error."""
-    try:
-        from sklearn.decomposition import FastICA, PCA
-        from sklearn.preprocessing import MinMaxScaler
+    """Lazy import of PCA, FastICA, and MinMaxScaler via ``myosuite[musclemimic]``."""
+    from myosuite.core.import_utils import require_extra
 
-        return PCA, FastICA, MinMaxScaler
-    except ImportError as err:
-        raise ImportError(_SAR_SKLEARN_INSTALL) from err
+    decomp = require_extra("sklearn.decomposition", "musclemimic", "SAR PCA/ICA")
+    preproc = require_extra("sklearn.preprocessing", "musclemimic", "SAR MinMaxScaler")
+    return decomp.PCA, decomp.FastICA, preproc.MinMaxScaler
 
 
 def _synergy_scaler(data_min: np.ndarray, data_max: np.ndarray) -> Any:
@@ -355,10 +342,9 @@ def save_synergy_model(model: SynergyModel, save_dir: Path | str) -> None:
     Raises:
         ImportError: If ``joblib`` is not installed.
     """
-    try:
-        import joblib
-    except ImportError as err:
-        raise ImportError("joblib is required: pip install joblib") from err
+    from myosuite.core.import_utils import require_extra
+
+    joblib = require_extra("joblib", "musclemimic", "SynergyModel persistence")
 
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -395,10 +381,9 @@ def load_synergy_model(save_dir: Path | str) -> SynergyModel:
         FileNotFoundError: If any expected file is missing.
         ImportError: If ``joblib`` is not installed.
     """
-    try:
-        import joblib
-    except ImportError as err:
-        raise ImportError("joblib is required: pip install joblib") from err
+    from myosuite.core.import_utils import require_extra
+
+    joblib = require_extra("joblib", "musclemimic", "SynergyModel persistence")
 
     save_dir = Path(save_dir)
     for name in ("pca.pkl", "ica.pkl", "scaler.pkl", "metadata.npz"):

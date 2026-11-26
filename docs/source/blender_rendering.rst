@@ -73,8 +73,8 @@ versions require verification.
 
 .. code-block:: bash
 
-   pip install 'mujoco[usd]==3.15.0'
-   # Optional policy dependencies: MyoSuite[rl] for SB3; rsl-rl-lib for RSL-RL.
+   pip install 'myosuite[viz]' 'mujoco[usd]==3.15.0'
+   # Optional policy dependencies: myosuite[rl] for SB3; rsl-rl-lib for RSL-RL.
    python scripts/render_blender.py \
        --env myoHandReorient8-v0 --random --seconds 1 \
        --output renders/hand --blender /path/to/blender

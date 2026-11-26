@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from myosuite.core.import_utils import require_extra
+
 if TYPE_CHECKING:
     from IPython.display import HTML
 
@@ -56,7 +58,7 @@ def write_video(
         inputdict: Backward-compatible skvideo-style ffmpeg options.
         outputdict: Backward-compatible skvideo-style ffmpeg options.
     """
-    import imageio
+    imageio = require_extra("imageio", "viz", "write_video")
 
     path = Path(video_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,7 +87,8 @@ def add_text_to_frame(
     fontsize: int = 12,
 ) -> Any:
     """Draw a text overlay on a frame. Requires a consistent Pillow install."""
-    from PIL import Image, ImageDraw
+    Image = require_extra("PIL.Image", "viz", "add_text_to_frame")
+    ImageDraw = require_extra("PIL.ImageDraw", "viz", "add_text_to_frame")
 
     image = Image.fromarray(frame) if isinstance(frame, np.ndarray) else frame
     draw = ImageDraw.Draw(image)

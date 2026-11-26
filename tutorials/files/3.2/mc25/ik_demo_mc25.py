@@ -5,8 +5,8 @@ License :: Under Apache License, Version 2.0 (the "License"); you may not use th
 
 ### Adapted from: https://github.com/kevinzakka/mink/examples
 # REQUIRES:
-# Python 3.9
-# mink (installed with myosuite)
+# Python >=3.10
+# myosuite[biomechanics,viz] (installs mink, h5py, loop-rate-limiters)
 
 
 import h5py

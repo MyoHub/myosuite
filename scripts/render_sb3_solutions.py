@@ -10,7 +10,7 @@ env's ``ppo_final.zip`` (with the ``VecNormalize`` statistics saved next to it,
 if any), rolls out deterministically, and writes ``renders/<env_id>.mp4`` plus
 an ``index.md`` gallery.
 
-Usage::
+Usage (requires ``pip install -e ".[rl,viz]"``)::
 
     python scripts/render_sb3_solutions.py
     python scripts/render_sb3_solutions.py --only myoElbowPose1D6MFixed-v0
@@ -285,10 +285,14 @@ def render_one(
     skip_existing: bool,
 ) -> dict[str, Any]:
     """Render one env checkpoint to MP4. Returns a status dict."""
-    import imageio.v2 as imageio
     import mujoco
 
+    from myosuite.core.import_utils import require_extra
     from myosuite.viz.mj_renderer import _tune_mjv_scene_for_rgb
+
+    imageio = require_extra(
+        "imageio.v2", "viz", "Video rendering in render_sb3_solutions.py"
+    )
 
     out_path = out_dir / f"{env_id}.mp4"
     if skip_existing and out_path.is_file() and out_path.stat().st_size > 0:
