@@ -78,6 +78,9 @@ class TorchNewtonAccessor(EnvAccessor):
         self._site_idx = torch.as_tensor(
             m.src_to_conv_site, dtype=torch.long, device=self.device
         )
+        self._body_idx = torch.as_tensor(
+            m.src_to_conv_body, dtype=torch.long, device=self.device
+        )
         self._ctrl_range = torch.as_tensor(
             sim.reference_model.actuator_ctrlrange,
             dtype=torch.float32,
@@ -149,6 +152,32 @@ class TorchNewtonAccessor(EnvAccessor):
             :, self._ctrl_idx
         ]
 
+    def body_xpos(self) -> torch.Tensor:
+        return self._as_tensor(self._sim.solver.mjw_data.xpos)[:, self._body_idx]
+
+    def body_xquat(self) -> torch.Tensor:
+        return self._as_tensor(self._sim.solver.mjw_data.xquat)[:, self._body_idx]
+
+    def body_xipos(self) -> torch.Tensor:
+        return self._as_tensor(self._sim.solver.mjw_data.xipos)[:, self._body_idx]
+
+    def body_cvel(self) -> torch.Tensor:
+        return self._as_tensor(self._sim.solver.mjw_data.cvel)[:, self._body_idx]
+
+    def subtree_com(self) -> torch.Tensor:
+        return self._as_tensor(self._sim.solver.mjw_data.subtree_com)[:, self._body_idx]
+
+    def contact_counts(self) -> torch.Tensor:
+        data = self._sim.solver.mjw_data
+        nacon = self._as_tensor(data.nacon)[0]
+        worldid = self._as_tensor(data.contact.worldid)
+        idx = torch.arange(worldid.shape[0], device=self.device)
+        active = (idx < nacon) & (worldid >= 0) & (worldid < self._sim.num_envs)
+        counts = torch.zeros(self._sim.num_envs, dtype=torch.long, device=self.device)
+        valid_worlds = torch.where(active, worldid.to(dtype=torch.long), 0)
+        counts.scatter_add_(0, valid_worlds, active.to(dtype=torch.long))
+        return counts
+
 
 @dataclass(kw_only=True)
 class NewtonActionCfg:
@@ -175,13 +204,14 @@ class NewtonActionCfg:
     fatigue_reset_random: bool = False
     fatigue_muscles: tuple[str | int, ...] | None = None
     reroute: tuple[str, str] | None = None
+    sarcopenia_force_scale: float | None = None
     motor_noise: MotorNoiseCfg = field(default_factory=MotorNoiseCfg)
     excitation_stages: tuple[Callable[[], ExcitationStage], ...] = ()
 
     @classmethod
     def from_env_id(cls, env_id: str) -> NewtonActionCfg:
         """Build a :class:`NewtonActionCfg` from a registered CPU MyoSuite ``env_id``."""
-        import myosuite  # noqa: F401, PLC0415
+        import myosuite  # noqa: F401
 
         spec = gym.spec(env_id)
         kwargs = dict(spec.kwargs)
@@ -212,6 +242,11 @@ class NewtonActionCfg:
         noise_kwargs = (
             by_name["MotorNoiseWrapper"][0] if "MotorNoiseWrapper" in by_name else {}
         )
+        sarcopenia_scale = (
+            float(by_name["SarcopeniaWrapper"][0].get("force_scale", 0.5))
+            if "SarcopeniaWrapper" in by_name
+            else None
+        )
         stage_factories = tuple(
             s["make_stage"] for s in by_name.get("ExcitationStageWrapper", ())
         )
@@ -231,6 +266,7 @@ class NewtonActionCfg:
                 else tuple(m if isinstance(m, str) else int(m) for m in muscles)
             ),
             reroute=reroute,
+            sarcopenia_force_scale=sarcopenia_scale,
             motor_noise=MotorNoiseCfg.from_value(noise_kwargs.get("motor_noise")),
             excitation_stages=stage_factories,
         )

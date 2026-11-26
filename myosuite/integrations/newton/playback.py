@@ -44,7 +44,7 @@ def _build_policy_runners(
     torch_device: torch.device,
 ) -> tuple[Callable[[np.ndarray], np.ndarray], Callable[[torch.Tensor], torch.Tensor]]:
     if isinstance(policy, str | Path):
-        import onnxruntime as ort  # noqa: PLC0415
+        import onnxruntime as ort
 
         sess = ort.InferenceSession(str(policy), providers=["CPUExecutionProvider"])
         in_name = sess.get_inputs()[0].name

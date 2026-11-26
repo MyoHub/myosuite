@@ -93,17 +93,31 @@ def resolve_env_xml(
     if candidate.suffix.lower() == ".xml" or candidate.exists():
         return Path(resolve_model_xml_path(str(candidate))), {}
 
-    import myosuite  # noqa: F401, PLC0415
+    import myosuite  # noqa: F401
 
     spec = gym.spec(str(env_id_or_xml))
     kwargs = dict(spec.kwargs)
     defaults = _entry_point_defaults(spec.entry_point)
+    entry_str = str(spec.entry_point)
+    sarc_scale = None
+    for w in spec.additional_wrappers or ():
+        if w.name == "SarcopeniaWrapper":
+            sarc_scale = float((w.kwargs or {}).get("force_scale", 0.5))
+            break
     meta = {
         "frame_skip": int(kwargs.get("frame_skip", defaults.get("frame_skip", 10))),
         "normalize_act": bool(
             kwargs.get("normalize_act", defaults.get("normalize_act", True))
         ),
         "max_episode_steps": spec.max_episode_steps,
+        "hide_terrain": (
+            ("LegWalkEnvV0" in entry_str or "LegReachEnvV0" in entry_str)
+            and not kwargs.get("terrain")
+        ),
+        "muscle_sigmoid": not (
+            "LegWalkEnv" in entry_str or "walk" in entry_str.lower()
+        ),
+        "sarcopenia_force_scale": sarc_scale,
     }
     recipe = kwargs.get("model_recipe")
     if recipe is not None:
@@ -159,6 +173,7 @@ class IndexMapping:
     src_to_conv_ctrl: np.ndarray
     src_to_conv_act: np.ndarray
     src_to_conv_site: np.ndarray
+    src_to_conv_body: np.ndarray = None  # type: ignore[assignment]
 
     @classmethod
     def build(
@@ -237,17 +252,37 @@ class IndexMapping:
             conv_to_src_site = np.empty(0, dtype=np.intp)
             src_to_conv_site = np.empty(0, dtype=np.intp)
         else:
-            site_shapes = solver._mjc_site_to_newton_shape.numpy()[0]
+            site_map = getattr(
+                solver, "mjc_site_to_newton_shape", solver._mjc_site_to_newton_shape
+            )
+            site_shapes = site_map.numpy()[0]
+            raw_shape_labels = getattr(newton_model.mujoco, "shape_label", None)
             conv_to_src_site = np.array(
                 [
                     reference.site(
-                        newton_model.shape_label[int(s)].rsplit("/", 1)[-1]
+                        raw_shape_labels[int(s)]
+                        if (raw_shape_labels is not None and raw_shape_labels[int(s)])
+                        else newton_model.shape_label[int(s)].rsplit("/", 1)[-1]
                     ).id
                     for s in site_shapes[: converted.nsite]
                 ],
                 dtype=np.intp,
             )
             src_to_conv_site = np.argsort(conv_to_src_site)
+
+        src_to_conv_body = np.zeros(reference.nbody, dtype=np.intp)
+        body_map = solver.mjc_body_to_newton.numpy()[0]
+        raw_body_labels = getattr(newton_model.mujoco, "body_label", None)
+        for conv_b in range(1, converted.nbody):
+            nb = int(body_map[conv_b])
+            if nb < 0:
+                continue
+            b_name = (
+                raw_body_labels[nb]
+                if (raw_body_labels is not None and raw_body_labels[nb])
+                else newton_model.body_label[nb].rsplit("/", 1)[-1]
+            )
+            src_to_conv_body[reference.body(b_name).id] = conv_b
 
         return cls(
             conv_to_src_qpos=conv_to_src_qpos,
@@ -258,6 +293,7 @@ class IndexMapping:
             src_to_conv_ctrl=src_to_conv_ctrl,
             src_to_conv_act=src_to_conv_act,
             src_to_conv_site=src_to_conv_site,
+            src_to_conv_body=src_to_conv_body,
         )
 
 
@@ -321,3 +357,31 @@ class NewtonAccessor(EnvAccessor):
     def muscle_force(self) -> np.ndarray:
         frc = self._sim.solver.mjw_data.actuator_force.numpy()
         return frc[:, self._sim.mapping.src_to_conv_ctrl].copy()
+
+    def body_xpos(self) -> np.ndarray:
+        xpos = self._sim.solver.mjw_data.xpos.numpy()
+        return xpos[:, self._sim.mapping.src_to_conv_body].copy()
+
+    def body_xquat(self) -> np.ndarray:
+        xquat = self._sim.solver.mjw_data.xquat.numpy()
+        return xquat[:, self._sim.mapping.src_to_conv_body].copy()
+
+    def body_xipos(self) -> np.ndarray:
+        xipos = self._sim.solver.mjw_data.xipos.numpy()
+        return xipos[:, self._sim.mapping.src_to_conv_body].copy()
+
+    def body_cvel(self) -> np.ndarray:
+        cvel = self._sim.solver.mjw_data.cvel.numpy()
+        return cvel[:, self._sim.mapping.src_to_conv_body].copy()
+
+    def subtree_com(self) -> np.ndarray:
+        com = self._sim.solver.mjw_data.subtree_com.numpy()
+        return com[:, self._sim.mapping.src_to_conv_body].copy()
+
+    def contact_counts(self) -> np.ndarray:
+        nacon = int(self._sim.solver.mjw_data.nacon.numpy()[0])
+        if nacon <= 0:
+            return np.zeros(self._sim.num_envs, dtype=np.int32)
+        worldid = self._sim.solver.mjw_data.contact.worldid.numpy()[:nacon]
+        valid = worldid[(worldid >= 0) & (worldid < self._sim.num_envs)]
+        return np.bincount(valid, minlength=self._sim.num_envs).astype(np.int32)
