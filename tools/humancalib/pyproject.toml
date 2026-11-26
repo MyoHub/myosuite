@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-humancalib"
+version = "0.1.0"
+description = "CLI adapter running targetless multi-camera human-motion calibration into Pose2Sim TOML"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = ["myosuite", "numpy", "scipy"]
+
+[project.optional-dependencies]
+upstream = ["humancalib>=0.5.4"]
+test = ["pytest"]
+
+[project.scripts]
+myosuite-humancalib = "myosuite_humancalib.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_humancalib*"]
