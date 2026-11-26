@@ -72,7 +72,7 @@ jobs:
         run: |
           uv venv --python 3.12
           uv pip install --extra-index-url https://download.pytorch.org/whl/cpu torch
-          uv pip install "newton[sim]${NEWTON_VERSION:+==$NEWTON_VERSION}" "pytest" -e .
+          uv pip install "newton[sim]${NEWTON_VERSION:+==$NEWTON_VERSION}" "pytest" "onnx" "onnxscript" "onnxruntime" "tensordict" "rsl-rl-lib" -e .
 
       - name: Run Newton integration tests
         env:
