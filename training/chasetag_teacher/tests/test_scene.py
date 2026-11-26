@@ -28,7 +28,7 @@ def env_fixture() -> Any:
 
 
 def test_players_have_the_tracker_body(env: Any) -> None:
-    from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body
+    from myosuite.envs.tasks.mimic.tracking.models import compiled_body
 
     joints = check_same_body(env.unwrapped.model, compiled_body("myofullbody"))
     assert len(joints) > 0

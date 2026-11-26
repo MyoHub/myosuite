@@ -19,25 +19,25 @@ import pytest
 
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
-from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
-from myosuite.envs.myo.tasks.mimic.tracking.config import (
+from myosuite.envs.tasks.mimic.tracking import MIMIC_ENV_ID
+from myosuite.envs.tasks.mimic.tracking.config import (
     PRESETS,
     MimicTaskCfg,
     RewardCfg,
     RewardTermCfg,
     resolve_task,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.metrics import METRICS, evaluate, summarize
-from myosuite.envs.myo.tasks.mimic.tracking.models import (
+from myosuite.envs.tasks.mimic.tracking.metrics import METRICS, evaluate, summarize
+from myosuite.envs.tasks.mimic.tracking.models import (
     compiled_body,
     model_cfg,
     root_offset,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.motion import (
+from myosuite.envs.tasks.mimic.tracking.motion import (
     build_motion_lib,
     write_synthetic_clip,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.sampling import ResetSampler
+from myosuite.envs.tasks.mimic.tracking.sampling import ResetSampler
 from myosuite.terms import mimic_track as mt
 
 pytestmark = pytest.mark.tier2

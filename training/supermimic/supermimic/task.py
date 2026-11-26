@@ -19,7 +19,7 @@ from typing import Any
 
 import torch
 
-from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+from myosuite.envs.tasks.mimic.tracking.models import model_cfg
 
 from .activation import MuscleActivation
 from .heads import MUSCLE_OBSERVATIONS, StepCtx, TrackingHeads

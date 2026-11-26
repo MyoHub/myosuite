@@ -1,45 +1,35 @@
-"""Leg tasks (stand-and-reach, terrain walking); importing registers the twins."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible package facade for :mod:`myosuite.envs.tasks.leg.walk.mjlab_register`."""
 
-import functools
+from __future__ import annotations
 
-from myosuite.envs.myo.backends.mjlab.tasks.registration import register_cpu_twins
+import importlib as _importlib
+from typing import Any
 
-from .rl_cfg import (
-    leg_directional_ppo_runner_cfg,
-    leg_stand_ppo_runner_cfg,
-    leg_terrain_ppo_runner_cfg,
-    leg_walk_ppo_runner_cfg,
+_target = _importlib.import_module("myosuite.envs.tasks.leg.walk.mjlab_register")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
 )
-from .directional_env_cfg import make_leg_directional_env_cfg
-from .stand_env_cfg import make_leg_stand_env_cfg
-from .walk_env_cfg import make_leg_walk_env_cfg
 
-LEG_STAND_IDS = ("myoLegStandRandom-v0",)
-LEG_WALK_IDS = ("myoLegWalk-v0",)
-# CPU directional env id -> experiment (log directory) name.
-LEG_DIRECTIONAL_EXPERIMENTS = {
-    "myoLegDirectionalForward-v0": "myo_leg_directional_fwd",
-    "myoLegDirectionalBackward-v0": "myo_leg_directional_bwd",
-    "myoLegDirectionalRandom-v0": "myo_leg_directional_rand",
-}
-# CPU terrain env id -> experiment (log directory) name.
-LEG_TERRAIN_EXPERIMENTS = {
-    "myoLegRoughTerrainWalk-v0": "myo_leg_rough",
-    "myoLegHillyTerrainWalk-v0": "myo_leg_hilly",
-    "myoLegStairTerrainWalk-v0": "myo_leg_stairs",
-}
+_CHILD_SUBMODULES = frozenset(
+    {
+        "directional_env_cfg",
+        "directional_mdp",
+        "rl_cfg",
+        "stand_env_cfg",
+        "terrain",
+        "walk_env_cfg",
+        "walk_mdp",
+    }
+)
 
-register_cpu_twins(LEG_STAND_IDS, make_leg_stand_env_cfg, leg_stand_ppo_runner_cfg)
-register_cpu_twins(LEG_WALK_IDS, make_leg_walk_env_cfg, leg_walk_ppo_runner_cfg)
-for _env_id, _experiment in LEG_TERRAIN_EXPERIMENTS.items():
-    register_cpu_twins(
-        (_env_id,),
-        make_leg_walk_env_cfg,
-        functools.partial(leg_terrain_ppo_runner_cfg, _experiment),
-    )
-for _env_id, _experiment in LEG_DIRECTIONAL_EXPERIMENTS.items():
-    register_cpu_twins(
-        (_env_id,),
-        make_leg_directional_env_cfg,
-        functools.partial(leg_directional_ppo_runner_cfg, _experiment),
-    )
+
+def __getattr__(name: str) -> Any:
+    if name in _CHILD_SUBMODULES:
+        mod = _importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = mod
+        return mod
+    return getattr(_target, name)

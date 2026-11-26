@@ -13,7 +13,7 @@ Ownership, as REVIEW.md and docs/wiki/repository-map.md state it:
   modules under `myosuite/` must never import `training`, `tools`, `scripts` or `myosuite.tests`.
 - Inside `myosuite/`, new runtime code belongs in its active canonical subpackage following the upward import DAG in
   `docs/wiki/repository-map.md` — never in closed compatibility shim namespaces (`myosuite/scenes/`, `myosuite/logger/`,
-  migrated `myosuite/terms/` and `myosuite/utils/` modules), and runtime policy loading/export belongs in
+  `myosuite/terms/`, `myosuite/envs/myo/`, migrated `myosuite/utils/` modules), and runtime policy loading/export belongs in
   `myosuite/policies/` rather than `myosuite/benchmarks/`.
 - A thin compatibility facade or re-export shim is fine. A copy of a `myo_sim` algorithm, a fallback that
   re-implements one, or a new model transform written in MyoSuite is not.

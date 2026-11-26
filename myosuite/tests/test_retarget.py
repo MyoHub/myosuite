@@ -17,13 +17,13 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.envs.myo.tasks.mimic.tracking.models import (
+from myosuite.envs.tasks.mimic.tracking.models import (
     compiled_body,
     kinematic_fingerprint,
     model_cfg,
     model_version,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.motion import (
+from myosuite.envs.tasks.mimic.tracking.motion import (
     load_motion_lib,
     write_synthetic_clip,
 )
@@ -191,7 +191,7 @@ def test_motion_sources_check_metadata(model, walk, tmp_path) -> None:
 
 
 def test_kit_lists_and_root_override(monkeypatch, tmp_path) -> None:
-    from myosuite.envs.myo.tasks.mimic import tracking as tr
+    from myosuite.envs.tasks.mimic import tracking as tr
 
     def clips(path: str) -> list[str]:
         lines = open(path).read().splitlines()  # noqa: SIM115
@@ -203,7 +203,7 @@ def test_kit_lists_and_root_override(monkeypatch, tmp_path) -> None:
     assert len(clips(str(tr.kit_split("train")))) == 972
     with pytest.raises(tr.MissingMotionData, match="972 of 972 listed clips missing"):
         tr.resolve_clips("kit_train")
-    from myosuite.envs.myo.tasks.mimic.tracking.config import MotionCfg
+    from myosuite.envs.tasks.mimic.tracking.config import MotionCfg
 
     assert (
         MotionCfg().clips == "kit_train"
@@ -216,8 +216,8 @@ def test_incomplete_packaged_kit_cache_reports_missing_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Finding the probe clip does not make a partial packaged KIT cache usable."""
-    from myosuite.envs.myo.tasks.mimic import tracking as tr
-    from myosuite.envs.myo.tasks.mimic.tracking.motion import motion_files
+    from myosuite.envs.tasks.mimic import tracking as tr
+    from myosuite.envs.tasks.mimic.tracking.motion import motion_files
 
     path = tr.kit_split("train")
     first = next(
@@ -248,7 +248,7 @@ def test_complete_packaged_kit_list_resolves(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Complete lists retain their paths and explicit root."""
-    from myosuite.envs.myo.tasks.mimic import tracking as tr
+    from myosuite.envs.tasks.mimic import tracking as tr
 
     path = tmp_path / "list.txt"
     path.write_text("# clips\nfirst.npz\n\nsecond.npz # another\n")
@@ -356,7 +356,7 @@ def test_cache_lookup_finds_a_sibling_version(
 ) -> None:
     import myo_sim
 
-    from myosuite.envs.myo.tasks.mimic import tracking as tr
+    from myosuite.envs.tasks.mimic import tracking as tr
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))

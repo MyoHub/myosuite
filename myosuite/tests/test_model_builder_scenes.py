@@ -390,7 +390,7 @@ def test_free_body_condim_default_and_override():
 # ---------------------------------------------------------------------------
 
 
-_ASSETS = __import__("pathlib").Path(__file__).parents[1] / "envs" / "myo" / "assets"
+_ASSETS = __import__("pathlib").Path(__file__).parents[1] / "envs" / "assets"
 _SKIP_ASSETS = pytest.mark.skipif(
     not (_ASSETS / "tabletennis_table.obj").exists(),
     reason="tabletennis mesh assets not present",

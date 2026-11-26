@@ -86,7 +86,7 @@ def skip_if_hf_gated(env_id: str, exc: Exception) -> None:
         exc: The exception its construction, reset or step raised.
     """
     from myosuite.core.hf_io import is_gated_or_transient_hf_error
-    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
+    from myosuite.envs.tasks.mimic.tracking import MissingMotionData
 
     if isinstance(exc, MissingMotionData):
         pytest.skip(f"{env_id}: motion clips unavailable ({exc})")

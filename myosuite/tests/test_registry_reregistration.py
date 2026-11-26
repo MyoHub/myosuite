@@ -21,7 +21,7 @@ from myosuite.core.registry import (
     _deep_equal,
     register_env,
 )
-from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
+from myosuite.envs.tasks.suites.edits import edit_fn_arm_reaching
 
 pytestmark = pytest.mark.tier2
 
@@ -31,7 +31,7 @@ _ARM_REACH_IDS = tuple(
     for condition in ("", "Sarc", "Fati")
     for target in ("Fixed", "Random")
 )
-_REACH_EP = "myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0"
+_REACH_EP = "myosuite.envs.tasks.arm.reach.env:ReachEnvV0"
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def test_deep_equal_handles_arrays_and_nesting() -> None:
 
 @pytest.mark.usefixtures("restore_registry")
 def test_reloading_the_basic_registrations_with_array_kwargs_does_not_raise() -> None:
-    import myosuite.envs.myo.tasks.basic as basic
+    import myosuite.envs.tasks.suites.basic as basic
 
     before = gym.spec("myoHandPoseFixed-v0").kwargs["target_jnt_value"]
     importlib.reload(basic)
@@ -92,7 +92,7 @@ def test_reloading_the_basic_registrations_keeps_the_arm_reach_model(
     env_id: str,
 ) -> None:
     """The basic suite used to register these ids too, with a 63-muscle arm."""
-    import myosuite.envs.myo.tasks.basic as basic
+    import myosuite.envs.tasks.suites.basic as basic
 
     before = _model_size(env_id)
     importlib.reload(basic)
@@ -103,7 +103,9 @@ def test_reloading_the_basic_registrations_keeps_the_arm_reach_model(
 def test_the_arm_reach_ids_are_in_the_myoedits_suite_only() -> None:
     assert set(_ARM_REACH_IDS) <= set(myosuite.myosuite_myoedits_suite)
     assert not set(_ARM_REACH_IDS) & set(myosuite.myosuite_myobase_suite)
-    assert {_REGISTERED_BY[i] for i in _ARM_REACH_IDS} == {"myosuite.envs.myo.myoedits"}
+    assert {_REGISTERED_BY[i] for i in _ARM_REACH_IDS} == {
+        "myosuite.envs.tasks.suites.edits"
+    }
 
 
 @pytest.mark.usefixtures("restore_registry")

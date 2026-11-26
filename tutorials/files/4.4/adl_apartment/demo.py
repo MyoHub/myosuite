@@ -14,7 +14,7 @@ import mujoco  # noqa: E402
 import numpy as np  # noqa: E402
 
 from myosuite import make_env  # noqa: E402
-from myosuite.envs.waypoint import WaypointTaskCfg  # noqa: E402
+from myosuite.envs.tasks.fullbody.waypoint.env import WaypointTaskCfg  # noqa: E402
 from myosuite.integrations.musclemimic import (  # noqa: E402
     GaitParameters,
     MIMIC_SITES,

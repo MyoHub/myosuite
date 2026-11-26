@@ -372,7 +372,7 @@ def test_pulley_branches_drop_markers_and_add_up_to_the_tendon_length() -> None:
     The finger extensor (two pulleys of divisor 2) used to run through the world
     origin, 8.5 times its length. Its wrapped arcs are chords here, hence ``rel``.
     """
-    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+    from myosuite.envs.assets._resolve import resolve_finger_xml
 
     finger = str(resolve_finger_xml("myofinger_v0.xml"))
     for model, tendon, rel in [

@@ -37,7 +37,7 @@ def kit_fixture(
     """A clip root with two locomotion clips, and a training split listing them."""
     from chasetag_teacher import library
 
-    from myosuite.envs.myo.tasks.mimic.tracking.motion import write_synthetic_clip
+    from myosuite.envs.tasks.mimic.tracking.motion import write_synthetic_clip
 
     root = tmp_path / "kit"
     names = ["KIT/1/walking_medium01_poses.npz", "KIT/2/LeftTurn01_poses.npz"]
@@ -56,7 +56,7 @@ def test_a_clip_rewritten_in_place_rebuilds_the_library(
 ) -> None:
     from chasetag_teacher.library import load_library
 
-    from myosuite.envs.myo.tasks.mimic.tracking.motion import write_synthetic_clip
+    from myosuite.envs.tasks.mimic.tracking.motion import write_synthetic_clip
 
     root, files = kit
     before = load_library(str(root), limit=2)

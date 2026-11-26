@@ -280,6 +280,7 @@ def test_manifest_refuses_the_myo_sim_fallback(monkeypatch: pytest.MonkeyPatch) 
 @pytest.mark.parametrize(
     "entry_point, kwargs, uses",
     [
+        ("myosuite.envs.tasks.mimic.cpu:MuscleMimicFullbodyEnv", {}, True),
         ("myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv", {}, True),
         ("myosuite.envs.myo.tasks.mimic.tracking.env:MimicEnv", {}, False),
         ("myosuite.envs.waypoint:WaypointEnv", {}, True),

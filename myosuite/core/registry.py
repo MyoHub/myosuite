@@ -145,7 +145,7 @@ def register_env(
     Example:
         >>> register_env(
         ...     "myoElbowPose1D6MRandom-v0",
-        ...     "myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0",
+        ...     "myosuite.envs.tasks.arm.pose.env:PoseEnvV0",
         ...     max_episode_steps=200,
         ... )
     """
@@ -210,7 +210,7 @@ def register_task(
     Calls :func:`register_env` internally, so registration is idempotent.
 
     When *backends* includes ``"mjx"``, the environment is also registered
-    with the MJX backend via :class:`~myosuite.envs.myo.backends.mjx.mjx_modular_env.MjxModularTaskEnv`.
+    with the MJX backend via :class:`~myosuite.envs.backends._experimental_mjx.mjx_modular_env.MjxModularTaskEnv`.
 
     Any ``VariantSpec`` entries declared on ``type(task_config).variants``
     are expanded automatically: each variant is registered as a separate
@@ -513,12 +513,14 @@ def _make_mjx(config: EnvConfig, overrides: dict[str, Any]) -> Any:
         options["ctrl_dt"] = config.ctrl_dt
     if config.env_id in _MJX_TASKS:
         task_config, defaults = _MJX_TASKS[config.env_id]
-        modular = _import_mjx("myosuite.envs.myo.backends.mjx.mjx_modular_env")
+        modular = _import_mjx(
+            "myosuite.envs.backends._experimental_mjx.mjx_modular_env"
+        )
         return modular.MjxModularTaskEnv(
             task_config, config_overrides={**defaults, **options} or None
         )
     # The hand-written MJX envs (``Mjx*-v0``).
-    return _import_mjx("myosuite.envs.myo.backends.mjx").make(
+    return _import_mjx("myosuite.envs.backends._experimental_mjx").make(
         config.env_id, config_overrides=options or None
     )
 
@@ -545,7 +547,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # Register the MyoSuite twins with mjlab's task registry (idempotent). Without
     # this, they exist only when myosuite is pip-installed (mjlab's entry point) or
     # something else imported the backend first.
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415
 
     # The subject (scales, total_mass) is a task kwarg every twin takes: it rebuilds
     # the twin from the CPU registration, as it does on the CPU. Other task kwargs
@@ -610,7 +612,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     # The twin-rebuild modules are imported only when needed: a plain call works with
     # any mjlab build that provides tasks.registry.
     if config.features or task_kwargs or config.ctrl_dt is not None:
-        from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: PLC0415
+        from myosuite.envs.backends.mjlab.tasks.registration import (  # noqa: PLC0415
             rebuild_twin_cfg,
         )
 
@@ -626,7 +628,7 @@ def _make_mjlab(config: EnvConfig, overrides: dict[str, Any]) -> Any:
     if num_envs is not None and hasattr(cfg, "scene"):
         cfg.scene.num_envs = int(num_envs)
     if config.max_episode_steps is not None:
-        from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference  # noqa: PLC0415
+        from myosuite.envs.backends.mjlab.tasks import cpu_reference  # noqa: PLC0415
 
         step_dt = cfg.decimation * cfg.sim.mujoco.timestep
         cfg.episode_length_s = cpu_reference.episode_length_s(

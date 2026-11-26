@@ -11,10 +11,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
     ChaseTagVsTaskConfig,
 )
-from myosuite.terms.multiplayer.chase_tag_vs_reward import CHASER_ID, RUNNER_ID
+from myosuite.envs.tasks.games.chasetag.chase_tag_vs_reward import CHASER_ID, RUNNER_ID
 
 pytestmark = pytest.mark.tier1
 

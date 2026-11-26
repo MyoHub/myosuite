@@ -298,7 +298,7 @@ class ChaseTagField(HeightField):
         Compute data for a special logo terrain.
         """
         relief = np.load(
-            str(pathlib.Path(__file__).parent / "myo" / "assets" / "myo_relief.npy")
+            str(pathlib.Path(__file__).parent / "assets" / "myo_relief.npy")
         )
         normalized_data = (relief - np.min(relief)) / (np.max(relief) - np.min(relief))
         return np.flipud(normalized_data) * self.rng.uniform(

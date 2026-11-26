@@ -1,13 +1,16 @@
-"""Finger pose environment configurations (``myoFingerPose*`` / ``motorFingerPose*``)."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.hand.pose.finger_mjlab_cfg`."""
 
-from mjlab.envs import ManagerBasedRlEnvCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import make_pose_env_cfg
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.hand.pose.finger_mjlab_cfg import *  # noqa: F403
 
-MYO_FINGER_POSE_IDS = ("myoFingerPoseFixed-v0", "myoFingerPoseRandom-v0")
-MOTOR_FINGER_POSE_IDS = ("motorFingerPoseFixed-v0", "motorFingerPoseRandom-v0")
-
-
-def finger_pose_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
-    """Finger pose task matching the CPU registration of *env_id*."""
-    return make_pose_env_cfg(env_id, play=play)
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.hand.pose.finger_mjlab_cfg"
+)

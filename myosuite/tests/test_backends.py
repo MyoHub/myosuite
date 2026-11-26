@@ -88,15 +88,15 @@ try:
 except ImportError:
     _MJLAB_AVAILABLE = False
 
-from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv  # noqa: E402
-from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv  # noqa: E402
+from myosuite.envs.backends._experimental_mjx.pose_env import MjxPoseEnv  # noqa: E402
+from myosuite.envs.backends._experimental_mjx.reach_env import MjxReachEnv  # noqa: E402
 from myosuite import make_env  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-_ASSETS = pathlib.Path(__file__).parents[1] / "envs" / "myo" / "assets"
+_ASSETS = pathlib.Path(__file__).parents[1] / "envs" / "assets"
 
 _N_STEPS = 50
 _REWARD_RTOL = 0.05  # rewards within 5 %

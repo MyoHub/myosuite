@@ -49,16 +49,16 @@ def _inprocess_table_tennis_ppo_smoke() -> None:
 
     import myosuite
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401
 
     from mjlab.envs import ManagerBasedRlEnv
     from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper
     from mjlab.tasks.registry import load_env_cfg
 
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
+    from myosuite.envs.tasks.games.tabletennis.register_mjlab import (
         _table_tennis_ppo_runner_cfg,
     )
-    from myosuite.envs.myo.backends.mjlab.rsl_rl_logger_episode_patch import (
+    from myosuite.envs.backends.mjlab.rsl_rl_logger_episode_patch import (
         install_episode_reward_logging_patch,
     )
 
@@ -99,11 +99,11 @@ def test_mjlab_table_tennis_task_registered() -> None:
     """Table tennis mjlab modules register and expose P0 env cfg (no Warp sim)."""
     import myosuite
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401
 
     from mjlab.tasks.registry import load_env_cfg
 
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (
+    from myosuite.envs.tasks.games.tabletennis.register_mjlab import (
         _table_tennis_ppo_runner_cfg,
     )
 
@@ -123,7 +123,7 @@ def test_mjlab_table_tennis_action_reaches_ctrl(
     """
     import myosuite
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401
 
     from mjlab.envs import ManagerBasedRlEnv
     from mjlab.tasks.registry import load_env_cfg

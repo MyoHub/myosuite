@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -145,7 +146,7 @@ _COMPATIBILITY_REEXPORT_IMPORTS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-# Pre-existing cross-layer runtime edges on dev (16 edges), burned down as migrations land.
+# Pre-existing cross-layer runtime edges on dev (14 edges), burned down as migrations land.
 # Do not add entries here; place new runtime logic in its canonical layer.
 _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
     {
@@ -162,8 +163,6 @@ _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
         ("integrations/musclemimic/fullbody_native_playback.py", "envs"),
         ("integrations/musclemimic/fullbody_native_playback.py", "viz"),
         ("integrations/musclemimic/mjlab_onnx_policy.py", "envs"),
-        ("terms/multiplayer/chase_tag_vs_obs.py", "envs"),
-        ("terms/multiplayer/chase_tag_vs_reward.py", "envs"),
         ("viz/mjlab_play.py", "integrations"),
     }
 )
@@ -252,15 +251,593 @@ _COMPATIBILITY_MODULE_SHIMS: tuple[tuple[str, str], ...] = (
     ("myosuite.utils.path_plotting", "myosuite.viz.path_plotting"),
     ("myosuite.utils.policy_utils", "myosuite.viz.policy_playback"),
     ("myosuite.utils.video_io", "myosuite.viz.video_io"),
+    ("myosuite.envs.waypoint", "myosuite.envs.tasks.fullbody.waypoint.env"),
+    (
+        "myosuite.terms.multiplayer.chase_tag_vs_obs",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs_obs",
+    ),
+    (
+        "myosuite.terms.multiplayer.chase_tag_vs_reward",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs_reward",
+    ),
+    ("myosuite.envs.myo.assets._resolve", "myosuite.envs.assets._resolve"),
+    (
+        "myosuite.envs.myo.assets.leg.myoosl_control",
+        "myosuite.envs.assets.leg.myoosl_control",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.clip_trajectory_source",
+        "myosuite.envs.backends.mjlab.clip_trajectory_source",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.asset_configs.muscle_mimic_body.full_body_constants",
+        "myosuite.envs.backends.mjlab.configs.asset_configs.muscle_mimic_body.full_body_constants",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.baoding_cfg",
+        "myosuite.envs.tasks.hand.baoding.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg",
+        "myosuite.envs.backends.mjlab.configs.elbow_pose_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg",
+        "myosuite.envs.backends.mjlab.configs.finger_pose_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.finger_reach_cfg",
+        "myosuite.envs.backends.mjlab.configs.finger_reach_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.hand_pose_cfg",
+        "myosuite.envs.backends.mjlab.configs.hand_pose_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.hand_reach_cfg",
+        "myosuite.envs.backends.mjlab.configs.hand_reach_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.modular_cfg",
+        "myosuite.envs.backends.mjlab.configs.modular_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg",
+        "myosuite.envs.tasks.fullbody.bimanual.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg",
+        "myosuite.envs.tasks.mimic.fullbody_mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg",
+        "myosuite.envs.tasks.games.tabletennis.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.walk_cfg",
+        "myosuite.envs.backends.mjlab.configs.walk_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.mimic_mjlab_env",
+        "myosuite.envs.backends.mjlab.mimic_mjlab_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.mjlab_env_base",
+        "myosuite.envs.backends.mjlab.mjlab_env_base",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.mjlab_task_builder",
+        "myosuite.envs.backends.mjlab.mjlab_task_builder",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis",
+        "myosuite.envs.tasks.games.tabletennis.register_mjlab",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.register_mjlab_tasks",
+        "myosuite.envs.backends.mjlab.register_mjlab_tasks",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.rsl_rl_logger_episode_patch",
+        "myosuite.envs.backends.mjlab.rsl_rl_logger_episode_patch",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.cpu_reference",
+        "myosuite.envs.backends.mjlab.tasks.cpu_reference",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.distribution",
+        "myosuite.envs.backends.mjlab.tasks.distribution",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg.directional_env_cfg",
+        "myosuite.envs.tasks.leg.directional.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg.directional_mdp",
+        "myosuite.envs.tasks.leg.directional.directional_mdp",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg.rl_cfg",
+        "myosuite.envs.tasks.leg.walk.rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg.stand_env_cfg",
+        "myosuite.envs.tasks.leg.stand.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg.terrain",
+        "myosuite.envs.tasks.leg.walk.terrain",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg.walk_env_cfg",
+        "myosuite.envs.tasks.leg.walk.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg.walk_mdp",
+        "myosuite.envs.tasks.leg.walk.walk_mdp",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map",
+        "myosuite.envs.backends.mjlab.tasks.mdp.action_map",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mdp.actions",
+        "myosuite.envs.backends.mjlab.tasks.mdp.actions",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mdp.commands",
+        "myosuite.envs.backends.mjlab.tasks.mdp.commands",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mdp.events",
+        "myosuite.envs.backends.mjlab.tasks.mdp.events",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mdp.observations",
+        "myosuite.envs.backends.mjlab.tasks.mdp.observations",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations",
+        "myosuite.envs.backends.mjlab.tasks.mdp.terminations",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mimic_tracking.commands",
+        "myosuite.envs.tasks.mimic.mjlab_commands",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mimic_tracking.env_cfg",
+        "myosuite.envs.tasks.mimic.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mimic_tracking.mdp",
+        "myosuite.envs.tasks.mimic.mjlab_mdp",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.elbow.env_cfgs",
+        "myosuite.envs.tasks.arm.pose.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.elbow.rl_cfg",
+        "myosuite.envs.tasks.arm.pose.rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.finger.env_cfgs",
+        "myosuite.envs.tasks.hand.pose.finger_mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.finger.rl_cfg",
+        "myosuite.envs.tasks.hand.pose.finger_rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.hand.env_cfgs",
+        "myosuite.envs.tasks.hand.pose.hand_mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.hand.rl_cfg",
+        "myosuite.envs.tasks.hand.pose.hand_rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.torso.env_cfgs",
+        "myosuite.envs.tasks.torso.pose.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.torso.rl_cfg",
+        "myosuite.envs.tasks.torso.pose.rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.mdp.commands",
+        "myosuite.envs.backends.mjlab.tasks.pose.mdp.commands",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.mdp.observations",
+        "myosuite.envs.backends.mjlab.tasks.pose.mdp.observations",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.mdp.rewards",
+        "myosuite.envs.backends.mjlab.tasks.pose.mdp.rewards",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.mdp.terminations",
+        "myosuite.envs.backends.mjlab.tasks.pose.mdp.terminations",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg",
+        "myosuite.envs.backends.mjlab.tasks.pose.pose_env_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.arm.env_cfgs",
+        "myosuite.envs.tasks.arm.reach.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.arm.rl_cfg",
+        "myosuite.envs.tasks.arm.reach.rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.finger.env_cfgs",
+        "myosuite.envs.tasks.hand.reach.finger_mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.finger.rl_cfg",
+        "myosuite.envs.tasks.hand.reach.finger_rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.hand.env_cfgs",
+        "myosuite.envs.tasks.hand.reach.hand_mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.hand.rl_cfg",
+        "myosuite.envs.tasks.hand.reach.hand_rl_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.mdp.commands",
+        "myosuite.envs.backends.mjlab.tasks.reach.mdp.commands",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.mdp.observations",
+        "myosuite.envs.backends.mjlab.tasks.reach.mdp.observations",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.mdp.rewards",
+        "myosuite.envs.backends.mjlab.tasks.reach.mdp.rewards",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.mdp.terminations",
+        "myosuite.envs.backends.mjlab.tasks.reach.mdp.terminations",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.reach_env_cfg",
+        "myosuite.envs.backends.mjlab.tasks.reach.reach_env_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.registration",
+        "myosuite.envs.backends.mjlab.tasks.registration",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.rl",
+        "myosuite.envs.backends.mjlab.tasks.rl",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.waypoint.env_cfg",
+        "myosuite.envs.tasks.fullbody.waypoint.mjlab_cfg",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.waypoint.mdp",
+        "myosuite.envs.tasks.fullbody.waypoint.mdp",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.brax_env",
+        "myosuite.envs.backends._experimental_mjx.brax_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.fatigue_jax",
+        "myosuite.envs.backends._experimental_mjx.fatigue_jax",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.mjx_env_base",
+        "myosuite.envs.backends._experimental_mjx.mjx_env_base",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.mjx_env_config",
+        "myosuite.envs.backends._experimental_mjx.mjx_env_config",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.mjx_modular_env",
+        "myosuite.envs.backends._experimental_mjx.mjx_modular_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.mjx_spec_preprocess",
+        "myosuite.envs.backends._experimental_mjx.mjx_spec_preprocess",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.musclemimic_base",
+        "myosuite.envs.backends._experimental_mjx.musclemimic_base",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.musclemimic_env",
+        "myosuite.envs.backends._experimental_mjx.musclemimic_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env",
+        "myosuite.envs.backends._experimental_mjx.musclemimic_fullbody_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.pose_env",
+        "myosuite.envs.backends._experimental_mjx.pose_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.reach_env",
+        "myosuite.envs.backends._experimental_mjx.reach_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.train_jax_ppo",
+        "myosuite.envs.backends._experimental_mjx.train_jax_ppo",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.utils",
+        "myosuite.envs.backends._experimental_mjx.utils",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.visu_mjx_env",
+        "myosuite.envs.backends._experimental_mjx.visu_mjx_env",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjx.walk_env",
+        "myosuite.envs.backends._experimental_mjx.walk_env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.basic.arm.key_turn",
+        "myosuite.envs.tasks.arm.key_turn.env",
+    ),
+    ("myosuite.envs.myo.tasks.basic.arm.pose", "myosuite.envs.tasks.arm.pose.env"),
+    ("myosuite.envs.myo.tasks.basic.arm.reach", "myosuite.envs.tasks.arm.reach.env"),
+    (
+        "myosuite.envs.myo.tasks.basic.arm.reorient_sar",
+        "myosuite.envs.tasks.arm.reorient_sar.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries",
+        "myosuite.envs.tasks.arm.reorient_sar.reorient_sar_geometries",
+    ),
+    (
+        "myosuite.envs.myo.tasks.basic.hand.obj_hold",
+        "myosuite.envs.tasks.hand.obj_hold.env",
+    ),
+    ("myosuite.envs.myo.tasks.basic.hand.pen", "myosuite.envs.tasks.hand.pen.env"),
+    ("myosuite.envs.myo.tasks.basic.leg.reach", "myosuite.envs.tasks.leg.reach.env"),
+    (
+        "myosuite.envs.myo.tasks.basic.leg.specs.leg_directional_spec",
+        "myosuite.envs.tasks.leg.directional.spec",
+    ),
+    ("myosuite.envs.myo.tasks.basic.leg.walk", "myosuite.envs.tasks.leg.walk.env"),
+    (
+        "myosuite.envs.myo.tasks.basic.muscle_mixin",
+        "myosuite.envs.tasks.suites.muscle_mixin",
+    ),
+    (
+        "myosuite.envs.myo.tasks.basic.specs.elbow_pose_spec",
+        "myosuite.envs.tasks.arm.pose.spec",
+    ),
+    ("myosuite.envs.myo.tasks.basic.torso.pose", "myosuite.envs.tasks.torso.pose.env"),
+    (
+        "myosuite.envs.myo.tasks.challenge.baoding",
+        "myosuite.envs.tasks.hand.baoding.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.bimanual",
+        "myosuite.envs.tasks.fullbody.bimanual.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.challenge_common",
+        "myosuite.envs.tasks.suites.challenge_common",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.chase_tag_fb_model",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_fb_model",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.chase_tag_vs.arena",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs.arena",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_config",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_model",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.chasetag",
+        "myosuite.envs.tasks.games.chasetag.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.combat_model_meta",
+        "myosuite.envs.tasks.games.chasetag.combat_model_meta",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.relocate",
+        "myosuite.envs.tasks.fullbody.relocate.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.reorient",
+        "myosuite.envs.tasks.hand.reorient.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.run_track",
+        "myosuite.envs.tasks.leg.run_track.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.soccer",
+        "myosuite.envs.tasks.games.soccer.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.tabletennis",
+        "myosuite.envs.tasks.games.tabletennis.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.challenge.tabletennis_spec",
+        "myosuite.envs.tasks.games.tabletennis.spec",
+    ),
+    (
+        "myosuite.envs.myo.tasks.mimic.chasetag_obs",
+        "myosuite.envs.tasks.mimic.chasetag_obs",
+    ),
+    ("myosuite.envs.myo.tasks.mimic.clip_env", "myosuite.envs.tasks.mimic.clip_env"),
+    ("myosuite.envs.myo.tasks.mimic.cpu", "myosuite.envs.tasks.mimic.cpu"),
+    ("myosuite.envs.myo.tasks.mimic.policy", "myosuite.envs.tasks.mimic.policy"),
+    (
+        "myosuite.envs.myo.tasks.mimic.tracking.config",
+        "myosuite.envs.tasks.mimic.tracking.config",
+    ),
+    (
+        "myosuite.envs.myo.tasks.mimic.tracking.env",
+        "myosuite.envs.tasks.mimic.tracking.env",
+    ),
+    (
+        "myosuite.envs.myo.tasks.mimic.tracking.metrics",
+        "myosuite.envs.tasks.mimic.tracking.metrics",
+    ),
+    (
+        "myosuite.envs.myo.tasks.mimic.tracking.models",
+        "myosuite.envs.tasks.mimic.tracking.models",
+    ),
+    (
+        "myosuite.envs.myo.tasks.mimic.tracking.motion",
+        "myosuite.envs.tasks.mimic.tracking.motion",
+    ),
+    (
+        "myosuite.envs.myo.tasks.mimic.tracking.sampling",
+        "myosuite.envs.tasks.mimic.tracking.sampling",
+    ),
+)
+
+_COMPATIBILITY_PACKAGE_FACADES: tuple[tuple[str, str], ...] = (
+    ("myosuite.envs.myo.backends", "myosuite.envs.backends"),
+    ("myosuite.envs.myo.backends.mjlab", "myosuite.envs.backends.mjlab"),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs",
+        "myosuite.envs.backends.mjlab.configs",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.asset_configs",
+        "myosuite.envs.backends.mjlab.configs.asset_configs",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.asset_configs.muscle_mimic_body",
+        "myosuite.envs.backends.mjlab.configs.asset_configs.muscle_mimic_body",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.configs.task_configs",
+        "myosuite.envs.backends.mjlab.configs.task_configs",
+    ),
+    ("myosuite.envs.myo.backends.mjlab.tasks", "myosuite.envs.backends.mjlab.tasks"),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.leg",
+        "myosuite.envs.tasks.leg.walk.mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mdp",
+        "myosuite.envs.backends.mjlab.tasks.mdp",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.mimic_tracking",
+        "myosuite.envs.tasks.mimic.mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose",
+        "myosuite.envs.backends.mjlab.tasks.pose",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.elbow",
+        "myosuite.envs.tasks.arm.pose.mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.finger",
+        "myosuite.envs.tasks.hand.pose.finger_mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.hand",
+        "myosuite.envs.tasks.hand.pose.hand_mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config.torso",
+        "myosuite.envs.tasks.torso.pose.mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.mdp",
+        "myosuite.envs.backends.mjlab.tasks.pose.mdp",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach",
+        "myosuite.envs.backends.mjlab.tasks.reach",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.arm",
+        "myosuite.envs.tasks.arm.reach.mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.finger",
+        "myosuite.envs.tasks.hand.reach.finger_mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config.hand",
+        "myosuite.envs.tasks.hand.reach.hand_mjlab_register",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.mdp",
+        "myosuite.envs.backends.mjlab.tasks.reach.mdp",
+    ),
+    (
+        "myosuite.envs.myo.backends.mjlab.tasks.waypoint",
+        "myosuite.envs.tasks.fullbody.waypoint.mjlab_register",
+    ),
+    ("myosuite.envs.myo.backends.mjx", "myosuite.envs.backends._experimental_mjx"),
+    ("myosuite.envs.myo.myoedits", "myosuite.envs.tasks.suites.edits"),
+    ("myosuite.envs.myo.tasks.basic", "myosuite.envs.tasks.suites.basic"),
+    ("myosuite.envs.myo.tasks.challenge", "myosuite.envs.tasks.suites.challenge"),
+    (
+        "myosuite.envs.myo.tasks.challenge.chase_tag_vs",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs",
+    ),
+    ("myosuite.envs.myo.tasks.mimic", "myosuite.envs.tasks.mimic"),
+    ("myosuite.envs.myo.tasks.mimic.tracking", "myosuite.envs.tasks.mimic.tracking"),
 )
 
 _NON_SHIM_FACADE_TARGETS: dict[str, tuple[str, ...]] = {
+    "envs/myo/__init__.py": (),
+    "envs/myo/assets/__init__.py": (),
+    "envs/myo/assets/leg/__init__.py": (),
+    "envs/myo/backends/mjlab/tasks/pose/config/__init__.py": (
+        "myosuite.envs.myo.backends.mjlab.tasks.pose.config",
+    ),
+    "envs/myo/backends/mjlab/tasks/reach/config/__init__.py": (
+        "myosuite.envs.myo.backends.mjlab.tasks.reach.config",
+    ),
+    "envs/myo/tasks/__init__.py": (),
+    "envs/myo/tasks/basic/arm/__init__.py": (),
+    "envs/myo/tasks/basic/full_body/__init__.py": (),
+    "envs/myo/tasks/basic/hand/__init__.py": (),
+    "envs/myo/tasks/basic/leg/__init__.py": (),
+    "envs/myo/tasks/basic/leg/specs/__init__.py": (
+        "myosuite.envs.tasks.leg.directional.spec",
+    ),
+    "envs/myo/tasks/basic/specs/__init__.py": (
+        "myosuite.envs.tasks.arm.pose.spec",
+        "myosuite.envs.tasks.leg.directional.spec",
+    ),
+    "envs/myo/tasks/basic/torso/__init__.py": (),
     "physics/inverse_kinematics.py": ("myosuite.biomechanics.inverse_kinematics",),
     "scenes/__init__.py": (
         "myosuite.scenes",
         "myosuite.core.builder.scene_library",
     ),
     "terms/__init__.py": ("myosuite.core.terms", "myosuite.terms"),
+    "terms/multiplayer/__init__.py": (),
     "logger/__init__.py": (),
     "utils/__init__.py": ("myosuite.core.seeding",),
     "utils/gym.py": (),
@@ -272,11 +849,17 @@ _COMPATIBILITY_FACADE_FILES: frozenset[str] = frozenset(
             f"{legacy.removeprefix('myosuite.').replace('.', '/')}.py"
             for legacy, _ in _COMPATIBILITY_MODULE_SHIMS
         ),
+        *(
+            f"{legacy.removeprefix('myosuite.').replace('.', '/')}/__init__.py"
+            for legacy, _ in _COMPATIBILITY_PACKAGE_FACADES
+        ),
         *_NON_SHIM_FACADE_TARGETS,
     }
 )
 
-_OPTIONAL_TOP_LEVEL_DEPS = frozenset({"jax", "mink", "torch", "onnxruntime"})
+_OPTIONAL_TOP_LEVEL_DEPS = frozenset(
+    {"brax", "etils", "flax", "jax", "mink", "mjlab", "onnxruntime", "torch"}
+)
 
 
 def _runtime_python_files() -> list[Path]:
@@ -517,6 +1100,18 @@ def test_myosuite_internal_import_dag() -> None:
             f"{legacy.removeprefix('myosuite.').replace('.', '/')}.py": (canonical,)
             for legacy, canonical in _COMPATIBILITY_MODULE_SHIMS
         },
+        **{
+            f"{legacy.removeprefix('myosuite.').replace('.', '/')}/__init__.py": (
+                canonical,
+                legacy,
+                *(
+                    ("myosuite.envs.backends.mjlab.bootstrap",)
+                    if legacy == "myosuite.envs.myo.backends.mjlab.tasks"
+                    else ()
+                ),
+            )
+            for legacy, canonical in _COMPATIBILITY_PACKAGE_FACADES
+        },
         **_NON_SHIM_FACADE_TARGETS,
     }
     assert set(facade_allowed_prefixes) == _COMPATIBILITY_FACADE_FILES
@@ -606,21 +1201,16 @@ def test_runtime_imports_checks_type_checking_else_and_import_module(
 
 
 def test_compatibility_shims_are_pure_aliases() -> None:
-    """Every migrated shim must resolve to the identical module object and define zero new classes/functions."""
+    """Every migrated leaf shim resolves to the identical module object, and package facades preserve __file__/resources."""
     import importlib
+    import importlib.resources as resources
+    import runpy
+    import sys
+    import types
 
     for legacy_mod, canonical_mod in _COMPATIBILITY_MODULE_SHIMS:
         shim_file = _REPO / f"{legacy_mod.replace('.', '/')}.py"
         assert shim_file.is_file(), f"Missing shim file: {shim_file}"
-        tree = ast.parse(shim_file.read_text(encoding="utf-8"), filename=str(shim_file))
-        defs = [
-            node.name
-            for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        ]
-        assert (
-            not defs
-        ), f"Compatibility shim {shim_file} must not define classes/functions: {defs}"
         try:
             legacy = importlib.import_module(legacy_mod)
             canonical = importlib.import_module(canonical_mod)
@@ -629,11 +1219,41 @@ def test_compatibility_shims_are_pure_aliases() -> None:
             if missing_top in _OPTIONAL_TOP_LEVEL_DEPS:
                 continue
             raise
+        assert "TYPE_CHECKING" in shim_file.read_text(
+            encoding="utf-8"
+        ), f"Leaf shim {shim_file} must expose TYPE_CHECKING star-imports"
         assert (
             legacy is canonical
         ), f"{legacy_mod} ({legacy!r}) is not identical to {canonical_mod} ({canonical!r})"
 
-    for closed_dir in ("scenes", "logger"):
+    for legacy_pkg_name, canonical_mod_name in _COMPATIBILITY_PACKAGE_FACADES:
+        pkg_init = _REPO / f"{legacy_pkg_name.replace('.', '/')}/__init__.py"
+        assert pkg_init.is_file(), f"Missing package facade: {pkg_init}"
+        try:
+            legacy_pkg = importlib.import_module(legacy_pkg_name)
+            canonical_mod = importlib.import_module(canonical_mod_name)
+        except ModuleNotFoundError as exc:
+            missing_top = (exc.name or "").split(".")[0]
+            if missing_top in _OPTIONAL_TOP_LEVEL_DEPS:
+                continue
+            raise
+        assert legacy_pkg.__file__ is not None and Path(legacy_pkg.__file__).is_file()
+        for attr, val in canonical_mod.__dict__.items():
+            if not attr.startswith("__") and not isinstance(val, types.ModuleType):
+                assert getattr(legacy_pkg, attr) is val
+
+    # Unaliased legacy packages and resource lookups continue to work natively.
+    myo_pkg = importlib.import_module("myosuite.envs.myo")
+    assert myo_pkg.__file__ is not None and Path(myo_pkg.__file__).is_file()
+    assert resources.files("myosuite.envs.myo").is_dir()
+    fb_pkg = importlib.import_module("myosuite.envs.myo.tasks.basic.full_body")
+    assert fb_pkg.__file__ is not None and Path(fb_pkg.__file__).is_file()
+    assert (resources.files("myosuite.envs.myo.assets") / "myo_relief.npy").is_file()
+    assert (
+        resources.files("myosuite.envs.myo.assets") / "arm" / "myoarm_relocate.xml"
+    ).is_file()
+
+    for closed_dir in ("scenes", "terms", "logger", "envs/myo"):
         on_disk = {
             p.relative_to(_PACKAGE).as_posix()
             for p in (_PACKAGE / closed_dir).rglob("*.py")
@@ -671,11 +1291,24 @@ def test_compatibility_shims_are_pure_aliases() -> None:
             not defs
         ), f"Compatibility facade {facade_file} must not define new logic: {defs}"
 
+    for runnable_legacy in (
+        "myosuite.envs.myo.backends.mjx.train_jax_ppo",
+        "myosuite.envs.myo.backends.mjx.visu_mjx_env",
+        "myosuite.envs.myo.backends.mjlab.configs.asset_configs.muscle_mimic_body.full_body_constants",
+    ):
+        sys.modules.pop(runnable_legacy, None)
+        try:
+            _, spec, code = runpy._get_module_details(runnable_legacy)
+        except ModuleNotFoundError as exc:
+            missing_top = (exc.name or "").split(".")[0]
+            if missing_top in _OPTIONAL_TOP_LEVEL_DEPS:
+                continue
+            raise
+        assert spec is not None and code is not None
+
 
 def test_scenes_package_binds_library_submodule_in_fresh_process() -> None:
     """Legacy package attribute access (``myosuite.scenes.library``, ``myosuite.terms.*``, ``myosuite.utils.*``) works in a fresh interpreter."""
-    import sys
-
     code = (
         "import myosuite, myosuite.scenes as s; "
         "assert hasattr(s, 'library') and s.library.SCENES; "
@@ -684,6 +1317,24 @@ def test_scenes_package_binds_library_submodule_in_fresh_process() -> None:
         "assert myosuite.terms.waypoint is not None; "
         "assert myosuite.terms.opponent_relative_obs is not None; "
         "assert myosuite.terms.multiplayer.heading is not None"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_legacy_basic_and_challenge_facades_bind_submodules_in_fresh_process() -> None:
+    """Legacy ``basic`` and ``challenge`` package facades still expose child submodules like ``c.chasetag`` and ``b.specs``."""
+    code = (
+        "import myosuite.envs.myo.tasks.basic as b; "
+        "import myosuite.envs.myo.tasks.challenge as c; "
+        "assert hasattr(b, 'specs') and hasattr(b, 'muscle_mixin'); "
+        "assert hasattr(c, 'chasetag') and hasattr(c.chasetag, 'ChaseTagEnv')"
     )
     proc = subprocess.run(
         [sys.executable, "-c", code],

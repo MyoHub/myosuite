@@ -110,7 +110,7 @@ jobs:
           elif grep -qE '^(tutorials/|pyproject\.toml|uv\.lock|myosuite/tests/conftest\.py|myosuite/tests/support/|\.github/workflows/python-app\.yml)' <<< "$changed"; then
             echo "only_python=false" >> "$GITHUB_OUTPUT"
           # Registration runs at import, before testmon starts recording coverage.
-          elif grep -qE '^myosuite/(.*/)?__init__\.py$|^myosuite/core/(registry|config)\.py$|^myosuite/envs/myo/backends/mjlab/(register[^/]*|mimic_mjlab_env|tasks/registration)\.py$|^myosuite/envs/myo/tasks/.*/specs/' <<< "$changed"; then
+          elif grep -qE '^myosuite/(.*/)?__init__\.py$|^myosuite/core/(registry|config)\.py$|^myosuite/envs/(myo/)?backends/mjlab/(bootstrap|register[^/]*|mimic_mjlab_env|tasks/registration)\.py$|^myosuite/envs/tasks/suites/.*\.py$|^myosuite/envs/tasks/.*/([a-z_]*mjlab_register|register_mjlab|spec)\.py$|^myosuite/envs/myo/tasks/.*/specs/' <<< "$changed"; then
             echo "only_python=false" >> "$GITHUB_OUTPUT"
           else
             echo "only_python=true" >> "$GITHUB_OUTPUT"

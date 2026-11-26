@@ -235,7 +235,7 @@ def _random_policy(
 
 
 def test_policy_inference_drives_the_env(model: mujoco.MjModel) -> None:
-    from myosuite.envs.waypoint import WaypointEnv, WaypointTaskCfg
+    from myosuite.envs.tasks.fullbody.waypoint.env import WaypointEnv, WaypointTaskCfg
 
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
@@ -301,7 +301,7 @@ def test_matches_upstream_terra_rollout() -> None:
     """
     from pathlib import Path
 
-    from myosuite.envs.waypoint import WaypointEnv, WaypointTaskCfg
+    from myosuite.envs.tasks.fullbody.waypoint.env import WaypointEnv, WaypointTaskCfg
     from myosuite.integrations.musclemimic import (
         TerrainController,
         build_terrain_fullbody_spec,

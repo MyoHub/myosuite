@@ -20,7 +20,7 @@ from myosuite import make_env
 
 pytestmark = pytest.mark.tier2
 
-_ASSETS = Path(__file__).parents[1] / "envs" / "myo" / "assets"
+_ASSETS = Path(__file__).parents[1] / "envs" / "assets"
 
 
 def _create_sim(xml_path: str):

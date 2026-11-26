@@ -15,7 +15,7 @@ pytestmark = pytest.mark.tier1
 
 
 def test_soccer_act_reg_weight_is_not_catastrophic() -> None:
-    from myosuite.envs.myo.tasks.challenge.soccer import SoccerEnv
+    from myosuite.envs.tasks.games.soccer.env import SoccerEnv
 
     weights = SoccerEnv.DEFAULT_RWD_KEYS_AND_WEIGHTS
     assert weights["act_reg"] == pytest.approx(-0.1)

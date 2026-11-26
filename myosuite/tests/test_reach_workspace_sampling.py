@@ -69,7 +69,7 @@ def test_mjlab_workspace_table_uses_scene_site_ids() -> None:
     from mjlab.envs import ManagerBasedRlEnv
     from mjlab.tasks.registry import load_env_cfg
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401 (registers twins)
 
     def _marker_spec() -> mujoco.MjSpec:
         spec = mujoco.MjSpec()

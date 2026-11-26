@@ -308,7 +308,9 @@ def test_goal_spec_site_bounds_requires_range() -> None:
 def test_sample_goal_site_positions_jax_matches_cpu_contract() -> None:
     """MJX samples ``target_pos`` with the same layout, bounds and back-compat rule."""
     jax = pytest.importorskip("jax")
-    from myosuite.envs.myo.backends.mjx.mjx_modular_env import _sample_task_jax
+    from myosuite.envs.backends._experimental_mjx.mjx_modular_env import (
+        _sample_task_jax,
+    )
 
     model, qpos = _one_hinge_model_qpos()
     fixed = GoalSpec(
@@ -340,7 +342,7 @@ def test_sample_goal_site_positions_jax_matches_cpu_contract() -> None:
 def test_site_position_command_cfg_matches_the_goal_contract() -> None:
     """The mjlab command samples the same flattened ``target_pos`` bounds as CPU/MJX."""
     pytest.importorskip("mjlab")
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp import site_position_command_cfg
+    from myosuite.envs.backends.mjlab.tasks.mdp import site_position_command_cfg
 
     spec = GoalSpec(
         target_type="site_positions",
@@ -625,7 +627,9 @@ except (ImportError, AttributeError):
 @pytest.mark.tier2
 @pytest.mark.skipif(not _MJX_OK, reason="JAX/MJX not available")
 def test_mjx_modular_env_reset() -> None:
-    from myosuite.envs.myo.backends.mjx.mjx_modular_env import MjxModularTaskEnv
+    from myosuite.envs.backends._experimental_mjx.mjx_modular_env import (
+        MjxModularTaskEnv,
+    )
 
     env = MjxModularTaskEnv(_ElbowTask())
     state = env.reset(_jax.random.PRNGKey(0))
@@ -638,7 +642,9 @@ def test_mjx_modular_env_reset() -> None:
 def test_mjx_modular_env_step() -> None:
     import jax.numpy as jnp
 
-    from myosuite.envs.myo.backends.mjx.mjx_modular_env import MjxModularTaskEnv
+    from myosuite.envs.backends._experimental_mjx.mjx_modular_env import (
+        MjxModularTaskEnv,
+    )
 
     env = MjxModularTaskEnv(_ElbowTask())
     state = env.reset(_jax.random.PRNGKey(0))
@@ -652,7 +658,9 @@ def test_mjx_modular_env_step() -> None:
 def test_register_task_mjx_builds_with_make_env() -> None:
     import jax.numpy as jnp
 
-    from myosuite.envs.myo.backends.mjx.mjx_modular_env import MjxModularTaskEnv
+    from myosuite.envs.backends._experimental_mjx.mjx_modular_env import (
+        MjxModularTaskEnv,
+    )
 
     env_id = register_task(
         _ElbowTask(), env_id="TestElbowMjxMakeEnv-v0", backends={"cpu", "mjx"}
@@ -670,7 +678,7 @@ def test_register_task_mjx_builds_with_make_env() -> None:
 
 
 def test_make_modular_mjlab_cfg_basic() -> None:
-    from myosuite.envs.myo.backends.mjlab.configs.modular_cfg import (
+    from myosuite.envs.backends.mjlab.configs.modular_cfg import (
         make_modular_mjlab_cfg,
     )
 
@@ -746,7 +754,7 @@ def test_non_fati_task_variants_do_not_fatigue(env_id: str) -> None:
 def test_make_modular_mjlab_cfg_callable_obs() -> None:
     from myosuite.terms.base_obs import joint_pos_obs
 
-    from myosuite.envs.myo.backends.mjlab.configs.modular_cfg import (
+    from myosuite.envs.backends.mjlab.configs.modular_cfg import (
         make_modular_mjlab_cfg,
     )
 
@@ -855,7 +863,7 @@ def test_normalize_actions_is_refused_not_ignored() -> None:
     from dataclasses import replace
 
     from myosuite.core.config import ActuatorGroupSpec
-    from myosuite.envs.myo.tasks.basic.specs.elbow_pose_spec import ElbowPoseFixedTask
+    from myosuite.envs.tasks.arm.pose.spec import ElbowPoseFixedTask
 
     task = ElbowPoseFixedTask()
     assert not any(g.normalize_actions for g in task.actuators)

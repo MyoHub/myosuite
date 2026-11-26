@@ -64,7 +64,7 @@ def _compile_target(
         fp = rt.kinematic_fingerprint(model, ri.landmark_bodies(imap), imap.feet)
         return model, fp
 
-    from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
+    from myosuite.envs.tasks.mimic.tracking.models import (  # noqa: PLC0415
         compiled_body,
         kinematic_fingerprint,
         model_cfg,

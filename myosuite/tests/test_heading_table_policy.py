@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import torch
 
-from myosuite.envs.myo.tasks.mimic.policy import (
+from myosuite.envs.tasks.mimic.policy import (
     HeadingTablePolicy,
     load_directional_policy,
 )

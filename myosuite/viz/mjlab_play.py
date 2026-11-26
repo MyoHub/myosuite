@@ -79,7 +79,7 @@ def _resolve_local_onnx_checkpoint(checkpoint_file: str) -> Path:
 
 
 def run_play(task_id: str, cfg: PlayConfig) -> None:
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
 
     configure_torch_backends()
 
@@ -342,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     # Import tasks to populate the registry.
     import mjlab.tasks  # noqa: F401
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
 
     cli_args = sys.argv[1:] if argv is None else list(argv)
     all_tasks = list_tasks()

@@ -2,29 +2,15 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Pose-task observation terms."""
+"""Backward-compatible alias for :mod:`myosuite.envs.backends.mjlab.tasks.pose.mdp.observations`."""
 
-from __future__ import annotations
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from typing import TYPE_CHECKING
+if _TYPE_CHECKING:
+    from myosuite.envs.backends.mjlab.tasks.pose.mdp.observations import *  # noqa: F403
 
-import torch
-from mjlab.managers.scene_entity_config import SceneEntityCfg
-
-from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.core.terms.base_obs import pose_error_obs
-
-if TYPE_CHECKING:
-    from mjlab.envs import ManagerBasedRlEnv
-
-
-def pose_err(
-    env: ManagerBasedRlEnv,
-    command_name: str,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-) -> torch.Tensor:
-    """CPU ``obs["pose_err"]``: target ``qpos`` minus current ``qpos``."""
-    return pose_error_obs(
-        MjlabEntityAccessor(env, asset_cfg.name),
-        target=env.command_manager.get_command(command_name),
-    )
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.backends.mjlab.tasks.pose.mdp.observations"
+)

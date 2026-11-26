@@ -298,7 +298,7 @@ def test_load_motion_clip_never_unpickles(tmp_path: Path, key: str) -> None:
 
 
 def test_mimic_clip_env_names_never_unpickle(tmp_path: Path) -> None:
-    from myosuite.envs.myo.tasks.mimic.clip_env import _decode_joint_names
+    from myosuite.envs.tasks.mimic.clip_env import _decode_joint_names
 
     p = tmp_path / "pickled.npz"
     _write_tripwire_clip(p, "joint_names")
@@ -464,10 +464,10 @@ def test_motion_clip_exact_joint_name_wins_over_alias() -> None:
 
 
 def test_native_chase_tag_accepts_musclemimic_joint_names(tmp_path: Path) -> None:
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_config import (
         ChaseTagVsConfig,
     )
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_model import (
         build_chase_tag_vs_fullbody_model,
     )
 

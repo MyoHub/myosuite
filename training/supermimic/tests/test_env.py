@@ -52,7 +52,7 @@ def test_the_benchmark_held_out_list_ships_with_the_project(
     """The 108 held-out clips live in the project, not in myosuite; training uses the task's default list."""
     from supermimic.env import TaskEnvCfg, held_out_clips
 
-    from myosuite.envs.myo.tasks.mimic import tracking as tr
+    from myosuite.envs.tasks.mimic import tracking as tr
 
     monkeypatch.setenv(tr.KIT_ROOT_ENV, str(tmp_path))
     path, root = held_out_clips()

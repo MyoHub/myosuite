@@ -7,7 +7,7 @@
 :class:`FbvsDirectionalAdapter` maps an FBVs player's 546-d observation to the
 528-d directional observation (``_directional_obs``) with the heading pointed
 at the opponent (chaser) or away from it (runner), as
-:func:`~myosuite.envs.myo.tasks.mimic.chasetag_obs.chasetag_heading_directional_obs`.
+:func:`~myosuite.envs.tasks.mimic.chasetag_obs.chasetag_heading_directional_obs`.
 :func:`export_fbvs_onnx` wraps a walker checkpoint with it and writes the ONNX
 file the MyoChallenge server runs. Needs only torch (no rsl_rl).
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from myosuite.envs.myo.tasks.mimic.policy import (
+from myosuite.envs.tasks.mimic.policy import (
     ActorCritic,
     HeadingTablePolicy,
     load_directional_policy,

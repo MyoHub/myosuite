@@ -14,6 +14,19 @@ import math
 
 import numpy as np
 
+CHASER_ID = "agent_0"
+RUNNER_ID = "agent_1"
+
+
+def agent_is_chaser(agent_id: str, task: str) -> bool:
+    """True when *agent_id* is the chaser for this episode's *task*.
+
+    ``CHASE`` → ``agent_0`` chases; ``EVADE`` → ``agent_1`` chases.
+    """
+    return (agent_id == CHASER_ID and task == "CHASE") or (
+        agent_id == RUNNER_ID and task == "EVADE"
+    )
+
 
 def role_heading_xy(
     self_xy: np.ndarray,

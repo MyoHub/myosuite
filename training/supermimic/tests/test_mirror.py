@@ -18,7 +18,7 @@ pytestmark = pytest.mark.tier1
 
 
 def test_mirror_maps_are_symmetric_involutions(body: Any) -> None:
-    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+    from myosuite.envs.tasks.mimic.tracking.models import model_cfg
     from supermimic.kinematics import (
         SkeletonKinematics,
     )

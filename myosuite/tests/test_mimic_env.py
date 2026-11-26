@@ -25,7 +25,7 @@ pytestmark = [
 
 @pytest.fixture(scope="module")
 def env():
-    from myosuite.envs.myo.tasks.mimic.clip_env import MuscleMimicClipEnvV0
+    from myosuite.envs.tasks.mimic.clip_env import MuscleMimicClipEnvV0
 
     e = MuscleMimicClipEnvV0(clip_path=_HF_CLIP, seed=42, use_obs_normalizer=False)
     yield e

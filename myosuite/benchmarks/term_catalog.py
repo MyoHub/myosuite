@@ -8,7 +8,7 @@
 # (packages/eden/src/eden/managers/catalog.py).
 """Searchable catalog of MyoSuite MDP terms, configs, and physiological features.
 
-Introspects ``myosuite.core.terms`` (and multiplayer ``myosuite.terms``) modules and registered environment wrapper
+Introspects ``myosuite.core.terms`` (and task-specific ``myosuite.envs.tasks``) modules and registered environment wrapper
 features without importing heavy GPU backends (``torch``, ``mjlab``, ``jax``),
 and exposes both a Python API (:func:`catalog`, :func:`search`) and the
 ``myosuite-terms`` CLI entry point.
@@ -49,8 +49,8 @@ TERM_MODULES: dict[str, tuple[str, ...]] = {
         "myosuite.core.terms.waypoint",
     ),
     "multiplayer": (
-        "myosuite.terms.multiplayer.chase_tag_vs_obs",
-        "myosuite.terms.multiplayer.chase_tag_vs_reward",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs_obs",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs_reward",
         "myosuite.core.terms.multiplayer.common",
         "myosuite.core.terms.multiplayer.heading",
     ),
@@ -283,12 +283,12 @@ def _scan_features() -> list[CatalogEntry]:
 
 
 _MJLAB_MDP_MODULES: tuple[str, ...] = (
-    "myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map",
-    "myosuite.envs.myo.backends.mjlab.tasks.mdp.actions",
-    "myosuite.envs.myo.backends.mjlab.tasks.mdp.commands",
-    "myosuite.envs.myo.backends.mjlab.tasks.mdp.events",
-    "myosuite.envs.myo.backends.mjlab.tasks.mdp.observations",
-    "myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations",
+    "myosuite.envs.backends.mjlab.tasks.mdp.action_map",
+    "myosuite.envs.backends.mjlab.tasks.mdp.actions",
+    "myosuite.envs.backends.mjlab.tasks.mdp.commands",
+    "myosuite.envs.backends.mjlab.tasks.mdp.events",
+    "myosuite.envs.backends.mjlab.tasks.mdp.observations",
+    "myosuite.envs.backends.mjlab.tasks.mdp.terminations",
 )
 
 
@@ -305,7 +305,7 @@ def _scan_mjlab_optional() -> list[CatalogEntry]:
 def catalog(
     kind: str | None = None, *, include_mjlab: bool = False
 ) -> list[CatalogEntry]:
-    """Collect catalog entries across ``myosuite.core.terms``, multiplayer ``myosuite.terms``, and physiological features.
+    """Collect catalog entries across ``myosuite.core.terms`` and physiological features.
 
     Args:
         kind: Optional filter in :data:`TERM_KINDS` (or ``"mjlab"`` when

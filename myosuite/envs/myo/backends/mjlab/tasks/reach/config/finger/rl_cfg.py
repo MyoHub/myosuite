@@ -1,10 +1,16 @@
-"""RL configuration for the finger reach tasks."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.hand.reach.finger_rl_cfg`."""
 
-from mjlab.rl import RslRlOnPolicyRunnerCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.rl import myo_ppo_runner_cfg
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.hand.reach.finger_rl_cfg import *  # noqa: F403
 
-
-def finger_reach_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO config for the finger reach tasks."""
-    return myo_ppo_runner_cfg("myo_finger_reach")
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.hand.reach.finger_rl_cfg"
+)

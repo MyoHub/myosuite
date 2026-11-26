@@ -172,7 +172,7 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     assets_abs = _myoarm_bimanual_assets_xml().as_posix()
 
     root = _MYOSUITE_PKG_ROOT
-    arm_dir = root / "envs" / "myo" / "assets" / "arm"
+    arm_dir = root / "envs" / "assets" / "arm"
     host_tpl = arm_dir / "myotorso_arm_chain_host.xml"
     host_src = host_tpl.read_text(encoding="utf-8")
     # Arm asset include — swap bundled arm assets for musclemimic bimanual assets.

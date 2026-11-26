@@ -32,7 +32,7 @@ def task_env_fixture(clips: Path) -> Any:
     supermimic_env = pytest.importorskip("supermimic.env")
     from myosuite import make_env
     from myosuite.core.config import EnvConfig
-    from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
+    from myosuite.envs.tasks.mimic.tracking import MIMIC_ENV_ID
 
     cfg = supermimic_env.TaskEnvCfg(
         motion_file=str(clips / "clips.txt"), sampling_mode="start"
@@ -45,7 +45,7 @@ def task_env_fixture(clips: Path) -> Any:
 
 @pytest.fixture(scope="module", name="lib")
 def lib_fixture(task_env: Any) -> ClipLibrary:
-    from myosuite.envs.myo.tasks.mimic.tracking.models import root_offset
+    from myosuite.envs.tasks.mimic.tracking.models import root_offset
 
     u = task_env.unwrapped
     return ClipLibrary(u.motion, root_offset(u.model))

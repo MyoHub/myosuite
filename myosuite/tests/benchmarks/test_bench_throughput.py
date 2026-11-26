@@ -88,9 +88,9 @@ def test_bench_mjx_elbow_pose(benchmark):
     from etils import epath
     from ml_collections import config_dict
 
-    from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
+    from myosuite.envs.backends._experimental_mjx.pose_env import MjxPoseEnv
 
-    _ASSETS = pathlib.Path(__file__).parents[2] / "envs/myo/assets"
+    _ASSETS = pathlib.Path(__file__).parents[2] / "envs/assets"
     cfg = config_dict.create(
         ctrl_dt=0.02,
         sim_dt=0.002,

@@ -21,7 +21,7 @@ Only the main model XML is rewritten; pip-package internal XML files are
 correct as of v0.2.0+ (upstream path fixes applied).
 
 Lookup order per family: the subsets bundled under
-``myosuite/envs/myo/assets/<name>`` (MPL_sim, YCB_sim, furniture_sim), then an
+``myosuite/envs/assets/<name>`` (MPL_sim, YCB_sim, furniture_sim), then an
 installed pip package. ``myo_sim`` always comes from pip; to work on a local
 myo_sim checkout, install it in editable mode (``uv pip install -e <path>``).
 A ``myosuite/simhive/`` folder is not read.
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 import tempfile
@@ -142,10 +143,10 @@ def get_sim_asset_root(sim_name: str) -> Path:
     )
 
 
-_MYOSUITE_ASSETS = Path(__file__).resolve().parents[2] / "envs" / "myo" / "assets"
+_MYOSUITE_ASSETS = Path(__file__).resolve().parents[2] / "envs" / "assets"
 
 # Files that existed in the old myo_sim git-submodule layout but are absent
-# from the pip package. They are bundled in myosuite/envs/myo/assets/ as a
+# from the pip package. They are bundled in myosuite/envs/assets/ as a
 # compatibility shim until the upstream pip package ships them.
 _MYO_SIM_BUNDLED_FALLBACKS: dict[str, Path] = {
     "arm/assets/myoarm_assets.xml": _MYOSUITE_ASSETS
@@ -207,8 +208,15 @@ def _resolve_legacy_submodule_path(include_file: str) -> Path | None:
 
 
 def _rewrite_relative_package_path(raw: str) -> Path | None:
-    """Map ../furniture_sim/... style paths to bundled or pip roots."""
+    """Map ../furniture_sim/... and envs/(myo/)?assets/... paths to bundled or pip roots."""
     norm = raw.replace("\\", "/").strip()
+    seg_match = re.search(
+        r"(?:(?:^|/)myosuite/envs/(?:myo/)?assets/|^(?:\.\.?/)+envs/(?:myo/)?assets/|^envs/(?:myo/)?assets/)(.*)",
+        norm,
+    )
+    if seg_match is not None:
+        tail = seg_match.group(1).lstrip("/")
+        return _MYOSUITE_ASSETS / tail if tail else _MYOSUITE_ASSETS
     for pref, sim_name in _REL_PACKAGE_PREFIXES:
         if norm.startswith(pref):
             tail = norm[len(pref) :].lstrip("/")
@@ -572,6 +580,10 @@ def resolve_model_xml_path(model_path: str | Path) -> Path:
     the paths MuJoCo resolves from the model's directory made absolute.
     """
     model_path = Path(model_path).resolve()
+    if not model_path.exists():
+        rewritten = _rewrite_relative_package_path(str(model_path))
+        if rewritten is not None and rewritten.exists():
+            model_path = rewritten.resolve()
     try:
         tree = ET.parse(model_path)
     except (FileNotFoundError, ET.ParseError):

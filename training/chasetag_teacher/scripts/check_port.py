@@ -22,8 +22,8 @@ import torch
 
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
-from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
-from myosuite.envs.myo.tasks.mimic.tracking.models import root_offset
+from myosuite.envs.tasks.mimic.tracking import MIMIC_ENV_ID
+from myosuite.envs.tasks.mimic.tracking.models import root_offset
 from supermimic.env import settings_cfg, task_overrides, held_out_clips
 
 from chasetag_teacher.reference import ClipLibrary, SteeredReference

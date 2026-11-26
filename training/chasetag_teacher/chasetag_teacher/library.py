@@ -16,18 +16,18 @@ import os
 from pathlib import Path
 
 from myosuite.biomechanics.retarget import check_refit_meta
-from myosuite.envs.myo.tasks.mimic.tracking import (
+from myosuite.envs.tasks.mimic.tracking import (
     KIT_ROOT_ENV,
     MissingMotionData,
     kit_split,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.models import (
+from myosuite.envs.tasks.mimic.tracking.models import (
     compiled_scene,
     model_cfg,
     model_version,
     root_offset,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.motion import build_motion_lib
+from myosuite.envs.tasks.mimic.tracking.motion import build_motion_lib
 
 from .reference import ClipLibrary, locomotion_files
 

@@ -1,30 +1,14 @@
-"""RL configuration for the leg tasks."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.leg.walk.rl_cfg`."""
 
-from mjlab.rl import RslRlOnPolicyRunnerCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.rl import myo_ppo_runner_cfg
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.leg.walk.rl_cfg import *  # noqa: F403
 
-
-def leg_stand_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO config for the leg stand-and-reach task (80 muscles)."""
-    return myo_ppo_runner_cfg("myo_leg_stand")
-
-
-def leg_terrain_ppo_runner_cfg(experiment_name: str) -> RslRlOnPolicyRunnerCfg:
-    """PPO config for a leg terrain walking task (80 muscles, 1000-step episodes)."""
-    return myo_ppo_runner_cfg(experiment_name, gamma=0.99, num_steps_per_env=48)
-
-
-def leg_walk_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO config for the leg walking task (80 muscles, 1000-step episodes).
-
-    The shared defaults (gamma 0.97, 24-step rollouts) look ahead about 0.7 s, too short for
-    gait learning on these long episodes; use the horizon of the earlier walk runs
-    (gamma 0.99, 48-step rollouts).
-    """
-    return myo_ppo_runner_cfg("myo_leg_walk", gamma=0.99, num_steps_per_env=48)
-
-
-def leg_directional_ppo_runner_cfg(experiment_name: str) -> RslRlOnPolicyRunnerCfg:
-    """PPO config for a directional leg task (80 muscles, 500-step episodes)."""
-    return myo_ppo_runner_cfg(experiment_name, gamma=0.99, num_steps_per_env=48)
+_sys.modules[__name__] = _importlib.import_module("myosuite.envs.tasks.leg.walk.rl_cfg")

@@ -316,9 +316,9 @@ from mjlab.tasks.registry import load_env_cfg
 from mjlab.viewer import NativeMujocoViewer
 
 from myosuite.motion.io import load_motion_clip, resolve_motion_path
-from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
+from myosuite.envs.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
 from mjlab.tasks.registry import register_mjlab_task
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
+from myosuite.envs.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
 from myosuite.integrations.musclemimic.fullbody_local_policy import (
     FullbodyObsAdapter,
     fullbody_obs_adapter_params_from_metadata,
@@ -368,7 +368,7 @@ env.close()
 ```python
 import torch
 import mjlab.envs as mjlab_envs
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import register_mjlab_tasks
+from myosuite.envs.backends.mjlab.register_mjlab_tasks import register_mjlab_tasks
 
 # Register all MyoSuite tasks on mjlab (do once at startup)
 register_mjlab_tasks()
@@ -389,9 +389,9 @@ env.close()
 
 ```python
 from myosuite.motion.io import load_motion_clip, resolve_motion_path
-from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
+from myosuite.envs.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
 from mjlab.tasks.registry import register_mjlab_task
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
+from myosuite.envs.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
 import mjlab.envs as mjlab_envs
 
 motion_file = resolve_motion_path("KIT/314/walking_medium09_poses")

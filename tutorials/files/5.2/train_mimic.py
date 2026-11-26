@@ -211,7 +211,7 @@ class VecMimicEnv:
         max_episode_steps: int = 300,
         **kwargs: Any,
     ) -> None:
-        from myosuite.envs.myo.tasks.mimic.clip_env import MuscleMimicClipEnvV0
+        from myosuite.envs.tasks.mimic.clip_env import MuscleMimicClipEnvV0
 
         self.n_envs = n_envs
         self.max_episode_steps = max_episode_steps

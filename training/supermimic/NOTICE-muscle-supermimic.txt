@@ -2,7 +2,7 @@ This is the NOTICE file of muscle-supermimic (https://github.com/kaibohex/muscle
 Apache License 2.0), at commit 8a6244b0178eb2cf1b5a14a903d82ebba867b792, from which the code of this
 project (the SuperMimic runner, world model, kinematics, muscle geometry, collection, evaluation,
 refinement and fine-tuning in training/supermimic/) and of parts of MyoSuite's myoMimic-v0
-task (myosuite/envs/myo/tasks/mimic/tracking/) is ported; every ported file names its
+task (myosuite/envs/tasks/mimic/tracking/) is ported; every ported file names its
 source in its docstring. The paths below are muscle-supermimic's. Not ported: the MS-Human-700 robot,
 the DEP controller (dep.py), the evaluation-guided resets and BlinkMimic's probe graph.
 

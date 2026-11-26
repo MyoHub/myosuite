@@ -29,7 +29,7 @@ needs JAX + MuJoCo.
 from __future__ import annotations
 
 import pytest
-from myosuite.envs.myo.assets._resolve import (
+from myosuite.envs.assets._resolve import (
     resolve_elbow_xml as _resolve_elbow_xml,
     resolve_finger_xml as _resolve_finger_xml,
     resolve_leg_xml as _resolve_leg_xml,
@@ -76,8 +76,11 @@ def _make_pose_env(impl: str = "jax"):
     """
     import jax.numpy as jp
     from ml_collections import config_dict
-    from myosuite.envs.myo.backends.mjx import _cfg_elbow_random, _to_config_dict
-    from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
+    from myosuite.envs.backends._experimental_mjx import (
+        _cfg_elbow_random,
+        _to_config_dict,
+    )
+    from myosuite.envs.backends._experimental_mjx.pose_env import MjxPoseEnv
 
     cfg = _to_config_dict(_cfg_elbow_random())
     cfg["mjx_impl"] = impl
@@ -89,8 +92,11 @@ def _make_reach_env(impl: str = "jax"):
     """Instantiate ``MjxReachEnv`` (hand) with the given backend *impl*."""
     import jax.numpy as jp
     from ml_collections import config_dict
-    from myosuite.envs.myo.backends.mjx import _cfg_hand_reach_fixed, _to_config_dict
-    from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
+    from myosuite.envs.backends._experimental_mjx import (
+        _cfg_hand_reach_fixed,
+        _to_config_dict,
+    )
+    from myosuite.envs.backends._experimental_mjx.reach_env import MjxReachEnv
 
     cfg = _to_config_dict(_cfg_hand_reach_fixed())
     cfg["mjx_impl"] = impl
@@ -119,7 +125,7 @@ class TestTargetResolution:
 
     def test_finger_pose_fixed_targets_the_right_joints(self):
         """CPU myoFingerPoseFixed-v0: IFadb, IFmcp = 0 and IFpip, IFdip = 0.75."""
-        from myosuite.envs.myo.backends.mjx import make
+        from myosuite.envs.backends._experimental_mjx import make
 
         env = make("MjxFingerPoseFixed-v0")
         target = env.sample_task(jax.random.PRNGKey(0))["target_angles"]
@@ -130,7 +136,7 @@ class TestTargetResolution:
     )
     def test_pose_targets_independent_per_joint(self, env_name):
         """One key used to drive every joint (correlation 1.0)."""
-        from myosuite.envs.myo.backends.mjx import make
+        from myosuite.envs.backends._experimental_mjx import make
 
         env = make(env_name)
         keys = jax.random.split(jax.random.PRNGKey(0), 2000)
@@ -141,7 +147,7 @@ class TestTargetResolution:
 
     def test_hand_reach_tracks_five_distinct_tips_in_cpu_order(self):
         """Unsuffixed names used to resolve to id -1, i.e. LFtip_r five times."""
-        from myosuite.envs.myo.backends.mjx import make
+        from myosuite.envs.backends._experimental_mjx import make
 
         env = make("MjxHandReachRandom-v0")
         names = [env.mj_model.site(int(i)).name for i in np.asarray(env._tip_sids)]
@@ -154,11 +160,11 @@ class TestTargetResolution:
 
     def test_unknown_site_name_raises(self):
         from ml_collections import config_dict
-        from myosuite.envs.myo.backends.mjx import (
+        from myosuite.envs.backends._experimental_mjx import (
             _cfg_hand_reach_fixed,
             _to_config_dict,
         )
-        from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
+        from myosuite.envs.backends._experimental_mjx.reach_env import MjxReachEnv
 
         cfg = _to_config_dict(_cfg_hand_reach_fixed())
         cfg["target_reach_range"] = config_dict.create(
@@ -168,7 +174,7 @@ class TestTargetResolution:
             MjxReachEnv(config=cfg)
 
     def test_env_creation_warns_experimental(self):
-        from myosuite.envs.myo.backends.mjx import mjx_env_base
+        from myosuite.envs.backends._experimental_mjx import mjx_env_base
 
         mjx_env_base._warn_experimental_once.cache_clear()
         with pytest.warns(UserWarning, match="experimental"):
@@ -185,7 +191,7 @@ class TestReachMatchesCpu:
 
     def test_far_check_first_active_at_cpu_control_step(self):
         """The check used 2 physics steps (4 ms), so it ended episodes at step 1."""
-        from myosuite.envs.myo.backends.mjx import make
+        from myosuite.envs.backends._experimental_mjx import make
 
         env = make("MjxFingerReachRandom-v0")
         state = jax.jit(env.reset)(jax.random.PRNGKey(0))
@@ -211,7 +217,7 @@ class TestReachMatchesCpu:
 
     def test_finger_reach_reads_cpu_registration(self):
         """far_th was hard-coded to 0.10 (CPU: ReachEnvV0 default 0.35)."""
-        from myosuite.envs.myo.backends.mjx import get_default_config
+        from myosuite.envs.backends._experimental_mjx import get_default_config
 
         cfg = get_default_config("MjxFingerReachRandom-v0")
         cpu = make_env("myoFingerReachRandom-v0").unwrapped
@@ -220,7 +226,7 @@ class TestReachMatchesCpu:
 
     def test_finger_reach_samples_the_cpu_workspace_table(self):
         """Targets were drawn uniformly in the box, partly out of reach."""
-        from myosuite.envs.myo.backends.mjx import make
+        from myosuite.envs.backends._experimental_mjx import make
 
         env = make("MjxFingerReachRandom-v0")
         table = make_env("myoFingerReachRandom-v0").unwrapped._workspace_points
@@ -233,7 +239,7 @@ class TestReachMatchesCpu:
         assert len(np.unique(targets.reshape(len(keys), -1), axis=0)) > 150
 
     def test_unknown_target_sampling_raises(self):
-        from myosuite.envs.myo.backends.mjx import make
+        from myosuite.envs.backends._experimental_mjx import make
 
         with pytest.raises(ValueError, match="target_sampling"):
             make("MjxFingerReachRandom-v0", {"target_sampling": "grid"})
@@ -284,7 +290,7 @@ class TestCylinderContactGuard:
 
     def test_preprocess_spec_impl_none_disables_cylinder_contacts(self):
         """_preprocess_spec(impl=None) must disable cylinders like impl='jax'."""
-        from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
+        from myosuite.envs.backends._experimental_mjx.pose_env import MjxPoseEnv
 
         spec = mujoco.MjSpec.from_file(ELBOW_MODEL)
         n_cylinders = sum(
@@ -308,7 +314,7 @@ class TestCylinderContactGuard:
 
     def test_preprocess_spec_impl_warp_leaves_cylinders_unchanged(self):
         """_preprocess_spec with impl='warp' should leave cylinder contacts unchanged."""
-        from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
+        from myosuite.envs.backends._experimental_mjx.pose_env import MjxPoseEnv
 
         spec = mujoco.MjSpec.from_file(ELBOW_MODEL)
         orig = {
@@ -327,7 +333,7 @@ class TestCylinderContactGuard:
 
     def test_preprocess_spec_impl_jax_disables_cylinder_contacts(self):
         """_preprocess_spec with impl='jax' should disable all cylinder contacts."""
-        from myosuite.envs.myo.backends.mjx.pose_env import MjxPoseEnv
+        from myosuite.envs.backends._experimental_mjx.pose_env import MjxPoseEnv
 
         spec = mujoco.MjSpec.from_file(ELBOW_MODEL)
         n_cylinders = sum(
@@ -351,7 +357,7 @@ class TestCylinderContactGuard:
 
     def test_reach_preprocess_spec_impl_none_disables_cylinders(self):
         """MjxReachEnv._preprocess_spec(impl=None) matches JAX cylinder policy."""
-        from myosuite.envs.myo.backends.mjx.reach_env import MjxReachEnv
+        from myosuite.envs.backends._experimental_mjx.reach_env import MjxReachEnv
 
         spec = mujoco.MjSpec.from_file(ELBOW_MODEL)
         n_cylinders = sum(
@@ -401,7 +407,7 @@ class TestEllipsoidContactGuard:
 
     def test_preprocess_disables_ellipsoids_for_impl_none(self):
         """Shared preprocessor clears ellipsoid contacts for JAX/XLA."""
-        from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import (
+        from myosuite.envs.backends._experimental_mjx.mjx_spec_preprocess import (
             preprocess_mjx_spec,
         )
 
@@ -426,7 +432,7 @@ class TestEllipsoidContactGuard:
 
     def test_preprocess_warp_leaves_ellipsoids_unchanged(self):
         """Warp backend keeps ellipsoid contact masks."""
-        from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import (
+        from myosuite.envs.backends._experimental_mjx.mjx_spec_preprocess import (
             preprocess_mjx_spec,
         )
 
@@ -449,8 +455,11 @@ class TestEllipsoidContactGuard:
 
     def test_mjx_leg_walk_compiles_and_clears_ellipsoid_contacts(self):
         """MjxLegWalk loads myolegs.xml and clears ellipsoid contacts for JAX/XLA."""
-        from myosuite.envs.myo.backends.mjx import _cfg_leg_walk, _to_config_dict
-        from myosuite.envs.myo.backends.mjx.walk_env import MjxWalkEnv
+        from myosuite.envs.backends._experimental_mjx import (
+            _cfg_leg_walk,
+            _to_config_dict,
+        )
+        from myosuite.envs.backends._experimental_mjx.walk_env import MjxWalkEnv
 
         cfg = _to_config_dict(_cfg_leg_walk())
         env = MjxWalkEnv(cfg)
@@ -514,7 +523,7 @@ class TestNormActionsFlag:
 
     def test_default_configs_have_norm_actions_true(self):
         """All default configs should include norm_actions=True."""
-        from myosuite.envs.myo.backends.mjx import (
+        from myosuite.envs.backends._experimental_mjx import (
             _cfg_elbow_random,
             _cfg_hand_reach_fixed,
             _cfg_leg_walk,
@@ -541,7 +550,9 @@ class TestMjxCumulativeFatigue:
 
     @pytest.fixture(autouse=True)
     def setup(self):
-        from myosuite.envs.myo.backends.mjx.fatigue_jax import CumulativeFatigue
+        from myosuite.envs.backends._experimental_mjx.fatigue_jax import (
+            CumulativeFatigue,
+        )
 
         self.model = mujoco.MjModel.from_xml_path(FINGER_MODEL)
         self.frame_skip = 5
@@ -668,7 +679,9 @@ class TestMjxCumulativeFatigue:
 
     def test_set_coefficients(self):
         """Setters update the stored JAX scalars."""
-        from myosuite.envs.myo.backends.mjx.fatigue_jax import CumulativeFatigue
+        from myosuite.envs.backends._experimental_mjx.fatigue_jax import (
+            CumulativeFatigue,
+        )
 
         f = CumulativeFatigue(self.model, frame_skip=1)
         f.set_FatigueCoefficient(0.05)
@@ -689,7 +702,7 @@ class TestFatigueWrapper:
 
     @pytest.fixture(autouse=True)
     def setup(self):
-        from myosuite.envs.myo.backends.mjx.fatigue_jax import (
+        from myosuite.envs.backends._experimental_mjx.fatigue_jax import (
             FatigueWrapper,
             ALLOWED_FATIGUE_OBS_KEYS,
         )
@@ -700,7 +713,7 @@ class TestFatigueWrapper:
     def test_skim_config_extracts_fatigue_keys(self):
         """skim_config separates fatigue_config from main config."""
         from ml_collections import config_dict
-        from myosuite.envs.myo.backends.mjx.fatigue_jax import FatigueWrapper
+        from myosuite.envs.backends._experimental_mjx.fatigue_jax import FatigueWrapper
 
         cfg = config_dict.create(
             norm_actions=True,
@@ -717,7 +730,7 @@ class TestFatigueWrapper:
     def test_skim_config_applies_overrides(self):
         """skim_config applies fatigue-key config_overrides to fatigue_config."""
         from ml_collections import config_dict
-        from myosuite.envs.myo.backends.mjx.fatigue_jax import FatigueWrapper
+        from myosuite.envs.backends._experimental_mjx.fatigue_jax import FatigueWrapper
 
         cfg = config_dict.create(norm_actions=True)
         overrides = {"fatigue_reset_random": True}
@@ -837,7 +850,9 @@ class TestFatigueWrapper:
 
     def test_cumulative_fatigue_matches_mjx_import(self):
         """CumulativeFatigue from mjx/fatigue_jax must be the new dict-based version."""
-        from myosuite.envs.myo.backends.mjx.fatigue_jax import CumulativeFatigue
+        from myosuite.envs.backends._experimental_mjx.fatigue_jax import (
+            CumulativeFatigue,
+        )
 
         model = mujoco.MjModel.from_xml_path(FINGER_MODEL)
         f = CumulativeFatigue(model, frame_skip=1)

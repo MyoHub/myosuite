@@ -11,7 +11,7 @@ import pytest
 pytestmark = pytest.mark.tier1
 torch = pytest.importorskip("torch")
 
-from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (  # noqa: E402
+from myosuite.envs.backends.mjlab.mimic_mjlab_env import (  # noqa: E402
     _mimic_obs_qpos,
     _mimic_obs_qvel,
 )

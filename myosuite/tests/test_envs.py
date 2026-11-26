@@ -26,7 +26,7 @@ class TestEnvs(unittest.TestCase):
         print("\n=================================", flush=True)
         print("Testing module:: ", module_name)
         assert env_names, f"{module_name}: no envs to test"
-        from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
+        from myosuite.envs.tasks.mimic.tracking import MissingMotionData
 
         for env_name in env_names:
             if is_multi_agent_env_spec(gym.registry[env_name]):

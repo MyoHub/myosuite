@@ -2,29 +2,15 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Reach-task observation terms."""
+"""Backward-compatible alias for :mod:`myosuite.envs.backends.mjlab.tasks.reach.mdp.observations`."""
 
-from __future__ import annotations
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from typing import TYPE_CHECKING
+if _TYPE_CHECKING:
+    from myosuite.envs.backends.mjlab.tasks.reach.mdp.observations import *  # noqa: F403
 
-import torch
-from mjlab.managers.scene_entity_config import SceneEntityCfg
-
-from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-
-if TYPE_CHECKING:
-    from mjlab.envs import ManagerBasedRlEnv
-
-
-def tip_pos(env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """CPU ``obs["tip_pos"]``: flattened tip-site positions (``asset_cfg.site_ids``)."""
-    tips = MjlabEntityAccessor(env, asset_cfg.name).site_xpos(asset_cfg.site_ids)
-    return tips.reshape(env.num_envs, -1)
-
-
-def reach_err(
-    env: ManagerBasedRlEnv, command_name: str, asset_cfg: SceneEntityCfg
-) -> torch.Tensor:
-    """CPU ``obs["reach_err"]``: target positions minus tip positions."""
-    return env.command_manager.get_command(command_name) - tip_pos(env, asset_cfg)
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.backends.mjlab.tasks.reach.mdp.observations"
+)

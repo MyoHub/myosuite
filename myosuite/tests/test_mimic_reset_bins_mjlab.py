@@ -22,7 +22,7 @@ def test_mjlab_draws_have_a_successor(tmp_path: Path, method: str) -> None:
     """Execute the actual tensor samplers on CPU, with all bins equiprobable."""
     pytest.importorskip("mjlab")
     torch = pytest.importorskip("torch")
-    from myosuite.envs.myo.backends.mjlab.tasks.mimic_tracking.commands import (
+    from myosuite.envs.tasks.mimic.mjlab_commands import (
         MotionCommand,
     )
 

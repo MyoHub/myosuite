@@ -21,7 +21,7 @@ import gymnasium as gym
 import myosuite
 from myosuite.benchmarks.env_check import check_single_env, is_multi_agent_env_spec
 from myosuite.core.hf_io import is_gated_or_transient_hf_error
-from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
+from myosuite.envs.tasks.mimic.tracking import MissingMotionData
 
 
 def verify_single_env(env_id: str, *, seed: int = 1234, steps: int = 3) -> None:

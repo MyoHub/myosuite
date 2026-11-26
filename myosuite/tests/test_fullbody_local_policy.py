@@ -796,10 +796,10 @@ def test_orbax_mjlab_policy_clip_frames_follow_episode_steps() -> None:
     import mujoco
     import torch
 
-    from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
+    from myosuite.envs.backends.mjlab.clip_trajectory_source import (
         ClipTrajectorySource,
     )
-    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+    from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
         _mimic_cache_key,
         _mimic_mjlab_cache,
     )

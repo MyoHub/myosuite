@@ -109,7 +109,7 @@ _OBS_SHAPE_DELTA: dict[str, int] = {
     # coupling DOFs (e.g. "knee_angle_l_beta_rotation1") that
     # SoccerEnv.MYO_JOINTS filters out at runtime -- see the comment next to
     # "self.MYO_JOINTS = [j for j in self.MYO_JOINTS if j in _model_joints]"
-    # in SoccerEnv.__init__ (myosuite/envs/myo/tasks/challenge/soccer.py).
+    # in SoccerEnv.__init__ (myosuite/envs/tasks/games/soccer/env.py).
     "myoChallengeSoccerP1-v0": -3,
     "myoChallengeSoccerP2-v0": -3,
 }

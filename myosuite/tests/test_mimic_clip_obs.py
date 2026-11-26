@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from myosuite.envs.myo.tasks.mimic.clip_env import MuscleMimicClipEnvV0
+from myosuite.envs.tasks.mimic.clip_env import MuscleMimicClipEnvV0
 from myosuite.tests.test_mimic_clip_episode import _write_standing_clip
 
 pytestmark = pytest.mark.tier1

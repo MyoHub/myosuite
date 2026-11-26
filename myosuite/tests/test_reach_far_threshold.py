@@ -14,16 +14,18 @@ import pytest
 import myosuite  # noqa: F401
 from myosuite import make_env
 
-_REACH_EP = "tasks.basic.arm.reach:ReachEnvV0"
+_REACH_EP = "myosuite.envs.tasks.arm.reach.env:ReachEnvV0"
 _N_SEEDS = 20
 
 
 def _reach_ids() -> list[str]:
-    return sorted(
+    ids = sorted(
         env_id
         for env_id, spec in gym.registry.items()
-        if str(spec.entry_point).endswith(_REACH_EP)
+        if str(spec.entry_point) == _REACH_EP
     )
+    assert ids, f"No registered envs matched {_REACH_EP}"
+    return ids
 
 
 def _farthest_target(u: gym.Env, tip: np.ndarray) -> float:
@@ -71,7 +73,7 @@ def test_mjlab_twin_resets_within_far_threshold(env_id: str) -> None:
     from mjlab.envs import ManagerBasedRlEnv
     from mjlab.tasks.registry import load_env_cfg
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401 (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401 (registers the twins)
 
     far_th = gym.spec(env_id).kwargs["far_th"]
     cfg = load_env_cfg(env_id)

@@ -1,21 +1,14 @@
-"""Shared MDP terms for MyoSuite mjlab tasks (mirrors ``mjlab.tasks.*.mdp``)."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible package facade for :mod:`myosuite.envs.backends.mjlab.tasks.mdp`."""
 
-from mjlab.envs.mdp import *  # noqa: F401, F403
+import importlib as _importlib
 
-from .actions import MyoAction, MyoActionCfg  # noqa: F401
-from .commands import (  # noqa: F401
-    HeadingCommand,
-    HeadingCommandCfg,
-    UniformVectorCommand,
-    UniformVectorCommandCfg,
-    site_position_command_cfg,
+_target = _importlib.import_module("myosuite.envs.backends.mjlab.tasks.mdp")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
 )
-from .events import (  # noqa: F401
-    randomize_carry_weight,
-    reset_joints_uniform_in_range,
-    reset_to_cpu_state,
-    torch_joint_couplings,
-    write_cpu_state,
-)
-from .observations import act, qpos, qpos_chains, qvel, qvel_chains  # noqa: F401
-from .terminations import SYNC_TERM, sync_forward  # noqa: F401
+__getattr__ = _target.__getattribute__
+del _importlib, _target

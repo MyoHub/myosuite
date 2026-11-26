@@ -50,6 +50,16 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **`myosuite.envs` flattened with anatomical/functional task co-location (`envs/tasks/<domain>/<family>/`) ([#939]).**
+  Replaced the `myosuite/envs/myo/{tasks,backends,myoedits,assets}/` nesting with `myosuite/envs/tasks/<domain>/<family>/`
+  (`arm/`, `hand/`, `leg/`, `torso/`, `fullbody/`, `games/`, `mimic/`, plus `suites/{basic,challenge,edits}.py`),
+  co-locating each task's CPU environment, `TaskConfig` spec, and `mjlab` twin configuration/registration alongside shared
+  backend infrastructure in `myosuite/envs/backends/{mjlab,_experimental_mjx}/` and task-scene assets in `myosuite/envs/assets/`.
+  Closed `myosuite/envs/myo/**` as a backward-compatible facade (`sys.modules`-identical leaf module aliases, package
+  re-exports, `python -m` CLI forwarding, `importlib.resources.files("myosuite.envs.myo.assets")`, and
+  `resolve_model_xml_path` rewrites for legacy `envs/myo/assets/...` XML paths; direct filesystem/string paths to non-XML
+  assets such as `.png`/`.npy`/`.csv` or raw `MjModel.from_xml_path` calls bypassing `resolve_model_xml_path` now live under
+  `myosuite/envs/assets/`).
 * **Runtime policy inference (`myosuite.policies`) separated from evaluation suites (`myosuite.benchmarks`) ([#938]).**
   Moved reusable checkpoint/ONNX/Orbax loaders (`onnx_checkpoint`, `onnxruntime_utils`, `orbax_checkpoint`, `rslrl_policy`,
   `checkpoint_utils`), `export_onnx`, `checkpoint_manifest`, `deployment_manifest`, and `action_map` into `myosuite/policies/`
@@ -451,6 +461,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#936]: https://github.com/MyoHub/myosuite/pull/936
 [#937]: https://github.com/MyoHub/myosuite/pull/937
 [#938]: https://github.com/MyoHub/myosuite/pull/938
+[#939]: https://github.com/MyoHub/myosuite/pull/939
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.

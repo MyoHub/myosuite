@@ -42,19 +42,26 @@ def _load_myo_sim_registry() -> Any:
 def _discover_task_configs() -> Iterator[tuple[str, dict[str, int]]]:
     """Yield (class_name, fragment_versions) for every TaskConfig subclass.
 
-    Imports every module under myosuite.envs.myo.tasks.basic and yields each
+    Imports every CPU task module under ``myosuite.envs.tasks`` and yields each
     TaskConfig subclass found there once, including those that declare no
     versions (an empty dict). A module that fails to import raises, so its
     declarations cannot be skipped silently.
     """
-    import myosuite.envs.myo.tasks.basic as myobase_pkg
+    import myosuite.envs.tasks as tasks_pkg
     from myosuite.core.config import TaskConfig
 
     seen: set[type] = set()
-    for _finder, modname, _ispkg in pkgutil.walk_packages(
-        path=myobase_pkg.__path__,
-        prefix=myobase_pkg.__name__ + ".",
+    for _finder, modname, ispkg in pkgutil.walk_packages(
+        path=tasks_pkg.__path__,
+        prefix=tasks_pkg.__name__ + ".",
     ):
+        leaf = modname.rsplit(".", 1)[-1]
+        if (
+            "mjlab" in leaf
+            or leaf in {"mdp", "terrain", "policy", "rl_cfg"}
+            or leaf.endswith(("_rl_cfg", "_mdp"))
+        ):
+            continue
         mod = importlib.import_module(modname)
         for _name, obj in inspect.getmembers(mod, inspect.isclass):
             if obj in seen or obj is TaskConfig or not issubclass(obj, TaskConfig):
@@ -77,7 +84,7 @@ def main() -> int:
     if not configs:
         print(
             "Fragment version check FAILED: no TaskConfig subclass found under "
-            "myosuite.envs.myo.tasks.basic, so the scan checked nothing.",
+            "myosuite.envs.tasks, so the scan checked nothing.",
             file=sys.stderr,
         )
         return 1

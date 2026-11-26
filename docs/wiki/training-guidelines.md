@@ -52,10 +52,10 @@ Every new method under `training/<method>/` includes a benchmark against PPO on 
 
 | Task | Registered environment | Definition |
 |---|---|---|
-| Elbow random reaching (random target joint angle) | `myoElbowPose1D6MRandom-v0` | [Basic task registration](../../myosuite/envs/myo/tasks/basic/__init__.py) |
-| Single-arm MyoChallenge pick and place | `myoChallengeRelocateP1-v0` | [Challenge task registration](../../myosuite/envs/myo/tasks/challenge/__init__.py) |
-| Fullbody random directional locomotion | `myoFullBodyDirectional-v0` | [Directional task](../../myosuite/envs/myo/tasks/mimic/cpu.py) |
-| Fullbody motion mimic | `myoMimic-v0` (default `myofullbody` model and `supermimic` preset) | [Mimic task registration](../../myosuite/envs/myo/tasks/mimic/__init__.py) |
+| Elbow random reaching (random target joint angle) | `myoElbowPose1D6MRandom-v0` | [Basic task registration](../../myosuite/envs/tasks/suites/basic.py) |
+| Single-arm MyoChallenge pick and place | `myoChallengeRelocateP1-v0` | [Challenge task registration](../../myosuite/envs/tasks/suites/challenge.py) |
+| Fullbody random directional locomotion | `myoFullBodyDirectional-v0` | [Directional task](../../myosuite/envs/tasks/mimic/cpu.py) |
+| Fullbody motion mimic | `myoMimic-v0` (default `myofullbody` model and `supermimic` preset) | [Mimic task registration](../../myosuite/envs/tasks/mimic/__init__.py) |
 
 Use the registered defaults, including randomized targets/headings and the motion distribution. `myoMimicFullbody-v0` is random-target site tracking, not a substitute for motion mimic. Any task or backend exception requires explicit human approval linked in the PR and an explanation in the method's README; missing results must not be presented as benchmark completion.
 
@@ -73,7 +73,7 @@ Put the table and curves in the method's README. Pin the checkpoints and evaluat
 Keep in `myosuite/`:
 
 - environments and tasks
-- default per-task runner configurations registered with their environments through `register_cpu_twins` / `register_mjlab_task` (for example, `myo_ppo_runner_cfg` in `myosuite/envs/myo/backends/mjlab/tasks/rl.py`)
+- default per-task runner configurations registered with their environments through `register_cpu_twins` / `register_mjlab_task` (for example, `myo_ppo_runner_cfg` in `myosuite/envs/backends/mjlab/tasks/rl.py`)
 - observation, reward, and termination contracts
 - simulation/backend functionality
 - reusable biomechanical/runtime functionality

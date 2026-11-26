@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
-from myosuite.envs.myo.tasks.challenge.tabletennis import PingpongContactLabels
+from myosuite.envs.tasks.games.tabletennis.env import PingpongContactLabels
 
 pytestmark = pytest.mark.tier1
 

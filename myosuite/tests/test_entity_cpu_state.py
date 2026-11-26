@@ -9,7 +9,7 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("mjlab")
 
 from myosuite import make_env  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import write_cpu_state  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.mdp.events import write_cpu_state  # noqa: E402
 
 
 @pytest.mark.parametrize(

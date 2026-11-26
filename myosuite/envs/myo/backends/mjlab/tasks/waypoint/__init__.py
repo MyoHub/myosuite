@@ -1,24 +1,32 @@
-"""Waypoint tasks; importing registers the mjlab twins of the CPU waypoint envs."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible package facade for :mod:`myosuite.envs.tasks.fullbody.waypoint.mjlab_register`."""
 
-from mjlab.rl import RslRlOnPolicyRunnerCfg
+from __future__ import annotations
 
-from myosuite.envs.myo.backends.mjlab.tasks.registration import register_cpu_twins
-from myosuite.envs.myo.backends.mjlab.tasks.rl import myo_ppo_runner_cfg
+import importlib as _importlib
+from typing import Any
 
-from .env_cfg import make_waypoint_env_cfg
+_target = _importlib.import_module(
+    "myosuite.envs.tasks.fullbody.waypoint.mjlab_register"
+)
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
+)
 
-WAYPOINT_IDS = ("myoFullBodyWaypoint-v0",)
+_CHILD_SUBMODULES = frozenset(
+    {
+        "env_cfg",
+        "mdp",
+    }
+)
 
 
-def waypoint_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO config for the full-body waypoint task (354 muscles, 1500-step episodes)."""
-    return myo_ppo_runner_cfg(
-        "myo_fullbody_waypoint",
-        hidden_dims=(512, 256, 256),
-        critic_hidden_dims=(512, 256, 256),
-        gamma=0.99,
-        num_steps_per_env=48,
-    )
-
-
-register_cpu_twins(WAYPOINT_IDS, make_waypoint_env_cfg, waypoint_ppo_runner_cfg)
+def __getattr__(name: str) -> Any:
+    if name in _CHILD_SUBMODULES:
+        mod = _importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = mod
+        return mod
+    return getattr(_target, name)

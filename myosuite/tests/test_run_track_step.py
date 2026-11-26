@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 import myosuite  # noqa: F401  (registers the envs)
-from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
+from myosuite.envs.assets.leg.myoosl_control import MyoOSLController
 from myosuite.utils import gym
 from myosuite import make_env
 

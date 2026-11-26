@@ -84,7 +84,7 @@ def main():
 
     from dataclasses import replace
 
-    from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID as ENV_ID
+    from myosuite.envs.tasks.mimic.tracking import MIMIC_ENV_ID as ENV_ID
     from supermimic.env import TIMESTEP
     from supermimic.collector import STATS
     from supermimic.config import fast_runner_cfg

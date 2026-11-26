@@ -34,7 +34,7 @@ evaluated on imagined states, myo_sim's body and its joint couplings, the action
 
 | | |
 |---|---|
-| MyoSuite task (`myosuite/envs/myo/tasks/mimic/tracking/`, twin in `backends/mjlab/tasks/mimic_tracking/`) | motion library, reset sampling, presets, metrics; its observation / reward / failure terms are pure functions in `myosuite/core/terms/mimic_track.py` |
+| MyoSuite task (`myosuite/envs/tasks/mimic/tracking/`, twin in `myosuite/envs/tasks/mimic/mjlab_*.py`) | motion library, reset sampling, presets, metrics; its observation / reward / failure terms are pure functions in `myosuite/core/terms/mimic_track.py` |
 | this project (`supermimic/`) | differentiable kinematics, muscle geometry and activation dynamics (`kinematics.py`, `muscle_geometry.py`, `activation.py`), the task's terms on its states (`heads.py`, `task.py`), mirror augmentation, world model, replay buffer, optimizers, collection, runner, evaluation, refinement, fine-tuning |
 
 Each term of the task's env cfg carries its pure function (`func.pure`). The runner builds the task's `TrackState`

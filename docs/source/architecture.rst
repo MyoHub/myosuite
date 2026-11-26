@@ -33,7 +33,7 @@ CPU
 * ``step()`` returns ``(obs, reward, terminated, truncated, info)``
 * ``info["obs_dict"]`` / ``info["rwd_dict"]`` hold the named breakdowns
 
-Canonical example: ``myosuite/envs/myo/tasks/basic/arm/reach.py``.
+Canonical example: ``myosuite/envs/tasks/arm/reach/env.py``.
 
 Muscle-condition variants (``myoSarc…``, ``myoFati…``, hand ``myoReaf…``) are
 auto-registered for ``myo*`` CPU IDs.
@@ -44,7 +44,7 @@ mjlab
 
 Install ``pip install -e ".[mjlab]"`` (see :doc:`install` for matching the torch
 build to your driver's CUDA version). Tasks are discovered through the
-``mjlab.tasks`` entry point (``myosuite.envs.myo.backends.mjlab``).
+``mjlab.tasks`` entry point (``myosuite.envs.backends.mjlab.bootstrap``).
 Train with ``python scripts/train_mjlab.py <env_id> --env.scene.num-envs 1024``.
 
 

@@ -26,7 +26,7 @@ pytest.importorskip("huggingface_hub", reason="huggingface_hub required")
 def directional_env():
     from huggingface_hub.errors import HfHubHTTPError
 
-    from myosuite.envs.myo.tasks.mimic.cpu import MuscleMimicFullbodyDirectionalEnv
+    from myosuite.envs.tasks.mimic.cpu import MuscleMimicFullbodyDirectionalEnv
 
     try:
         env = MuscleMimicFullbodyDirectionalEnv(seed=0)

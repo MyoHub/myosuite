@@ -31,7 +31,7 @@ pytestmark = pytest.mark.tier2
 
 
 def _make_env(task_id: str, num_envs: int = 2) -> ManagerBasedRlEnv:
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cfg = load_env_cfg(task_id)
     cfg.scene.num_envs = num_envs
@@ -79,7 +79,7 @@ def test_walk_reward_dict_is_evaluated_once_per_step(
     walk_env: ManagerBasedRlEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The reward terms, the done term and the metric share one evaluation."""
-    from myosuite.envs.myo.backends.mjlab.tasks.leg import walk_mdp
+    from myosuite.envs.tasks.leg.walk import walk_mdp
 
     calls: list[int] = []
     real = walk_mdp.walk_components
@@ -99,7 +99,7 @@ def test_walk_terms_read_a_fresh_evaluation(
     walk_env: ManagerBasedRlEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Every read of the shared reward dict equals an evaluation at that moment."""
-    from myosuite.envs.myo.backends.mjlab.tasks.leg import walk_mdp
+    from myosuite.envs.tasks.leg.walk import walk_mdp
 
     done = walk_env.termination_manager.get_term_cfg(walk_mdp.FALLEN_TERM).func
     real = type(done).components

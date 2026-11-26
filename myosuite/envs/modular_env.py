@@ -468,7 +468,7 @@ class ModularTaskEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             # standing/walking host model -- it collapses instantly under
             # gravity. Load keyframe 0, which every bundled host XML ships
             # as a real standing/crouched pose (see e.g.
-            # myosuite/envs/myo/assets/leg/myolegs_with_torso.xml's
+            # myosuite/envs/assets/leg/myolegs_with_torso.xml's
             # <keyframe> block), so reset_task()'s goal/heading sampling
             # below starts from a physically valid pose instead of the
             # all-zero default.

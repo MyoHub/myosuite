@@ -61,23 +61,13 @@ if "autoapi.extension" in extensions:
     # Limit to core/ (which includes core/terms/ and core/builder/) to avoid duplicating manual api/*.rst pages.
     autoapi_dirs = [
         os.path.join(_repo_root, "myosuite", "core"),
-        os.path.join(_repo_root, "myosuite", "terms"),
     ]
     autoapi_ignore = [
-        "*terms/base_action.py",
-        "*myosuite/terms/_array.py",
-        "*myosuite/terms/base_*.py",
-        "*myosuite/terms/mimic_*.py",
-        "*myosuite/terms/opponent_relative_obs.py",
-        "*myosuite/terms/catalog.py",
-        "*myosuite/terms/waypoint.py",
-        "*myosuite/terms/multiplayer/common.py",
-        "*myosuite/terms/multiplayer/heading.py",
         "*myosuite/core/hf_dataset_cache.py",
         "*myosuite/core/playback_contract.py",
         "*myosuite/core/retargeting.py",
-        "*myosuite/core/trajectory_io.py",
         "*myosuite/core/tensor_utils.py",
+        "*myosuite/core/trajectory_io.py",
         "*myosuite/core/trajectory_yaw.py",
     ]
     autoapi_type = "python"
@@ -99,8 +89,7 @@ def setup(app):
                 source[0] = source[0].replace(
                     ".. toctree::\n   :titlesonly:\n",
                     ".. toctree::\n   :titlesonly:\n\n"
-                    "   /autoapi/myosuite/core/index\n"
-                    "   /autoapi/myosuite/terms/index\n",
+                    "   /autoapi/myosuite/core/index\n",
                 )
 
         app.connect("source-read", _populate_autoapi_root_toctree)

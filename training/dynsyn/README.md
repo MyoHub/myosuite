@@ -35,7 +35,7 @@ there.
   of the task's muscle term; the rest of the task is unchanged.
 - MyoSuite holds the playback side: `myosuite.policies.action_map` (the `DynSyn` map, the CPU
   wrapper, checkpoint reading) and the mjlab action term
-  `myosuite/envs/myo/backends/mjlab/tasks/mdp/action_map.py`. A DynSyn checkpoint plays with
+  `myosuite/envs/backends/mjlab/tasks/mdp/action_map.py`. A DynSyn checkpoint plays with
   `scripts/eval_mjlab_policy.py` without this package.
 
 ## Install

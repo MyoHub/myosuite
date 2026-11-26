@@ -72,7 +72,7 @@ class TrainConfig:
     def from_task(task_id: str, features=()) -> "TrainConfig":
         """The task's default config; *features* (wrapper specs) rebuild the twin with them."""
         if features:
-            from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+            from myosuite.envs.backends.mjlab.tasks.registration import (
                 rebuild_twin_cfg,
             )
 
@@ -207,7 +207,7 @@ def stop_on_success(
 
 def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     # Multi-GPU workers run this in fresh processes that skip main().
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
 
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if cuda_visible == "":
@@ -436,7 +436,7 @@ def main():
     # Import tasks to populate the registry.
     import mjlab.tasks  # noqa: F401
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
 
     all_tasks = list_tasks()
     chosen_task, remaining_args = tyro.cli(

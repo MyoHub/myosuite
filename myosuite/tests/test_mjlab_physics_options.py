@@ -30,7 +30,7 @@ from mjlab.tasks.registry import list_tasks, load_env_cfg  # noqa: E402
 
 import myosuite  # noqa: E402, F401
 from myosuite.core.config import TaskConfig  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.cpu_reference import (  # noqa: E402
     mujoco_cfg_from_model,
 )
 from myosuite import make_env  # noqa: E402
@@ -79,7 +79,7 @@ def _mimic_cfgs() -> dict[str, tuple[Any, Any]]:
     """Mimic twins (registered on demand, so absent from the default registry)."""
     if importlib.util.find_spec("musclemimic_models") is None:
         return {}
-    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab.mimic_mjlab_env import (  # noqa: PLC0415
         register_mimic_mjlab_tasks,
     )
 
@@ -95,7 +95,7 @@ def _mimic_cfgs() -> dict[str, tuple[Any, Any]]:
 
 def test_every_twin_uses_cpu_physics_options() -> None:
     """Each id registered on both backends simulates with the CPU ``model.opt``."""
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cfgs = {
         env_id: (load_env_cfg(env_id), load_env_cfg(env_id, play=True))
@@ -128,7 +128,7 @@ def test_every_twin_uses_cpu_physics_options() -> None:
 
 def test_scene_options_come_only_from_mujoco_cfg() -> None:
     """The compiled scene ignores entity ``<option>``s (what ``_applied_opt`` assumes)."""
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cfg = load_env_cfg("myoChallengeTableTennisP0-v0")
     model = Scene(cfg.scene, device="cpu").compile()
@@ -142,7 +142,7 @@ def test_sar_mimic_cfgs_use_cpu_physics_options(variant: str) -> None:
     pytest.importorskip("musclemimic_models")
     from ml_collections import config_dict  # noqa: PLC0415
 
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mm  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mm  # noqa: PLC0415
     from myosuite.integrations.musclemimic import (  # noqa: PLC0415
         bimanual_model,
         fullbody_model,
@@ -179,7 +179,7 @@ def test_sar_mimic_cfgs_use_cpu_physics_options(variant: str) -> None:
 
 def test_elbow_test_cfg_uses_cpu_physics_options() -> None:
     """The hand-built elbow config used by the builder tests matches CPU too."""
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab.register_mjlab_tasks import (  # noqa: PLC0415
         _make_elbow_env_cfg,
     )
 
@@ -189,10 +189,10 @@ def test_elbow_test_cfg_uses_cpu_physics_options() -> None:
 
 def test_task_builder_default_carries_model_options() -> None:
     """Without ``sim_cfg`` the factory copies the model's ``<option>``."""
-    from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab.mjlab_task_builder import (  # noqa: PLC0415
         mjlab_env_cfg_from_task_config,
     )
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab.register_mjlab_tasks import (  # noqa: PLC0415
         _elbow_spec_fn,
     )
 

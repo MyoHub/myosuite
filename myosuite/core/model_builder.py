@@ -262,7 +262,7 @@ def _resolve_fragment_path(name: str) -> Path:
 
     # myo_sim pip's restructure dropped some monolithic host XMLs (e.g.
     # arm/myoarm.xml, torso/myotorso.xml) in favor of fragment-only assets;
-    # myosuite bundles compatibility copies under envs/myo/assets/<family>/.
+    # myosuite bundles compatibility copies under envs/assets/<family>/.
     _BUNDLED_FALLBACK_RESOLVERS = {
         "shoulder": ("resolve_arm_xml", "myoarm.xml"),
         "arm": ("resolve_arm_xml", "myoarm.xml"),
@@ -270,7 +270,7 @@ def _resolve_fragment_path(name: str) -> Path:
         "leg": ("resolve_leg_xml", "myolegs_with_torso.xml"),
     }
     if name in _BUNDLED_FALLBACK_RESOLVERS:
-        from myosuite.envs.myo.assets import _resolve
+        from myosuite.envs.assets import _resolve
 
         resolver_name, filename = _BUNDLED_FALLBACK_RESOLVERS[name]
         candidate = getattr(_resolve, resolver_name)(filename)

@@ -1,10 +1,16 @@
-"""RL configuration for the torso pose tasks."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.torso.pose.rl_cfg`."""
 
-from mjlab.rl import RslRlOnPolicyRunnerCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.rl import myo_ppo_runner_cfg
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.torso.pose.rl_cfg import *  # noqa: F403
 
-
-def torso_pose_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """PPO config for the torso pose tasks (216 muscles)."""
-    return myo_ppo_runner_cfg("myo_torso_pose")
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.torso.pose.rl_cfg"
+)

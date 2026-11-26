@@ -50,9 +50,9 @@ def _assign_default_tiers(items: list[Any]) -> None:
 # Modules that use the GPU stack (mjlab / MuJoCo Warp) get the ``mjlab`` marker, so
 # CI can run them in their own job: `-m mjlab` and `-m "not mjlab"` split the suite.
 _MJLAB_SOURCE = re.compile(
-    r"^\s*(?:import mjlab|from mjlab|import warp|import mujoco_warp)"
+    r"^\s*(?:import|from)\s+(?:mjlab|warp|mujoco_warp|myosuite\.envs\.(?:myo\.)?backends\.mjlab"
+    r"|myosuite\.envs\.tasks\.[\w.]*(?:\.|\s+import\s+\(?\s*)(?:mjlab[\w]*|register_mjlab|walk_mdp|directional_mdp|mdp)\b)"
     r"|importorskip\(\s*[\"'](?:mjlab|warp|mujoco_warp)[\"']"
-    r"|backends[./]mjlab"
     r"|backend\s*=\s*[\"']mjlab[\"']",
     re.MULTILINE,
 )

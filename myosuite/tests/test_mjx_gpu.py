@@ -82,7 +82,7 @@ def test_mjx_gpu_smoke() -> None:
             "has been run in this environment."
         )
 
-    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+    from myosuite.envs.assets._resolve import resolve_finger_xml
 
     xml_path = resolve_finger_xml("myofinger_v0.xml")
     if not xml_path.exists():

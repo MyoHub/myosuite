@@ -7,7 +7,7 @@
 Three test classes:
 
 ``TestMjlabEnvAccessor``
-    Verifies that :class:`~myosuite.envs.myo.backends.mjlab.mjlab_env_base.MjlabEnvAccessor`
+    Verifies that :class:`~myosuite.envs.backends.mjlab.mjlab_env_base.MjlabEnvAccessor`
     satisfies the :class:`~myosuite.core.protocols.EnvAccessor` protocol and
     returns correctly typed ``torch.Tensor`` values.  Uses a lightweight mock
     data object — no MuJoCo or mjlab installation required.
@@ -144,7 +144,7 @@ class TestMjlabEnvAccessor:
     @pytest.fixture(autouse=True)
     def setup(self) -> None:
         """Build a MjlabEnvAccessor wrapping mock data."""
-        from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
+        from myosuite.envs.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
 
         self.data = _make_mock_data()
         self.model = _make_mock_model()
@@ -234,7 +234,7 @@ class TestTermFunctionsWithTorch:
     @pytest.fixture(autouse=True)
     def setup(self) -> None:
         """Build accessor and task_state for a 1-DOF elbow scenario."""
-        from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
+        from myosuite.envs.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
 
         self.n_envs = 4
         self.nq = 1
@@ -337,7 +337,7 @@ class TestTermFunctionsWithTorch:
 
         data = _make_mock_data(nq=1, na=6, nsite=3, n_envs=2)
         data.qpos = torch.tensor([[0.5], [1.5]], requires_grad=True)
-        from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
+        from myosuite.envs.backends.mjlab.mjlab_env_base import MjlabEnvAccessor
 
         accessor = MjlabEnvAccessor(_make_mock_model(), data, ctrl_dt=0.02)
         result = pose_reward(accessor, {"target_angles": torch.tensor([2.0])})
@@ -357,7 +357,7 @@ def test_clip_trajectory_source_public_frame_indices_matches_offsets() -> None:
     from pathlib import Path
 
     from myosuite.core.trajectory_io import MotionClip
-    from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
+    from myosuite.envs.backends.mjlab.clip_trajectory_source import (
         ClipTrajectorySource,
     )
 
@@ -389,7 +389,7 @@ def test_clip_trajectory_source_public_frame_indices_matches_offsets() -> None:
 )
 def test_myo_muscle_activation_action_direct_mode_clamps_controls() -> None:
     """Direct mode must preserve checkpoint-style [-1, 1] controls."""
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
+    from myosuite.envs.backends.mjlab.register_mjlab_tasks import (
         MyoMuscleActivationActionCfg,
     )
 
@@ -463,7 +463,7 @@ class TestMjlabTaskConfigs:
 
     def test_elbow_pose_cfg_defaults(self) -> None:
         """ElbowPoseCfg must construct with valid numeric defaults."""
-        from myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
+        from myosuite.envs.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
 
         cfg = ElbowPoseCfg()
         assert cfg.sim_dt > 0
@@ -474,14 +474,14 @@ class TestMjlabTaskConfigs:
 
     def test_elbow_pose_cfg_model_exists(self) -> None:
         """ElbowPoseCfg.model_path must point to an existing MJCF file."""
-        from myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
+        from myosuite.envs.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
 
         cfg = ElbowPoseCfg()
         assert cfg.model_path.exists(), f"Model not found: {cfg.model_path}"
 
     def test_hand_reach_cfg_defaults(self) -> None:
         """HandReachCfg must construct with valid numeric defaults."""
-        from myosuite.envs.myo.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
+        from myosuite.envs.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
 
         cfg = HandReachCfg()
         assert cfg.sim_dt > 0
@@ -491,14 +491,14 @@ class TestMjlabTaskConfigs:
 
     def test_hand_reach_cfg_model_exists(self) -> None:
         """HandReachCfg.model_path must point to an existing MJCF file."""
-        from myosuite.envs.myo.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
+        from myosuite.envs.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
 
         cfg = HandReachCfg()
         assert cfg.model_path.exists(), f"Model not found: {cfg.model_path}"
 
     def test_hand_pose_cfg_defaults(self) -> None:
         """HandPoseCfg must construct with valid numeric defaults."""
-        from myosuite.envs.myo.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
+        from myosuite.envs.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
 
         cfg = HandPoseCfg()
         assert cfg.sim_dt > 0
@@ -509,14 +509,14 @@ class TestMjlabTaskConfigs:
 
     def test_hand_pose_cfg_model_exists(self) -> None:
         """HandPoseCfg.model_path must point to an existing MJCF file."""
-        from myosuite.envs.myo.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
+        from myosuite.envs.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
 
         cfg = HandPoseCfg()
         assert cfg.model_path.exists(), f"Model not found: {cfg.model_path}"
 
     def test_finger_pose_cfg_defaults(self) -> None:
         """FingerPoseCfg must construct with valid numeric defaults."""
-        from myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg import (
+        from myosuite.envs.backends.mjlab.configs.finger_pose_cfg import (
             FingerPoseCfg,
         )
 
@@ -529,7 +529,7 @@ class TestMjlabTaskConfigs:
 
     def test_finger_pose_cfg_model_exists(self) -> None:
         """FingerPoseCfg.model_path must point to an existing MJCF file."""
-        from myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg import (
+        from myosuite.envs.backends.mjlab.configs.finger_pose_cfg import (
             FingerPoseCfg,
         )
 
@@ -538,7 +538,7 @@ class TestMjlabTaskConfigs:
 
     def test_finger_reach_cfg_defaults(self) -> None:
         """FingerReachCfg must construct with valid numeric defaults."""
-        from myosuite.envs.myo.backends.mjlab.configs.finger_reach_cfg import (
+        from myosuite.envs.backends.mjlab.configs.finger_reach_cfg import (
             FingerReachCfg,
         )
 
@@ -551,7 +551,7 @@ class TestMjlabTaskConfigs:
 
     def test_finger_reach_cfg_model_exists(self) -> None:
         """FingerReachCfg.model_path must point to an existing MJCF file."""
-        from myosuite.envs.myo.backends.mjlab.configs.finger_reach_cfg import (
+        from myosuite.envs.backends.mjlab.configs.finger_reach_cfg import (
             FingerReachCfg,
         )
 
@@ -560,7 +560,7 @@ class TestMjlabTaskConfigs:
 
     def test_walk_cfg_defaults(self) -> None:
         """WalkCfg must construct with valid numeric defaults."""
-        from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
+        from myosuite.envs.backends.mjlab.configs.walk_cfg import WalkCfg
 
         cfg = WalkCfg()
         assert cfg.target_vel > 0
@@ -570,14 +570,14 @@ class TestMjlabTaskConfigs:
 
     def test_walk_cfg_model_exists(self) -> None:
         """WalkCfg.model_path must point to an existing MJCF file."""
-        from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
+        from myosuite.envs.backends.mjlab.configs.walk_cfg import WalkCfg
 
         cfg = WalkCfg()
         assert cfg.model_path.exists(), f"Model not found: {cfg.model_path}"
 
     def test_baoding_cfg_defaults(self) -> None:
         """BaodingCfg must construct with valid numeric defaults."""
-        from myosuite.envs.myo.backends.mjlab.configs.baoding_cfg import BaodingCfg
+        from myosuite.envs.tasks.hand.baoding.mjlab_cfg import BaodingCfg
 
         cfg = BaodingCfg()
         assert cfg.rotation_speed > 0
@@ -586,31 +586,31 @@ class TestMjlabTaskConfigs:
 
     def test_baoding_cfg_model_exists(self) -> None:
         """BaodingCfg.model_path must point to an existing MJCF file."""
-        from myosuite.envs.myo.backends.mjlab.configs.baoding_cfg import BaodingCfg
+        from myosuite.envs.tasks.hand.baoding.mjlab_cfg import BaodingCfg
 
         cfg = BaodingCfg()
         assert cfg.model_path.exists(), f"Model not found: {cfg.model_path}"
 
     def test_registered_tasks_covers_configs(self) -> None:
         """REGISTERED_TASKS must include at least one entry per config class."""
-        from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
-        from myosuite.envs.myo.backends.mjlab.configs.baoding_cfg import BaodingCfg
-        from myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
-        from myosuite.envs.myo.backends.mjlab.configs.finger_reach_cfg import (
+        from myosuite.envs.backends.mjlab import REGISTERED_TASKS
+        from myosuite.envs.tasks.hand.baoding.mjlab_cfg import BaodingCfg
+        from myosuite.envs.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
+        from myosuite.envs.backends.mjlab.configs.finger_reach_cfg import (
             FingerReachCfg,
         )
-        from myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg import (
+        from myosuite.envs.backends.mjlab.configs.finger_pose_cfg import (
             FingerPoseCfg,
         )
-        from myosuite.envs.myo.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
-        from myosuite.envs.myo.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
-        from myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg import (
+        from myosuite.envs.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
+        from myosuite.envs.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
+        from myosuite.envs.tasks.fullbody.bimanual.mjlab_cfg import (
             MuscleMimicBimanualCfg,
         )
-        from myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg import (
+        from myosuite.envs.tasks.mimic.fullbody_mjlab_cfg import (
             MuscleMimicFullbodyCfg,
         )
-        from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
+        from myosuite.envs.backends.mjlab.configs.walk_cfg import WalkCfg
 
         config_classes = set(REGISTERED_TASKS.values())
         assert ElbowPoseCfg in config_classes
@@ -689,7 +689,7 @@ class TestMjlabIntegration:
         import numpy as np
 
         import myosuite
-        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+        import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
         from myosuite import make_env
 
@@ -741,7 +741,7 @@ class TestMjlabIntegration:
 
     def test_registered_tasks_discoverable(self) -> None:
         """Supported tasks must be discoverable in mjlab task registry."""
-        import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+        import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
         list_tasks = importlib.import_module("mjlab.tasks.registry").list_tasks
 
@@ -914,7 +914,7 @@ def test_bootstrap_myosuite_mjlab_registry_idempotent() -> None:
     """``bootstrap_myosuite_mjlab_registry`` may be called repeatedly."""
     from mjlab.tasks.registry import list_tasks
 
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
+    from myosuite.envs.backends.mjlab.register_mjlab_tasks import (
         bootstrap_myosuite_mjlab_registry,
     )
 

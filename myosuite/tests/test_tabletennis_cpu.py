@@ -15,7 +15,7 @@ import pytest
 import myosuite  # noqa: F401  (registers the envs)
 from myosuite.core.muscle_conditions import _peak_force
 from myosuite.envs.wrappers import ReafferentationWrapper
-from myosuite.envs.myo.tasks.challenge.tabletennis import (
+from myosuite.envs.tasks.games.tabletennis.env import (
     ContactTrajIssue,
     PingpongContactLabels,
     evaluate_pingpong_trajectory,

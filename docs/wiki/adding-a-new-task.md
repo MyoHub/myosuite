@@ -4,7 +4,7 @@ A task has two matched halves under one `env_id`: a **CPU** implementation
 (`MyoGymnasiumEnv`, for playback/fine-tune) and a **GPU** mjlab config
 (`ManagerBasedRlEnvCfg`, for parallel training). **That supported path is
 covered in [engineering-standards.md](engineering-standards.md)** ("CPU and GPU are two matched halves")
-— read it first. For the CPU half you copy `envs/myo/tasks/basic/arm/reach.py`;
+— read it first. For the CPU half you copy `envs/tasks/arm/reach/env.py`;
 for the GPU half you add a mjlab config under the same `env_id`.
 
 > **This page documents a different, experimental option: `TaskConfig` +
@@ -24,7 +24,7 @@ functions, which is what keeps CPU and GPU in parity).
 
 ## `TaskConfig` worked example (experimental, data-driven)
 
-`myosuite/envs/myo/tasks/basic/specs/elbow_pose_spec.py` is the canonical,
+`myosuite/envs/tasks/arm/pose/spec.py` is the canonical,
 fully-working reference — copy its shape, not its specifics:
 
 ```python

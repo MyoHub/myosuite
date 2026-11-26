@@ -43,11 +43,11 @@ import pytest
 import torch
 
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.envs.myo.backends.mjlab.clip_trajectory_source import (
+from myosuite.envs.backends.mjlab.clip_trajectory_source import (
     ClipTrajectorySource,
     MultiClipTrajectorySource,
 )
-from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
     _init_state_from_model,
     _mimic_cache_key,
     _mimic_keyframe_reset_event,

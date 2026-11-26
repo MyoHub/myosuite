@@ -12,7 +12,7 @@ import pytest
 pytest.importorskip("mjlab")
 
 from myosuite.core import registry as myo_registry  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.registration import (  # noqa: E402
     condition_variants,
 )
 
@@ -32,7 +32,7 @@ def test_condition_variants_matches_myo_and_non_myo_ids() -> None:
         "ElbowPoseCustomTestSarc-v0",
         "ElbowPoseCustomTestFati-v0",
     )
-    entry = "myosuite.envs.myo.tasks.basic.arm.pose:PoseEnvV0"
+    entry = "myosuite.envs.tasks.arm.pose.env:PoseEnvV0"
     try:
         for tid in temp_ids:
             myo_registry.register_env(tid, entry, max_episode_steps=100)

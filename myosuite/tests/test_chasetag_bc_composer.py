@@ -5,7 +5,7 @@
 """Unit tests for the additive chase-tag BC obs composer and warm-start utility.
 
 Both are code-and-design-only utilities for a future chase-tag BC
-fine-tuning pass (see ``myosuite/envs/myo/tasks/mimic/chasetag_obs.py`` and
+fine-tuning pass (see ``myosuite/envs/tasks/mimic/chasetag_obs.py`` and
 ``ActorCritic.load_expanded``) — no data collection or training happens here,
 only shape/byte-identity/warm-start correctness checks.
 """
@@ -22,10 +22,10 @@ pytestmark = pytest.mark.tier1
 
 def test_chasetag_obs_prefix_is_byte_identical_to_directional_obs() -> None:
     """First 528 dims of ``chasetag_obs`` must exactly match ``_directional_obs``."""
-    from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_fb_model import (
         compile_fullbody_chasetag_model,
     )
-    from myosuite.envs.myo.tasks.mimic.chasetag_obs import (
+    from myosuite.envs.tasks.mimic.chasetag_obs import (
         CHASETAG_OBS_DIM,
         chasetag_obs,
     )
@@ -58,7 +58,7 @@ def test_chasetag_obs_prefix_is_byte_identical_to_directional_obs() -> None:
 
 def test_load_expanded_warm_starts_shared_prefix_and_zero_inits_new_columns() -> None:
     """``ActorCritic.load_expanded`` must copy the pretrained prefix exactly."""
-    from myosuite.envs.myo.tasks.mimic.policy import ActorCritic
+    from myosuite.envs.tasks.mimic.policy import ActorCritic
 
     small = ActorCritic(obs_dim=528, act_dim=354, hidden=32, layers=2)
     with torch.no_grad():

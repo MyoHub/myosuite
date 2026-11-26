@@ -43,7 +43,7 @@ def test_musclemimic_cpu_ids_make_reset_step(env_id: str) -> None:
 def test_musclemimic_mjx_ids_registered() -> None:
     """Canonical MJX Mimic IDs must stay discoverable."""
     try:
-        from myosuite.envs.myo.backends.mjx import ALL_ENVS
+        from myosuite.envs.backends._experimental_mjx import ALL_ENVS
     except (ImportError, AttributeError) as exc:
         pytest.skip(f"MJX not importable on this setup: {exc}")
 
@@ -54,10 +54,10 @@ def test_musclemimic_mjx_ids_registered() -> None:
 def test_musclemimic_cross_backend_tier_a_target() -> None:
     """Gate: canonical Mimic IDs exist on CPU, MJX, and mjlab registries."""
     import myosuite
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
+    from myosuite.envs.backends.mjlab import REGISTERED_TASKS
 
     try:
-        from myosuite.envs.myo.backends.mjx import ALL_ENVS
+        from myosuite.envs.backends._experimental_mjx import ALL_ENVS
     except (ImportError, AttributeError) as exc:
         pytest.skip(f"MJX not importable on this setup: {exc}")
 

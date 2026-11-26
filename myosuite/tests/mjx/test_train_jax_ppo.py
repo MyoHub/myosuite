@@ -6,7 +6,7 @@
 """Smoke tests for MJX Brax PPO training helper.
 
 This module validates that the lightweight MJX training script
-``myosuite.envs.myo.backends.mjx.train_jax_ppo`` can:
+``myosuite.envs.backends._experimental_mjx.train_jax_ppo`` can:
 
 * Construct an MJX environment from a MyoSuite MJX env ID.
 * Produce a valid initial state via ``reset()``.
@@ -16,7 +16,7 @@ The test is deliberately small and does **not** run a full PPO training loop;
 that would be too slow for routine CI. Instead it checks that the key wiring
 between:
 
-* MyoSuite MJX envs (``myosuite.envs.myo.backends.mjx.make``),
+* MyoSuite MJX envs (``myosuite.envs.backends._experimental_mjx.make``),
 * their brax env interface (``MyoMjxEnvBase``), and
 * Brax PPO configs (`ppo_config`)
 
@@ -68,7 +68,7 @@ def test_train_jax_ppo_env_reset_and_step(tmp_path, monkeypatch) -> None:
     import jax
     import jax.numpy as jnp
 
-    from myosuite.envs.myo.backends.mjx import train_jax_ppo
+    from myosuite.envs.backends._experimental_mjx import train_jax_ppo
 
     # Ensure any incidental wandb usage in downstream pipelines stays offline
     # and writes logs into a temporary directory.

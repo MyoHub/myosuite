@@ -14,7 +14,7 @@ muscle action term). This module holds what is needed to *play* such a checkpoin
   (torch, imported on call).
 
 The mjlab action term is
-:mod:`myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map`. Learning a map (e.g.
+:mod:`myosuite.envs.backends.mjlab.tasks.mdp.action_map`. Learning a map (e.g.
 the DynSyn grouping and its trainer) lives in ``training/dynsyn``.
 """
 
@@ -449,7 +449,7 @@ def load_policy(
         The :class:`~myosuite.policies.rslrl_policy.RslRlPolicy` and the run's map, or
         ``None`` for one action per muscle. Apply the map with :class:`ActionMapWrapper`
         (CPU) or ``apply_trained_action_map`` of
-        :mod:`myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map` (mjlab).
+        :mod:`myosuite.envs.backends.mjlab.tasks.mdp.action_map` (mjlab).
     """
     from myosuite.policies.rslrl_policy import load_rslrl_policy  # noqa: PLC0415
 

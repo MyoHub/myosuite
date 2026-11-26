@@ -11,8 +11,8 @@ import mujoco
 import myo_sim
 import pytest
 
-from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
-from myosuite.envs.myo.myoedits.model_editor import ModelEditor
+from myosuite.envs.tasks.suites.edits import edit_fn_arm_reaching
+from myosuite.core.builder.model_editor import ModelEditor
 from myosuite.utils.asset_path_resolver import get_sim_asset_root
 
 _ASSETS = get_sim_asset_root("myo_sim")

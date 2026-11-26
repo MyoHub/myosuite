@@ -2,118 +2,13 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Registration module for MyoMimic CPU Gymnasium environments.
+"""Backward-compatible package facade for :mod:`myosuite.envs.tasks.mimic`."""
 
-This suite owns canonical Mimic IDs and their legacy aliases:
+import importlib as _importlib
 
-- ``myoMimicBimanual-v0``
-- ``myoMimicFullbody-v0``
-- ``myoMuscleMimicBimanual-v0`` (legacy alias)
-- ``myoMuscleMimicFullbody-v0`` (legacy alias)
-- ``myoFullBodyWaypoint-v0`` (random ordered waypoints on flat ground)
-- ``myoMimic-v0`` (multi-clip motion tracking, :mod:`.tracking`)
-"""
-
-from __future__ import annotations
-
-import math
-
-import myosuite.core.registry as _registry
-from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
-from myosuite.envs.waypoint import WaypointTaskCfg
-from myosuite.core.terms.waypoint import WaypointRouteCfg
-
-_BIMANUAL_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicBimanualEnv"
-_FULLBODY_ENTRY = "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv"
-_FULLBODY_DIRECTIONAL_ENTRY = (
-    "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyDirectionalEnv"
+_target = _importlib.import_module("myosuite.envs.tasks.mimic")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
 )
-
-_registry.register_env(
-    env_id="myoMimicBimanual-v0",
-    entry_point=_BIMANUAL_ENTRY,
-    max_episode_steps=1000,
-    kwargs={"frame_skip": 5},
-)
-
-_registry.register_env(
-    env_id="myoMimicFullbody-v0",
-    entry_point=_FULLBODY_ENTRY,
-    max_episode_steps=1000,
-    kwargs={"frame_skip": 5},
-)
-
-_registry.register_env(
-    env_id="myoMuscleMimicBimanual-v0",
-    entry_point=_BIMANUAL_ENTRY,
-    max_episode_steps=1000,
-    kwargs={"frame_skip": 5},
-)
-
-_registry.register_env(
-    env_id="myoMuscleMimicFullbody-v0",
-    entry_point=_FULLBODY_ENTRY,
-    max_episode_steps=1000,
-    kwargs={"frame_skip": 5},
-)
-
-_registry.register_env(
-    env_id="myoFullBodyDirectional-v0",
-    entry_point=_FULLBODY_DIRECTIONAL_ENTRY,
-    max_episode_steps=500,
-    kwargs={"frame_skip": 5},
-)
-
-# MyoFullBody faces -y at yaw 0, so routes start along -y. 100 Hz control, as MuscleMimic.
-FULLBODY_WAYPOINT_TASK = WaypointTaskCfg(
-    site_name="pelvis_mimic",
-    route=WaypointRouteCfg(
-        num_waypoints=4,
-        segment_length=(1.0, 2.0),
-        turn_angle=(-0.8, 0.8),
-        heading_offset=-math.pi / 2,
-    ),
-    arrival_radius=0.3,
-    lookahead=2,
-    min_site_height=0.6,
-    reset_noise=0.01,
-)
-
-_registry.register_env(
-    env_id="myoFullBodyWaypoint-v0",
-    entry_point="myosuite.envs.waypoint:WaypointEnv",
-    max_episode_steps=1500,
-    mjlab_task_kwargs=True,
-    kwargs={
-        "task": FULLBODY_WAYPOINT_TASK,
-        "frame_skip": 5,
-    },
-)
-
-# The env truncates itself at the task's time limit; TimeLimit only backs it up (300 s
-# at the shortest control step, one 2 ms physics step).
-_registry.register_env(
-    env_id=MIMIC_ENV_ID,
-    entry_point="myosuite.envs.myo.tasks.mimic.tracking.env:MimicEnv",
-    max_episode_steps=150_000,
-    mjlab_task_kwargs=True,
-    models=("myofullbody",),
-    kwargs={"frame_skip": 10, "preset": "supermimic", "model": "myofullbody"},
-)
-
-
-def _lazy_musclemimic_manifest_fields(env_id: str) -> dict[str, object]:
-    from myosuite.integrations.musclemimic.model_versions import (
-        MANIFEST_FIELD,
-        env_models_version,
-    )
-
-    models_version = env_models_version(env_id)
-    return {MANIFEST_FIELD: models_version} if models_version is not None else {}
-
-
-from myosuite.policies.checkpoint_manifest import (  # noqa: E402
-    register_manifest_provider as _register_manifest_provider,
-)
-
-_register_manifest_provider(_lazy_musclemimic_manifest_fields)
+__getattr__ = _target.__getattribute__
+del _importlib, _target

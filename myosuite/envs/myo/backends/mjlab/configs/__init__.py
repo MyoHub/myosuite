@@ -2,32 +2,13 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Task configuration dataclasses for the mjlab/MuJoCo Warp backend.
+"""Backward-compatible package facade for :mod:`myosuite.envs.backends.mjlab.configs`."""
 
-Each config fully specifies a task: model path, physics timesteps, reward
-weights, and task-specific parameters.  Configs are pure Python dataclasses
-with no mjlab dependency so they can be imported and validated without a
-MuJoCo Warp installation.
-"""
+import importlib as _importlib
 
-from myosuite.envs.myo.backends.mjlab.configs.baoding_cfg import BaodingCfg
-from myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
-from myosuite.envs.myo.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
-from myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg import (
-    MuscleMimicBimanualCfg,
+_target = _importlib.import_module("myosuite.envs.backends.mjlab.configs")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
 )
-from myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg import (
-    MuscleMimicFullbodyCfg,
-)
-from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import TableTennisCfg
-from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
-
-__all__ = [
-    "ElbowPoseCfg",
-    "HandReachCfg",
-    "WalkCfg",
-    "BaodingCfg",
-    "TableTennisCfg",
-    "MuscleMimicBimanualCfg",
-    "MuscleMimicFullbodyCfg",
-]
+__getattr__ = _target.__getattribute__
+del _importlib, _target

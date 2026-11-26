@@ -2,24 +2,15 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Task config for MuscleMimic full-body task on mjlab backend."""
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.mimic.fullbody_mjlab_cfg`."""
 
-from __future__ import annotations
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from dataclasses import dataclass
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.mimic.fullbody_mjlab_cfg import *  # noqa: F403
 
-from myosuite.core.terms.mimic_reward import MimicTrackingConfig
-
-_TRACKING = MimicTrackingConfig()
-
-
-@dataclass
-class MuscleMimicFullbodyCfg:
-    """Configuration for mjlab MuscleMimic full-body task."""
-
-    sim_dt: float = 0.002
-    ctrl_dt: float = 0.01
-    max_episode_steps: int = 1000
-    num_envs: int = 1024
-    tracking_reward_scale: float = _TRACKING.reward_scale
-    tracking_success_threshold: float = _TRACKING.success_threshold
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.mimic.fullbody_mjlab_cfg"
+)
