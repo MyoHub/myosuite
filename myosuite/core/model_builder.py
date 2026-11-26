@@ -895,6 +895,9 @@ class ModelBuilder:
             frame = parent_body.add_frame()
             frame.pos = frag.pos
             frame.quat = frag.quat
+            if frag_spec.nuserdata > 0:
+                spec.nuserdata += frag_spec.nuserdata
+                frag_spec.nuserdata = spec.nuserdata
             spec.attach(frag_spec, prefix="", suffix="", frame=frame)
 
         for fb in self._free_bodies:
