@@ -408,6 +408,14 @@ class NewtonAccessor(EnvAccessor):
             raise ValueError(f"Geom {name!r} not found in model")
         return int(gid)
 
+    def body_id(self, name: str) -> int:
+        bid = mujoco.mj_name2id(
+            self._sim.reference_model, mujoco.mjtObj.mjOBJ_BODY, name
+        )
+        if bid == -1:
+            raise ValueError(f"Body {name!r} not found in model")
+        return int(bid)
+
     def time(self) -> np.ndarray:
         return self._sim.solver.mjw_data.time.numpy().copy()
 

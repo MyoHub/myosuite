@@ -419,6 +419,171 @@ class NewtonBatchSim:
         self.solver.mjw_model.geom_pos.assign(gpos_np)
         self._refresh_derived()
 
+    def set_geom_size(
+        self,
+        geom_id_or_name: int | str,
+        size: Any,
+        env_ids: Sequence[int] | np.ndarray | None = None,
+    ) -> None:
+        """Update primitive collision geom size and derived broadphase bounds across worlds."""
+        gid = (
+            self.accessor.geom_id(geom_id_or_name)
+            if isinstance(geom_id_or_name, str)
+            else int(geom_id_or_name) % int(self.reference_model.ngeom)
+        )
+        conv_gid = int(self.mapping.src_to_conv_geom[gid])
+        if conv_gid < 0:
+            return
+        gtype = int(self.reference_model.geom_type[gid])
+        size_arr = np.asarray(size, dtype=np.float32)
+        if env_ids is None and size_arr.ndim == 1:
+            self.reference_model.geom_size[gid] = size_arr
+            self.solver.mj_model.geom_size[conv_gid] = size_arr
+
+        sel = slice(None) if env_ids is None else np.asarray(env_ids)
+        gs_np = self.solver.mjw_model.geom_size.numpy().copy()
+        aabb_np = self.solver.mjw_model.geom_aabb.numpy().copy()
+        rb_np = self.solver.mjw_model.geom_rbound.numpy().copy()
+        target_rows = self.num_envs if env_ids is None else len(np.asarray(env_ids))
+        sz = np.broadcast_to(size_arr, (target_rows, 3)).copy()
+
+        if gtype == int(mujoco.mjtGeom.mjGEOM_SPHERE):
+            half = np.repeat(sz[:, :1], 3, axis=-1)
+            rbound = sz[:, 0]
+        elif gtype == int(mujoco.mjtGeom.mjGEOM_CAPSULE):
+            half = np.stack([sz[:, 0], sz[:, 0], sz[:, 2] + sz[:, 0]], axis=-1)
+            rbound = sz[:, 0] + sz[:, 2]
+        elif gtype == int(mujoco.mjtGeom.mjGEOM_ELLIPSOID):
+            half = sz
+            rbound = np.max(sz, axis=-1)
+        elif gtype == int(mujoco.mjtGeom.mjGEOM_CYLINDER):
+            half = np.stack([sz[:, 0], sz[:, 0], sz[:, 2]], axis=-1)
+            rbound = np.hypot(sz[:, 0], sz[:, 2])
+        else:
+            half = sz
+            rbound = np.linalg.norm(sz, axis=-1).astype(np.float32)
+
+        if gs_np.shape[0] == 1 and self.num_envs > 1:
+            gs_np[0, conv_gid] = sz[0]
+            aabb_np[0, conv_gid, 1] = half[0]
+            rb_np[0, conv_gid] = rbound[0]
+        else:
+            gs_np[sel, conv_gid] = sz
+            aabb_np[sel, conv_gid, 1] = half
+            rb_np[sel, conv_gid] = rbound
+        self.solver.mjw_model.geom_size.assign(gs_np)
+        self.solver.mjw_model.geom_aabb.assign(aabb_np)
+        self.solver.mjw_model.geom_rbound.assign(rb_np)
+        self._refresh_derived()
+
+    def set_body_pose(
+        self,
+        body_id_or_name: int | str,
+        *,
+        pos: Any | None = None,
+        quat: Any | None = None,
+        env_ids: Sequence[int] | np.ndarray | None = None,
+    ) -> None:
+        """Update authored body local ``pos`` and/or ``quat`` (``wxyz``) across worlds."""
+        bid = (
+            self.accessor.body_id(body_id_or_name)
+            if isinstance(body_id_or_name, str)
+            else int(body_id_or_name) % int(self.reference_model.nbody)
+        )
+        conv_bid = int(self.mapping.src_to_conv_body[bid])
+        sel = slice(None) if env_ids is None else np.asarray(env_ids)
+        n_sel = self.num_envs if env_ids is None else len(np.asarray(env_ids))
+        if conv_bid == 0 and bid > 0:
+            base_pos = (
+                np.broadcast_to(np.asarray(pos, dtype=np.float64), (n_sel, 3))
+                if pos is not None
+                else np.broadcast_to(self.reference_model.body_pos[bid], (n_sel, 3))
+            )
+            base_quat = (
+                np.broadcast_to(np.asarray(quat, dtype=np.float64), (n_sel, 4))
+                if quat is not None
+                else np.broadcast_to(self.reference_model.body_quat[bid], (n_sel, 4))
+            )
+            u = base_quat[:, 1:4]
+            w = base_quat[:, :1]
+            for sid in np.flatnonzero(self.reference_model.site_bodyid == bid):
+                v = self.reference_model.site_pos[int(sid)]
+                t = 2.0 * np.cross(u, v)
+                world_spos = base_pos + v + w * t + np.cross(u, t)
+                self.set_site_pos(int(sid), world_spos, env_ids=env_ids)
+            for gid in np.flatnonzero(self.reference_model.geom_bodyid == bid):
+                v = self.reference_model.geom_pos[int(gid)]
+                t = 2.0 * np.cross(u, v)
+                world_gpos = base_pos + v + w * t + np.cross(u, t)
+                self.set_geom_pos(int(gid), world_gpos, env_ids=env_ids)
+            return
+        wp = self._wp
+        nb = int(self.solver.mjc_body_to_newton.numpy()[0, conv_bid])
+        jpw = int(self.model.joint_count) // self.num_envs if self.num_envs > 0 else 0
+        tpl_matches = (
+            np.flatnonzero(self.model.joint_child.numpy()[:jpw] == nb)
+            if nb >= 0 and jpw > 0
+            else np.empty(0, dtype=np.int64)
+        )
+        pos_arr = (
+            np.broadcast_to(np.asarray(pos, dtype=np.float32), (n_sel, 3))
+            if pos is not None
+            else None
+        )
+        quat_arr = (
+            np.broadcast_to(np.asarray(quat, dtype=np.float32), (n_sel, 4))
+            if quat is not None
+            else None
+        )
+        if len(tpl_matches) > 0:
+            tpl_j = int(tpl_matches[0])
+            worlds = (
+                np.arange(self.num_envs, dtype=np.int64)
+                if env_ids is None
+                else np.asarray(env_ids, dtype=np.int64).reshape(-1)
+            )
+            xp_np = self.model.joint_X_p.numpy().copy()
+            xc_np = self.model.joint_X_c.numpy()
+            for k, w in enumerate(worlds):
+                jid = int(w) * jpw + tpl_j
+                xc_tf = wp.transform(xc_np[jid, :3], wp.quat(*xc_np[jid, 3:7]))
+                cur_tf = wp.transform(
+                    xp_np[jid, :3], wp.quat(*xp_np[jid, 3:7])
+                ) * wp.transform_inverse(xc_tf)
+                p_use = pos_arr[k] if pos_arr is not None else cur_tf.p
+                if quat_arr is not None:
+                    qw, qx, qy, qz = quat_arr[k]
+                    q_use = wp.quat(float(qx), float(qy), float(qz), float(qw))
+                else:
+                    q_use = cur_tf.q
+                new_xp = wp.transform(p_use, q_use) * xc_tf
+                xp_np[jid, :3] = new_xp.p
+                xp_np[jid, 3:7] = new_xp.q
+            self.model.joint_X_p.assign(xp_np)
+            self.solver.notify_model_changed(self._newton.ModelFlags.JOINT_PROPERTIES)
+        elif int(self.solver.mj_model.body_mocapid[conv_bid]) >= 0:
+            self.set_mocap_pose(
+                int(self.solver.mj_model.body_mocapid[conv_bid]),
+                pos=pos,
+                quat=quat,
+                env_ids=env_ids,
+            )
+        if pos_arr is not None:
+            bpos_np = self.solver.mjw_model.body_pos.numpy().copy()
+            if bpos_np.shape[0] == 1 and self.num_envs > 1:
+                bpos_np[0, conv_bid] = pos_arr[0]
+            else:
+                bpos_np[sel, conv_bid] = pos_arr
+            self.solver.mjw_model.body_pos.assign(bpos_np)
+        if quat_arr is not None:
+            bquat_np = self.solver.mjw_model.body_quat.numpy().copy()
+            if bquat_np.shape[0] == 1 and self.num_envs > 1:
+                bquat_np[0, conv_bid] = quat_arr[0]
+            else:
+                bquat_np[sel, conv_bid] = quat_arr
+            self.solver.mjw_model.body_quat.assign(bquat_np)
+        self._refresh_derived()
+
     def set_hfield_data(self, heights: Any, hfield_id: int = 0) -> None:
         """Upload heightfield elevation samples into MuJoCo and MuJoCo-Warp buffers."""
         if int(self.reference_model.nhfield) <= int(hfield_id):
