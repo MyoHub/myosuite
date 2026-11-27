@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from myosuite.core.import_utils import require_extra
 from myosuite.policies.onnxruntime_utils import load_onnx_session
 
 try:
@@ -37,8 +38,17 @@ _MODEL_STEP_ONNX_RE = re.compile(r"^model_(\d+)\.onnx$")
 _MODEL_STEP_PT_RE = re.compile(r"^model_(\d+)\.pt$")
 
 
+def _require_onnx() -> Any:
+    return require_extra(
+        "onnx",
+        "rl",
+        "Bundling or reading ONNX checkpoint metadata",
+        hint="Or install `pip install onnx` directly.",
+    )
+
+
 def _load_model_props(onnx_path: Path) -> tuple[Any, dict[str, str]]:
-    import onnx
+    onnx = _require_onnx()
 
     model = onnx.load(str(onnx_path), load_external_data=False)
     props = {entry.key: entry.value for entry in model.metadata_props}
@@ -65,7 +75,7 @@ def bundle_onnx_with_checkpoint(
     Returns:
         Resolved path to the bundled ONNX file.
     """
-    import onnx
+    onnx = _require_onnx()
 
     source_onnx = Path(onnx_path)
     checkpoint = Path(checkpoint_path)

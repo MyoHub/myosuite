@@ -12,23 +12,31 @@ its compatible versions retain known security advisories. Upgrade Python to
 receive these fixes.
 
 Use an isolated environment: Gradio 6.31.0 requires Pillow <13 and cannot be
-installed together with these patched MyoSuite image dependencies. MyoSuite
-does not require Gradio.
+installed together with MyoSuite's patched image/plotting extras (``[viz]``,
+``[rl]``, ``[mjlab]``, ``[mjx]``). Base ``pip install myosuite`` does not pull Pillow or
+Gradio.
 
 From PyPI
 ~~~~~~~~~
 
 .. code-block:: bash
 
-   pip install -U myosuite
+   pip install -U myosuite                       # minimal CPU simulation runtime
+   pip install -U "myosuite[viz]"                # video export, plotting, HDF5 traces, mjviser
+   pip install -U "myosuite[biomechanics]"       # solve_ik (mink) and static optimization / CMC (osqp)
+   pip install -U "myosuite[capture]"            # .c3d marker files (ezc3d); HDF5 traces are in [viz]
+   pip install -U "myosuite[onnx]"               # ONNX Runtime policy playback & verification
+   pip install -U "myosuite[examples]"           # full tutorial / example dependency bundle
+   pip install -U "myosuite[all]"                # all CPU extras (viz, biomechanics, capture, onnx, rl, musclemimic)
 
 Python 3.15 CPU environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Native CPU environment construction and stepping do not require ONNX Runtime.
-On Python 3.15 it is therefore an optional dependency, installed explicitly with
-``pip install 'myosuite[onnx]'`` when using ONNX policy inference or verification.
-The default dependencies on Python 3.10–3.14 are unchanged.
+Native CPU environment construction and stepping ship with minimal base dependencies
+(``numpy``, ``scipy``, ``mujoco``, ``myo-sim``, ``gymnasium``, ``huggingface_hub``,
+``click``, ``termcolor``, ``ml-collections``, ``colorednoise``) and do not require ONNX Runtime.
+Install ``pip install 'myosuite[onnx]'`` explicitly when using ONNX policy inference
+or verification.
 
 As of October 19, 2026, ONNX Runtime publishes no Python 3.15 wheels, including
 in its official nightly feed. Use Python 3.14 for ONNX features until compatible
@@ -47,8 +55,8 @@ From source
 
    git clone https://github.com/MyoHub/myosuite.git
    cd myosuite
-   pip install -e ".[rl]"        # CPU training (Stable-Baselines3)
-   # or with uv: uv sync -p 3.11 --extra rl
+   pip install -e ".[rl,viz]"    # CPU training (Stable-Baselines3) + offscreen video export
+   # or with uv: uv sync -p 3.11 --extra rl --extra viz
 
 GPU training (mjlab)
 ~~~~~~~~~~~~~~~~~~~~

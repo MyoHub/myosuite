@@ -1563,6 +1563,11 @@ def render_rollout(
     """
     if (config.output / "render.json").exists():
         raise FileExistsError("Choose a new output directory to avoid mixing runs.")
+    iio = None
+    if not export_only and not config.preview:
+        from myosuite.core.import_utils import require_extra
+
+        iio = require_extra("imageio.v3", "viz", "blender_render")
     meta = export_rollout(config, env=env, policy=policy, viz_fn=viz_fn)
     print(
         f"Exported {meta['samples']} samples, {meta['duration']:.3f}s to {meta['usd']}",
@@ -1587,8 +1592,7 @@ def render_rollout(
         with Path(blender_log).open("w") as log:
             subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)
     if not config.preview:
-        import imageio.v3 as iio
-
+        assert iio is not None
         from myosuite.viz.video_io import write_video
 
         frames = sorted(

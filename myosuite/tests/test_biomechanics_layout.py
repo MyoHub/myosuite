@@ -16,10 +16,10 @@ import pytest
 pytestmark = pytest.mark.tier1
 
 _PACKAGE = Path(__file__).parents[1]
-# NumPy, SciPy and MuJoCo; OSQP (a core dependency) solves the static-optimization QPs,
+# NumPy, SciPy and MuJoCo; OSQP (in myosuite[biomechanics]) solves the static-optimization QPs,
 # and absl comes with MuJoCo (inverse kinematics logs through it).
 _METHOD_DEPENDENCIES = {"numpy", "scipy", "mujoco", "osqp", "absl", "myosuite"}
-# Canonical differential IK uses the explicitly declared core Mink dependency.
+# Canonical differential IK uses Mink (in myosuite[biomechanics]).
 _MODULE_DEPENDENCIES = {"inverse_kinematics.py": {"mink"}}
 
 

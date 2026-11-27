@@ -43,6 +43,7 @@ See [docs/source/developer/mjlab-design-guide.md](mjlab-design-guide.md) for the
 | Coupled joints (`mjEQ_JOINT`) on their polynomials | `myo_sim.physics.joint_coupling.project_joint_couplings`, re-exported as `myosuite.physics.joint_coupling` (in place, NumPy or Torch; CPU envs: `MyoGymnasiumEnv._project_joint_couplings`); `projected_joint_couplings` (out of place, differentiable with Torch; `JointCouplings.as_torch`) | Hand-rolled `eq_data` polynomial evaluation |
 | AMASS SMPL+H motion onto a body model | `myosuite.integrations.retarget_smplh` (one SMPL+H -> model table, `smplh_source`; `scripts/mimic/retarget_amass.py`), FK in `myosuite.integrations.smplh`, landmark IK on the couplings in `myosuite.biomechanics.retarget` | Another SMPL FK or IK loop, `smplx`/torch at runtime, or projecting coupled joints of clips fitted on another body |
 | Muscle effort of recorded rollouts (squared activations, co-contraction, saturation) | `myosuite.biomechanics.effort` (NumPy or torch, `(..., T, M)`) | Per-script effort or co-contraction formulas |
+| Optional-extra runtime import guard | `myosuite.core.import_utils.require_extra(module, extra, feature)` | Per-module `try: import ... except ImportError:` boilerplate |
 
 **Unified dispatcher (preferred for new code):**
 

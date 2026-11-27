@@ -6,13 +6,13 @@ python -m ipykernel install --user --name=myosuite
 # video playback in notebooks: conda install conda-forge::ffmpeg  (or brew install ffmpeg)
 ```
 
-On Colab, opening a notebook from GitHub does **not** install the package. Add an install cell (for example `!pip install -U myosuite`), or install locally:
+On Colab, opening a notebook from GitHub does **not** install the package. Add an install cell (for example `!pip install -U "myosuite[examples]"`), or install locally:
 
 ```bash
-# from a clone
-pip install -e .
+# from a clone (with tutorial visualization & solver extras)
+pip install -e ".[examples]"
 # or, if you only have the notebook
-pip install git+https://github.com/MyoHub/myosuite.git
+pip install "myosuite[examples] @ git+https://github.com/MyoHub/myosuite.git"
 ```
 
 Then build an env with the public API (importing `myosuite` registers every env id):
@@ -31,29 +31,29 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | # | Notebook | Needs |
 |---|---|---|
 | **1 — Basics** | | |
-| 1.1 | [Get Started](./1.1_Get_Started.ipynb) | `pip install -e .` |
-| 1.2 | [Load Policy](./1.2_Load_Policy.ipynb) — run a policy in a video rollout: your own mjlab/SB3 checkpoint, else the default policy from the Hugging Face baselines ([`myohub/myosuite-3-baselines`](https://huggingface.co/myohub/myosuite-3-baselines); random policy if none is found) | nothing (optional: a checkpoint from 2.1 or 2.2) |
+| 1.1 | [Get Started](./1.1_Get_Started.ipynb) | `pip install -e ".[viz]"` |
+| 1.2 | [Load Policy](./1.2_Load_Policy.ipynb) — run a policy in a video rollout: your own mjlab/SB3 checkpoint, else the default policy from the Hugging Face baselines ([`myohub/myosuite-3-baselines`](https://huggingface.co/myohub/myosuite-3-baselines); random policy if none is found) | `pip install -e ".[rl,viz]"` (optional: a checkpoint from 2.1 or 2.2) |
 | **2 — Training** | | |
-| 2.1 | [Train SB3 Policy](./2.1_Train_SB3_Policy.ipynb) — PPO on CPU | `pip install -e ".[rl]"` |
-| 2.2 | [Train MjLab Policy](./2.2_Train_MjLab_Policy.ipynb) — thousands of parallel envs on GPU, playback on CPU | NVIDIA GPU (Linux or Windows), `pip install -e ".[mjlab]"` |
-| 2.3 | [SAR](./2.3_SAR.ipynb) — synergistic action representations | `pip install -e ".[rl]"` (full training is hours; set `MYOSUITE_FULL_SAR=1`) |
-| 2.4 | [MyoReflex Walk](./2.4_MyoReflex_Walk.ipynb) — reflex-based walking baseline | — |
+| 2.1 | [Train SB3 Policy](./2.1_Train_SB3_Policy.ipynb) — PPO on CPU | `pip install -e ".[rl,viz]"` |
+| 2.2 | [Train MjLab Policy](./2.2_Train_MjLab_Policy.ipynb) — thousands of parallel envs on GPU, playback on CPU | NVIDIA GPU (Linux or Windows), `pip install -e ".[mjlab,viz]"` |
+| 2.3 | [SAR](./2.3_SAR.ipynb) — synergistic action representations | `pip install -e ".[rl,viz]" pandas` (or `".[examples]"`; full training is hours; set `MYOSUITE_FULL_SAR=1`) |
+| 2.4 | [MyoReflex Walk](./2.4_MyoReflex_Walk.ipynb) — reflex-based walking baseline | `pip install -e ".[viz]"` |
 | **3 — Analysis** | | |
-| 3.1 | [Analyse Movements](./3.1_Analyse_Movements.ipynb) — kinematics and synergies | `pip install stable-baselines3 scikit-learn` |
-| 3.2 | [Inverse Kinematics](./3.2_Inverse_Kinematics.ipynb) — pose a site with `solve_ik` | — |
-| 3.3 | [Inverse Dynamics](./3.3_Inverse_Dynamics.ipynb) | `osqp` |
-| 3.4 | [Computed Muscle Control](./3.4_Computed_Muscle_Control.ipynb) | — |
-| 3.5 | [Playback Mot File](./3.5_Playback_Mot_File.ipynb) — OpenSim `.mot` playback | — |
-| 3.6 | [Blender Rendering](./3.6_Blender_Rendering.ipynb) — studio renders of a rollout with volumetric muscles | `pip install usd-core`, [Blender](https://www.blender.org/download/) 4.5+ |
-| 3.7 | [Marker Retargeting](./3.7_Marker_Retargeting.ipynb) — marker trajectories to a `MotionClip` with `retarget` | — (`.c3d` files: `pip install "myosuite[capture]"`) |
+| 3.1 | [Analyse Movements](./3.1_Analyse_Movements.ipynb) — kinematics and synergies | `pip install -e ".[rl,viz]"` |
+| 3.2 | [Inverse Kinematics](./3.2_Inverse_Kinematics.ipynb) — pose a site with `solve_ik` | `pip install -e ".[biomechanics,viz]"` |
+| 3.3 | [Inverse Dynamics](./3.3_Inverse_Dynamics.ipynb) | `pip install -e ".[biomechanics,viz]" pandas` |
+| 3.4 | [Computed Muscle Control](./3.4_Computed_Muscle_Control.ipynb) | `pip install -e ".[biomechanics,viz]" pandas` |
+| 3.5 | [Playback Mot File](./3.5_Playback_Mot_File.ipynb) — OpenSim `.mot` playback | `pip install -e ".[viz]" pandas` |
+| 3.6 | [Blender Rendering](./3.6_Blender_Rendering.ipynb) — studio renders of a rollout with volumetric muscles | `pip install -e ".[viz]" usd-core`, [Blender](https://www.blender.org/download/) 4.5+ |
+| 3.7 | [Marker Retargeting](./3.7_Marker_Retargeting.ipynb) — marker trajectories to a `MotionClip` with `retarget` | `pip install -e ".[biomechanics,viz]"` (`.c3d` files: `pip install -e ".[capture]"`) |
 | **4 — Modelling and conditions** | | |
-| 4.1 | [Move Hand Fingers](./4.1_Move_Hand_Fingers.ipynb) | — |
-| 4.2 | [Fatigue Modeling](./4.2_Fatigue_Modeling.ipynb) | — |
+| 4.1 | [Move Hand Fingers](./4.1_Move_Hand_Fingers.ipynb) | `pip install -e ".[viz]"` |
+| 4.2 | [Fatigue Modeling](./4.2_Fatigue_Modeling.ipynb) | `pip install -e ".[rl,viz]"` |
 | 4.3 | [Modular Task Config](./4.3_Modular_Task_Config.ipynb) — **experimental**; prefer the `TaskSpec` / `ModelBuilder` workflow (`docs/source/developer/adding-a-new-task.md`) | — |
-| 4.4 | [Programmatic Waypoint Tasks](./4.4_Programmatic_Waypoint_Tasks.ipynb) — scene + actor + ordered waypoints (`myoFullBodyWaypoint-v0`), with optional TERRA-4B policy playback; [Open in Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/main/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb) ([pending-branch preview](https://colab.research.google.com/github/MyoHub/myosuite/blob/dev/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb)) | `.[musclemimic]` + `orbax-checkpoint`; downloads public TERRA-4B; generates its terrain reference locally |
+| 4.4 | [Programmatic Waypoint Tasks](./4.4_Programmatic_Waypoint_Tasks.ipynb) — scene + actor + ordered waypoints (`myoFullBodyWaypoint-v0`), with optional TERRA-4B policy playback; [Open in Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/main/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb) ([pending-branch preview](https://colab.research.google.com/github/MyoHub/myosuite/blob/dev/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb)) | `.[musclemimic,viz]` + `orbax-checkpoint`; downloads public TERRA-4B; generates its terrain reference locally |
 | 4.4 ADL | [Optional furnished apartment extension](./files/4.4/adl_apartment/README.md) — a standalone TERRA policy walkthrough; **not run in CI** | manual/Colab execution; public TERRA checkpoint and rendering dependencies |
 | **5 — Full body (MuscleMimic, myoSuperMimic, MyoChallenge)** | | |
-| 5.1 | [Fullbody Load Policy](./5.1_Fullbody_Load_Policy.ipynb) | [integration README](../myosuite/integrations/musclemimic/README.md) |
+| 5.1 | [Fullbody Load Policy](./5.1_Fullbody_Load_Policy.ipynb) | `pip install -e ".[musclemimic,viz]"` + [integration README](../myosuite/integrations/musclemimic/README.md) |
 | 5.2 | [Fullbody Train Policy](./5.2_Fullbody_Train_Policy.ipynb) — CPU PPO and ghost-body rendering | as 5.1 |
 | 5.3 | [Fullbody Train MjLab Policy](./5.3_Fullbody_Train_MjLab_Policy.ipynb) — GPU backend ([Colab T4](https://colab.research.google.com/drive/144wHsu_UBVofZqXRTOUWY33ZscziA76R)); the bimanual clips on Hugging Face are **gated**, request access first | CUDA |
 | 5.4 | [Directional Locomotion](./5.4_Directional_Locomotion.ipynb) ([Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/dev/tutorials/5.4_Directional_Locomotion.ipynb)) — DAgger from the steered myoSuperMimic teacher into a directional walker on `myofullbody`, evaluate (8 headings × 10 seeds) and render | `training/supermimic` + `training/chasetag_teacher` (the setup cell installs them); training needs the retargeted KIT clips (`$MYOSUITE_KIT_ROOT`, the retarget cache, or a dataset in `MIMIC_DATASET`), else it evaluates the published walker |

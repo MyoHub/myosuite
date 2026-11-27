@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,23 +21,24 @@ logger = logging.getLogger(__name__)
 
 
 def require_onnxruntime() -> ModuleType:
-    """Return ONNX Runtime or explain how to install the optional dependency.
+    """Return ONNX Runtime via :func:`~myosuite.core.import_utils.require_extra` with CPU/GPU guidance.
 
     Raises:
-        ImportError: If ONNX Runtime is not installed.
+        ImportError: If ONNX Runtime is not installed (re-raises internal import failures untouched).
     """
-    try:
-        return importlib.import_module("onnxruntime")
-    except ModuleNotFoundError as exc:
-        if exc.name != "onnxruntime":
-            raise
-        raise ImportError(
-            "ONNX inference requires onnxruntime. Install it with "
-            "pip install 'myosuite[onnx]' (CPU), or install onnxruntime-gpu. "
+    from myosuite.core.import_utils import require_extra
+
+    return require_extra(
+        "onnxruntime",
+        "onnx",
+        "ONNX inference",
+        hint=(
+            "(CPU), or install onnxruntime-gpu. "
             "If no wheel is available for your Python version, use an "
             "interpreter supported by ONNX Runtime or build it from source. "
             "Native MyoSuite CPU environments do not require ONNX Runtime."
-        ) from exc
+        ),
+    )
 
 
 @dataclass

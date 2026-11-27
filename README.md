@@ -52,14 +52,14 @@ Python 3.11+ is recommended (Python 3.10–3.14 is supported; the GPU `[mjlab]` 
 ```bash
 git clone https://github.com/MyoHub/myosuite.git
 cd myosuite
-pip install -e ".[rl]"          # CPU training (Stable-Baselines3)
+pip install -e ".[rl,viz]"      # CPU training (Stable-Baselines3) + offscreen video export
 # uv pip install -e ".[mjlab]" --torch-backend=auto   # GPU (NVIDIA, Linux or Windows), picks the torch
                                  # build for your driver; with pip see docs/source/install.rst
 ```
 
-Or: `uv sync -p 3.11 --extra rl`.
+Or: `uv sync -p 3.11 --extra rl --extra viz`.
 
-From PyPI: `pip install -U myosuite`.
+From PyPI: `pip install -U myosuite` (minimal CPU simulation runtime), or `pip install -U "myosuite[viz]"` when using `--render offscreen` video export.
 
 Verify (replace "onscreen" with "offscreen" when running on a remote, headless machine):
 

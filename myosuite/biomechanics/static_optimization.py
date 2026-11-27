@@ -56,15 +56,18 @@ import copy
 import warnings
 from collections import Counter
 from dataclasses import dataclass, fields, replace
-from typing import Any, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import mujoco
 import numpy as np
-import osqp
 from scipy import sparse
 
-from myosuite.core.muscle_conditions import _peak_force
 from myosuite.biomechanics.inverse_dynamics import required_qfrc
+from myosuite.core.import_utils import require_extra
+from myosuite.core.muscle_conditions import _peak_force
+
+if TYPE_CHECKING:
+    import osqp
 
 # Constraint forces are optimised in units of this force [N m or N].
 _CONSTRAINT_SCALE = 100.0
@@ -380,7 +383,7 @@ class StaticOptimizer:
             cols, rows = np.nonzero(pattern.T)
             indptr = np.r_[0, np.cumsum(np.bincount(cols, minlength=A.shape[1]))]
             A_csc = sparse.csc_matrix((A[rows, cols], rows, indptr), shape=A.shape)
-            solver = osqp.OSQP()
+            solver = require_extra("osqp", "biomechanics", "Static optimization").OSQP()
             solver.setup(
                 sparse.diags(2.0 * weight, format="csc"),
                 np.zeros(A.shape[1]),

@@ -50,6 +50,7 @@ napoleon_use_ivar = True
 
 autodoc_typehints = "description"
 autodoc_member_order = "bysource"
+autodoc_mock_imports = ["mink", "osqp"]
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
