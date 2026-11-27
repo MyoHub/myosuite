@@ -40,3 +40,4 @@ Technical reference for building tasks, observation/reward/action terms, GPU bac
 | [Paired Push Evaluation](paired-push-evaluation.md) | Deterministic and velocity-jittered paired perturbation recovery protocol (`scripts/eval_push_recovery.py`) |
 | [Agent Workflow](agent-workflow.md) | Step-by-step contributor and coding-agent workflow |
 | [Maintenance Log](log.md) | Chronological log of architectural additions and contract changes on `dev` |
+| [Training Performance Pilot](training-performance-pilot.md) | Matched three-seed `myoElbowPose1D6MRandom-v0` GPU throughput and evaluation pilot |

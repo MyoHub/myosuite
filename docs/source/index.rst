@@ -115,6 +115,7 @@ Choose your path
    developer/performance-cards
    developer/paired-push-evaluation
    developer/agent-workflow
+   developer/training-performance-pilot
    developer/log
 
 .. toctree::
