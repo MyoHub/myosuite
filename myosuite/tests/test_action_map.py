@@ -17,6 +17,7 @@ from myosuite.utils.action_map import (
     ActionMapWrapper,
     DynSyn,
     DynSynGroups,
+    LambdaHold,
     weight_amplitude,
 )
 
@@ -473,3 +474,74 @@ def test_manifest_json_action_map_is_detected(tmp_path):
     assert action_map_kind({}, tmp_path / "model_1.pt") == "dynsyn"
     (tmp_path / "manifest.json").unlink()
     assert action_map_kind({}, tmp_path / "model_1.pt") is None
+
+
+def test_lambda_hold_numpy_torch_parity_manifest_and_cpu_wrapper_latch() -> None:
+    from myosuite import make_env
+    from myosuite.terms.base_action import sigmoid_muscle_activation
+    from myosuite.utils.action_map import action_map_from_manifest
+
+    base_env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        model = base_env.unwrapped.model
+        amap = LambdaHold.from_model(
+            model, kp=2.5, damping_s=0.04, hold_steps=3, muscle_sigmoid=True
+        )
+        assert isinstance(amap, ActionMap) and amap.action_dim == model.nu
+        assert action_map_from_manifest(amap.to_manifest()) == amap
+
+        rng = np.random.default_rng(3)
+        z = rng.uniform(-1.0, 1.0, size=(4, model.nu)).astype(np.float32)
+        lengths = np.mean([amap.length_min, amap.length_max], axis=0) + rng.normal(
+            0, 0.01, (4, model.nu)
+        )
+        vels = rng.normal(0.0, 0.05, size=(4, model.nu))
+        state_np = {
+            "env_steps": 0.0,
+            "actuator_length": lengths,
+            "actuator_velocity": vels,
+        }
+        out_np = amap.forward(z, state_np)
+        assert out_np.dtype == np.float32
+        assert np.all((out_np >= -1.0 - 1e-6) & (out_np <= 1.0 + 1e-6))
+
+        torch = pytest.importorskip("torch")
+        state_t = {
+            "env_steps": 0.0,
+            "actuator_length": torch.tensor(lengths, dtype=torch.float32),
+            "actuator_velocity": torch.tensor(vels, dtype=torch.float32),
+        }
+        out_t = amap.forward_torch(torch.tensor(z), state_t).numpy()
+        np.testing.assert_allclose(out_np, out_t, atol=1e-5)
+
+        # Direct excitation mode matches sigmoid(sigmoid_mode) within [u_lo, u_hi].
+        direct = LambdaHold.from_model(
+            model, kp=2.5, damping_s=0.04, muscle_sigmoid=False
+        )
+        u_direct = direct.forward(z, state_np)
+        u_via_sig = sigmoid_muscle_activation(out_np.astype(np.float64), np)
+        interior = (u_direct > 0.01) & (u_direct < 0.90)
+        np.testing.assert_allclose(u_via_sig[interior], u_direct[interior], atol=1e-5)
+
+        # Intermittent hold_steps=3 latches z for 3 steps while reset(seed=...) is deterministic.
+        wrapped = ActionMapWrapper(base_env, amap)
+        wrapped.reset(seed=42)
+        z_hi = np.ones(model.nu, dtype=np.float32)
+        z_lo = -np.ones(model.nu, dtype=np.float32)
+        wrapped.step(z_hi)  # step 0 latches z_hi
+        c1 = wrapped.action(z_lo).copy()  # step 1 still uses latched z_hi (> 0)
+        assert np.all(c1 > 0.5)
+        wrapped.step(z_lo)  # step 1
+        wrapped.step(z_lo)  # step 2
+        c3 = wrapped.action(z_lo).copy()  # step 3 (3 % 3 == 0) latches z_lo (-1)
+        assert np.allclose(c3, -1.0, atol=1e-5)
+
+        # Seeded reset clears hold state and reproduces identical episode observations.
+        obs_a, _ = wrapped.reset(seed=9)
+        step_a = wrapped.step(z_hi)[0]
+        obs_b, _ = wrapped.reset(seed=9)
+        step_b = wrapped.step(z_hi)[0]
+        np.testing.assert_array_equal(obs_a, obs_b)
+        np.testing.assert_array_equal(step_a, step_b)
+    finally:
+        base_env.close()

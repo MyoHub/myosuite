@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-lambda-hold"
+version = "0.1.0"
+description = "Equilibrium-point stretch-reflex control (Lambda-Hold, Lee et al. 2026) for PPO on MyoSuite tasks"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = ["myosuite", "mujoco", "numpy", "torch"]
+
+[project.optional-dependencies]
+mjlab = ["myosuite[mjlab]", "tyro"]
+sb3 = ["myosuite[rl]"]
+test = ["pytest"]
+
+[project.scripts]
+lambda-hold-train = "myosuite_lambda_hold.train:main"
+lambda-hold-bench-sb3 = "myosuite_lambda_hold.benchmark_sb3:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_lambda_hold*"]

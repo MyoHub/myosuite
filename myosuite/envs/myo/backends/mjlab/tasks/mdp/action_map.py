@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import torch
 from mjlab.managers.action_manager import ActionTerm, ActionTermCfg
 
+from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
 from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (
     MyoMuscleActivationActionCfg,
 )
@@ -26,6 +27,7 @@ from myosuite.utils.action_map import (
     ActionMap,
     TrainedActionMap,
     action_map_from_manifest,
+    effective_hold_steps,
     forward_torch,
 )
 
@@ -89,6 +91,16 @@ class ActionMapAction(ActionTerm):
         self._raw = torch.zeros(
             (env.num_envs, self.action_map.action_dim), device=env.device
         )
+        self._latched = torch.zeros_like(self._raw)
+        self._hold_step = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+        if isinstance(cfg.base, MyoMuscleActivationActionCfg):
+            mj_model = env.sim.mj_model
+            act_ids = [mj_model.actuator(n).id for n in cfg.base.actuator_names]
+            self._ctrl_ids = torch.tensor(act_ids, dtype=torch.long, device=env.device)
+        else:
+            self._ctrl_ids = env.scene[cfg.entity_name].indexing.ctrl_ids.to(
+                device=env.device, dtype=torch.long
+            )
 
     @property
     def action_dim(self) -> int:
@@ -116,18 +128,31 @@ class ActionMapAction(ActionTerm):
 
     def process_actions(self, actions: torch.Tensor) -> None:
         self._raw[:] = actions.to(self._raw.device)
-        self._base.process_actions(
-            forward_torch(self.action_map, self._raw, {"env_steps": self.env_steps})
-        )
+        cur_steps = self.env_steps
+        hold = effective_hold_steps(self.action_map, cur_steps)
+        if hold > 1:
+            mask = (self._hold_step % hold) == 0
+            self._latched = torch.where(mask[:, None], self._raw, self._latched)
+            z = self._latched
+            self._hold_step += 1
+        else:
+            z = self._raw
+        data = self._env.scene[self.cfg.entity_name].data.data
+        state = {
+            "env_steps": cur_steps,
+            "actuator_length": data.actuator_length[:, self._ctrl_ids],
+            "actuator_velocity": data.actuator_velocity[:, self._ctrl_ids],
+        }
+        self._base.process_actions(forward_torch(self.action_map, z, state))
 
     def apply_actions(self) -> None:
         self._base.apply_actions()
 
     def reset(self, env_ids: Any = None) -> None:
-        if env_ids is None:
-            self._raw.zero_()
-        else:
-            self._raw[env_ids] = 0.0
+        ids = normalize_mjlab_env_ids(self._env, env_ids)
+        self._raw[ids] = 0.0
+        self._latched[ids] = 0.0
+        self._hold_step[ids] = 0
         self._base.reset(env_ids)
 
     def __getattr__(self, name: str) -> Any:
