@@ -98,6 +98,28 @@ Choose your path
 
 .. toctree::
    :maxdepth: 1
+   :caption: Developer Guide
+
+   Overview <developer/index>
+   developer/getting-started
+   developer/repository-map
+   developer/engineering-standards
+   developer/library-usage
+   developer/scaling-migration
+   developer/adding-a-new-task
+   developer/writing-term-functions
+   developer/mjlab-design-guide
+   developer/cross-backend-contract
+   developer/deployment-manifests
+   developer/training-guidelines
+   developer/performance-cards
+   developer/paired-push-evaluation
+   developer/agent-workflow
+   developer/distribution-matching-reward
+   developer/log
+
+.. toctree::
+   :maxdepth: 1
    :caption: Projects with MyoSuite
 
    projects

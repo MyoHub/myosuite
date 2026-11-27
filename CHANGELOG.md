@@ -9,7 +9,7 @@ Changes since **v3.1.0** (2026-11-11).
 ### Added
 
 * **Site orientation and angular velocity in `EnvAccessor`:** `site_xmat(site_ids)` (rotation matrices, the site's axes as columns) and `site_ang_vel(site_ids)` (the site's body's angular velocity in the world frame, the rotational part of `cvel`, as mjlab's `site_ang_vel_w`) on the CPU, mjlab and MJX accessors, so a term can read a head's direction and turning rate.
-* **Distribution-matching reward:** `myosuite.terms.distribution_reward` pays `log p*(x) - log q(x)` for a movement feature `x` (a function of the accessor and the task state), where `p*` is a target distribution (`GaussianMixtureSpec`, from a mean and covariance or fitted to samples) and `q` the policy's own distribution, estimated online (`myosuite.utils.density_estimator`). Its mean is `-KL(q || p*)`, so the policy reproduces the spread of the target. `DistributionMatchingCfg.mask_key` scores only the frames a target describes (for example those inside a trial). Opt-in: `DistributionMatchingWrapper` on the CPU, `mdp.DistributionMatchingReward` on mjlab; no registered env changes. See `docs/wiki/distribution-matching-reward.md`.
+* **Distribution-matching reward:** `myosuite.terms.distribution_reward` pays `log p*(x) - log q(x)` for a movement feature `x` (a function of the accessor and the task state), where `p*` is a target distribution (`GaussianMixtureSpec`, from a mean and covariance or fitted to samples) and `q` the policy's own distribution, estimated online (`myosuite.utils.density_estimator`). Its mean is `-KL(q || p*)`, so the policy reproduces the spread of the target. `DistributionMatchingCfg.mask_key` scores only the frames a target describes (for example those inside a trial). Opt-in: `DistributionMatchingWrapper` on the CPU, `mdp.DistributionMatchingReward` on mjlab; no registered env changes. See `docs/source/developer/distribution-matching-reward.md`.
 * **Subject-specific muscle strength facade (`myosuite.core.muscle_strength`):** delegates native active/passive muscle force scaling (`scale_muscle_strength`, `scale_muscle_strength_spec`) and isometric maximal voluntary torque probing & bounded strength calibration (`MaxTorqueMeasurement`, `StrengthCalibration`, `strength_factor_from_body_mass`, `max_torque_terms`, `calibrate_muscle_strength`) lazily to `myo_sim.physics.muscle_strength` (`MyoHub/myo_sim#186`, `MyoHub/myo_sim#195`), while keeping legacy gain-only sarcopenia (`apply_sarcopenia_to_model`) available without `myo_sim.physics.muscle_strength` ([#649]).
 * **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink), now a core dependency: each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.core.retargeting.retarget(model, markers)` fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
@@ -31,6 +31,10 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Fixed
 
+* `myoMimic-v0` clips from `$MYOSUITE_MIMIC_DATASET` fall back like the local cache: without a
+  `<model>/<myo_sim version>` folder, the dataset's first `<model>/*` folder whose clips carry the installed body's
+  kinematic fingerprint is downloaded (`download_retargeted_clips(..., fingerprint, probe)`), so a myo_sim release
+  that leaves the body's kinematics alone keeps the dataset's clips ([#923]).
 * `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
   per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
@@ -420,6 +424,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#805]: https://github.com/MyoHub/myosuite/pull/805
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
+[#923]: https://github.com/MyoHub/myosuite/pull/923
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
