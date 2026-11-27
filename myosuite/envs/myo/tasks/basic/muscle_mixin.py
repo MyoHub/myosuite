@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 
 from myosuite.envs.muscle_stages import CtrlStageHost
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
 
 
 class MuscleActionMixin(CtrlStageHost):

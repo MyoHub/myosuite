@@ -10,7 +10,7 @@ method:
 * task: track the AMASS KIT clips retargeted onto the task model (MuscleMimic's KIT
   split: 972 training, 108 held-out clips; :func:`kit_root`) with a full body (free root, legs, torso, arms; 17 tracked bodies
   and 4 foot bodies). Default observations from a shared vocabulary
-  (:mod:`myosuite.terms.mimic_track`), a proposed dense reward (MimicReward), a
+  (:mod:`myosuite.core.terms.mimic_track`), a proposed dense reward (MimicReward), a
   failure rule (1 m relative sites / 1 m root / 1 rad root orientation) and success
   metrics that do not depend on the control step (:mod:`.metrics`);
 * model: a body adapter (:mod:`.models`; myo_sim's ``myofullbody`` so far), chosen with

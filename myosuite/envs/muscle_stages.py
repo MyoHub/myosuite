@@ -309,11 +309,11 @@ def noise_stage(get_cfg: Callable[[], Any]) -> CtrlStage:
     """Signal-dependent + constant Gaussian noise on the muscle excitations.
 
     Args:
-        get_cfg: Returns the current :class:`~myosuite.terms.base_action.MotorNoiseCfg`
+        get_cfg: Returns the current :class:`~myosuite.core.terms.base_action.MotorNoiseCfg`
             (read every step, so the wrapper's config can change). A disabled
             config draws nothing, so the env's random stream is untouched.
     """
-    from myosuite.terms.base_action import sample_motor_noise  # noqa: PLC0415
+    from myosuite.core.terms.base_action import sample_motor_noise  # noqa: PLC0415
 
     def apply(env: Any, ctrl: np.ndarray) -> np.ndarray:
         idx = env._stage_muscle_index()

@@ -37,7 +37,7 @@ from mujoco import mjx
 from myosuite.envs.myo.backends.mjx.brax_env import State
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MyoMjxEnvBase
 from myosuite.physics.fatigue_jax import cumulative_fatigue_step
-from myosuite.utils.spec_processing import compile_with_options
+from myosuite.core.builder.spec_processing import compile_with_options
 
 # Keys that may be included in the obs state from fatigue internals
 ALLOWED_FATIGUE_OBS_KEYS: list[str] = ["MA", "MR", "MF"]

@@ -74,7 +74,10 @@ from myosuite.envs.myo.backends.mjlab.mjlab_env_base import (
 )
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.quat_math import quat2mat
-from myosuite.terms.mimic_reward import MimicTrackingConfig, mimic_site_tracking_reward
+from myosuite.core.terms.mimic_reward import (
+    MimicTrackingConfig,
+    mimic_site_tracking_reward,
+)
 from myosuite.utils.reach_workspace import reachable_postures
 
 if TYPE_CHECKING:
@@ -1075,7 +1078,7 @@ def _mimic_deepmimic_reward(
     Returns:
         Closure returning per-env reward tensor ``(N,)``.
     """
-    from myosuite.terms.mimic_reward import (
+    from myosuite.core.terms.mimic_reward import (
         DEFAULT_SCALES,
         DEFAULT_WEIGHTS,
         mimic_composite_reward,
@@ -1486,7 +1489,7 @@ def _mimic_early_termination(
 
     Returns boolean tensor ``(N,)`` — ``True`` for envs that should terminate.
     """
-    from myosuite.terms.mimic_obs import mimic_termination_mask
+    from myosuite.core.terms.mimic_obs import mimic_termination_mask
 
     def _fn(env: Any) -> Any:
         import torch

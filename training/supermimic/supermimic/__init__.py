@@ -10,7 +10,7 @@ SuperMimic runner from supermimic_vibed (MIT) and its fast recipe from BlinkMimi
 SuperMimic is Liao et al., arXiv:2610.28480. Every ported file names its source.
 
 The task (observation, reward, failure rule, reference motion) is MyoSuite's; this method builds it with ``make_env``
-and evaluates the task's pure term functions (``myosuite.terms.mimic_track``) on imagined states, through its own
+and evaluates the task's pure term functions (``myosuite.core.terms.mimic_track``) on imagined states, through its own
 differentiable kinematics, muscle geometry and activation dynamics. The task never imports this method.
 
 Usage, install and results: ``training/supermimic/README.md``. Command lines: ``training/supermimic/scripts/``.

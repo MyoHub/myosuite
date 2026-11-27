@@ -7,7 +7,7 @@
 The state tuple is ``S = (p, R, v, w, q, qd, act, touch)``: root position, canonical root rotation
 matrix, world linear and angular velocity of the root link frame, the independent joint positions and
 velocities, the muscle activations and the four foot touch values. :class:`TrackingHeads` turns it into the
-task's :class:`~myosuite.terms.mimic_track.TrackState` with this method's differentiable kinematics and muscle
+task's :class:`~myosuite.core.terms.mimic_track.TrackState` with this method's differentiable kinematics and muscle
 geometry, and :func:`analytic` maps each term of the task's env cfg (through its ``func.pure``) to the task's
 pure function on that state, so the simulator and imagination score one MDP.
 
@@ -25,7 +25,7 @@ from typing import Any
 import torch
 
 from myosuite.envs.myo.tasks.mimic.tracking.motion import MotionLib
-from myosuite.terms import mimic_track as mt
+from myosuite.core.terms import mimic_track as mt
 
 from .rotations import (
     mat_to_6d,
@@ -200,7 +200,7 @@ class TrackingHeads:
 
     # ---------------- the task's state, features and reference ----------------
     def track(self, ctx: StepCtx) -> tuple[mt.TrackState, mt.TrackFeatures]:
-        """The task's :class:`~myosuite.terms.mimic_track.TrackState` of ``ctx.S`` and its features."""
+        """The task's :class:`~myosuite.core.terms.mimic_track.TrackState` of ``ctx.S`` and its features."""
         if "track" not in ctx.cache:
             P, R, V, W = self.fk(ctx)
             q, qd = self.joints(ctx)

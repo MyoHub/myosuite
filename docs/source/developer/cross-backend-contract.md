@@ -269,7 +269,7 @@ families whose last column is "yes". `make_env` is the authority.
 
 ## Motor noise (optional, off by default)
 
-`MotorNoiseCfg(signal_dependent_std, constant_std)` (`myosuite.terms.base_action`) adds human motor noise to the muscle
+`MotorNoiseCfg(signal_dependent_std, constant_std)` (`myosuite.core.terms.base_action`) adds human motor noise to the muscle
 excitations. `MotorNoiseCfg.van_beers_2004()` gives the levels 0.103 / 0.185 used by Fischer et al. (2021) and
 User-in-the-Box.
 

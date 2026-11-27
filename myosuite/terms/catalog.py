@@ -8,7 +8,7 @@
 # (packages/eden/src/eden/managers/catalog.py).
 """Searchable catalog of MyoSuite MDP terms, configs, and physiological features.
 
-Introspects ``myosuite.terms`` modules and registered environment wrapper
+Introspects ``myosuite.core.terms`` (and remaining ``myosuite.terms``) modules and registered environment wrapper
 features without importing heavy GPU backends (``torch``, ``mjlab``, ``jax``),
 and exposes both a Python API (:func:`catalog`, :func:`search`) and the
 ``myosuite-terms`` CLI entry point.
@@ -33,26 +33,26 @@ from gymnasium import Wrapper
 
 TERM_MODULES: dict[str, tuple[str, ...]] = {
     "obs": (
-        "myosuite.terms.base_obs",
-        "myosuite.terms.mimic_obs",
-        "myosuite.terms.opponent_relative_obs",
+        "myosuite.core.terms.base_obs",
+        "myosuite.core.terms.mimic_obs",
+        "myosuite.core.terms.opponent_relative_obs",
     ),
     "reward": (
-        "myosuite.terms.base_reward",
-        "myosuite.terms.mimic_reward",
+        "myosuite.core.terms.base_reward",
+        "myosuite.core.terms.mimic_reward",
     ),
-    "action": ("myosuite.terms.base_action",),
-    "event": ("myosuite.terms.base_event",),
-    "termination": ("myosuite.terms.base_termination",),
+    "action": ("myosuite.core.terms.base_action",),
+    "event": ("myosuite.core.terms.base_event",),
+    "termination": ("myosuite.core.terms.base_termination",),
     "track": (
-        "myosuite.terms.mimic_track",
-        "myosuite.terms.waypoint",
+        "myosuite.core.terms.mimic_track",
+        "myosuite.core.terms.waypoint",
     ),
     "multiplayer": (
         "myosuite.terms.multiplayer.chase_tag_vs_obs",
         "myosuite.terms.multiplayer.chase_tag_vs_reward",
-        "myosuite.terms.multiplayer.common",
-        "myosuite.terms.multiplayer.heading",
+        "myosuite.core.terms.multiplayer.common",
+        "myosuite.core.terms.multiplayer.heading",
     ),
 }
 
@@ -282,17 +282,30 @@ def _scan_features() -> list[CatalogEntry]:
     return entries
 
 
+_MJLAB_MDP_MODULES: tuple[str, ...] = (
+    "myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map",
+    "myosuite.envs.myo.backends.mjlab.tasks.mdp.actions",
+    "myosuite.envs.myo.backends.mjlab.tasks.mdp.commands",
+    "myosuite.envs.myo.backends.mjlab.tasks.mdp.events",
+    "myosuite.envs.myo.backends.mjlab.tasks.mdp.observations",
+    "myosuite.envs.myo.backends.mjlab.tasks.mdp.terminations",
+)
+
+
 def _scan_mjlab_optional() -> list[CatalogEntry]:
+    entries: list[CatalogEntry] = []
     try:
-        return _scan_module("myosuite.envs.myo.backends.mjlab.mdp", "mjlab")
+        for mod_name in _MJLAB_MDP_MODULES:
+            entries.extend(_scan_module(mod_name, "mjlab"))
     except ImportError:
         return []
+    return entries
 
 
 def catalog(
     kind: str | None = None, *, include_mjlab: bool = False
 ) -> list[CatalogEntry]:
-    """Collect catalog entries across ``myosuite.terms`` and physiological features.
+    """Collect catalog entries across ``myosuite.core.terms``, ``myosuite.terms``, and physiological features.
 
     Args:
         kind: Optional filter in :data:`TERM_KINDS` (or ``"mjlab"`` when

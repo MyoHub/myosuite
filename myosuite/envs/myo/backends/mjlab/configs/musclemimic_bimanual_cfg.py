@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from myosuite.terms.mimic_reward import MimicTrackingConfig
+from myosuite.core.terms.mimic_reward import MimicTrackingConfig
 
 _TRACKING = MimicTrackingConfig()
 

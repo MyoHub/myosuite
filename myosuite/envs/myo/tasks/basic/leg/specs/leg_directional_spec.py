@@ -38,7 +38,7 @@ from myosuite.core.config import (
 )
 from myosuite.core.registry import register_task
 from myosuite.envs.myo.assets._resolve import resolve_leg_xml
-from myosuite.terms.base_reward import LOCOMOTION_SOLVED_WINDOW_S
+from myosuite.core.terms.base_reward import LOCOMOTION_SOLVED_WINDOW_S
 
 
 def _leg_model_path() -> str:

@@ -27,10 +27,10 @@ from myosuite.integrations.musclemimic.fullbody_model import (
 )
 from myosuite.integrations.musclemimic.model_versions import resolve_models_version
 from myosuite.physics.quat import quat_yaw
-from myosuite.terms.base_action import sigmoid_muscle_activation
-from myosuite.terms.base_obs import joint_pos_obs, joint_vel_obs, muscle_act_obs
-from myosuite.terms.mimic_obs import resolve_mimic_site_ids
-from myosuite.terms.mimic_reward import (
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_obs import joint_pos_obs, joint_vel_obs, muscle_act_obs
+from myosuite.core.terms.mimic_obs import resolve_mimic_site_ids
+from myosuite.core.terms.mimic_reward import (
     MimicTrackingConfig,
     compute_mimic_tracking_error,
     mimic_joint_pos_reward,

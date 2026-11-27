@@ -30,12 +30,12 @@ from myosuite.integrations.musclemimic.fullbody_model import (
 from myosuite.core.trajectory_io import check_clip_rate, read_npz_names
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.running_stats import RunningMeanStd, normalize, update
-from myosuite.terms.mimic_obs import (
+from myosuite.core.terms.mimic_obs import (
     mimic_lookahead_obs,
     mimic_lookahead_obs_size,
     mimic_should_terminate,
 )
-from myosuite.terms.mimic_reward import (
+from myosuite.core.terms.mimic_reward import (
     MimicRewardScales,
     MimicRewardWeights,
     mimic_composite_reward,

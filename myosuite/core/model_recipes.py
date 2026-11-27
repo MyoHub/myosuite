@@ -112,7 +112,7 @@ def materialize_recipe_xml(
     import myo_sim  # type: ignore[import-untyped]
     from myo_sim.build.compose import sanitize_spec_xml  # type: ignore[import-untyped]
 
-    from myosuite.utils.asset_path_resolver import write_atomic
+    from myosuite.core.builder.asset_path_resolver import write_atomic
 
     model, spec = build_from_recipe(name, edit_fn=edit_fn)
     with suppress_empty_prefix_attach_warning():
@@ -305,7 +305,7 @@ def _legacy_hand_builder() -> ModelBuilder:
     ``myo_sim`` >= 0.2 hand it lists ``cmc_abduction`` before ``cmc_flexion``; the public
     NPG policies of these tasks depend on that order.
     """
-    from myosuite.utils.asset_path_resolver import (
+    from myosuite.core.builder.asset_path_resolver import (
         get_sim_asset_root,
         resolve_model_xml_path,
     )
@@ -1151,7 +1151,7 @@ def _immobilize_tabletennis_legs_and_left_arm(spec: mujoco.MjSpec) -> mujoco.MjS
     reproduce the same end state directly: freeze ``myoarm_l_root``'s whole
     subtree here instead of the copy-mirror-immobilize dance.
     """
-    from myosuite.utils.spec_processing import recursive_immobilize
+    from myosuite.core.builder.spec_processing import recursive_immobilize
 
     recursive_immobilize(spec, None, spec.body("femur_l"), remove_eqs=True)
     recursive_immobilize(spec, None, spec.body("femur_r"), remove_eqs=True)
@@ -1285,7 +1285,7 @@ def _add_tabletennis_contacts(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """
     from myo_sim.build.compose import find_body  # type: ignore[import-untyped]
 
-    from myosuite.utils.spec_processing import recursive_remove_contacts
+    from myosuite.core.builder.spec_processing import recursive_remove_contacts
 
     full_body = find_body(spec, "Full Body")
     recursive_remove_contacts(full_body, return_condition=lambda b: "radius" in b.name)

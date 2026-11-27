@@ -48,7 +48,7 @@ def feature_spec(text: str) -> WrapperSpec:
         SarcopeniaWrapper,
         wrapper_spec,
     )
-    from myosuite.terms.base_action import MotorNoiseCfg
+    from myosuite.core.terms.base_action import MotorNoiseCfg
 
     name, _, raw = text.partition("=")
     options: dict[str, Any] = {}

@@ -38,7 +38,7 @@ from myosuite.integrations.musclemimic.model_versions import (
     apply_models_version,
     resolve_models_version,
 )
-from myosuite.terms.mimic_reward import MimicTrackingConfig
+from myosuite.core.terms.mimic_reward import MimicTrackingConfig
 
 NATIVE_FULLBODY_MODEL = "myofullbody"
 """The myo_sim model the native full body is built from (``model_name`` overrides it)."""
@@ -118,7 +118,7 @@ def _prepare_scene_xml_keep_only_floor(scene_xml: Path) -> Path:
 
     # Match MyoSuite floor appearance while keeping upstream floor physics.
     try:
-        from myosuite.utils.asset_path_resolver import get_sim_asset_root
+        from myosuite.core.builder.asset_path_resolver import get_sim_asset_root
 
         myosuite_floor_texture = get_sim_asset_root("myo_sim") / "scene" / "floor0.png"
     except FileNotFoundError:
@@ -219,7 +219,7 @@ def _prepare_scene_xml_keep_only_floor(scene_xml: Path) -> Path:
             tmp.write(scene_payload)
             return Path(tmp.name)
     except OSError:
-        from myosuite.utils.asset_path_resolver import _anchor_to_model_dir
+        from myosuite.core.builder.asset_path_resolver import _anchor_to_model_dir
 
         _anchor_to_model_dir(root, scene_xml.parent)
         with tempfile.NamedTemporaryFile(
@@ -271,7 +271,7 @@ def _load_spec_with_floor_only_upstream_scene(xml_path: str) -> mujoco.MjSpec:
                 temp_model_path = Path(tmp.name)
                 tmp.write(ET.tostring(model_root, encoding="unicode"))
         except OSError:
-            from myosuite.utils.asset_path_resolver import _anchor_to_model_dir
+            from myosuite.core.builder.asset_path_resolver import _anchor_to_model_dir
 
             _anchor_to_model_dir(model_root, src.parent)
             with tempfile.NamedTemporaryFile(

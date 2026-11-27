@@ -50,7 +50,7 @@ from myosuite.envs.muscle_stages import (
     check_custom_order,
     warn_order_clash,
 )
-from myosuite.terms.base_action import (
+from myosuite.core.terms.base_action import (
     MotorNoiseCfg,
     sample_motor_noise,
     sigmoid_muscle_activation,

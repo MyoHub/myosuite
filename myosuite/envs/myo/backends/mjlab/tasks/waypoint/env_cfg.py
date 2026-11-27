@@ -36,7 +36,7 @@ from myosuite.envs.waypoint import (
     initial_state,
 )
 from myosuite.physics.joint_coupling import JointCouplings
-from myosuite.terms.waypoint import heading_yaw
+from myosuite.core.terms.waypoint import heading_yaw
 
 ENTITY = "robot"
 _NJMAX, _NCONMAX = 512, 256

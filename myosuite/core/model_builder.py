@@ -251,7 +251,7 @@ def _resolve_fragment_path(name: str) -> Path:
         "torso": "torso/myotorso.xml",
     }
     if name in _FALLBACK_PATHS:
-        from myosuite.utils.asset_path_resolver import get_sim_asset_root
+        from myosuite.core.builder.asset_path_resolver import get_sim_asset_root
 
         try:
             candidate = get_sim_asset_root("myo_sim") / _FALLBACK_PATHS[name]
@@ -478,7 +478,7 @@ class ModelBuilder:
         Returns:
             A new :class:`ModelBuilder` instance with *path* as its seed.
         """
-        from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+        from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
 
         builder = cls()
         builder._xml_path = resolve_model_xml_path(Path(path))
@@ -885,7 +885,7 @@ class ModelBuilder:
                 if composed is not None:
                     frag_spec = composed
                 else:
-                    from myosuite.utils.asset_path_resolver import (
+                    from myosuite.core.builder.asset_path_resolver import (
                         resolve_model_xml_path,
                     )
 

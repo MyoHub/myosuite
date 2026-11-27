@@ -17,8 +17,8 @@ from mjlab.managers.manager_base import ManagerTermBase
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.terms.base_obs import joint_vel_obs, root_planar_vel_obs
-from myosuite.terms.base_reward import (
+from myosuite.core.terms.base_obs import joint_vel_obs, root_planar_vel_obs
+from myosuite.core.terms.base_reward import (
     act_reg,
     heading_reward,
     locomotion_streak,

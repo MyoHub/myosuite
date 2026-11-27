@@ -59,12 +59,21 @@ intersphinx_mapping = {
 intersphinx_disabled_domains = ["std"]
 
 if "autoapi.extension" in extensions:
-    # Limit to core/ and terms/ to avoid duplicating manual api/*.rst pages.
+    # Limit to core/ (which includes core/terms/ and core/builder/) to avoid duplicating manual api/*.rst pages.
     autoapi_dirs = [
         os.path.join(_repo_root, "myosuite", "core"),
         os.path.join(_repo_root, "myosuite", "terms"),
     ]
-    autoapi_ignore = ["*terms/base_action.py"]
+    autoapi_ignore = [
+        "*terms/base_action.py",
+        "*myosuite/terms/_array.py",
+        "*myosuite/terms/base_*.py",
+        "*myosuite/terms/mimic_*.py",
+        "*myosuite/terms/opponent_relative_obs.py",
+        "*myosuite/terms/waypoint.py",
+        "*myosuite/terms/multiplayer/common.py",
+        "*myosuite/terms/multiplayer/heading.py",
+    ]
     autoapi_type = "python"
     autoapi_options = [
         "members",

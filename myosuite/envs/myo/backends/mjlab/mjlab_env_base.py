@@ -7,7 +7,7 @@
 mjlab (MuJoCo Warp) uses ``torch.Tensor`` for all physics state arrays and runs
 in parallel across ``N`` environments on the GPU.  This accessor wraps the mjlab
 data object and exposes the ``EnvAccessor`` protocol so that all shared term
-functions in ``myosuite/terms/`` can run on this backend without modification.
+functions in ``myosuite/core/terms/`` can run on this backend without modification.
 
 Expected mjlab data interface (analogous to ``mjx.Data``)::
 
@@ -36,7 +36,7 @@ class MjlabEnvAccessor(EnvAccessor):
     """EnvAccessor wrapping mjlab/MuJoCo Warp physics data as ``torch.Tensor``.
 
     This class satisfies the :class:`~myosuite.core.protocols.EnvAccessor`
-    protocol so that all shared term functions in ``myosuite/terms/`` can run
+    protocol so that all shared term functions in ``myosuite/core/terms/`` can run
     unmodified on the mjlab (MuJoCo Warp) backend.
 
     Args:

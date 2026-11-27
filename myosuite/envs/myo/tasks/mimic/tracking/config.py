@@ -62,7 +62,7 @@ class ObsCfg:
     """Observation groups.
 
     Attributes:
-        policy: Body-state terms (:data:`myosuite.terms.mimic_track.OBSERVATIONS`), in order.
+        policy: Body-state terms (:data:`myosuite.core.terms.mimic_track.OBSERVATIONS`), in order.
         goal_frames: Reference frames in the goal, the current one included.
         goal_spacing_s: Time between them.
     """
@@ -177,9 +177,9 @@ class MimicTaskCfg:
         self_collisions: Keep the body's self-contact pairs.
         reward_fn: A method's own step reward ``reward_fn(state, ref, ctrl_dt)`` replacing
             :attr:`reward` (``None``: the proposed reward). It gets the
-            :class:`~myosuite.terms.mimic_track.TrackState` of the post-step state and the
-            :class:`~myosuite.terms.mimic_track.TrackRef` of frame f + 1, batched NumPy or
-            torch arrays (:func:`~myosuite.terms.mimic_track.array_module`), and returns the
+            :class:`~myosuite.core.terms.mimic_track.TrackState` of the post-step state and the
+            :class:`~myosuite.core.terms.mimic_track.TrackRef` of frame f + 1, batched NumPy or
+            torch arrays (:func:`~myosuite.core.terms.mimic_track.array_module`), and returns the
             reward per step, ``(...,)``. The proposed reward is still reported (CPU
             ``info["task_reward"]``, the twin's ``task_reward``). A whole replacement
             ``RewardCfg`` of the library's components is an override of ``"reward"``.

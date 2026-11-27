@@ -22,8 +22,8 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     solved_step_count,
 )
 from myosuite.physics.quat_math import euler2quat, mat2euler
-from myosuite.terms.mimic_track import rotation_angle
-from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
+from myosuite.core.terms.mimic_track import rotation_angle
+from myosuite.core.builder.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):

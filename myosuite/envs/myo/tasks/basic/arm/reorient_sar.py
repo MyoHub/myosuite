@@ -25,7 +25,7 @@ from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
 )
 from myosuite.physics.quat_math import euler2quat
 from myosuite.physics.quat_math import calculate_cosine
-from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
+from myosuite.core.builder.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class ReorientSAREnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):

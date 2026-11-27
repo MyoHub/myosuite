@@ -5,7 +5,7 @@
 """MJX pose environment — joint-angle posing task.
 
 Replaces ``playground_pose_v0.py``.  Delegates obs and reward computation
-to the shared term functions in ``myosuite/terms/``, accessed via
+to the shared term functions in ``myosuite/core/terms/``, accessed via
 ``MjxEnvAccessor``.
 
 Config keys (in addition to ``MyoMjxEnvBase`` defaults):
@@ -31,8 +31,8 @@ from mujoco import mjx
 
 from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEnvBase
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
-from myosuite.terms.base_obs import pose_error_obs
-from myosuite.terms.base_reward import pose_reward
+from myosuite.core.terms.base_obs import pose_error_obs
+from myosuite.core.terms.base_reward import pose_reward
 from myosuite.utils.target_ranges import resolve_joint_target_ranges
 
 
@@ -133,7 +133,7 @@ class MjxPoseEnv(MyoMjxEnvBase):
     ) -> dict[str, jax.Array]:
         """Compute pose reward components with config-specified weights.
 
-        Calls ``pose_reward()`` from ``myosuite/terms/`` and applies the
+        Calls ``pose_reward()`` from ``myosuite/core/terms/`` and applies the
         per-component weights from ``config.reward_config``.
 
         Args:

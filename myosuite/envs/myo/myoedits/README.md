@@ -5,7 +5,7 @@ This enables flexible, programmatic manipulation of model components such as bod
 Custom tasks can then be designed based on the MyoEdited model.
 Each time the task is run, the base XML model is loaded and modified on the fly, ensuring that MyoEdited models remain automatically synchronized with any updates to the underlying MyoSuite models.
 
-Model editing is performed via a [ModelEditor](https://github.com/myohub/myosuite/blob/main/myosuite/envs/myo/myoedits/model_editor.py) class that
+Model editing is performed via a [ModelEditor](https://github.com/myohub/myosuite/blob/main/myosuite/core/builder/model_editor.py) class that
 - Loads the base XML file
 - Edits the model according to a predefined edit_fn
 - Compiles the edited model and creates a temporary XML file

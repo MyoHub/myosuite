@@ -12,7 +12,8 @@ Ownership, as REVIEW.md and docs/wiki/repository-map.md state it:
   (`docs/wiki/training-guidelines.md`); out-of-wheel `tools/<tool>/` owns heavy CV/perception inference stacks. Runtime
   modules under `myosuite/` must never import `training`, `tools`, `scripts` or `myosuite.tests`.
 - Inside `myosuite/`, new runtime code belongs in its active canonical subpackage following the upward import DAG in
-  `docs/wiki/repository-map.md` (and never in namespaces that have already been converted into compatibility facades).
+  `docs/wiki/repository-map.md` — never in closed compatibility shim namespaces (`myosuite/scenes/`, migrated
+  `myosuite/terms/` modules).
 - A thin compatibility facade or re-export shim is fine. A copy of a `myo_sim` algorithm, a fallback that
   re-implements one, or a new model transform written in MyoSuite is not.
 

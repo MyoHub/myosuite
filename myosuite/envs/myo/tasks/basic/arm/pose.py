@@ -18,9 +18,9 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleActionMixin
-from myosuite.terms.base_obs import pose_error_obs
-from myosuite.terms.base_reward import pose_reward
-from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
+from myosuite.core.terms.base_obs import pose_error_obs
+from myosuite.core.terms.base_reward import pose_reward
+from myosuite.core.builder.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
@@ -221,7 +221,7 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         """Target joint angles, scored by the reward and shown in ``pose_err``.
 
         Stored once, as ``_task_state["target_angles"]`` (read by
-        :func:`~myosuite.terms.base_reward.pose_reward`), so setting it or
+        :func:`~myosuite.core.terms.base_reward.pose_reward`), so setting it or
         calling :meth:`update_target` moves the observed and the rewarded
         target together.
         """
@@ -359,7 +359,7 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def get_reward_dict(self, obs_dict: dict[str, np.ndarray]) -> dict[str, Any]:
         """Compute the reward dictionary from the observation dict.
 
-        Uses :func:`~myosuite.terms.base_reward.pose_reward` for pose
+        Uses :func:`~myosuite.core.terms.base_reward.pose_reward` for pose
         components.  Act-regularisation is kept inline because its formula
         differs from the generic ``act_reg`` term.
 
@@ -402,7 +402,7 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
         Returns:
             Task state dict containing ``"target_angles"`` for use by term
-            functions such as :func:`~myosuite.terms.base_reward.pose_reward`.
+            functions such as :func:`~myosuite.core.terms.base_reward.pose_reward`.
         """
         if self.target_type == "generate":
             self._update_target(restore_sim=True)

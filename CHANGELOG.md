@@ -33,6 +33,10 @@ Changes since **v3.1.0** (2026-11-11).
   `<model>/<myo_sim version>` folder, the dataset's first `<model>/*` folder whose clips carry the installed body's
   kinematic fingerprint is downloaded (`download_retargeted_clips(..., fingerprint, probe)`), so a myo_sim release
   that leaves the body's kinematics alone keeps the dataset's clips ([#923]).
+* `myosuite.terms.catalog.catalog(include_mjlab=True)` now scans the six modules under
+  `backends.mjlab.tasks.mdp.*` (`action_map`, `actions`, `commands`, `events`, `observations`,
+  `terminations`); previously it attempted to import the nonexistent `backends.mjlab.mdp` package
+  and silently returned no `mjlab` entries ([#936]).
 * `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
   per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
@@ -41,15 +45,20 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
-* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
-  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
-  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
-  Python 3.15 on Linux for the ONNX-free native CPU path.
+* **Foundation consolidation (`myosuite.core.builder`, `myosuite.core.terms`, `myosuite.physics.colored_noise`) ([#936]).**
+  Consolidated MJCF/scene assembly helpers (`scene_library`, `scene_builder`, `model_editor`, `spec_processing`,
+  `mujoco_geom_utils`, `mujoco_joint_utils`, `asset_path_resolver`) into `myosuite/core/builder/`, pure backend-agnostic
+  MDP term modules into `myosuite/core/terms/`, and `colored_noise` into `myosuite/physics/colored_noise.py`, keeping
+  `sys.modules`-identical compatibility aliases at all former `myosuite.scenes.*`, `myosuite.terms.*`, and `myosuite.utils.*` paths.
 * **`myosuite.tests` excluded from built wheels ([#935]).** Set `include-package-data = false` with explicit runtime
   subpackage discovery in `pyproject.toml` so published wheels ship only runtime `myosuite.*` subpackages and exclude
   `myosuite/tests/**` fixtures/baselines (~2 MB wheel reduction). Running `pytest --pyargs myosuite.tests...` or
   importing `myosuite.tests.*` (e.g. `TestEnvs`) now requires a source checkout rather than a wheel install; PyPI
   pre- and post-release wheel verification (`.github/smoke_wheel.py`) steps every installable single-agent environment across all suites for 3 seeded steps and checks `pickle` round-trip step parity directly via `make_env`.
+* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
+  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
+  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
+  Python 3.15 on Linux for the ONNX-free native CPU path.
 
 ### Fixed
 
@@ -429,6 +438,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#810]: https://github.com/MyoHub/myosuite/pull/810
 [#923]: https://github.com/MyoHub/myosuite/pull/923
 [#935]: https://github.com/MyoHub/myosuite/pull/935
+[#936]: https://github.com/MyoHub/myosuite/pull/936
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.

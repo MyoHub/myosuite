@@ -28,7 +28,7 @@ from myosuite.integrations.musclemimic.model_versions import (
     apply_models_version,
     resolve_models_version,
 )
-from myosuite.terms.mimic_reward import MimicTrackingConfig
+from myosuite.core.terms.mimic_reward import MimicTrackingConfig
 
 BODY2SITES_FOR_MIMIC = {
     "thorax": "upper_body_mimic",
@@ -483,7 +483,7 @@ def compile_mimic_bimanual_mjmodel(
 
 def _default_myosuite_scene_xml() -> Path:
     """Resolve the canonical MyoSuite scene include path (pip or submodule)."""
-    from myosuite.utils.asset_path_resolver import get_sim_asset_root
+    from myosuite.core.builder.asset_path_resolver import get_sim_asset_root
 
     return get_sim_asset_root("myo_sim") / "scene" / "myosuite_scene.xml"
 

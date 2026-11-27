@@ -59,8 +59,8 @@ import numpy as np
 from myosuite.integrations.musclemimic.bc_directional_collector import (
     _directional_obs,
 )
-from myosuite.terms.multiplayer.heading import heading_yaw, role_heading_xy
-from myosuite.terms.opponent_relative_obs import relative_pose_obs
+from myosuite.core.terms.multiplayer.heading import heading_yaw, role_heading_xy
+from myosuite.core.terms.opponent_relative_obs import relative_pose_obs
 
 #: Fixed heading passed to ``_directional_obs`` — chase-tag has no external
 #: heading command, so the 2-dim heading_cmd sub-block is always [1, 0].

@@ -28,7 +28,7 @@ from myosuite.envs.myo.tasks.challenge.challenge_common import (
     joint_limit_forces,
 )
 from myosuite.physics.quat_math import intrinsic_euler2quat, quat2euler_intrinsic
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
 
 
 class TrackTypes(Enum):

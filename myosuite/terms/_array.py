@@ -2,36 +2,13 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Array helpers shared by the backend-agnostic term modules."""
+"""Backward-compatible alias for :mod:`myosuite.core.terms._array`."""
 
-from __future__ import annotations
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from typing import Any
+if _TYPE_CHECKING:
+    from myosuite.core.terms._array import *  # noqa: F403
 
-
-def xp_asarray(
-    xp: Any,
-    value: Any,
-    *,
-    dtype: Any | None = None,
-    device: Any | None = None,
-) -> Any:
-    """Convert *value* to the backend array type used by *xp*.
-
-    Args:
-        xp: Array module from ``accessor.array_module()`` (NumPy, JAX or torch).
-        value: Array-like input.
-        dtype: Optional dtype of the result.
-        device: Optional torch device; ignored by the other backends.
-
-    Returns:
-        *value* as an array of *xp*.
-    """
-    if getattr(xp, "__name__", "") == "torch":
-        tensor = (
-            xp.as_tensor(value, device=device)
-            if device is not None
-            else xp.as_tensor(value)
-        )
-        return tensor.to(dtype=dtype) if dtype is not None else tensor
-    return xp.asarray(value, dtype=dtype) if dtype is not None else xp.asarray(value)
+_sys.modules[__name__] = _importlib.import_module("myosuite.core.terms._array")

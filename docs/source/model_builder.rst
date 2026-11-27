@@ -83,7 +83,7 @@ This is always the most reliable approach:
    import mujoco
    import myosuite
    from pathlib import Path
-   from myosuite.utils.asset_path_resolver import resolve_model_xml_path
+   from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
 
    xml = Path(myosuite.__file__).parent / "envs/myo/assets/hand/myohand_baoding.xml"
    model = mujoco.MjModel.from_xml_path(str(resolve_model_xml_path(xml)))

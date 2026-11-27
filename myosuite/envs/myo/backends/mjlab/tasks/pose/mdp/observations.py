@@ -12,7 +12,7 @@ import torch
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import MjlabEntityAccessor
-from myosuite.terms.base_obs import pose_error_obs
+from myosuite.core.terms.base_obs import pose_error_obs
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv

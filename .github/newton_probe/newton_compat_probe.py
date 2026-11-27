@@ -63,7 +63,7 @@ import numpy as np
 
 import myosuite  # noqa: F401  (registers the envs)
 from myosuite.core.model_recipes import materialize_recipe_xml
-from myosuite.utils.asset_path_resolver import (
+from myosuite.core.builder.asset_path_resolver import (
     _anchor_to_model_dir,
     resolve_model_xml_path,
 )

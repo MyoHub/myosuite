@@ -186,7 +186,7 @@ def _materialize_myotorso_bimanual_host_xml() -> tuple[Path, Path, Path]:
     )
 
     # Resolve compiler meshdir/texturedir and quad-scene include to pip path.
-    from myosuite.utils.asset_path_resolver import get_sim_asset_root
+    from myosuite.core.builder.asset_path_resolver import get_sim_asset_root
 
     _myo_sim_root = get_sim_asset_root("myo_sim").as_posix()
     host_src = host_src.replace('meshdir="../myo_sim"', f'meshdir="{_myo_sim_root}"', 1)

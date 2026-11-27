@@ -27,7 +27,7 @@ from mjlab.sim import SimulationCfg
 
 from myosuite.core.config import TaskConfig
 from myosuite.envs.myo.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import sigmoid_muscle_activation
 
 if TYPE_CHECKING:  # pragma: no cover
     import torch

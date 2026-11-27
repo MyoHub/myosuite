@@ -29,7 +29,7 @@ from apartment import (  # noqa: E402
     adl_apartment_scene,
     adl_route,
 )
-from myosuite.terms.waypoint import WaypointRewardCfg  # noqa: E402
+from myosuite.core.terms.waypoint import WaypointRewardCfg  # noqa: E402
 from myosuite.viz.bone_ghost_viz import BoneGhostBodyViz  # noqa: E402
 
 
