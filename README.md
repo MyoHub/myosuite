@@ -25,7 +25,7 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 
 - **Much faster learning.** Train with thousands of environments in parallel on a single GPU, then replay the policy on the CPU.
 - **One task, several backends.** The same `env_id` runs on your **CPU** through the standard [Gymnasium](https://gymnasium.farama.org/) interface (to explore, debug and replay policies, or to train with libraries such as Stable-Baselines3), on **mjlab** for massively parallel GPU training, and on an **experimental MJX** (JAX) path.
-- **Muscle conditions as features.** Motor noise, fatigue, sarcopenia and reafferentation are wrappers, not env arguments. `make_env(EnvConfig(env_id, features=...))` applies them identically on the CPU env and the GPU twin, together with the episode length and control step ([cross-backend contract](docs/wiki/cross-backend-contract.md)).
+- **Muscle conditions as features.** Motor noise, fatigue, sarcopenia and reafferentation are wrappers, not env arguments. `make_env(EnvConfig(env_id, features=...))` applies them identically on the CPU env and the GPU twin, together with the episode length and control step ([cross-backend contract](docs/source/developer/cross-backend-contract.md)).
 - **MuscleMimic support.** Run, evaluate and train full-body and bimanual **MuscleMimic** policies, with ready-to-use checkpoints and motion datasets.
 - **Updated musculoskeletal models.** `myo-sim` moved from a moving `dev` branch to a pinned PyPI release with some model updates, including a torso/pelvis frame fix for the leg models ([myo_sim#132](https://github.com/MyoHub/myo_sim/pull/132)).
 - **The complete MyoChallenge suite** as Gymnasium environments: Baoding, Bimanual, Chase Tag, Die Reorient, OSL Run, Relocate, Soccer and Table Tennis.
@@ -42,7 +42,7 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 | **Biomechanics**      | [Biomechanics guide](docs/source/quickstart_biomechanics.rst) |
 | **Neuroscience**      | [Neuroscience guide](docs/source/quickstart_neuroscience.rst) |
 | **Rehab / sports**    | [Rehab guide](docs/source/quickstart_rehabilitation.rst)      |
-| **Changing the code** | [Developer getting started](docs/wiki/getting-started.md)     |
+| **Changing the code** | [Developer getting started](docs/source/developer/getting-started.md)     |
 
 
 ## Install
@@ -133,7 +133,7 @@ env_cpu = make_env(cfg)                               # CPU with noise and fatig
 env_gpu = make_env(cfg, backend="mjlab", num_envs=1024)  # the same on the GPU
 ```
 
-Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbowPose1D6MRandom-v0` (sarcopenia), `myoFatiElbowPose1D6MRandom-v0` (fatigue), `myoReafHandPoseRandom-v0` (reafferentation). Each is the base env registered with the matching wrapper; to use these features (noise, fatigue, ...) on any env, or to register your own variant, see the [neuroscience guide](docs/source/quickstart_neuroscience.rst) (examples) and the [cross-backend contract](docs/wiki/cross-backend-contract.md#muscle-command-features-wrappers) (how features are registered and which envs and backends support them).
+Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbowPose1D6MRandom-v0` (sarcopenia), `myoFatiElbowPose1D6MRandom-v0` (fatigue), `myoReafHandPoseRandom-v0` (reafferentation). Each is the base env registered with the matching wrapper; to use these features (noise, fatigue, ...) on any env, or to register your own variant, see the [neuroscience guide](docs/source/quickstart_neuroscience.rst) (examples) and the [cross-backend contract](docs/source/developer/cross-backend-contract.md#muscle-command-features-wrappers) (how features are registered and which envs and backends support them).
 
 
 
@@ -160,7 +160,7 @@ List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosu
 
 `make_env` only builds the environment (to step it, evaluate a policy, or write a custom loop). Method-specific trainers live outside the installable `myosuite` wheel under [`training/`](training/README.md) and export portable checkpoints (`.pt` with `ActionMap`, or `.onnx` via `myosuite-export-onnx`) that replay on CPU and `mjlab` without the training package installed.
 
-A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/wiki/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
+A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/source/developer/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
 
 
 ## Tutorials

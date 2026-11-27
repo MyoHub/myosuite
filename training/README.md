@@ -1,6 +1,6 @@
 # MyoSuite Training Modules
 
-MyoSuite keeps method-specific trainers, world models, imitation pipelines, and isolated dependency stacks under `training/<method>/` outside the core installable `myosuite` package (see [`docs/wiki/training-guidelines.md`](../docs/wiki/training-guidelines.md)). Every method consumes registered MyoSuite tasks via `make_env` and exports checkpoints that play back on CPU or `mjlab` without requiring the training package at inference time wherever supported.
+MyoSuite keeps method-specific trainers, world models, imitation pipelines, and isolated dependency stacks under `training/<method>/` outside the core installable `myosuite` package (see [`docs/source/developer/training-guidelines.md`](../docs/source/developer/training-guidelines.md)). Every method consumes registered MyoSuite tasks via `make_env` and exports checkpoints that play back on CPU or `mjlab` without requiring the training package at inference time wherever supported.
 
 ---
 
@@ -119,4 +119,4 @@ Matched 3-seed (`0, 1, 2`) GPU `mjlab` runs (`256` parallel envs on `RTX 4070 Ti
 
 1. **Zero root dependency leakage:** Each `training/<method>/` directory is an independent Python project with its own `pyproject.toml`, `README.md`, license notices, and unit tests. Never add method-specific dependencies to the root [`pyproject.toml`](../pyproject.toml).
 2. **Portable inference artifacts:** Export standard ONNX (`myosuite.utils.export_onnx`), TorchScript, or registered `ActionMap` / `rslrl_policy` checkpoints so policies play back on `make_env(env_id)` without installing `training/<method>/`.
-3. **Mandatory PPO benchmark:** Any new method added under `training/` must ship with a matched, multi-seed (`>= 3` seeds) comparison against PPO on registered MyoSuite `env_id`s and demonstrate a concrete capability or performance gain (see [`docs/wiki/training-guidelines.md`](../docs/wiki/training-guidelines.md)).
+3. **Mandatory PPO benchmark:** Any new method added under `training/` must ship with a matched, multi-seed (`>= 3` seeds) comparison against PPO on registered MyoSuite `env_id`s and demonstrate a concrete capability or performance gain (see [`docs/source/developer/training-guidelines.md`](../docs/source/developer/training-guidelines.md)).

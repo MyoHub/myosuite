@@ -1,13 +1,13 @@
 # Repository Map
 
-> **Source of truth priority:** code and tests → [CLAUDE.md](../../CLAUDE.md) → this wiki.
+> **Source of truth priority:** code and tests → [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md) → this guide.
 
 ## Top-Level
 
 ```
 myosuite/          # core package (see below)
 docs/source/       # Sphinx documentation (quickstarts, environment reference, API)
-docs/wiki/         # this developer wiki
+docs/source/developer/         # this developer wiki
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
 training/          # self-contained method projects with their own pyproject.toml, outside the package (see training/README.md & training-guidelines.md)
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
