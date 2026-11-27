@@ -323,3 +323,64 @@ def heading_cmd_obs(
     if cmd.ndim == 1 and batch_shape:
         return xp.broadcast_to(cmd, (*batch_shape, cmd.shape[0]))
     return cmd
+
+
+def boundary_proximity_obs(
+    accessor: EnvAccessor,
+    *,
+    site_ids: Any,
+    bounds_low: Any,
+    bounds_high: Any,
+    soft_margin: float = 0.15,
+    signed: bool = False,
+    plane_normals: Any | None = None,
+    plane_offsets: Any | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Return float32 enclosure wall proximity or signed clearance observation.
+
+    When ``signed=False`` (default), returns ``max(0, 1 - clearance / soft_margin)``
+    with no upper clip so boundary penetrations remain smoothly differentiable and
+    unbounded.
+
+    Args:
+        accessor: Environment state accessor.
+        site_ids: Tracked site id or sequence of ``K`` site ids.
+        bounds_low: Lower enclosure corner ``(3,)`` or ``(N, 3)`` [m].
+        bounds_high: Upper enclosure corner ``(N, 3)`` or ``(3,)`` [m].
+        soft_margin: Sensing horizon [m] inside the boundary (positive).
+        signed: Return raw signed inward clearances [m] when ``True``.
+        plane_normals: Optional inward plane normals ``(M, 3)``.
+        plane_offsets: Optional plane offsets ``(M,)``.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Float32 array of shape ``(K * F,)`` or ``(N, K * F)``.
+    """
+    from myosuite.physics.spatial_enclosure import enclosure_margins  # noqa: PLC0415
+
+    del kwargs
+    if soft_margin <= 0.0:
+        raise ValueError(f"soft_margin must be positive, got {soft_margin}")
+    xp = accessor.array_module()
+    batched = accessor.joint_pos().ndim > 1
+    ids = [int(site_ids)] if isinstance(site_ids, int | np.integer) else site_ids
+    pos = accessor.site_xpos(ids)
+    margins = enclosure_margins(
+        xp,
+        pos,
+        bounds_low,
+        bounds_high,
+        plane_normals=plane_normals,
+        plane_offsets=plane_offsets,
+    )
+    if signed:
+        features = margins
+    elif getattr(xp, "__name__", "") == "torch":
+        features = xp.clamp_min(1.0 - margins / float(soft_margin), 0.0)
+    else:
+        features = xp.maximum(1.0 - margins / float(soft_margin), 0.0)
+    flat = features.reshape(features.shape[0], -1) if batched else features.reshape(-1)
+    if getattr(xp, "__name__", "") == "torch":
+        return flat.to(dtype=xp.float32)
+    return flat.astype(xp.float32)
