@@ -22,13 +22,19 @@ import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation as np_R
 
-from myosuite.integrations.musclemimic.running_stats import (
-    numpy_running_mean_std_update as running_mean_std_update,
-)
 from myosuite.core.trajectory_io import (
     MotionClip,
     expand_motion_clip_to_model,
     read_npz_names,
+)
+from myosuite.integrations.musclemimic.actor_tree import (
+    residual_block_indices as _residual_block_indices,
+)
+from myosuite.integrations.musclemimic.actor_tree import (
+    sorted_prefix_indices as _sorted_prefix_indices,
+)
+from myosuite.integrations.musclemimic.running_stats import (
+    numpy_running_mean_std_update as running_mean_std_update,
 )
 
 
@@ -52,31 +58,6 @@ def _silu(x: np.ndarray) -> np.ndarray:
 
 def _dense(x: np.ndarray, kernel: np.ndarray, bias: np.ndarray) -> np.ndarray:
     return np.matmul(x, kernel) + bias
-
-
-def _sorted_prefix_indices(tree: dict[str, Any], prefix: str) -> list[int]:
-    """Return sorted integer suffixes for keys like ``f"{prefix}{i}"``."""
-    indices: list[int] = []
-    for key in tree:
-        if not key.startswith(prefix):
-            continue
-        suffix = key[len(prefix) :]
-        if suffix.isdigit():
-            indices.append(int(suffix))
-    return sorted(indices)
-
-
-def _residual_block_indices(actor: dict[str, Any]) -> list[int]:
-    """Return sorted residual block indices present in an actor tree."""
-    indices: list[int] = []
-    suffix = "_layer0_dense"
-    for key in actor:
-        if not key.startswith("block") or not key.endswith(suffix):
-            continue
-        idx = key[len("block") : -len(suffix)]
-        if idx.isdigit():
-            indices.append(int(idx))
-    return sorted(indices)
 
 
 @dataclass(frozen=True)

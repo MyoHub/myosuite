@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from typing import Any
 
@@ -173,12 +174,19 @@ def test_registered_actor_trunk_builder_loads_and_exports_onnx(tmp_path: Path) -
             expected = trunk(norm(sample))
             torch.testing.assert_close(loaded(sample), expected, atol=1e-6, rtol=1e-6)
 
-        ort = pytest.importorskip("onnxruntime")
-        onnx_path = tmp_path / "toy_policy.onnx"
-        export_rslrl_to_onnx(ckpt, onnx_path, obs_dim, act_dim)
-        sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-        actual = sess.run(["action"], {"obs": sample.numpy()})[0]
-        np.testing.assert_allclose(actual, expected.numpy(), atol=1e-5, rtol=1e-5)
+        if (
+            importlib.util.find_spec("onnx") is not None
+            and importlib.util.find_spec("onnxruntime") is not None
+        ):
+            import onnxruntime as ort
+
+            onnx_path = tmp_path / "toy_policy.onnx"
+            export_rslrl_to_onnx(ckpt, onnx_path, obs_dim, act_dim)
+            sess = ort.InferenceSession(
+                str(onnx_path), providers=["CPUExecutionProvider"]
+            )
+            actual = sess.run(["action"], {"obs": sample.numpy()})[0]
+            np.testing.assert_allclose(actual, expected.numpy(), atol=1e-5, rtol=1e-5)
     finally:
         unregister_actor_trunk_builder("test.toy")
 

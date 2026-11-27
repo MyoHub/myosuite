@@ -1,6 +1,6 @@
 # Install commit-msg + prepare-commit-msg so `pre-commit install` wires both:
 #   pre-commit install
-default_install_hook_types: [pre-commit, prepare-commit-msg, commit-msg]
+default_install_hook_types: [pre-commit, prepare-commit-msg, commit-msg, pre-push]
 # Keep ordinary lint hooks off message stages.
 default_stages: [pre-commit]
 
@@ -85,3 +85,14 @@ repos:
         entry: python scripts/reject_ai_coauthor.py
         stages: [commit-msg]
         always_run: true
+
+      # Local review (pre-commit on the branch + agent review against REVIEW.md) before a push. Skips the review where the agent CLI is
+      # not installed; advisory by default. MYO_REVIEW=0 skips it, =strict blocks the push on a fail.
+      - id: agent-review
+        name: Local review (REVIEW.md, ownership)
+        language: system
+        entry: scripts/review/local_review.sh --hook
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+        verbose: true

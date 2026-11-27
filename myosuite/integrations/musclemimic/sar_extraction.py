@@ -245,11 +245,14 @@ def extract_synergies(
     X_pca = pca.fit_transform(X)
 
     ica = FastICA(
-        n_components=n_synergies,
+        whiten=False,
+        algorithm="deflation",
         max_iter=1000,
         random_state=random_state,
     )
     X_ica = ica.fit_transform(X_pca)
+    ica.mixing_ = ica.components_.T.copy()
+    ica.mean_ = np.zeros(n_synergies, dtype=np.float64)
 
     data_min, data_max = X_ica.min(axis=0), X_ica.max(axis=0)
     if scaler_margin > 0.0:

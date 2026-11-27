@@ -139,7 +139,7 @@ This is a vectorised mjlab env, not a Gymnasium env: observations, rewards and a
 row per env, and finished envs reset themselves.
 
 Pass an ``EnvConfig`` to override the episode length, the control step or the muscle-command features
-(noise, fatigue, ...) for either backend; see ``docs/wiki/cross-backend-contract.md``.
+(noise, fatigue, ...) for either backend; see ``docs/source/developer/cross-backend-contract.md``.
 
 Walk-through: ``tutorials/2.2_Train_MjLab_Policy.ipynb``.
 
@@ -178,10 +178,9 @@ means
 * **pose** tasks: the joint errors (target minus current angle) have a norm below the
   task's ``pose_thd`` (rad; e.g. 0.7 for the hand numeral poses);
 * **reach** tasks: every tip site is within the task's reach threshold of its target;
-* **directional walks** (``myoLegDirectional*``): upright and the planar velocity within
-  0.5 m/s of the commanded velocity (speed times heading);
-* **walks** (``myoLegWalk``, terrain walks): upright and the planar COM velocity within
-  0.5 m/s of the target velocity on every control step of the last second, so an episode
+* **locomotion** (``myoLegWalk``, terrain walks, ``myoLegDirectional*``): upright and the
+  planar COM velocity (directional walks: root velocity) within 0.5 m/s of the commanded
+  velocity (speed times heading) on every control step of the last second, so an episode
   that falls is never a success (``Episode_Metrics/on_target`` logs the share of steps
   that meet the condition);
 * ``myoLegStandRandom``: the pelvis has reached its (relative) target position.
