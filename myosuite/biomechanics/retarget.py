@@ -897,12 +897,35 @@ def _foot_contacts(
     n_left: int,
     contact_height: float,
     contact_speed: float,
+    *,
+    mode: str = "threshold",
+    pelvis: np.ndarray | None = None,
 ) -> np.ndarray:
-    """``(T, 2)`` left/right foot contact mask from sole height and horizontal speed."""
-    h = sole[..., 2] - sole_floor
-    v = np.linalg.norm(np.gradient(sole[..., :2], 1.0 / fps, axis=0), axis=-1)
-    near = (h < contact_height) & (v < contact_speed)
-    return np.stack([near[:, :n_left].any(1), near[:, n_left:].any(1)], axis=1)
+    """``(T, 2)`` left/right foot contact mask via thresholds or O-GEST B-splines."""
+    if mode == "threshold":
+        h = sole[..., 2] - sole_floor
+        v = np.linalg.norm(np.gradient(sole[..., :2], 1.0 / fps, axis=0), axis=-1)
+        near = (h < contact_height) & (v < contact_speed)
+        return np.stack([near[:, :n_left].any(1), near[:, n_left:].any(1)], axis=1)
+    if mode == "ogest":
+        from myosuite.biomechanics.gait_events import (  # noqa: PLC0415
+            GaitEventConfig,
+            detect_gait_events,
+        )
+
+        left_pts, right_pts = sole[:, :n_left], sole[:, n_left:]
+        lh = left_pts[:, 0]
+        lt = left_pts[:, 1:].mean(axis=1) if left_pts.shape[1] > 1 else lh
+        rh = right_pts[:, 0]
+        rt = right_pts[:, 1:].mean(axis=1) if right_pts.shape[1] > 1 else rh
+        pel = (
+            0.5 * (lh + rh) if pelvis is None else np.asarray(pelvis, dtype=np.float64)
+        )
+        cfg = GaitEventConfig(
+            contact_height_m=contact_height, contact_speed_mps=contact_speed
+        )
+        return detect_gait_events(pel, lh, lt, rh, rt, fps, cfg).stance_mask
+    raise ValueError(f"contact mode must be 'threshold' or 'ogest', got {mode!r}")
 
 
 def _start_pose(
