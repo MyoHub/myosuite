@@ -6,7 +6,9 @@ Ownership, as REVIEW.md states it:
 - `myo_sim` owns reusable model construction and anatomical/physical transforms: geometry and segment scaling, mass and
   inertia, muscle and tendon parameters, model-only calibration, MJCF/XML model definitions and their composition.
 - MyoSuite owns measurement and source adapters, scientific analysis, experiment and subject-fitting workflows, task
-  configuration, rewards, observations, training and CPU/mjlab wiring.
+  configuration, rewards, observations and CPU/mjlab wiring. Method-specific trainers/networks stay in `training/<method>/`, outside the installable package.
+- Anatomical assembly, model-only mechanics and dataset-free structural checks belong in `myo_sim`; task/scene assembly through `ModelBuilder` belongs in MyoSuite and delegates anatomical transforms to the library. Motion/EMG and experiment evaluation remain in MyoSuite.
+- Dependencies point from MyoSuite to public `myo_sim` APIs, never from `myo_sim` to MyoSuite.
 - A thin compatibility facade that calls the `myo_sim` API is fine. A copy of a `myo_sim` algorithm, a fallback that
   re-implements one, or a new model transform written in MyoSuite is not.
 
@@ -14,7 +16,7 @@ pass: every new model transform in the diff calls the `myo_sim` API (or a linked
 diff duplicates an existing primitive on the base branch, and the description names the owner, the existing symbols considered or
 reused, and the code removed or why none could be. A change with no model code at all (docs, tests, task wiring, training)
 passes when it duplicates no primitive.
-fail: anything else, or you cannot tell.
+fail: anything else, or you cannot tell. If the other repository is unavailable, report cross-repo reuse as unverified; do not infer approval from a successful advisory hook.
 
 Report each problem with file:line. Title it by kind and file: "wrong owner: <file>",
 "duplicate of <existing symbol>: <file>", or, with no file, "missing ownership evidence". One finding per file and kind; name
