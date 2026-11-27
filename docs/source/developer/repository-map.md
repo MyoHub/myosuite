@@ -1,6 +1,6 @@
 # Repository Map
 
-> **Source of truth priority:** code and tests → [AGENTS.md](../../AGENTS.md) → this wiki.
+> **Source of truth priority:** code and tests → [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md) → this guide.
 > **Package boundaries:** enforced in CI by `myosuite/tests/test_package_boundaries.py` and `myosuite/tests/test_package_discovery.py`.
 
 ## Subpackage Ownership & Allowed-Import Matrix
@@ -30,7 +30,7 @@
 ```
 myosuite/          # core package (see below; tests/ excluded from built wheels)
 docs/source/       # Sphinx documentation (quickstarts, environment reference, API)
-docs/wiki/         # this developer wiki
+docs/source/developer/ # this developer guide
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
 training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, dynsyn/, supermimic/); see training-guidelines.md
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
