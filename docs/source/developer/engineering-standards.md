@@ -224,7 +224,7 @@ python scripts/generate_parity_baselines.py --env-id <env-id>
 - `pre-commit run --all-files` must pass.
 - Self-review: smallest change that solves the problem? Searched first? No duplication?
 - A change to a registered env's observations, actions, dynamics or task distribution needs a CHANGELOG entry and a
-  note in `docs/baseline_checkpoints.md`: published checkpoints are tied to the old contract.
+  note in [docs/baseline_checkpoints.md](https://github.com/MyoHub/myosuite/blob/dev/docs/baseline_checkpoints.md): published checkpoints are tied to the old contract.
 
 ```bash
 pre-commit run --all-files

@@ -100,7 +100,22 @@ Choose your path
    :maxdepth: 1
    :caption: Developer Guide
 
-   developer/index
+   Overview <developer/index>
+   developer/getting-started
+   developer/repository-map
+   developer/engineering-standards
+   developer/library-usage
+   developer/scaling-migration
+   developer/adding-a-new-task
+   developer/writing-term-functions
+   developer/mjlab-design-guide
+   developer/cross-backend-contract
+   developer/deployment-manifests
+   developer/training-guidelines
+   developer/performance-cards
+   developer/paired-push-evaluation
+   developer/agent-workflow
+   developer/log
 
 .. toctree::
    :maxdepth: 1

@@ -1,7 +1,5 @@
 # Training Guidelines
 
-> Related proposal: #580
-
 MyoSuite provides environments, simulation, task definitions, and reusable runtime functionality. Training algorithms and experimental learning methods should stay outside the installable `myosuite` package.
 
 ## Placement
