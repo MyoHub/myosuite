@@ -158,7 +158,7 @@ def test_elbow_angle_table(model) -> None:
     q = model.qpos0.copy()
     q[model.jnt_qposadr[model.joint("shoulder_elv_l").id]] = np.pi / 2
     hinge = next(h for h in rs.SMPLH_MYOFULLBODY.hinges if h.joint == "elbow_flexion_l")
-    phi, theta = rs._hinge_table(model, mujoco.MjData(model), q, hinge)
+    phi, theta = rs.hinge_table(model, mujoco.MjData(model), q, hinge)
     # myofullbody's carrying angle at zero flexion; the angle then follows the hinge
     assert np.degrees(theta[0]) == pytest.approx(12.8, abs=0.2)
     assert np.all(np.diff(theta) > 0) and abs(theta[-1] - phi[-1]) < np.radians(5)

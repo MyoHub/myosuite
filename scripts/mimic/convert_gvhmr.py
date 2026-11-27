@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from myosuite.biomechanics.gvhmr import (
+from myosuite.integrations.gvhmr import (
     load_gvhmr_result,
     save_amass_npz,
     to_amass_clip,

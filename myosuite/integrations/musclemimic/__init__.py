@@ -72,7 +72,7 @@ if TYPE_CHECKING:
         parse_native_playback_argv,
         run_native_playback,
     )
-    from myosuite.core.playback_contract import (
+    from myosuite.motion.playback import (
         PlaybackArtifacts,
         PlaybackRequest,
         PlaybackResult,
@@ -140,7 +140,7 @@ _EXPORTS_BY_MODULE: dict[str, tuple[str, ...]] = {
         "plan_waypoint_reference",
         "GaitParameters",
     ),
-    "myosuite.core.playback_contract": (
+    "myosuite.motion.playback": (
         "PlaybackArtifacts",
         "PlaybackRequest",
         "PlaybackResult",

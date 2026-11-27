@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from myosuite.biomechanics.external_loads import (
+    apply_body_wrenches_to_qfrc,
     force_at_body,
     force_at_site,
     held_mass_qfrc,
@@ -61,3 +62,32 @@ def test_wrench_mapping_matches_lever_arm_and_rotation() -> None:
         )
     with pytest.raises(ValueError, match="choose body"):
         held_mass_qfrc(model, np.zeros(1), 2, body="arm", site="hand")
+
+
+def test_apply_body_wrenches_to_qfrc_matches_force_at_body_and_validates_shapes() -> (
+    None
+):
+    model = _arm()
+    qpos = np.array([[0.0], [0.4], [-0.3]])
+    point = np.array([0.6, 0.0, -0.2])
+    forces = np.array([[0.0, 0.0, -12.0], [3.0, 0.0, -8.0], [-2.0, 0.0, 5.0]])
+    tau_free = np.array([[0.0, 1.5, 0.0], [0.0, -0.5, 0.0], [0.0, 2.0, 0.0]])
+    tau_origin = tau_free + np.cross(point[None, :], forces)
+    bid = model.body("arm").id
+
+    got = apply_body_wrenches_to_qfrc(model, qpos, [(bid, forces, tau_origin)])
+    expected = np.stack(
+        [
+            force_at_body(
+                model, qpos[t], "arm", forces[t], point=point, torque=tau_free[t]
+            )
+            for t in range(len(qpos))
+        ],
+        axis=0,
+    )
+    np.testing.assert_allclose(got, expected, atol=1e-12)
+
+    with pytest.raises(ValueError, match="force array must be finite"):
+        apply_body_wrenches_to_qfrc(model, qpos, [(bid, forces[:2], tau_origin)])
+    with pytest.raises(ValueError, match="torque array must be finite"):
+        apply_body_wrenches_to_qfrc(model, qpos, [(bid, forces, tau_origin[:2])])

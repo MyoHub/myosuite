@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 """Landmark IK of motion onto a body model, on the model's own joint couplings.
 
-A :class:`ClipSource` turns a motion (AMASS SMPL+H: :mod:`.retarget_smplh`) into
+A :class:`ClipSource` turns a motion (AMASS SMPL+H: :mod:`myosuite.integrations.retarget_smplh`) into
 landmark targets on the model; :class:`LandmarkIK` fits every frame on any ``MjModel``:
 
 * targets: points on model bodies (an explicit :class:`LandmarkMap`: model sites or
@@ -42,8 +42,42 @@ from typing import Any, Protocol
 import mujoco
 import numpy as np
 
-from myosuite.core.retargeting import _geom_bottom as _geom_lowest_z
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
+
+
+def geom_lowest_z(model: mujoco.MjModel, data: mujoco.MjData, index: int) -> float:
+    """World height of the lowest point of geom *index*, after kinematics.
+
+    Args:
+        model: Compiled MuJoCo model.
+        data: MuJoCo data after ``mj_kinematics``.
+        index: Geom index in *model*.
+
+    Returns:
+        Minimum world-frame ``z`` coordinate (m) of the geom's surface.
+    """
+    kind = int(model.geom_type[index])
+    size = model.geom_size[index]
+    up = data.geom_xmat[index].reshape(3, 3)[2]  # world z in the geom's frame
+    if kind == int(mujoco.mjtGeom.mjGEOM_MESH):
+        mesh = int(model.geom_dataid[index])
+        start, count = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
+        vertices = model.mesh_vert[start : start + count]
+        return float(data.geom_xpos[index, 2] + np.min(vertices @ up))
+    if kind == int(mujoco.mjtGeom.mjGEOM_SPHERE):
+        extent = size[0]
+    elif kind == int(mujoco.mjtGeom.mjGEOM_CAPSULE):
+        extent = size[0] + size[1] * abs(up[2])
+    elif kind == int(mujoco.mjtGeom.mjGEOM_CYLINDER):
+        extent = size[1] * abs(up[2]) + size[0] * np.hypot(up[0], up[1])
+    elif kind == int(mujoco.mjtGeom.mjGEOM_BOX):
+        extent = np.abs(up) @ size
+    elif kind == int(mujoco.mjtGeom.mjGEOM_ELLIPSOID):
+        extent = np.linalg.norm(up * size)
+    else:
+        extent = 0.0
+    return float(data.geom_xpos[index, 2] - extent)
+
 
 REFIT_META_KEY = "refit_meta"
 """Key of the JSON metadata in a refitted clip's ``.npz``."""
@@ -539,10 +573,20 @@ def _orientation_errors(
     return out
 
 
-def _foot_kinematics(
+def foot_kinematics(
     m: mujoco.MjModel, lmap: LandmarkMap, qpos: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Sole z ``(T, 2)`` and foot origins ``(T, 2, 3)``; missing geometry is NaN."""
+    """Sole ``z`` ``(T, 2)`` and foot origins ``(T, 2, 3)``; missing geometry is NaN.
+
+    Args:
+        m: Compiled MuJoCo model.
+        lmap: Landmark map defining ``(left, right)`` foot body names.
+        qpos: Generalized coordinates of shape ``(T, nq)``.
+
+    Returns:
+        Tuple ``(sole_z, foot_origins)`` with lowest collision-geom ``z`` ``(T, 2)``
+        and mean foot body positions ``(T, 2, 3)`` in world meters.
+    """
     d = mujoco.MjData(m)
     feet = [[m.body(b).id for b in side] for side in lmap.feet]
     geoms = [
@@ -557,7 +601,7 @@ def _foot_kinematics(
         mujoco.mj_kinematics(m, d)
         for s in range(2):
             if geoms[s]:
-                low[t, s] = min(_geom_lowest_z(m, d, g) for g in geoms[s])
+                low[t, s] = min(geom_lowest_z(m, d, g) for g in geoms[s])
             if feet[s]:
                 org[t, s] = d.xpos[feet[s]].mean(0)
     return low, org
@@ -680,7 +724,7 @@ def validate_refit(
     else:
         dep_viol = 0
     # feet: penetration of the ground plane (z = 0), sliding and floating in contact
-    low, org = _foot_kinematics(m, lmap, qpos)
+    low, org = foot_kinematics(m, lmap, qpos)
     contact = np.asarray(targets.contact, bool)
     soles = low[np.isfinite(low)]
     pen = float(max(0.0, -soles.min()) * 1e3) if soles.size else None
@@ -744,7 +788,7 @@ def validate_refit(
 
 
 class ClipSource(Protocol):
-    """Where a fit's targets come from (e.g. :class:`.retarget_smplh.SMPLHSource`).
+    """Where a fit's targets come from (e.g. :class:`myosuite.integrations.retarget_smplh.SMPLHSource`).
 
     Attributes:
         name: Source format tag stored in the metadata.
@@ -768,17 +812,37 @@ class ClipSource(Protocol):
 # ------------------------------------------------------------------ source helpers
 
 
-def _segment_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """Angle (rad) between the segments ``a->b`` and ``b->c``."""
+def segment_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """Angle (rad) between the segments ``a->b`` and ``b->c``.
+
+    Args:
+        a: Proximal 3D point(s) ``(..., 3)``.
+        b: Joint/middle 3D point(s) ``(..., 3)``.
+        c: Distal 3D point(s) ``(..., 3)``.
+
+    Returns:
+        Exterior bend angle(s) in radians ``(...)``, ``0`` when collinear.
+    """
     u, v = b - a, c - b
     denom = np.maximum(np.linalg.norm(u, axis=-1) * np.linalg.norm(v, axis=-1), 1e-12)
     return np.arccos(np.clip((u * v).sum(-1) / denom, -1.0, 1.0))
 
 
-def _hinge_table(
+def hinge_table(
     m: mujoco.MjModel, d: mujoco.MjData, q: np.ndarray, h: Any
 ) -> np.ndarray:
-    """``(2, 181)`` hinge values and model segment angles over ``h.joint``'s range."""
+    """``(2, 181)`` hinge values and model segment angles over ``h.joint``'s range.
+
+    Args:
+        m: Compiled MuJoCo model.
+        d: Scratch MuJoCo data buffer.
+        q: Reference generalized coordinates ``(nq,)``.
+        h: Hinge calibration descriptor with ``joint`` name and ``model`` body triple.
+
+    Returns:
+        Array of shape ``(2, 181)`` stacking joint values ``phi`` and monotone
+        segment angles ``theta`` (rad).
+    """
     j = m.joint(h.joint).id
     prox, mid, dist = (m.body(b).id for b in h.model)
     d.qpos[:] = q
@@ -792,14 +856,27 @@ def _hinge_table(
         d.qpos[:] = x
         mujoco.mj_kinematics(m, d)
         end = d.xpos[mid] + d.xmat[mid].reshape(3, 3) @ tip
-        theta[k] = _segment_angle(d.xpos[prox], d.xpos[mid], end)
+        theta[k] = segment_angle(d.xpos[prox], d.xpos[mid], end)
     if np.any(np.diff(theta) <= 0):
         raise ValueError(f"{h.joint}: segment angle not increasing over the range")
     return np.stack([phi, theta])
 
 
-def _mat_to_quat(R: np.ndarray) -> np.ndarray:
-    """Convert ``(..., 3, 3)`` rotation matrices to ``(..., 4)`` ``wxyz`` quaternions."""
+def mat_to_quat(R: np.ndarray) -> np.ndarray:
+    """Convert ``(..., 3, 3)`` rotation matrices to ``(..., 4)`` ``wxyz`` quaternions via ``mju_mat2Quat``.
+
+    Preserves MuJoCo's C ``mju_mat2Quat`` sign convention so retargeted clip outputs
+    reproduce existing reference clips identically, whereas
+    :func:`myosuite.physics.quat_math.mat2quat` and
+    :func:`myosuite.core.terms.mimic_track.mat_to_quat` canonicalize ``w >= 0``
+    (hemisphere continuity across frames is handled separately in :func:`smooth_quat`).
+
+    Args:
+        R: Rotation matrices of shape ``(..., 3, 3)``.
+
+    Returns:
+        Unit ``wxyz`` quaternions of shape ``(..., 4)``.
+    """
     out = np.empty((*R.shape[:-2], 4))
     flat_R, flat_q = R.reshape(-1, 9), out.reshape(-1, 4)
     for i in range(len(flat_R)):
@@ -807,8 +884,16 @@ def _mat_to_quat(R: np.ndarray) -> np.ndarray:
     return out
 
 
-def _smooth(x: np.ndarray, sigma: float) -> np.ndarray:
-    """Gaussian smoothing along axis 0 (edge-padded)."""
+def smooth(x: np.ndarray, sigma: float) -> np.ndarray:
+    """Gaussian smoothing along axis 0 (edge-padded).
+
+    Args:
+        x: Time-indexed array of shape ``(T, ...)``.
+        sigma: Gaussian standard deviation in frames (no-op when ``sigma <= 0``).
+
+    Returns:
+        Smoothed array of the same shape as *x*.
+    """
     if sigma <= 0:
         return x
     r = max(1, int(round(3 * sigma)))
@@ -818,10 +903,19 @@ def _smooth(x: np.ndarray, sigma: float) -> np.ndarray:
     return np.apply_along_axis(lambda c: np.convolve(c, k, mode="valid"), 0, pad)
 
 
-def _smooth_quat(
+def smooth_quat(
     quat: np.ndarray, sigma: float, mask: np.ndarray | None = None
 ) -> np.ndarray:
-    """Hemisphere-continuous Gaussian smoothing of ``(T, O, 4)`` quaternions."""
+    """Hemisphere-continuous Gaussian smoothing of ``(T, O, 4)`` quaternions.
+
+    Args:
+        quat: ``wxyz`` quaternion trajectory of shape ``(T, O, 4)``.
+        sigma: Gaussian standard deviation in frames (no-op when ``sigma <= 0``).
+        mask: Optional validity mask ``(T, O)``; invalid frames copy the nearest valid sample.
+
+    Returns:
+        Renormalized ``wxyz`` quaternion trajectory of shape ``(T, O, 4)``.
+    """
     if sigma <= 0:
         return quat
     q = quat.copy()
@@ -837,14 +931,22 @@ def _smooth_quat(
                 q[~ok, k] = q[nearest[~ok], k]
     sign = np.cumprod(np.where((q[1:] * q[:-1]).sum(-1) < 0, -1.0, 1.0), axis=0)
     q[1:] *= sign[..., None]
-    q = _smooth(q, sigma)
+    q = smooth(q, sigma)
     return q / np.maximum(np.linalg.norm(q, axis=-1, keepdims=True), 1e-12)
 
 
-def _calibration_pose(
+def calibration_pose(
     m: mujoco.MjModel, calibration: dict[str, float]
 ) -> tuple[mujoco.MjData, np.ndarray]:
-    """Evaluate *m* at ``qpos0`` overridden by *calibration* and projected onto couplings."""
+    """Evaluate *m* at ``qpos0`` overridden by *calibration* and projected onto couplings.
+
+    Args:
+        m: Compiled MuJoCo model.
+        calibration: Mapping from joint name to calibration joint angle/position.
+
+    Returns:
+        Tuple ``(data, qpos)`` with updated kinematics on *data* and coupled ``qpos``.
+    """
     d = mujoco.MjData(m)
     q = m.qpos0.copy()
     for name, v in calibration.items():
@@ -855,10 +957,20 @@ def _calibration_pose(
     return d, q
 
 
-def _body_landmarks(
+def body_landmarks(
     m: mujoco.MjModel, d: mujoco.MjData, points: Sequence[Any], pos: np.ndarray
 ) -> tuple[Landmark, ...]:
-    """Build body-local :class:`Landmark` entries for weighted calibration points."""
+    """Build body-local :class:`Landmark` entries for weighted calibration points.
+
+    Args:
+        m: Compiled MuJoCo model.
+        d: MuJoCo data evaluated at the calibration pose.
+        points: Sequence of point specs carrying ``name``, ``body``, and ``weight``.
+        pos: World-frame calibration point coordinates ``(N, 3)``.
+
+    Returns:
+        Tuple of body-local :class:`Landmark` definitions for entries with ``weight > 0``.
+    """
     out = []
     for k, p in enumerate(points):
         if p.weight > 0:
@@ -868,13 +980,23 @@ def _body_landmarks(
     return tuple(out)
 
 
-def _orientation_targets(
+def orientation_targets(
     m: mujoco.MjModel,
     d: mujoco.MjData,
     specs: Sequence[Any],
     source_attr: str = "name",
 ) -> tuple[OrientationTarget, ...]:
-    """Build :class:`OrientationTarget` entries with body-local long axes."""
+    """Build :class:`OrientationTarget` entries with body-local long axes.
+
+    Args:
+        m: Compiled MuJoCo model.
+        d: MuJoCo data evaluated at the calibration pose.
+        specs: Sequence of orientation specs with ``body``, ``weight``, ``axis_to``, ``axis_weight``.
+        source_attr: Attribute name on each spec naming the source orientation channel.
+
+    Returns:
+        Tuple of :class:`OrientationTarget` entries.
+    """
     out = []
     for o in specs:
         axis = None
@@ -890,7 +1012,7 @@ def _orientation_targets(
     return tuple(out)
 
 
-def _foot_contacts(
+def foot_contacts(
     sole: np.ndarray,
     sole_floor: np.ndarray,
     fps: float,
@@ -898,14 +1020,26 @@ def _foot_contacts(
     contact_height: float,
     contact_speed: float,
 ) -> np.ndarray:
-    """``(T, 2)`` left/right foot contact mask from sole height and horizontal speed."""
+    """``(T, 2)`` left/right foot contact mask from sole height and horizontal speed.
+
+    Args:
+        sole: World-frame sole marker positions ``(T, K, 3)`` ordered left then right.
+        sole_floor: Per-marker floor height baseline ``(K,)`` or broadcastable array.
+        fps: Sampling frequency in Hz.
+        n_left: Number of left-foot sole markers in ``sole[:, :n_left]``.
+        contact_height: Height threshold (m) above *sole_floor* for contact.
+        contact_speed: Horizontal speed threshold (m/s) for contact.
+
+    Returns:
+        Boolean contact array of shape ``(T, 2)`` for ``(left, right)`` feet.
+    """
     h = sole[..., 2] - sole_floor
     v = np.linalg.norm(np.gradient(sole[..., :2], 1.0 / fps, axis=0), axis=-1)
     near = (h < contact_height) & (v < contact_speed)
     return np.stack([near[:, :n_left].any(1), near[:, n_left:].any(1)], axis=1)
 
 
-def _start_pose(
+def start_pose(
     m: mujoco.MjModel,
     cal_qpos: np.ndarray,
     root_model_pos: np.ndarray,
@@ -913,7 +1047,19 @@ def _start_pose(
     quat0: np.ndarray,
     lmap: LandmarkMap,
 ) -> np.ndarray:
-    """Place the calibration pose onto the first frame's pelvis position and orientation."""
+    """Place the calibration pose onto the first frame's pelvis position and orientation.
+
+    Args:
+        m: Compiled MuJoCo model with a free root joint.
+        cal_qpos: Calibration generalized coordinates ``(nq,)``.
+        root_model_pos: Calibration-frame pelvis/root reference point in world meters ``(3,)``.
+        pelvis_pos: First-frame target pelvis world position ``(3,)``.
+        quat0: First-frame target ``wxyz`` orientations ``(O, 4)``.
+        lmap: Landmark map containing the ``pelvis`` orientation entry.
+
+    Returns:
+        Initial generalized coordinate vector ``(nq,)`` aligned to frame 0.
+    """
     q = cal_qpos.copy()
     k = [o.body for o in lmap.orientations].index("pelvis")
     d = mujoco.MjData(m)
@@ -934,7 +1080,7 @@ def _start_pose(
     return q
 
 
-def _ground_clip(
+def ground_clip(
     m: mujoco.MjModel,
     lmap: LandmarkMap,
     targets: ClipTargets,
@@ -942,8 +1088,21 @@ def _ground_clip(
     contact: np.ndarray,
     ground_sigma: float,
 ) -> tuple[np.ndarray, ClipTargets, np.ndarray]:
-    """Shift free-joint root height and target ``z`` so standing feet touch ``z = 0``."""
-    low, _ = _foot_kinematics(m, lmap, qpos)
+    """Shift free-joint root height and target ``z`` so standing feet touch ``z = 0``.
+
+    Args:
+        m: Compiled MuJoCo model with a free root joint.
+        lmap: Landmark map defining foot collision bodies.
+        targets: Unshifted clip targets.
+        qpos: Unshifted generalized coordinates ``(T, nq)``.
+        contact: Foot contact boolean mask ``(T, 2)``.
+        ground_sigma: Smoothing window in seconds for vertical offset ``dz``.
+
+    Returns:
+        Tuple ``(qpos_out, targets_out, dz)`` with vertically shifted trajectory,
+        shifted :class:`ClipTargets`, and per-frame vertical shift ``dz`` ``(T,)``.
+    """
+    low, _ = foot_kinematics(m, lmap, qpos)
     if not np.isfinite(low).any():
         dz = np.zeros(len(qpos))
     else:
@@ -958,7 +1117,7 @@ def _ground_clip(
             dz[:] = -np.nanmin(low)
         lift = -np.nanmin(low, axis=1)
         dz = np.maximum(
-            _smooth(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
+            smooth(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
         )
     root_jnt = next(
         j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
@@ -979,10 +1138,19 @@ def _ground_clip(
     return qpos_out, targets_out, dz
 
 
-def _knee_flexion_meta(
+def knee_flexion_meta(
     knee_flexion: dict[str, np.ndarray],
 ) -> dict[str, dict[str, float]]:
-    """Summary statistics of per-side source knee flexion (hyperextension check)."""
+    """Summary statistics of per-side source knee flexion (hyperextension check).
+
+    Args:
+        knee_flexion: Mapping from side label (e.g. ``"left"``, ``"right"``) to
+            per-frame flexion angles in radians.
+
+    Returns:
+        Per-side dictionary with ``min`` (deg) and fractions of frames below ``-2``
+        and ``-5`` degrees.
+    """
     return {
         side: {
             "min": float(np.degrees(f.min())),
@@ -1656,15 +1824,17 @@ def empty_summary() -> dict[str, Any]:
 
 
 __all__ = [
-    "REFIT_META_KEY",
     "ClipSource",
     "ClipTargets",
     "Landmark",
     "LandmarkIK",
     "LandmarkMap",
     "OrientationTarget",
+    "REFIT_META_KEY",
     "RefitConfig",
     "RefitThresholds",
+    "body_landmarks",
+    "calibration_pose",
     "check_refit_meta",
     "choose_workers",
     "clip_fits",
@@ -1673,16 +1843,28 @@ __all__ = [
     "empty_summary",
     "file_sha256",
     "find_cache_root",
+    "foot_contacts",
+    "foot_kinematics",
+    "geom_lowest_z",
+    "ground_clip",
+    "hinge_table",
     "is_cached_refit",
     "kinematic_fingerprint",
+    "knee_flexion_meta",
+    "mat_to_quat",
     "merge_quality_flags",
     "model_tag",
+    "orientation_targets",
     "pooled_twist",
     "read_refit_meta",
     "refit_clip",
     "save_refit",
+    "segment_angle",
+    "smooth",
+    "smooth_quat",
     "stamp_fingerprint",
     "stamp_tree",
+    "start_pose",
     "summarize",
     "summary_markdown",
     "twist_asymmetry",

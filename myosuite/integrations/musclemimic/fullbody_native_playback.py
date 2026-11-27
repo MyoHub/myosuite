@@ -20,7 +20,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from myosuite.core.playback_contract import (
+from myosuite.motion.playback import (
     PlaybackArtifacts,
     PlaybackRequest,
     PlaybackResult,
@@ -46,7 +46,7 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import (
     load_local_policy_artifacts,
     read_checkpoint_config_metadata,
 )
-from myosuite.core.trajectory_io import (
+from myosuite.motion.io import (
     MotionClip,
     expand_motion_clip_to_model,
     load_motion_clip,

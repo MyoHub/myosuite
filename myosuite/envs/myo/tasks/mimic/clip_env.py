@@ -27,7 +27,7 @@ from myosuite.integrations.musclemimic.fullbody_model import (
     compile_mimic_fullbody_mjmodel,
     default_mimic_fullbody_config,
 )
-from myosuite.core.trajectory_io import check_clip_rate, read_npz_names
+from myosuite.motion.io import check_clip_rate, read_npz_names
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 from myosuite.physics.running_stats import RunningMeanStd, normalize, update
 from myosuite.core.terms.mimic_obs import (

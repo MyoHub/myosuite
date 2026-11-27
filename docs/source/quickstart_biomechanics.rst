@@ -164,7 +164,7 @@ pose):
 
 .. code-block:: python
 
-   from myosuite.physics.inverse_kinematics import solve_ik
+   from myosuite.biomechanics.inverse_kinematics import solve_ik
 
    qpos = solve_ik(model, {"S_grasp": [0.2, 0.1, 0.4]})
    qpos = solve_ik(model, {"S_grasp": (target_pos, target_quat)}, joints=["elbow_flexion"])
@@ -175,7 +175,7 @@ error and sole height in ``clip.metadata``:
 
 .. code-block:: python
 
-   from myosuite.core.retargeting import retarget
+   from myosuite.integrations.marker_retarget import retarget
 
    clip = retarget(model, "trial.trc", sites={"RHJC": "hip_r"})
 
@@ -198,16 +198,16 @@ uniquely determines every target degree of freedom without relying on posture pr
 Retargeting Body, Video, and Hand Captures
 ------------------------------------------
 
-Beyond optical marker files, :mod:`myosuite.biomechanics` converts common body-mesh,
+Beyond optical marker files, :mod:`myosuite.integrations` and :mod:`myosuite.biomechanics` convert common body-mesh,
 monocular-video, and dexterous hand-object captures into MuJoCo trajectories:
 
-* **AMASS / SMPL+H / SMPL-X & GVHMR video** — :mod:`myosuite.biomechanics.smplh`
+* **AMASS / SMPL+H / SMPL-X & GVHMR video** — :mod:`myosuite.integrations.smplh`
   (``SMPLH``, ``load_amass``, ``adapt_smplx_poses_to_smplh``),
-  :mod:`myosuite.biomechanics.gvhmr` (``load_gvhmr_result``, ``to_amass_clip``),
-  :mod:`myosuite.biomechanics.retarget_smplh`, and
+  :mod:`myosuite.integrations.gvhmr` (``load_gvhmr_result``, ``to_amass_clip``),
+  :mod:`myosuite.integrations.retarget_smplh`, and
   :mod:`myosuite.biomechanics.retarget_instanthmr` map full-body captures onto
   ``myoLeg`` and ``myoFullBody``.
-* **MANO hands & hand-object interaction (HOI)** — :mod:`myosuite.biomechanics.mano`
+* **MANO hands & hand-object interaction (HOI)** — :mod:`myosuite.integrations.mano`
   (``MANO``), :mod:`myosuite.biomechanics.hand_retarget` (``preset_for_model``,
   ``DexHandRetargeter``), and :mod:`myosuite.biomechanics.hoi_retarget`
   (``HOIClip``, ``retarget_hoi_mujoco``) retarget fingertip and contact-aware grasps
@@ -230,14 +230,14 @@ See ``tutorials/3.5_Playback_Mot_File.ipynb`` for the full workflow:
 
 .. code-block:: python
 
-   from myosuite.biomechanics.opensim_motion import load_opensim_motion
-   from myosuite.biomechanics.opensim_grf import (
+   from myosuite.integrations.opensim_grf import (
        normalize_opensim_motion,
        opensim_grf_to_qfrc,
    )
+   from myosuite.integrations.opensim_motion import read_opensim_motion
 
-   ik_motion, _ = normalize_opensim_motion(load_opensim_motion("walk_ik.mot"))
-   grf_motion = load_opensim_motion("walk_grf.mot")
+   ik_motion, _ = normalize_opensim_motion(read_opensim_motion("walk_ik.mot"))
+   grf_motion = read_opensim_motion("walk_grf.mot")
    qfrc_ext = opensim_grf_to_qfrc(
        model, qpos_traj, ik_motion.time, grf_motion, "external_loads.xml"
    )

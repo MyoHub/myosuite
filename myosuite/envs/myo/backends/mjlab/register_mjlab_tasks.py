@@ -875,7 +875,7 @@ def bootstrap_myosuite_mjlab_registry(
             raise FileNotFoundError(f"Mimic clip path does not exist: {p}")
         return
 
-    from myosuite.core.trajectory_io import load_motion_clip
+    from myosuite.motion.io import load_motion_clip
     from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
         register_mimic_mjlab_tasks_with_clip,
     )

@@ -262,7 +262,7 @@ def test_round_trip_myofullbody_and_axial_twists(
     set_j("subtalar_angle_l", 0.20 * np.cos(phase))
     project_joint_couplings(JointCouplings.from_model(fullbody), q_gt)
 
-    low, _ = rt._foot_kinematics(fullbody, cal.lmap, q_gt)
+    low, _ = rt.foot_kinematics(fullbody, cal.lmap, q_gt)
     q_gt[:, 2] -= low.min(axis=1)
 
     clip_path = tmp_path / "axial.npz"
@@ -337,7 +337,7 @@ def test_metric_scaling_tilted_camera_and_flight_phase(
     q_gt = np.tile(cal.qpos, (T, 1))
     q_gt[:, 0] = 0.8 * t
 
-    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt[:1])[0].min()
+    low0 = rt.foot_kinematics(fullbody, cal.lmap, q_gt[:1])[0].min()
     q_gt[:, 2] -= low0
     # Stance on [0..12] and [28..40], parabolic 0.25 m jump apex at frame 20.
     jump = np.zeros(T)
@@ -377,7 +377,7 @@ def test_metric_scaling_tilted_camera_and_flight_phase(
     # Scaled subject walked 0.8 * 0.8 m in camera space -> rescaled back to 0.8 m on model.
     assert np.isclose(q_fit[-1, 0] - q_fit[0, 0], 0.8, atol=0.02)
 
-    low_fit, _ = rt._foot_kinematics(fullbody, lmap, q_fit)
+    low_fit, _ = rt.foot_kinematics(fullbody, lmap, q_fit)
     stance_sole = low_fit[:10].min(axis=1)
     apex_sole = float(low_fit[20].min())
     assert np.max(np.abs(stance_sole)) < 0.01
@@ -401,7 +401,7 @@ def test_dropped_frames_avoid_velocity_spikes(
         2 * np.pi * t
     )
     project_joint_couplings(info.couplings, q_gt)
-    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
 
     j_cam = _synthesize_mhr70_cam(fullbody, ri.INSTANTHMR_MYOFULLBODY, q_gt)
@@ -429,7 +429,7 @@ def test_cli_and_myomimic_motion_lib(fullbody: mujoco.MjModel, tmp_path: Path) -
     t = np.linspace(0.0, 0.5, T)
     q_gt = np.tile(cal.qpos, (T, 1))
     q_gt[:, 0] = 0.4 * t
-    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
 
     in_dir = tmp_path / "raw_clips"
@@ -532,7 +532,7 @@ def test_standalone_extractor_preserves_subject_identity(
     T = 12
     q_gt = np.tile(cal.qpos, (T, 1))
     q_gt[:, 0] = np.linspace(0.0, 0.25, T)
-    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
     j_cam = _synthesize_mhr70_cam(fullbody, ri.INSTANTHMR_MYOFULLBODY, q_gt)
 
@@ -654,7 +654,7 @@ def test_gap_limit_endpoint_trimming_and_splitting(
     T = 100
     q_gt = np.tile(cal.qpos, (T, 1))
     q_gt[:, 0] = np.linspace(0.0, 1.0, T)
-    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
     j_cam = _synthesize_mhr70_cam(fullbody, ri.INSTANTHMR_MYOFULLBODY, q_gt)
 
@@ -761,7 +761,7 @@ def test_collinear_landmarks_and_suppressed_orientation_targets(
         assert np.isfinite(R_single).all()
         assert np.allclose(R_single.T @ R_single, np.eye(3), atol=1e-7)
         assert np.isclose(np.linalg.det(R_single), 1.0, atol=1e-7)
-        q_single = rt._mat_to_quat(R_single)
+        q_single = rt.mat_to_quat(R_single)
         assert np.isfinite(q_single).all()
         assert np.isclose(np.linalg.norm(q_single), 1.0, atol=1e-7)
 
@@ -770,7 +770,7 @@ def test_collinear_landmarks_and_suppressed_orientation_targets(
     T = 8
     q_gt = np.tile(cal.qpos, (T, 1))
     q_gt[:, 0] = np.linspace(0.0, 0.14, T)
-    low0 = rt._foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(fullbody, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
     j_cam = _synthesize_mhr70_cam(fullbody, ri.INSTANTHMR_MYOFULLBODY, q_gt)
 
@@ -1087,10 +1087,8 @@ def test_subject_scaling_invariants_fullbody_and_myolegs(
     # Sole floor height at assembled qpos0 matches nominal model.
     cal_nom = ri.calibrate(fullbody, ri.INSTANTHMR_MYOFULLBODY)
     cal_s = ri.calibrate(m_scaled, ri.INSTANTHMR_MYOFULLBODY)
-    assert rt._foot_kinematics(m_scaled, cal_s.lmap, qs[None])[
-        0
-    ].min() == pytest.approx(
-        rt._foot_kinematics(fullbody, cal_nom.lmap, q0[None])[0].min(),
+    assert rt.foot_kinematics(m_scaled, cal_s.lmap, qs[None])[0].min() == pytest.approx(
+        rt.foot_kinematics(fullbody, cal_nom.lmap, q0[None])[0].min(),
         abs=1e-6,
     )
 
@@ -1171,7 +1169,7 @@ def test_solve_instanthmr_ik_metric_scaled_roundtrip() -> None:
             np.pi * t / t[-1]
         )
     project_joint_couplings(JointCouplings.from_model(gt_model), q_gt)
-    low0 = rt._foot_kinematics(gt_model, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(gt_model, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
 
     j_cam = _synthesize_mhr70_cam(gt_model, ri.INSTANTHMR_MYOFULLBODY, q_gt)
@@ -1222,7 +1220,7 @@ def test_reconstruct_muscle_meshes_volumetric_static_opt_and_glb(
         np.pi * t / t[-1]
     )
     project_joint_couplings(JointCouplings.from_model(m_leg), q_gt)
-    low0 = rt._foot_kinematics(m_leg, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(m_leg, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
 
     j_cam = _synthesize_mhr70_cam(m_leg, ri.INSTANTHMR_MYOLEGS, q_gt, subject_scale=1.1)
@@ -1366,7 +1364,7 @@ def test_cli_scale_and_muscle_export(myolegs: mujoco.MjModel, tmp_path: Path) ->
     T = 10
     q_gt = np.tile(cal.qpos, (T, 1))
     q_gt[:, 0] = np.linspace(0.0, 0.2, T)
-    low0 = rt._foot_kinematics(myolegs, cal.lmap, q_gt)[0].min()
+    low0 = rt.foot_kinematics(myolegs, cal.lmap, q_gt)[0].min()
     q_gt[:, 2] -= low0
 
     clip_in = tmp_path / "subj_walk.npz"

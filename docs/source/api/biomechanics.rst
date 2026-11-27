@@ -15,31 +15,34 @@ Inverse kinematics & landmark observability
 OpenSim motions & force-plate loads
 -----------------------------------
 
-.. automodule:: myosuite.biomechanics.opensim_motion
+.. automodule:: myosuite.integrations.opensim_motion
    :members:
 
-.. automodule:: myosuite.biomechanics.opensim_grf
+.. automodule:: myosuite.integrations.opensim_grf
    :members:
 
-Body, video & hand retargeting
-------------------------------
+Body, video, marker & hand retargeting
+--------------------------------------
 
 .. automodule:: myosuite.biomechanics.retarget
    :members:
 
-.. automodule:: myosuite.biomechanics.smplh
+.. automodule:: myosuite.integrations.marker_retarget
    :members:
 
-.. automodule:: myosuite.biomechanics.gvhmr
+.. automodule:: myosuite.integrations.smplh
    :members:
 
-.. automodule:: myosuite.biomechanics.retarget_smplh
+.. automodule:: myosuite.integrations.gvhmr
+   :members:
+
+.. automodule:: myosuite.integrations.retarget_smplh
    :members:
 
 .. automodule:: myosuite.biomechanics.retarget_instanthmr
    :members:
 
-.. automodule:: myosuite.biomechanics.mano
+.. automodule:: myosuite.integrations.mano
    :members:
 
 .. automodule:: myosuite.biomechanics.hand_retarget

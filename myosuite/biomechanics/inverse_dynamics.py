@@ -10,7 +10,7 @@ The steps after inverse kinematics in a musculoskeletal analysis (OpenSim's ID t
 them on the configuration manifold, and :func:`inverse_dynamics` returns the
 generalized forces the model needs to follow them::
 
-    from myosuite.core.trajectory_io import expand_motion_clip_to_model
+    from myosuite.motion.io import expand_motion_clip_to_model
     from myosuite.biomechanics.inverse_dynamics import clip_kinematics, inverse_dynamics
 
     qpos = expand_motion_clip_to_model(clip, model).qpos

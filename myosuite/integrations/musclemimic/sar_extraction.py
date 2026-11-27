@@ -45,7 +45,7 @@ from typing import Any
 
 import numpy as np
 
-from myosuite.core.trajectory_io import read_npz_names
+from myosuite.motion.io import read_npz_names
 
 logger = logging.getLogger(__name__)
 

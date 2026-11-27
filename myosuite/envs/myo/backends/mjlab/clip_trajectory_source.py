@@ -3,7 +3,7 @@
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Per-environment trajectory source backed by a :class:`~myosuite.core.trajectory_io.MotionClip`.
+"""Per-environment trajectory source backed by a :class:`~myosuite.motion.io.MotionClip`.
 
 Each of the N parallel mjlab environments gets its own random starting frame
 that is resampled independently on episode reset.  Frames advance one per
@@ -30,12 +30,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from myosuite.core.trajectory_io import check_clip_rate
+from myosuite.motion.io import check_clip_rate
 
 if TYPE_CHECKING:
     import torch
 
-    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.motion.io import MotionClip
 
 
 def _as_steps(step: torch.Tensor) -> torch.Tensor:

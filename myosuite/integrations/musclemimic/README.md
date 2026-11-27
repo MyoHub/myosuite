@@ -53,7 +53,7 @@ To put other SMPL-family motions (your own AMASS download, or fits of your own c
 MuscleMimic's GMR fork [`gmr_plus`](https://github.com/amathislab/gmr_plus) (MIT). It fits the SMPL shape and a global
 scale to the model's T-pose, then solves inverse kinematics with the model's coupled joints as equality constraints;
 its README lists the supported inputs. Load the result with `load_motion_clip` and `expand_motion_clip_to_model`
-(`myosuite.core.trajectory_io`). For a body scaled to a subject (see the *Body scaling* page), retarget against the
+(`myosuite.motion.io`). For a body scaled to a subject (see the *Body scaling* page), retarget against the
 scaled model's MJCF (`spec.to_xml()`), since clips are fitted to one body size.
 
 SMPL, SMPL-H, SMPL-X and AMASS are licensed for non-commercial use without redistribution, and so is the code of the
@@ -315,7 +315,7 @@ from mjlab.rl import RslRlVecEnvWrapper
 from mjlab.tasks.registry import load_env_cfg
 from mjlab.viewer import NativeMujocoViewer
 
-from myosuite.core.trajectory_io import load_motion_clip, resolve_motion_path
+from myosuite.motion.io import load_motion_clip, resolve_motion_path
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
 from mjlab.tasks.registry import register_mjlab_task
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
@@ -388,7 +388,7 @@ env.close()
 ### Trajectory-mode training (motion clip as target source)
 
 ```python
-from myosuite.core.trajectory_io import load_motion_clip, resolve_motion_path
+from myosuite.motion.io import load_motion_clip, resolve_motion_path
 from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import register_mimic_mjlab_tasks_with_clip
 from mjlab.tasks.registry import register_mjlab_task
 from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import _elbow_ppo_runner_cfg
@@ -537,7 +537,7 @@ from myosuite.integrations.musclemimic.fullbody_local_policy import (
     FullbodyObsAdapter,
     OnnxPolicyRunner,
 )
-from myosuite.core.trajectory_io import load_motion_clip, resolve_motion_path
+from myosuite.motion.io import load_motion_clip, resolve_motion_path
 
 model, _, _ = compile_mimic_fullbody_mjmodel(default_mimic_fullbody_config())
 data = mujoco.MjData(model)

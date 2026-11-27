@@ -9,7 +9,7 @@ import sys
 import mujoco
 import numpy as np
 
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.motion.io import MotionClip
 from myosuite.integrations.musclemimic import (
     MIMIC_SITES,
     TerrainHeights,

@@ -24,6 +24,7 @@ _APPROVED_RUNTIME_SUBPACKAGES = frozenset(
         "physics",
         "terms",
         "scenes",
+        "motion",
         "biomechanics",
         "integrations",
         "envs",
@@ -32,6 +33,9 @@ _APPROVED_RUNTIME_SUBPACKAGES = frozenset(
         "utils",
     }
 )
+
+# Newly created subpackages must never accumulate legacy import exemptions.
+_ZERO_EXEMPTION_SUBPACKAGES = frozenset({"motion"})
 
 # Out-of-wheel repository directories that runtime modules must never import.
 _FORBIDDEN_EXTERNAL_IMPORTS = frozenset({"training", "tools", "scripts"})
@@ -47,8 +51,11 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
     "physics": frozenset({"__root__", "physics"}),
     "scenes": frozenset({"__root__", "core", "scenes"}),
     "terms": frozenset({"__root__", "core", "physics", "terms"}),
+    "motion": frozenset({"__root__", "core", "physics", "motion"}),
     # Solvers & lightweight source/ecosystem adapters
-    "biomechanics": frozenset({"__root__", "core", "physics", "biomechanics"}),
+    "biomechanics": frozenset(
+        {"__root__", "core", "physics", "motion", "biomechanics"}
+    ),
     # `integrations -> utils` remains allowed until `utils` policy helpers move into `policies/` (#938).
     "integrations": frozenset(
         {
@@ -56,6 +63,7 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
             "core",
             "terms",
             "physics",
+            "motion",
             "biomechanics",
             "utils",
             "integrations",
@@ -70,6 +78,7 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
             "scenes",
             "terms",
             "physics",
+            "motion",
             "biomechanics",
             "integrations",
             "utils",
@@ -77,16 +86,26 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
         }
     ),
     "viz": frozenset(
-        {"__root__", "core", "scenes", "physics", "biomechanics", "envs", "viz"}
+        {
+            "__root__",
+            "core",
+            "scenes",
+            "physics",
+            "motion",
+            "biomechanics",
+            "envs",
+            "viz",
+        }
     ),
     # Rollout logging & utilities (scheduled for split into core/policies/benchmarks)
-    "logger": frozenset({"__root__", "core", "physics", "logger"}),
+    "logger": frozenset({"__root__", "core", "physics", "motion", "logger"}),
     "utils": frozenset(
         {
             "__root__",
             "core",
             "terms",
             "physics",
+            "motion",
             "biomechanics",
             "envs",
             "viz",
@@ -95,7 +114,16 @@ _ALLOWED_INTERNAL_IMPORTS: dict[str, frozenset[str]] = {
     ),
 }
 
-# Pre-existing cross-layer runtime edges on dev (27 edges), burned down as migrations land.
+# Lazy backward-compatibility re-exports on core/ preserving former public import paths until v4.0.
+_COMPATIBILITY_REEXPORT_IMPORTS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("core/__init__.py", "integrations"),
+        ("core/__init__.py", "motion"),
+        ("core/body_scaling.py", "integrations"),
+    }
+)
+
+# Pre-existing cross-layer runtime edges on dev (25 edges), burned down as migrations land.
 # Do not add entries here; place new runtime logic in its canonical layer.
 _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
     {
@@ -105,7 +133,6 @@ _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
         ("core/model_recipes.py", "envs"),
         ("core/model_recipes.py", "integrations"),
         ("core/registry.py", "envs"),
-        ("core/retargeting.py", "integrations"),
         ("envs/gymnasium_env.py", "viz"),
         ("envs/heightfields.py", "viz"),
         ("envs/multi_agent_modular_env.py", "viz"),
@@ -116,7 +143,6 @@ _LEGACY_CROSS_IMPORTS: frozenset[tuple[str, str]] = frozenset(
         ("integrations/musclemimic/mjlab_onnx_policy.py", "envs"),
         ("logger/examine_logs.py", "utils"),
         ("logger/grouped_datasets.py", "utils"),
-        ("physics/inverse_kinematics.py", "biomechanics"),
         ("terms/multiplayer/chase_tag_vs_obs.py", "envs"),
         ("terms/multiplayer/chase_tag_vs_reward.py", "envs"),
         ("utils/checkpoint_manifest.py", "integrations"),
@@ -154,6 +180,39 @@ _COMPATIBILITY_MODULE_SHIMS: tuple[tuple[str, str], ...] = (
     ("myosuite.terms.waypoint", "myosuite.core.terms.waypoint"),
     ("myosuite.terms.multiplayer.common", "myosuite.core.terms.multiplayer.common"),
     ("myosuite.terms.multiplayer.heading", "myosuite.core.terms.multiplayer.heading"),
+    ("myosuite.core.trajectory_io", "myosuite.motion.io"),
+    ("myosuite.core.trajectory_yaw", "myosuite.motion.transforms"),
+    ("myosuite.core.playback_contract", "myosuite.motion.playback"),
+    ("myosuite.core.hf_dataset_cache", "myosuite.motion.hf_cache"),
+    ("myosuite.core.retargeting", "myosuite.integrations.marker_retarget"),
+    ("myosuite.logger.reference_motion", "myosuite.motion.reference"),
+    ("myosuite.logger.reference_motion_jax", "myosuite.motion.reference_jax"),
+    ("myosuite.biomechanics.opensim_motion", "myosuite.integrations.opensim_motion"),
+    ("myosuite.biomechanics.opensim_grf", "myosuite.integrations.opensim_grf"),
+    ("myosuite.biomechanics.smplh", "myosuite.integrations.smplh"),
+    ("myosuite.biomechanics.retarget_smplh", "myosuite.integrations.retarget_smplh"),
+    ("myosuite.biomechanics.mano", "myosuite.integrations.mano"),
+    ("myosuite.biomechanics.gvhmr", "myosuite.integrations.gvhmr"),
+    ("myosuite.biomechanics.chumpy_pickle", "myosuite.integrations.chumpy_pickle"),
+)
+
+_NON_SHIM_FACADE_TARGETS: dict[str, tuple[str, ...]] = {
+    "physics/inverse_kinematics.py": ("myosuite.biomechanics.inverse_kinematics",),
+    "scenes/__init__.py": (
+        "myosuite.scenes",
+        "myosuite.core.builder.scene_library",
+    ),
+    "terms/__init__.py": ("myosuite.core.terms", "myosuite.terms"),
+}
+
+_COMPATIBILITY_FACADE_FILES: frozenset[str] = frozenset(
+    {
+        *(
+            f"{legacy.removeprefix('myosuite.').replace('.', '/')}.py"
+            for legacy, _ in _COMPATIBILITY_MODULE_SHIMS
+        ),
+        *_NON_SHIM_FACADE_TARGETS,
+    }
 )
 
 _OPTIONAL_TOP_LEVEL_DEPS = frozenset({"jax", "mink", "torch", "onnxruntime"})
@@ -223,16 +282,19 @@ def _is_import_module_call(func: ast.expr) -> bool:
     return False
 
 
-def _runtime_imports(py_file: Path) -> list[str]:
-    """Extract runtime import targets (including literal ``import_module(...)`` calls), ignoring ``if TYPE_CHECKING:`` bodies."""
+def _runtime_imports(
+    py_file: Path, *, include_type_checking: bool = False
+) -> list[str]:
+    """Extract import targets (including literal ``import_module(...)`` calls)."""
     source = py_file.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(py_file))
 
     type_checking_nodes: set[ast.AST] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.If) and _is_type_checking_guard(node.test):
-            for stmt in node.body:
-                type_checking_nodes.update(ast.walk(stmt))
+    if not include_type_checking:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.If) and _is_type_checking_guard(node.test):
+                for stmt in node.body:
+                    type_checking_nodes.update(ast.walk(stmt))
 
     rel_parts = list(py_file.relative_to(_PACKAGE).with_suffix("").parts)
     is_pkg = rel_parts[-1] == "__init__"
@@ -305,6 +367,24 @@ def _runtime_imports(py_file: Path) -> list[str]:
                     )
             else:
                 imports.append(raw_mod)
+        elif (
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(t, ast.Name)
+                and t.id in {"_LAZY_EXPORTS", "_COMPAT_SUBMODULES"}
+                for t in (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+            )
+            and node.value is not None
+        ):
+            for sub in ast.walk(node.value):
+                if (
+                    isinstance(sub, ast.Constant)
+                    and isinstance(sub.value, str)
+                    and sub.value.startswith("myosuite.")
+                ):
+                    imports.append(sub.value)
     return imports
 
 
@@ -339,27 +419,48 @@ def test_myosuite_never_imports_out_of_wheel_or_test_packages() -> None:
     )
 
 
+def _matches_allowed_prefix(mod: str, prefixes: tuple[str, ...]) -> bool:
+    return any(mod == p or mod.startswith(f"{p}.") for p in prefixes)
+
+
 def test_myosuite_internal_import_dag() -> None:
     """Enforce the upward module import DAG across ``myosuite/``."""
+    for rel_file, dst_sub in _LEGACY_CROSS_IMPORTS:
+        src_sub = rel_file.split("/", 1)[0]
+        assert src_sub not in _ZERO_EXEMPTION_SUBPACKAGES, (
+            f"Subpackage {src_sub!r} must have zero outgoing legacy exemptions: "
+            f"({rel_file!r}, {dst_sub!r})"
+        )
+
     shim_map = dict(_COMPATIBILITY_MODULE_SHIMS)
+    facade_allowed_prefixes: dict[str, tuple[str, ...]] = {
+        **{
+            f"{legacy.removeprefix('myosuite.').replace('.', '/')}.py": (canonical,)
+            for legacy, canonical in _COMPATIBILITY_MODULE_SHIMS
+        },
+        **_NON_SHIM_FACADE_TARGETS,
+    }
+    assert set(facade_allowed_prefixes) == _COMPATIBILITY_FACADE_FILES
+
+    facade_violations: list[str] = []
     shim_imports: list[str] = []
     violations: set[tuple[str, str]] = set()
     for path in _runtime_python_files():
         rel = path.relative_to(_PACKAGE)
         rel_posix = rel.as_posix()
+        if rel_posix in _COMPATIBILITY_FACADE_FILES:
+            allowed_prefixes = facade_allowed_prefixes[rel_posix]
+            for mod in sorted(set(_runtime_imports(path, include_type_checking=True))):
+                if mod == "myosuite" or mod.startswith("myosuite."):
+                    if not _matches_allowed_prefix(mod, allowed_prefixes):
+                        facade_violations.append(
+                            f"{rel_posix} -> {mod} (allowed: {allowed_prefixes})"
+                        )
+            continue
         src_sub = rel.parts[0] if len(rel.parts) > 1 else "__root__"
         allowed = _ALLOWED_INTERNAL_IMPORTS[src_sub]
-        is_shim_or_facade = (
-            f"myosuite.{rel_posix.removesuffix('.py').replace('/', '.')}" in shim_map
-            or rel_posix
-            in {
-                "scenes/__init__.py",
-                "terms/__init__.py",
-                "terms/multiplayer/__init__.py",
-            }
-        )
         for mod in _runtime_imports(path):
-            if not is_shim_or_facade and mod in shim_map:
+            if mod in shim_map:
                 shim_imports.append(f"{rel_posix} -> {mod} (use {shim_map[mod]})")
             mod = shim_map.get(mod, mod)
             parts = mod.split(".")
@@ -371,16 +472,21 @@ def test_myosuite_internal_import_dag() -> None:
             if dst_sub not in allowed:
                 violations.add((rel.as_posix(), dst_sub))
 
+    assert not facade_violations, (
+        "Compatibility facade files may only import their mapped canonical target(s):\n  "
+        + "\n  ".join(facade_violations)
+    )
     assert not shim_imports, (
         "Non-facade runtime modules must import canonical paths rather than compatibility shims:\n  "
         + "\n  ".join(sorted(shim_imports))
     )
-    unexpected = sorted(violations - _LEGACY_CROSS_IMPORTS)
+    known_exemptions = _LEGACY_CROSS_IMPORTS | _COMPATIBILITY_REEXPORT_IMPORTS
+    unexpected = sorted(violations - known_exemptions)
     assert not unexpected, (
         "Forbidden cross-subpackage runtime imports detected (see docs/wiki/repository-map.md):\n  "
         + "\n  ".join(f"{src} -> myosuite.{dst}" for src, dst in unexpected)
     )
-    stale = sorted(_LEGACY_CROSS_IMPORTS - violations)
+    stale = sorted(known_exemptions - violations)
     assert not stale, (
         "Stale _LEGACY_CROSS_IMPORTS entries no longer occur — remove them so fixed edges cannot regress:\n  "
         + "\n  ".join(f"{src} -> myosuite.{dst}" for src, dst in stale)
@@ -431,7 +537,8 @@ def test_compatibility_shims_are_pure_aliases() -> None:
         defs = [
             node.name
             for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            if isinstance(node, (ast.AsyncFunctionDef, ast.ClassDef))
+            or (isinstance(node, ast.FunctionDef) and node.name != "__getattr__")
         ]
         assert (
             not defs
@@ -448,16 +555,31 @@ def test_compatibility_shims_are_pure_aliases() -> None:
             legacy is canonical
         ), f"{legacy_mod} ({legacy!r}) is not identical to {canonical_mod} ({canonical!r})"
 
-    for scene_file in (_PACKAGE / "scenes").rglob("*.py"):
+    for closed_dir in ("scenes",):
+        on_disk = {
+            p.relative_to(_PACKAGE).as_posix()
+            for p in (_PACKAGE / closed_dir).rglob("*.py")
+        }
+        unlisted = sorted(on_disk - _COMPATIBILITY_FACADE_FILES)
+        assert (
+            not unlisted
+        ), f"Closed namespace myosuite/{closed_dir}/ has non-facade files: {unlisted}"
+
+    for rel_facade in sorted(_COMPATIBILITY_FACADE_FILES):
+        facade_file = _PACKAGE / rel_facade
+        assert facade_file.is_file(), f"Missing facade file: {facade_file}"
         tree = ast.parse(
-            scene_file.read_text(encoding="utf-8"), filename=str(scene_file)
+            facade_file.read_text(encoding="utf-8"), filename=str(facade_file)
         )
         defs = [
             node.name
             for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            if isinstance(node, (ast.AsyncFunctionDef, ast.ClassDef))
+            or (isinstance(node, ast.FunctionDef) and node.name != "__getattr__")
         ]
-        assert not defs, f"Closed facade {scene_file} must not define new logic: {defs}"
+        assert (
+            not defs
+        ), f"Compatibility facade {facade_file} must not define new logic: {defs}"
 
 
 def test_scenes_package_binds_library_submodule_in_fresh_process() -> None:

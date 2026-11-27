@@ -83,7 +83,7 @@ rl = [
 # mink, which the examples needed, is a core dependency now; the extra stays so that
 # `pip install "myosuite[examples]"` keeps working.
 examples = []
-# Read .c3d marker files in myosuite.core.retargeting.retarget.
+# Read .c3d marker files in myosuite.integrations.marker_retarget.retarget.
 capture = ["ezc3d>=1.5"]
 mjlab = [
     "torch>=2.13.0; python_version >= '3.10'",
@@ -191,6 +191,8 @@ packages = { find = { include = [
     "myosuite.integrations.*",
     "myosuite.logger",
     "myosuite.logger.*",
+    "myosuite.motion",
+    "myosuite.motion.*",
     "myosuite.physics",
     "myosuite.physics.*",
     "myosuite.scenes",
@@ -216,6 +218,7 @@ packages = { find = { include = [
     "envs/**",
     "integrations/**",
     "logger/**",
+    "motion/**",
     "physics/**",
     "scenes/**",
     "terms/**",

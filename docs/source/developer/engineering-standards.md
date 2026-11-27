@@ -20,7 +20,8 @@ Before any new class, function, or wrapper:
 |---|---|
 | Obs / reward / action / event / termination term functions | `myosuite/core/terms/` |
 | Physics math (quat, fatigue, colored noise, joint couplings, running stats) | `myosuite/physics/` |
-| Numerical biomechanics solvers (IK, ID, SO, CMC, EMG, effort) | `myosuite/biomechanics/` |
+| `MotionClip`, trajectory I/O, yaw transforms, composable `KinematicTrial` / `EMGTrial` | `myosuite/motion/` |
+| Numerical biomechanics solvers (IK, ID, SO, CMC, EMG, external-load wrenches, effort) | `myosuite/biomechanics/` |
 | Lightweight format/dataset readers & `musclemimic` runtime adapters | `myosuite/integrations/` (heavy CV inference → `tools/`) |
 | Muscle noise / fatigue / reafferentation / sarcopenia (wrappers and stages) | `myosuite/envs/wrappers.py`, `myosuite/envs/muscle_stages.py` |
 | Building an env (`make_env`, `EnvConfig`), `ModelBuilder`, scene/spec assembly | `myosuite/core/registry.py`, `myosuite/core/config.py`, `myosuite/core/model_builder.py`, `myosuite/core/builder/` |

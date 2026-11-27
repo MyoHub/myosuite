@@ -73,6 +73,11 @@ if "autoapi.extension" in extensions:
         "*myosuite/terms/waypoint.py",
         "*myosuite/terms/multiplayer/common.py",
         "*myosuite/terms/multiplayer/heading.py",
+        "*myosuite/core/hf_dataset_cache.py",
+        "*myosuite/core/playback_contract.py",
+        "*myosuite/core/retargeting.py",
+        "*myosuite/core/trajectory_io.py",
+        "*myosuite/core/trajectory_yaw.py",
     ]
     autoapi_type = "python"
     autoapi_options = [

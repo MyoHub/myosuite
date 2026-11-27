@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING
 import mujoco
 import numpy as np
 
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.motion.io import MotionClip
 from myosuite.physics.quat import quat_yaw
 
 if TYPE_CHECKING:

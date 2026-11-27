@@ -20,23 +20,23 @@ from myosuite.biomechanics.retarget import (
     LandmarkMap,
     RefitConfig,
     RefitThresholds,
-    _body_landmarks,
-    _calibration_pose,
-    _foot_contacts,
-    _ground_clip,
-    _hinge_table,
-    _knee_flexion_meta,
-    _mat_to_quat,
-    _orientation_targets,
-    _segment_angle,
-    _smooth,
-    _smooth_quat,
-    _start_pose,
+    body_landmarks,
+    calibration_pose,
+    foot_contacts,
+    ground_clip,
+    hinge_table,
+    knee_flexion_meta,
+    mat_to_quat,
+    orientation_targets,
+    segment_angle,
+    smooth,
+    smooth_quat,
+    start_pose,
     merge_quality_flags,
     validate_refit,
 )
 from myosuite.core.body_scaling import inherited_scales, scale_spec
-from myosuite.core.trajectory_io import MotionClip
+from myosuite.motion.io import MotionClip
 
 if TYPE_CHECKING:
     from myosuite.viz.muscle_meshes import MuscleMeshReconstruction
@@ -666,14 +666,14 @@ def _canonical_axes(m: mujoco.MjModel, d: mujoco.MjData) -> np.ndarray:
 def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
     """Resolve *imap* on *model* in its T-pose calibration configuration."""
     m = model
-    d, q = _calibration_pose(m, imap.calibration)
+    d, q = calibration_pose(m, imap.calibration)
     R_canon = _canonical_axes(m, d)
     body_names = {m.body(i).name for i in range(m.nbody)}
     names = [p.name for p in imap.points]
     pos = np.stack(
         [np.mean([d.xpos[m.body(b).id] for b in p.model], axis=0) for p in imap.points]
     )
-    landmarks = _body_landmarks(m, d, imap.points, pos)
+    landmarks = body_landmarks(m, d, imap.points, pos)
 
     def mvec(
         pair: tuple[tuple[str, ...], tuple[str, ...]], canon: tuple[float, float, float]
@@ -703,7 +703,7 @@ def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
             raise ValueError(f"{o.name}: degenerate calibration triad on model")
         rot_offsets.append(R_cal.T @ d.xmat[m.body(o.body).id].reshape(3, 3))
 
-    orientations = _orientation_targets(m, d, imap.orientations, source_attr="name")
+    orientations = orientation_targets(m, d, imap.orientations, source_attr="name")
     lmap = LandmarkMap(
         name=imap.name, version=imap.version, landmarks=landmarks,
         orientations=orientations, feet=imap.feet, twist_pairs=imap.twist_pairs,
@@ -718,7 +718,7 @@ def calibrate(model: mujoco.MjModel, imap: InstantHMRMap) -> Calibration:
             for a, b in imap.leg_edges
         )
     )
-    return Calibration(lmap, pos, np.stack(rot_offsets), q, leg_len, R_canon, tuple(_hinge_table(m, d, q, h) for h in imap.hinges))  # fmt: skip
+    return Calibration(lmap, pos, np.stack(rot_offsets), q, leg_len, R_canon, tuple(hinge_table(m, d, q, h) for h in imap.hinges))  # fmt: skip
 
 
 def segment_orientations_with_mask(
@@ -877,21 +877,21 @@ class InstantHMRSource:
 
         pos = out[[names.index(lm.source) for lm in lmap.landmarks]].transpose(1, 0, 2)
         R_seg, ori_valid = segment_orientations_with_mask(jw, imap)
-        quat = _mat_to_quat(np.einsum("toab,obc->toac", R_seg, c.rot_offset))
+        quat = mat_to_quat(np.einsum("toab,obc->toac", R_seg, c.rot_offset))
 
         if self.target_sigma > 0:
-            pos = _smooth(pos, self.target_sigma * fps)
-            quat = _smooth_quat(quat, self.target_sigma * fps, mask=ori_valid)
+            pos = smooth(pos, self.target_sigma * fps)
+            quat = smooth_quat(quat, self.target_sigma * fps, mask=ori_valid)
 
         posture = None
         if imap.hinges:
             posture = np.tile([v for _, v, _ in lmap.posture], (T, 1))
             for k, (h, tab) in enumerate(zip(imap.hinges, c.hinge_table)):
                 a, b, e = (jw[:, _JIDX[j]] for j in h.mhr)
-                theta = _smooth(_segment_angle(a, b, e), self.target_sigma * fps)
+                theta = smooth(segment_angle(a, b, e), self.target_sigma * fps)
                 posture[:, len(imap.posture) + k] = np.interp(theta, tab[1], tab[0])
 
-        contact = _foot_contacts(
+        contact = foot_contacts(
             sole,
             sole_floor,
             fps,
@@ -911,7 +911,7 @@ class InstantHMRSource:
                 d_cal.qpos[:] = c.qpos
                 mujoco.mj_kinematics(model, d_cal)
                 quat0[k_pelvis] = d_cal.xquat[model.body("pelvis").id]
-        seed = _start_pose(model, c.qpos, c.model_pos[0], out[0, 0], quat0, lmap)
+        seed = start_pose(model, c.qpos, c.model_pos[0], out[0, 0], quat0, lmap)
 
         degen_frames = int((~ori_valid).any(axis=1).sum())
         flags = merge_quality_flags(
@@ -942,7 +942,7 @@ class InstantHMRSource:
         """Ground stance frames to ``z = 0`` while interpolating aerial flight phases."""
         info = self._last
         contact = info["contact"]
-        qpos, targets, dz = _ground_clip(
+        qpos, targets, dz = ground_clip(
             ik.model, ik.lmap, targets, qpos, contact, self.ground_sigma
         )
         meta = {
@@ -964,7 +964,7 @@ class InstantHMRSource:
                 "max": float(dz.max()),
             },
             "contact_fraction": [float(x) for x in contact.mean(0)],
-            "source_knee_flexion_deg": _knee_flexion_meta(info["knee_flexion"]),
+            "source_knee_flexion_deg": knee_flexion_meta(info["knee_flexion"]),
         }
         return qpos, targets, meta
 
@@ -1370,7 +1370,7 @@ def solve_instanthmr_ik(
         **source_kwargs: Extra keyword arguments forwarded to :func:`instanthmr_source`.
 
     Returns:
-        An :class:`InstantHMRIKResult` with the fitted :class:`~myosuite.core.trajectory_io.MotionClip`,
+        An :class:`InstantHMRIKResult` with the fitted :class:`~myosuite.motion.io.MotionClip`,
         manifold accelerations ``qacc``, per-landmark errors (m) and validation metrics.
     """
     if scale and spec is None:

@@ -28,7 +28,7 @@ import mujoco
 import numpy as np
 
 if TYPE_CHECKING:
-    from myosuite.core.trajectory_io import MotionClip
+    from myosuite.motion.io import MotionClip
 
 
 # ── geometry helpers ────────────────────────────────────────────────────────

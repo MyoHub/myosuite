@@ -27,9 +27,9 @@ import mujoco
 import numpy as np
 
 from myosuite.biomechanics.retarget import file_sha256
-from myosuite.core import trajectory_yaw
-from myosuite.core.trajectory_io import MotionClip, load_motion_clip
-from myosuite.core.trajectory_yaw import (
+from myosuite.motion import transforms as trajectory_yaw
+from myosuite.motion.io import MotionClip, load_motion_clip
+from myosuite.motion.transforms import (
     clip_natural_yaw,
     pingpong_frame,
     write_rotated_clip_npz,
