@@ -102,7 +102,9 @@ def cocontraction_index(moment_arms: Any, forces: Any) -> Any:
 
 def muscle_saturation_bounds(
     *,
-    sigmoid: bool,
+    sigmoid: bool | None = None,
+    mode: str | None = None,
+    shape_A: float = -2.0,
     clip: tuple[float, float] | None = None,
     margin: float = MUSCLE_SATURATION_MARGIN,
 ) -> tuple[float, float]:
@@ -110,11 +112,14 @@ def muscle_saturation_bounds(
 
     A command is saturated when its excitation is within *margin* of 0 or 1, or
     when the action is clamped. MuJoCo clamps muscle ctrl to ``[0, 1]``, so an
-    identity map (``sigmoid=False``) saturates at its bounds too.
+    identity map (``mode="linear"`` / ``sigmoid=False``) saturates at its bounds too.
 
     Args:
-        sigmoid: The map is ``sigmoid_muscle_activation``
-            (``1 / (1 + exp(-5 (a - 0.5)))``); otherwise the excitation is the action.
+        sigmoid: Legacy selector; ``True`` selects ``"sigmoid"`` and ``False``
+            selects ``"linear"`` when *mode* is omitted.
+        mode: ``"buchanan"`` (default when neither *mode* nor *sigmoid* is passed),
+            ``"sigmoid"``, or ``"linear"``.
+        shape_A: Shape factor ``A`` for ``"buchanan"``.
         clip: Clamp applied to the action before the map, if any.
         margin: Excitation distance from 0 or 1, in ``(0, 0.5)``.
 
@@ -122,13 +127,30 @@ def muscle_saturation_bounds(
         ``(lo, hi)``: actions ``<= lo`` or ``>= hi`` are saturated.
 
     Raises:
-        ValueError: If *margin* is outside ``(0, 0.5)``.
+        ValueError: If *margin* is outside ``(0, 0.5)`` or *mode* is unknown.
     """
+    from myosuite.core.terms.base_action import (
+        inverse_buchanan_excitation,
+        validate_muscle_excitation,
+    )
+
     if not 0.0 < margin < 0.5:
         raise ValueError(f"margin must be in (0, 0.5), got {margin}.")
-    if sigmoid:
+    if mode is None:
+        resolved = (
+            "buchanan" if sigmoid is None else ("sigmoid" if sigmoid else "linear")
+        )
+    else:
+        resolved = mode
+    resolved_mode, a = validate_muscle_excitation(resolved, shape_A)
+    if resolved_mode == "sigmoid":
         half = math.log((1.0 - margin) / margin) / 5.0
         lo, hi = 0.5 - half, 0.5 + half
+    elif resolved_mode == "buchanan":
+        pair = inverse_buchanan_excitation(
+            np.array([margin, 1.0 - margin], dtype=np.float64), np, shape_A=a
+        )
+        lo, hi = float(pair[0]), float(pair[1])
     else:
         lo, hi = margin, 1.0 - margin
     if clip is not None:

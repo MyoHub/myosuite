@@ -27,7 +27,6 @@ from myosuite.envs.tasks.suites.challenge_common import (
     mean_effort,
     solved_step_count,
 )
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
 from myosuite.core.builder.spec_processing import (
     recursive_immobilize,
     recursive_mirror,
@@ -148,17 +147,7 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
         self.observation_space = self._unbounded_obs_space(obs.size)
-        act_low = (
-            -np.ones(self.model.nu, dtype=np.float32)
-            if self.normalize_act
-            else self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-        )
-        act_high = (
-            np.ones(self.model.nu, dtype=np.float32)
-            if self.normalize_act
-            else self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        )
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(self.normalize_act)
 
     def _obs_dict_to_vec(self, obs_dict: dict[str, np.ndarray]) -> np.ndarray:
         return self._obs_keys_to_vec(obs_dict)
@@ -292,8 +281,8 @@ class TableTennisEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 / 2.0
             )
         if self.model.na > 0 and self.normalize_act:
-            ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind], np
+            ctrl[self._muscle_act_ind] = self._map_muscle_excitation(
+                ctrl[self._muscle_act_ind]
             )
         ctrl = self._run_ctrl_stages(ctrl)
         return ctrl

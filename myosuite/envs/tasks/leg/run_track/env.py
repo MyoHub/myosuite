@@ -16,7 +16,6 @@ from typing import Any
 import mujoco
 import numpy as np
 
-import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder
@@ -28,7 +27,6 @@ from myosuite.envs.tasks.suites.challenge_common import (
     joint_limit_forces,
 )
 from myosuite.physics.quat_math import intrinsic_euler2quat, quat2euler_intrinsic
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
 
 
 class TrackTypes(Enum):
@@ -345,17 +343,9 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
         # ── Action space — muscles only (OSL torques appended internally) ────
         self.normalize_act = normalize_act
-        if normalize_act:
-            act_low = -np.ones(self.model.na, dtype=np.float32)
-            act_high = np.ones(self.model.na, dtype=np.float32)
-        else:
-            act_low = self.model.actuator_ctrlrange[: self.model.na, 0].astype(
-                np.float32
-            )
-            act_high = self.model.actuator_ctrlrange[: self.model.na, 1].astype(
-                np.float32
-            )
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(
+            normalize_act, n_actuators=self.model.na
+        )
 
         # ── Initial state keyframe ───────────────────────────────────────────
         self._init_qpos = self.model.keyframe("stand").qpos.copy()
@@ -381,8 +371,8 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         # Sigmoid or scale muscle activations
         ctrl = mus_action.copy()
         if self.model.na > 0 and self.normalize_act:
-            ctrl[self._muscle_act_ind[: self.model.na]] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind[: self.model.na]], np
+            ctrl[self._muscle_act_ind[: self.model.na]] = self._map_muscle_excitation(
+                ctrl[self._muscle_act_ind[: self.model.na]]
             )
         elif self.normalize_act:
             ctrl_range = self.model.actuator_ctrlrange[: self.model.na]

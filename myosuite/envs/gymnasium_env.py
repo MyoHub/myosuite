@@ -301,6 +301,11 @@ class MyoGymnasiumEnv(gym.Env):
 
     def __new__(cls, *args: Any, **kwargs: Any) -> MyoGymnasiumEnv:
         """Reject constructor kwargs the env would ignore (replaced or unsupported)."""
+        from myosuite.core.terms.base_action import (
+            DEFAULT_BUCHANAN_SHAPE_A,
+            validate_muscle_excitation,
+        )
+
         reject_removed_kwargs(cls, kwargs)
         if not cls.supports_scales and any(
             kwargs.get(name) is not None for name in ("scales", "total_mass")
@@ -309,7 +314,12 @@ class MyoGymnasiumEnv(gym.Env):
                 f"{cls.__name__} does not build its model for a subject; it takes "
                 "no scales or total_mass."
             )
-        return super().__new__(cls)
+        inst = super().__new__(cls)
+        inst.muscle_excitation, inst.buchanan_shape_A = validate_muscle_excitation(
+            kwargs.get("muscle_excitation", "buchanan"),
+            kwargs.get("buchanan_shape_A", DEFAULT_BUCHANAN_SHAPE_A),
+        )
+        return inst
 
     def __init__(
         self,
@@ -317,9 +327,28 @@ class MyoGymnasiumEnv(gym.Env):
         render_mode: str | None = None,
         **kwargs: Any,
     ) -> None:
+        from myosuite.core.terms.base_action import (
+            DEFAULT_BUCHANAN_SHAPE_A,
+            validate_muscle_excitation,
+        )
+
         super().__init__()
         self.frame_skip = frame_skip
         self.render_mode = render_mode
+        if (
+            "muscle_excitation" in kwargs
+            or "buchanan_shape_A" in kwargs
+            or not hasattr(self, "muscle_excitation")
+        ):
+            self.muscle_excitation, self.buchanan_shape_A = validate_muscle_excitation(
+                kwargs.get(
+                    "muscle_excitation", getattr(self, "muscle_excitation", "buchanan")
+                ),
+                kwargs.get(
+                    "buchanan_shape_A",
+                    getattr(self, "buchanan_shape_A", DEFAULT_BUCHANAN_SHAPE_A),
+                ),
+            )
 
         # Subclass must set these (or call setup_model())
         self.model: Any = None
@@ -581,6 +610,37 @@ class MyoGymnasiumEnv(gym.Env):
             The observation space.
         """
         return gym.spaces.Box(-np.inf, np.inf, shape=(obs_dim,), dtype=np.float32)
+
+    def _build_normalized_action_space(
+        self,
+        normalize_act: bool = True,
+        *,
+        n_actuators: int | None = None,
+    ) -> gym.spaces.Box:
+        """Build float32 ``action_space`` respecting ``normalize_act`` and ``muscle_excitation``."""
+        from myosuite.core.terms.base_action import normalized_action_bounds
+
+        low, high = normalized_action_bounds(
+            self.model,
+            normalize_act=normalize_act,
+            muscle_excitation=getattr(self, "muscle_excitation", "buchanan"),
+            n_actuators=n_actuators,
+        )
+        return gym.spaces.Box(low, high, dtype=np.float32)
+
+    def _map_muscle_excitation(self, action: np.ndarray) -> np.ndarray:
+        """Map raw muscle actions through ``self.muscle_excitation``."""
+        from myosuite.core.terms.base_action import (
+            DEFAULT_BUCHANAN_SHAPE_A,
+            apply_muscle_excitation,
+        )
+
+        return apply_muscle_excitation(
+            action,
+            np,
+            mode=getattr(self, "muscle_excitation", "buchanan"),
+            shape_A=getattr(self, "buchanan_shape_A", DEFAULT_BUCHANAN_SHAPE_A),
+        )
 
     def _set_success_indicator(self, site_id: int, solved: bool) -> None:
         """Colour a success indicator site green while solved and red otherwise.

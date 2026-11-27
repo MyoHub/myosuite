@@ -46,7 +46,7 @@ from mujoco import mjx
 from myosuite.core.protocols import PhysicsPath
 from myosuite.envs.backends._experimental_mjx import brax_env
 from myosuite.envs.backends._experimental_mjx.brax_env import State
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import apply_muscle_excitation
 
 EXPERIMENTAL_WARNING = (
     "The MyoSuite MJX backend is experimental and may not be maintained "
@@ -352,7 +352,9 @@ class MyoMjxEnvBase:
         """
         if not getattr(self._config, "norm_actions", True):
             return action
-        return sigmoid_muscle_activation(action, jp)
+        return apply_muscle_excitation(
+            action, jp, mode=getattr(self._config, "muscle_excitation", "buchanan")
+        )
 
     def _update_metrics(
         self,

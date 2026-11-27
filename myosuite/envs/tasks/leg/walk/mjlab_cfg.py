@@ -191,11 +191,7 @@ def make_leg_walk_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvC
             num_envs=1,
         ),
         observations=observations,
-        actions={
-            "muscles": ref.action_cfg(
-                task, ENTITY, action_range=(0.0, 1.0), muscle_sigmoid=False
-            )
-        },
+        actions={"muscles": ref.action_cfg(task, ENTITY)},
         rewards=rewards,
         terminations=terminations,
         metrics=metrics,

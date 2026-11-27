@@ -143,7 +143,7 @@ def make_leg_directional_env_cfg(
         observations=observations,
         actions={
             "muscles": ref.action_cfg(
-                task, ENTITY, action_range=(0.0, 1.0), muscle_sigmoid=False
+                task, ENTITY, action_range=(0.0, 1.0), muscle_excitation="linear"
             )
         },
         commands=commands,

@@ -202,7 +202,9 @@ def test_mjlab_action_term(walk_groups):
     term = env.action_manager.get_term("muscles")
     assert term.action_dim == 80
     assert term.action_map.amplitude(term.env_steps) == pytest.approx(0.1)
-    expected = expand_actions(actions, groups, 0.1, torch)
+    from myosuite.terms.base_action import buchanan_excitation
+
+    expected = buchanan_excitation(expand_actions(actions, groups, 0.1, torch), torch)
     torch.testing.assert_close(term.processed_action, expected)
     env.close()
 
@@ -372,7 +374,7 @@ def test_both_backends_command_the_same_muscles(task):
         action_map_term,
         apply_action_map,
     )
-    from myosuite.terms.base_action import sigmoid_muscle_activation
+    from myosuite.terms.base_action import apply_muscle_excitation
 
     cpu = make_env(task)
     model = cpu.unwrapped.model
@@ -388,7 +390,7 @@ def test_both_backends_command_the_same_muscles(task):
 
     cfg = load_env_cfg(task)
     cfg.scene.num_envs = 1
-    sigmoid = cfg.actions["muscles"].muscle_sigmoid
+    exc_mode = cfg.actions["muscles"].muscle_excitation
     apply_action_map(cfg, DynSyn(groups, 0, 0, 0.2), step_offset=1, frozen=True)
     env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     env.reset()
@@ -399,7 +401,7 @@ def test_both_backends_command_the_same_muscles(task):
     np.testing.assert_allclose(twin, cpu.unwrapped.data.ctrl, atol=1e-5)
 
     raw = expand_actions(action[None], groups.groups, 0.2, np, kappa=0.2)[0]
-    expected = sigmoid_muscle_activation(raw, np) if sigmoid else raw
+    expected = apply_muscle_excitation(raw, np, mode=exc_mode)
     np.testing.assert_allclose(twin, expected, atol=1e-5)
     env.close()
     cpu.close()

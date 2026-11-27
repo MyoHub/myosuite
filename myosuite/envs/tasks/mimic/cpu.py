@@ -27,7 +27,6 @@ from myosuite.integrations.musclemimic.fullbody_model import (
 )
 from myosuite.integrations.musclemimic.model_versions import resolve_models_version
 from myosuite.physics.quat import quat_yaw
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
 from myosuite.core.terms.base_obs import joint_pos_obs, joint_vel_obs, muscle_act_obs
 from myosuite.core.terms.mimic_obs import resolve_mimic_site_ids
 from myosuite.core.terms.mimic_reward import (
@@ -70,8 +69,8 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
     - obs ``[qpos, qvel * ctrl_dt, act, site_pos, site_target, site_target - site_pos]``
       (mjlab terms ``qpos``, ``qvel``, ``act`` and ``mimic_site_*``);
     - reward ``exp(-tracking_reward_scale * mean site error)`` (variant config);
-    - muscle ctrl ``sigmoid(5 (a - 0.5))`` (mjlab ``sigmoid`` action mode) of the
-      action (unclipped, as on mjlab);
+    - muscle ctrl mapped via ``self._map_muscle_excitation(action)`` (default
+      ``buchanan_excitation`` on ``[0, 1]``, or ``sigmoid`` on ``[-1, 1]``);
     - each episode's targets are the tracked sites of one random posture on the
       joint couplings (:func:`~myosuite.core.reach_workspace.reachable_postures`),
       so the model can match them exactly.
@@ -117,15 +116,11 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
             reward_scale=float(cfg.tracking_reward_scale),
             success_threshold=float(cfg.tracking_success_threshold),
         )
+        self.normalize_act = True
         self._setup_spaces()
 
     def _setup_spaces(self) -> None:
-        ctrl = self.model.actuator_ctrlrange.astype(np.float32)
-        self.action_space = spaces.Box(
-            low=ctrl[:, 0],
-            high=ctrl[:, 1],
-            dtype=np.float32,
-        )
+        self.action_space = self._build_normalized_action_space(True)
         n_site_values = 3 * 3 * len(self._site_ids)  # pos, target, error
         obs_size = int(self.model.nq + self.model.nv + self.model.na + n_site_values)
         self.observation_space = self._unbounded_obs_space(obs_size)
@@ -169,16 +164,16 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
     def step(
         self, action: np.ndarray, **kwargs: Any
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        """Advance one control step with sigmoid-mapped muscle controls.
+        """Advance one control step with excitation-mapped muscle controls.
 
         Args:
-            action: Policy action; the sigmoid saturates it, there is no clip.
+            action: Policy action mapped via ``self._map_muscle_excitation``.
             **kwargs: Ignored compatibility kwargs.
 
         Returns:
             Tuple of (obs, reward, terminated, truncated, info).
         """
-        self.data.ctrl[:] = sigmoid_muscle_activation(action, np)
+        self.data.ctrl[:] = self._map_muscle_excitation(action)
         self._step_physics()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)

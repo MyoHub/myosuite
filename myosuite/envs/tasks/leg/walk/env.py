@@ -178,25 +178,16 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         )
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
         self.observation_space = self._unbounded_obs_space(obs.size)
-        act_low = (
-            np.zeros(self.model.nu, dtype=np.float32)
-            if normalize_act
-            else self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-        )
-        act_high = (
-            np.ones(self.model.nu, dtype=np.float32)
-            if normalize_act
-            else self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        )
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(normalize_act)
 
     def _apply_action(self, action: np.ndarray) -> None:
         ctrl = np.clip(action, self.action_space.low, self.action_space.high).astype(
             np.float64
         )
         if self.model.na > 0 and self.normalize_act:
-            # Actions are already in [0, 1]; use as muscle activations (no sigmoid).
-            pass
+            ctrl[self._muscle_act_ind] = self._map_muscle_excitation(
+                ctrl[self._muscle_act_ind]
+            )
         elif self.normalize_act and self.model.nu > 0:
             cr = self.model.actuator_ctrlrange
             ctrl = cr[:, 0] + ctrl * (cr[:, 1] - cr[:, 0])

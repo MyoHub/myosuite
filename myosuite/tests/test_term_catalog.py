@@ -39,6 +39,7 @@ def test_catalog_discovers_all_kinds_and_features() -> None:
     )
 
     action_names = {e.name for e in catalog(kind="action")}
+    assert "buchanan_excitation" in action_names
     assert "sigmoid_muscle_activation" in action_names
     assert "muscle_normalize_action" in action_names
 

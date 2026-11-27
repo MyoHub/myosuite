@@ -218,7 +218,11 @@ def env_deployment_manifest(env: Any, **kwargs: Any) -> dict[str, Any]:
     deployment. The default records the env's ordered obs keys, spaces and
     actuator names; units/history/action mapping remain unknown.
     """
-    from myosuite.policies.checkpoint_manifest import _shape
+    from myosuite.policies.checkpoint_manifest import (
+        _action_bounds,
+        _action_mapping,
+        _shape,
+    )
 
     unwrapped = env.unwrapped
     model = unwrapped.model
@@ -227,11 +231,12 @@ def env_deployment_manifest(env: Any, **kwargs: Any) -> dict[str, Any]:
         {
             "obs_shape": _shape(env.observation_space),
             "action_shape": _shape(env.action_space),
+            "action_bounds": _action_bounds(env.action_space),
             "observations": list(getattr(unwrapped, "obs_keys", ())),
             "actions": [model.actuator(i).name or None for i in range(model.nu)],
             "units": None,
             "history": None,
-            "action_mapping": None,
+            "action_mapping": _action_mapping(unwrapped),
         },
     )
     dt = next(

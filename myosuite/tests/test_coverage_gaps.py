@@ -427,7 +427,9 @@ class TestRegistryVariantPaths:
 
 
 class TestMuscleActionTerm:
-    def _make_term(self, normalize: bool = True) -> Any:
+    def _make_term(
+        self, normalize: bool = True, muscle_excitation: str = "buchanan"
+    ) -> Any:
         from myosuite.terms.base_action import (
             MuscleActionTerm,
             MuscleActionTermCfg,
@@ -437,7 +439,11 @@ class TestMuscleActionTerm:
         mock_entity.num_actuators = 4
         mock_env = MagicMock()
         mock_env.scene = {"robot": mock_entity}
-        cfg = MuscleActionTermCfg(entity_name="robot", normalize=normalize)
+        cfg = MuscleActionTermCfg(
+            entity_name="robot",
+            normalize=normalize,
+            muscle_excitation=muscle_excitation,
+        )
         return MuscleActionTerm(cfg, mock_env), mock_entity
 
     def test_action_dim(self) -> None:
@@ -445,7 +451,16 @@ class TestMuscleActionTerm:
         assert term.action_dim == 4
 
     def test_process_actions_normalize_true(self) -> None:
+        from myosuite.core.terms.base_action import buchanan_excitation
+
         term, _ = self._make_term(normalize=True)
+        actions = np.array([[-1.0, 0.0, 0.5, 2.0]])
+        term.process_actions(actions)
+        expected = buchanan_excitation(actions, np)
+        np.testing.assert_allclose(term._processed, expected)
+
+    def test_process_actions_normalize_sigmoid(self) -> None:
+        term, _ = self._make_term(normalize=True, muscle_excitation="sigmoid")
         actions = np.array([[-1.0, 0.0, 1.0, 2.0]])
         term.process_actions(actions)
         expected = 1.0 / (1.0 + np.exp(-5.0 * (actions - 0.5)))

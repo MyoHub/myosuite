@@ -290,7 +290,11 @@ def test_one_step_parity(env_id: str) -> None:
     rng = np.random.default_rng(0)
     for _ in range(25):
         _sync(cpu, mj)
-        action = rng.uniform(-1.2, 1.2, cpu.action_space.shape).astype(np.float32)
+        action = rng.uniform(
+            cpu.action_space.low - 0.2,
+            cpu.action_space.high + 0.2,
+            cpu.action_space.shape,
+        ).astype(np.float32)
         cpu_obs, cpu_rew, cpu_term, _, cpu_info = cpu.step(action)
         mj_obs, mj_rew, mj_term, mj_trunc, _ = mj.step(torch.as_tensor(action[None]))
         assert not bool(mj_trunc[0])
@@ -370,7 +374,11 @@ def test_success_parity_near_target(env_id: str) -> None:
     solved_steps = 0
     for multiple in _NEAR_TARGET_MULTIPLES * 3:
         _sync(cpu, mj)
-        action = rng.uniform(-1.2, 1.2, cpu.action_space.shape).astype(np.float32)
+        action = rng.uniform(
+            cpu.action_space.low - 0.2,
+            cpu.action_space.high + 0.2,
+            cpu.action_space.shape,
+        ).astype(np.float32)
         cpu.step(action)
         target = _move_target_near(cpu, multiple, rng)
         cpu_rwd = cpu.get_reward_dict(cpu.get_obs_dict(cpu._accessor))

@@ -11,7 +11,10 @@ from typing import Any
 import numpy as np
 
 from myosuite.envs.muscle_stages import CtrlStageHost
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import (
+    DEFAULT_BUCHANAN_SHAPE_A,
+    apply_muscle_excitation,
+)
 
 
 class MuscleActionMixin(CtrlStageHost):
@@ -43,9 +46,12 @@ class MuscleActionMixin(CtrlStageHost):
         ctrl = action.copy()
 
         if self.model.na > 0 and self.normalize_act:
-            # Muscle actuators: [-1, 1] -> [0, 1].
-            ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind], np
+            # Muscle actuators: [0, 1] -> [0, 1] (Buchanan default) or [-1, 1] -> (0, 1) (sigmoid).
+            ctrl[self._muscle_act_ind] = apply_muscle_excitation(
+                ctrl[self._muscle_act_ind],
+                np,
+                mode=getattr(self, "muscle_excitation", "buchanan"),
+                shape_A=getattr(self, "buchanan_shape_A", DEFAULT_BUCHANAN_SHAPE_A),
             )
         elif self.normalize_act:
             # Motor actuators: [-1, 1] -> ctrl range (float64 promotes the result).

@@ -103,7 +103,49 @@ def contract_from_env(env: Any) -> dict[str, Any]:
     }
     if hasattr(unwrapped, "obs_keys"):
         contract["obs_keys"] = list(unwrapped.obs_keys)
+    action_mapping = _action_mapping(unwrapped)
+    if action_mapping is not None and action_mapping.get("mode") != "direct":
+        contract["action_mapping"] = action_mapping
+        bounds = _action_bounds(env.action_space)
+        if bounds is not None:
+            contract["action_bounds"] = bounds
     return contract
+
+
+def _action_mapping(unwrapped: Any) -> dict[str, Any] | None:
+    """Action-to-excitation mapping metadata for environments with muscle actuators."""
+    model = getattr(unwrapped, "model", None)
+    if model is None or int(getattr(model, "na", 0)) == 0:
+        return None
+    if not hasattr(unwrapped, "normalize_act") or not bool(unwrapped.normalize_act):
+        return {"mode": "direct"}
+    if not hasattr(unwrapped, "muscle_excitation"):
+        return None
+    mode = str(unwrapped.muscle_excitation)
+    info: dict[str, Any] = {"mode": mode}
+    if mode == "buchanan" and hasattr(unwrapped, "buchanan_shape_A"):
+        info["shape_A"] = round(float(unwrapped.buchanan_shape_A), 6)
+    return info
+
+
+def _action_bounds(space: Any) -> list[float] | None:
+    """Scalar ``[min_low, max_high]`` summary for finite ``Box`` action spaces."""
+    import numpy as np  # noqa: PLC0415
+
+    low = getattr(space, "low", None)
+    high = getattr(space, "high", None)
+    if low is None or high is None:
+        return None
+    low_arr = np.asarray(low, dtype=np.float64)
+    high_arr = np.asarray(high, dtype=np.float64)
+    if not (
+        low_arr.size
+        and high_arr.size
+        and np.isfinite(low_arr).all()
+        and np.isfinite(high_arr).all()
+    ):
+        return None
+    return [round(float(low_arr.min()), 6), round(float(high_arr.max()), 6)]
 
 
 def _subject(
@@ -318,7 +360,20 @@ def check_contract(
         return False
     if manifest is None or not manifest.get("contract"):
         return True
-    current = contract_hash(env_contract(env_id))
+    current_contract = env_contract(env_id)
+    trained_contract = manifest["contract"]
+    if (
+        "action_mapping" not in trained_contract
+        and "action_mapping" in current_contract
+    ):
+        legacy_mode = "linear" if "Walk" in env_id else "sigmoid"
+        if current_contract["action_mapping"].get("mode") == legacy_mode:
+            current_contract = {
+                k: v
+                for k, v in current_contract.items()
+                if k not in ("action_mapping", "action_bounds")
+            }
+    current = contract_hash(current_contract)
     if current == manifest["contract_hash"]:
         return True
     warnings.warn(

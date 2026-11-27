@@ -33,7 +33,11 @@ from myosuite.envs.backends.mjlab.tasks.cpu_reference import cpu_task_spec  # no
 from myosuite.envs.tasks.arm.pose.mjlab_cfg import (  # noqa: E402
     elbow_pose_env_cfg,
 )
-from myosuite.terms.base_action import MotorNoiseCfg  # noqa: E402
+from myosuite.terms.base_action import (  # noqa: E402
+    MotorNoiseCfg,
+    buchanan_excitation,
+    inverse_buchanan_excitation,
+)
 from myosuite import make_env  # noqa: E402
 
 _BASE = "myoElbowPose1D6MRandom-v0"
@@ -120,8 +124,10 @@ def test_cpu_task_spec_rejects_wrappers_the_cpu_env_does_not_run() -> None:
 
 def test_twin_noise_statistics_and_independence(twin: ManagerBasedRlEnv) -> None:
     torch.manual_seed(0)
-    resid = _samples(twin, 0.5) - 0.5  # sigmoid(0.5) = 0.5
-    sigma = float(np.hypot(_NOISE.signal_dependent_std * 0.5, _NOISE.constant_std))
+    a_half = float(inverse_buchanan_excitation(0.5, np))
+    u_half = float(buchanan_excitation(np.float32(a_half), np))
+    resid = _samples(twin, a_half) - u_half
+    sigma = float(np.hypot(_NOISE.signal_dependent_std * u_half, _NOISE.constant_std))
     assert abs(resid.std(ddof=1) - sigma) < _N_SE * sigma / np.sqrt(2 * resid.size)
     corr_tol = _N_SE / np.sqrt(_N)
     for e in range(_NUM_ENVS):  # across muscles, within an env
@@ -148,7 +154,7 @@ def test_twin_noise_off_is_exact_and_draws_nothing(twin: ManagerBasedRlEnv) -> N
         assert torch.equal(torch.get_rng_state(), state)
     finally:
         term.cfg.motor_noise = _NOISE
-    expected = torch.sigmoid(torch.tensor(5.0 * (0.3 - 0.5))).item()
+    expected = float(buchanan_excitation(torch.tensor(0.3), torch).item())
     np.testing.assert_allclose(out, expected, rtol=0, atol=1e-7)
 
 
@@ -334,7 +340,7 @@ def test_twin_matches_cpu_with_sarcopenia_and_fatigue() -> None:
                 atol=1e-5,
                 err_msg=f"step {step}",
             )
-        assert base.data.ctrl.max() < float(torch.sigmoid(torch.tensor(2.5)))
+        assert base.data.ctrl.max() < 1.0
         twin.close()
     finally:
         gym.registry.pop(env_id, None)

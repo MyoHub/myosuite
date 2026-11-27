@@ -12,7 +12,6 @@ from typing import Any
 import mujoco
 import numpy as np
 
-import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder
@@ -23,7 +22,6 @@ from myosuite.envs.tasks.suites.challenge_common import (
     joint_limit_forces,
 )
 from myosuite.physics.quat_math import euler2quat, quat2euler
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
 from myosuite.physics.colored_noise import ColoredNoiseProcess
 
 
@@ -370,13 +368,7 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
         # ── Action space ─────────────────────────────────────────────────────
         self.normalize_act = normalize_act
-        if normalize_act:
-            act_low = -np.ones(self.model.nu, dtype=np.float32)
-            act_high = np.ones(self.model.nu, dtype=np.float32)
-        else:
-            act_low = self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-            act_high = self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(normalize_act)
 
         # ── State ─────────────────────────────────────────────────────────────
         self.startFlag = False
@@ -409,8 +401,8 @@ class SoccerEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def _apply_action(self, action: np.ndarray) -> None:
         ctrl = action.copy()
         if self.model.na > 0 and self.normalize_act:
-            ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind], np
+            ctrl[self._muscle_act_ind] = self._map_muscle_excitation(
+                ctrl[self._muscle_act_ind]
             )
         elif self.normalize_act:
             ctrl_range = self.model.actuator_ctrlrange

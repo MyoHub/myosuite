@@ -38,7 +38,7 @@ weights, thresholds and reset distributions, so MJX-trained policies are not por
 
 | Training class | Browser equivalent | Scaling |
 |---|---|---|
-| `MyoAction` (twins of the CPU envs; `MyoMuscleActivationAction` on the `TaskConfig` route) | `MuscleActionCfg` | `sigmoid(x)` → ctrl ∈ [0, 1] (the walk envs use the action as-is in [0, 1]) |
+| `MyoAction` (twins of the CPU envs; `MyoMuscleActivationAction` on the `TaskConfig` route) | `MuscleActionCfg` | `buchanan_excitation(clip(x, 0, 1))` → ctrl ∈ [0, 1] (`sigmoid(x)` for legacy `muscle_excitation="sigmoid"`, linear `[0, 1]` for `ModularTaskEnv`) |
 | `TendonLengthActionCfg` | `JointPositionActionCfg` | `scale × x + default_pos` |
 
 `encoder_bias` in the exported JSON must equal `model.key_qpos[0]` — ensure the XML has a keyframe at index 0 representing the neutral pose.
@@ -126,7 +126,7 @@ whatever the wrapping order:
 env action map -> noise -> fatigue -> reroute -> custom stages -> write ctrl
 ```
 
-The env's own map (sigmoid, as-is for the walk envs, or clipped `ctrl` with `normalize_act=False`) stays inside the env:
+The env's own map (`buchanan_excitation` on `[0, 1]` by default, legacy `"sigmoid"` / `"linear"`, or clipped `ctrl` with `normalize_act=False`) stays inside the env:
 `normalize_act` also sets the initial joint pose, so the map is not a wrapper. mjlab runs the same stages in `MyoAction`,
 built from the registration's wrapper specs.
 

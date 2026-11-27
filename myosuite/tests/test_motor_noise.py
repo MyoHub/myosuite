@@ -25,7 +25,8 @@ from myosuite.terms.base_action import (
     MotorNoiseCfg,
     motor_noise,
     sample_motor_noise,
-    sigmoid_muscle_activation,
+    buchanan_excitation,
+    inverse_buchanan_excitation,
 )
 from myosuite import make_env
 
@@ -125,8 +126,9 @@ def test_cpu_noise_is_independent_per_muscle() -> None:
     c, n = 0.05, 3000
     env = _noisy(_ELBOW, {"constant_std": c})
     env.reset(seed=0)
-    action = np.full(env.action_space.shape, 0.5, np.float32)  # excitation 0.5
-    resid = _excitations(env, action, n) - 0.5
+    a_half = float(inverse_buchanan_excitation(0.5, np))
+    action = np.full(env.action_space.shape, a_half, np.float32)
+    resid = _excitations(env, action, n) - float(buchanan_excitation(action[0], np))
     assert resid.shape[1] == 6
     np.testing.assert_array_less(
         np.abs(resid.std(axis=0, ddof=1) - c), _sd_tolerance(c, n)
@@ -142,9 +144,9 @@ def test_cpu_signal_dependent_sd_scales_with_excitation() -> None:
     env = _noisy(_ELBOW, {"signal_dependent_std": sd})
     env.reset(seed=0)
     for u in (0.25, 0.5):
-        action = np.full(env.action_space.shape, 0.5 + np.log(u / (1 - u)) / 5.0)
+        action = np.full(env.action_space.shape, inverse_buchanan_excitation(u, np))
         action = action.astype(np.float32)
-        u_exact = float(sigmoid_muscle_activation(action[0], np))
+        u_exact = float(buchanan_excitation(action[0], np))
         resid = _excitations(env, action, n) - u_exact
         sigma = sd * u_exact
         assert abs(resid.std(ddof=1) - sigma) < _sd_tolerance(sigma, resid.size)
@@ -502,12 +504,12 @@ def test_low_pass_stage_on_the_cpu_env() -> None:
     base, idx = env.unwrapped, env.unwrapped._muscle_act_ind
     hi, lo = (
         np.ones(env.action_space.shape, np.float32),
-        -np.ones(env.action_space.shape, np.float32),
+        np.zeros(env.action_space.shape, np.float32),
     )
     env.step(hi)  # the first step after a reset passes through
     first = base.data.ctrl[idx].copy()
     env.step(lo)  # then y = y + 0.5 (u - y)
-    u_lo = 1.0 / (1.0 + np.exp(5.0 * 1.5))
+    u_lo = float(buchanan_excitation(0.0, np))
     np.testing.assert_allclose(
         base.data.ctrl[idx], first + 0.5 * (u_lo - first), rtol=1e-5
     )
