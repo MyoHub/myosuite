@@ -41,7 +41,7 @@ _ALL_ENV_IDS = sorted(
 _RESET_ATOL = 1e-9
 # Envs that still reset off their couplings, with the reason.
 _OFF_COUPLING_CHALLENGES = {
-    r"myoChallengeChaseTagFBVs-v0": (
+    r"myoChallengeChaseTagFBVs(Train)?-v0": (
         "the two-agent env resets to its standing pose, patella 5.2 cm off its coupling"
     ),
 }

@@ -26,6 +26,27 @@ Changes since **v3.1.0** (2026-11-11).
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
 * **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files, or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, deployment model provenance, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
+* **`myoChallengeChaseTagFBVsTrain-v0`: train a ChaseTag player on the GPU ([#578]).** `myoChallengeChaseTagFBVs-v0` seen
+  from `agent_0`, with `agent_1` played inside the env. The model, reset, role draw, rules, reward and score are
+  FBVs's, and the observation is an FBVs player's 546-d one, so a trained policy exports as a MyoChallenge
+  submission as-is (`export_rslrl_to_onnx(..., obs_dim=546, act_dim=354)`, no adapter).
+  - CPU env and mjlab twin under one id. For the same actions the CPU env is bit-identical to FBVs; the twin
+    matches the CPU env term by term and step by step (`test_chasetag_fbvs_train*.py`).
+  - Opponent: on mjlab, frozen snapshots of the learner (self-play; `scripts/train_mjlab.py` adds a snapshot every
+    50 iterations) or a fixed checkpoint; on the CPU, any policy (`opponent_policy=` callable, `.onnx` or `.pt`).
+    Evaluation is a mirror match.
+  - Training starts both players as the tutorial 5.4 walker (`DirectionalWalkerActor`, a fixed 546 -> 528 adapter
+    in front of the 5.4 network), so snapshots and the ONNX export carry the adapter. `load_rslrl_policy` /
+    `export_rslrl_to_onnx` rebuild such actors. The adapter gives the heading relative to the walking direction:
+    the 5.4 observation has no pelvis yaw, so a world-frame heading cannot be steered and chaser and runner look
+    the same (`body_frame_heading=False` keeps it).
+  - FBVs itself is unchanged (its reward terms now share backend-agnostic functions with the twin).
+  - No muscle-condition variants: the two bodies share one model.
+  - Tutorial 5.6 (ChaseTag Colab): step 5 includes training in this env (FBP2's 537-d observation does not fit a
+    submission), and the optional local check reports pursuer falls per the 1v1 win rules.
+* **ChaseTag 1v1 train env (`myoChallengeChaseTagFBVsTrain-v0`) win conditions** match `myoChallengeChaseTagFBVs-v0`:
+  tag (planar pelvis distance ≤ 0.5 m) or a pursuer fall ends the episode; timeout with no tag is a runner win; a
+  runner fall does not stop play ([#578]).
 
 ### Fixed
 
@@ -413,6 +434,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 [#166]: https://github.com/MyoHub/myosuite/issues/166
 [#525]: https://github.com/MyoHub/myosuite/pull/525
+[#578]: https://github.com/MyoHub/myosuite/pull/578
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#649]: https://github.com/MyoHub/myosuite/pull/649

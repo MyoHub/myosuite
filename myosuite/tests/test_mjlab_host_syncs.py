@@ -138,6 +138,7 @@ def test_walk_terms_read_a_fresh_evaluation(
     [
         "myoChallengeTableTennisP2-v0",
         pytest.param("myoChallengeChaseTagFBP2-v0", marks=pytest.mark.slow),
+        pytest.param("myoChallengeChaseTagFBVsTrain-v0", marks=pytest.mark.slow),
     ],
 )
 def test_challenge_twin_steps_without_host_syncs(task_id: str) -> None:

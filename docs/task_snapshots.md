@@ -259,7 +259,17 @@ here, also has one.)
   bout as void (draw, score 0 for both players).
 - **Baseline**: `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo (`myosuite.core.hf_io.download_baseline_file`) (`docs/baseline_checkpoints.md`).
 - **Dims** (per agent, `Dict` obs/action space): obs `(546,)`, action `(354,)`.
-- **Backends**: CPU only (no mjlab twin).
+- **Backends**: CPU only (no mjlab twin). Train one player on mjlab with
+  `myoChallengeChaseTagFBVsTrain-v0` below.
+
+## myoChallengeChaseTagFBVsTrain-v0
+
+- **Task**: `myoChallengeChaseTagFBVs-v0` seen from `agent_0`: same model, reset, role draw, rules,
+  reward and score. The env plays `agent_1` with an opponent policy that reads `agent_1`'s own
+  observation (CPU: `opponent_policy=` a callable, an `.onnx` submission or an RSL-RL `.pt`, idle by
+  default; mjlab: frozen snapshots of the learner, or a fixed checkpoint).
+- **Dims**: obs `(546,)` (an FBVs player's), action `(354,)` in `[0, 1]`.
+- **Backends**: CPU + mjlab twin (`tasks/chasetag_vs`).
 
 ---
 

@@ -221,8 +221,11 @@ class RslRlPolicy(torch.nn.Module):
         self.mlp = mlp
         self.normalizer = normalizer
         self.action_dim = action_dim
+        in_dim = getattr(normalizer, "in_dim", None)
         if obs_dim is not None:
             self.obs_dim = int(obs_dim)
+        elif in_dim is not None:
+            self.obs_dim = int(in_dim)
         elif hasattr(mlp, "in_features") and isinstance(mlp.in_features, int):
             self.obs_dim = int(mlp.in_features)
         else:
@@ -274,6 +277,12 @@ class RslRlPolicy(torch.nn.Module):
         )
         x = torch.as_tensor(np.asarray(obs), dtype=torch.float32, device=device)
         return (self.sample(x) if stochastic else self(x)).cpu().numpy()
+
+
+# Actor recognised by its weight names when the run's agent.yaml is missing.
+_WALKER_ACTOR = (
+    "myosuite.integrations.musclemimic.directional_walker_actor:DirectionalWalkerActor"
+)
 
 
 def _agent_params(checkpoint: Path) -> dict[str, Any]:
@@ -334,6 +343,38 @@ def load_rslrl_policy(
         built = builder(mlp_state, actor_cfg)
         if built is not None:
             break
+
+    class_name = actor_cfg.get("class_name")
+    if class_name is None and "mlp.actor_mean.weight" in actor_state:
+        class_name = _WALKER_ACTOR
+    if built is None and class_name not in (None, "MLPModel"):
+        from rsl_rl.utils import resolve_callable  # noqa: PLC0415
+
+        cls_obj = resolve_callable(class_name)
+        if hasattr(cls_obj, "deterministic_modules"):
+            net, adapter = cls_obj.deterministic_modules(actor_state, actor_cfg)
+            learned_std = any(
+                k in actor_state
+                for k in ("distribution.std_param", "distribution.log_std_param")
+            )
+            std = None
+            if "distribution.std_param" in actor_state:
+                std = actor_state["distribution.std_param"]
+            elif "distribution.log_std_param" in actor_state:
+                std = actor_state["distribution.log_std_param"].exp()
+            std_range = (actor_cfg.get("distribution_cfg") or {}).get("std_range")
+            if std is not None and std_range is not None:
+                std = std.clamp(max(float(std_range[0]), 1e-6), float(std_range[1]))
+            linears = [m for m in net.modules() if isinstance(m, torch.nn.Linear)]
+            if linears:
+                out_dim = linears[-1].out_features
+                if out_dim != action_dim and (learned_std or out_dim != 2 * action_dim):
+                    raise ValueError(
+                        f"{checkpoint} outputs {out_dim} values"
+                        f"{' (one per action, with a learned std)' if learned_std else ''}; "
+                        f"the env takes {action_dim} actions. It was trained on another env."
+                    )
+            return RslRlPolicy(net, adapter, action_dim, std).eval()
 
     if built is not None:
         mlp, obs_dim, out_dim = built
