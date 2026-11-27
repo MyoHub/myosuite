@@ -208,8 +208,8 @@ class DreamerV3TorchPolicy(nn.Module):
             )
 
         self.symlog = bool(meta.get("symlog", True))
-        self.enc_act = str(meta.get("enc_act", "gelu"))
-        self.dyn_act = str(meta.get("dyn_act", "gelu"))
+        self.enc_act = str(meta.get("enc_act", "silu"))
+        self.dyn_act = str(meta.get("dyn_act", "silu"))
         self.pol_act = str(meta.get("pol_act", "silu"))
         norm_eps = float(meta.get("norm_eps", 1e-4))
 

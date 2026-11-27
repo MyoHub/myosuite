@@ -243,10 +243,19 @@ def evaluate_dreamer_agent(
         try:
             saved = agent.save()
             rssm_cfg = getattr(getattr(agent.config, "dyn", None), "rssm", None)
+            enc_cfg = getattr(getattr(agent.config, "enc", None), "simple", None)
+            pol_cfg = getattr(agent.config, "policy", None)
             inferred_meta = dict(meta or {})
             if rssm_cfg is not None:
                 inferred_meta.setdefault("stoch", int(rssm_cfg.stoch))
                 inferred_meta.setdefault("classes", int(rssm_cfg.classes))
+                inferred_meta.setdefault("blocks", int(rssm_cfg.blocks))
+                inferred_meta.setdefault("dyn_act", str(rssm_cfg.act))
+            if enc_cfg is not None:
+                inferred_meta.setdefault("enc_act", str(enc_cfg.act))
+                inferred_meta.setdefault("symlog", bool(enc_cfg.symlog))
+            if pol_cfg is not None:
+                inferred_meta.setdefault("pol_act", str(pol_cfg.act))
             pt_pol = load_dreamerv3_torch_policy(saved, meta=inferred_meta)
             return evaluate_dreamer_torch_policy(
                 pt_pol,

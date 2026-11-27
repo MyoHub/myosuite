@@ -317,6 +317,32 @@ def test_mjlab_driver_action_range_map_and_sanitize() -> None:
     assert driver.sanitized_values >= 2
 
 
+@pytest.mark.tier1
+def test_torch_policy_defaults_to_dreamerv3_silu_activations() -> None:
+    """In-memory ``load_dreamerv3_torch_policy`` without disk ``policy_meta.json``
+    must default ``enc_act``, ``dyn_act``, and ``pol_act`` to ``"silu"`` (matching
+    DreamerV3's ``configs.yaml`` ``defaults``)."""
+    pytest.importorskip("torch")
+    from myosuite_dreamerv3.export import load_dreamerv3_torch_policy
+
+    rng = np.random.default_rng(0)
+    params = {
+        "enc/mlp0/kernel": rng.standard_normal((5, 8), dtype=np.float32),
+        "enc/mlp0norm/scale": np.ones((8,), dtype=np.float32),
+        "dyn/dynin0/kernel": rng.standard_normal((8, 8), dtype=np.float32),
+        "dyn/dynin0norm/scale": np.ones((8,), dtype=np.float32),
+        "dyn/dynin1/kernel": rng.standard_normal((8, 8), dtype=np.float32),
+        "dyn/dynin1norm/scale": np.ones((8,), dtype=np.float32),
+        "dyn/dynin2/kernel": rng.standard_normal((2, 8), dtype=np.float32),
+        "dyn/dynin2norm/scale": np.ones((8,), dtype=np.float32),
+        "dyn/dyngru/kernel": rng.standard_normal((4, 6, 6), dtype=np.float32),
+        "dyn/obslogit/kernel": rng.standard_normal((16, 8), dtype=np.float32),
+        "pol/head/action/mean/kernel": rng.standard_normal((16, 2), dtype=np.float32),
+    }
+    pol = load_dreamerv3_torch_policy(params)
+    assert (pol.enc_act, pol.dyn_act, pol.pol_act) == ("silu", "silu", "silu")
+
+
 @pytest.mark.tier2
 def test_vision_training_and_checkpoint_resume(tmp_path: Path) -> None:
     logdir = tmp_path / "vision_resume_run"
