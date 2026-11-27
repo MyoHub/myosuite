@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""mjlab twin of the CPU waypoint envs (``myosuite.envs.waypoint.WaypointEnv``).
+"""mjlab twin of the CPU waypoint envs (``myosuite.envs.myo.tasks.basic.full_body.waypoint.WaypointEnv``).
 
 Model (recipe or path plus ``edit_fn``), timing, reset pose, route distribution and
 reward weights are read from the CPU registration, so policies transfer.
@@ -29,7 +29,7 @@ from mjlab.sim import SimulationCfg
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks import mdp
 from myosuite.envs.myo.backends.mjlab.tasks.waypoint import mdp as wmdp
-from myosuite.envs.waypoint import (
+from myosuite.envs.myo.tasks.basic.full_body.waypoint import (
     DEFAULT_MODEL_RECIPE,
     RootLayout,
     WaypointTaskCfg,

@@ -779,4 +779,9 @@ _reg(
     },
 )
 
+# Full-body basic tasks (myoFullBodyWaypoint-v0).
+import myosuite.envs.myo.tasks.basic.full_body as _full_body  # noqa: E402, F401
+
+del _full_body
+
 # Arm reaching (myoArmReach*) is registered in myosuite.envs.myo.myoedits.
