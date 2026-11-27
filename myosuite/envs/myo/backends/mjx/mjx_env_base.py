@@ -113,6 +113,14 @@ class MjxEnvAccessor:
         """Cartesian positions of requested sites, shape ``(len, 3)``."""
         return self._data.site_xpos[site_ids]
 
+    def site_xmat(self, site_ids: Any) -> jax.Array:
+        """Orientations of requested sites as rotation matrices, shape ``(len, 3, 3)``."""
+        return self._data.site_xmat[site_ids]
+
+    def site_ang_vel(self, site_ids: Any) -> jax.Array:
+        """Angular velocities of requested sites (their bodies'), shape ``(len, 3)``."""
+        return self._data.cvel[self._model.site_bodyid[site_ids], :3]
+
     def time(self) -> jax.Array:
         """Current simulation time as a scalar JAX array."""
         return self._data.time

@@ -27,6 +27,7 @@ Technical reference for building tasks, observation/reward/action terms, GPU bac
 | [mjlab Design Guide](mjlab-design-guide.md) | Designing and verifying `mjlab` (`mujoco-warp`) GPU environment twins |
 | [Cross-Backend Contract](cross-backend-contract.md) | Observation, action, reset, and ONNX parity contract across CPU, `mjlab`, MJX, and browser runtimes |
 | [Deployment Manifests](deployment-manifests.md) | Recording physical model SHA-256, ordered I/O contracts, and pinned checkpoint provenance (`manifest.json` v2) |
+| [Distribution-Matching Reward](distribution-matching-reward.md) | Reward for matching a movement-feature distribution across CPU and `mjlab` |
 
 ---
 

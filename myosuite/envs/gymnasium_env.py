@@ -169,6 +169,14 @@ class CpuEnvAccessor:
     def site_xpos(self, site_ids: Any) -> np.ndarray:
         return self._data.site_xpos[site_ids].copy()
 
+    def site_xmat(self, site_ids: Any) -> np.ndarray:
+        xmat = self._data.site_xmat[site_ids]
+        return xmat.reshape(*xmat.shape[:-1], 3, 3).copy()
+
+    def site_ang_vel(self, site_ids: Any) -> np.ndarray:
+        # the rotational part of the body's cvel, as mjlab's site_ang_vel_w
+        return self._data.cvel[self._model.site_bodyid[site_ids], :3].copy()
+
     def site_id(self, name: str) -> int:
         import mujoco
 

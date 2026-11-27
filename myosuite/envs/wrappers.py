@@ -379,6 +379,104 @@ class PerturbationWrapper(_ForwardPublicAttributes, RecordConstructorArgs, gym.W
         return result
 
 
+class DistributionMatchingWrapper(
+    _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+):
+    """Add the distribution-matching reward of a movement feature to the env's reward.
+
+    Each step adds ``weight * clip(log p*(x) - log q(x))``
+    (:mod:`myosuite.terms.distribution_reward`), where ``x`` is the feature of the state
+    after the step, ``p*`` the target distribution and ``q`` the policy's own
+    distribution, estimated online. ``info`` reports ``distribution_reward``
+    (unweighted), ``distribution_log_p`` and ``distribution_log_q``. On a step where
+    MuJoCo diverged (``info["mj_unstable"]``) the wrapper adds nothing and reports
+    ``distribution_reward`` as 0, without the log densities.
+
+    The estimator is training state: it learns across episodes while not frozen, so the
+    reward then depends on the steps before the episode. Freeze it
+    (``distribution.estimator.freeze()``, each one with estimators per context) for
+    evaluation; the reward is then the same after every ``reset(seed)``.
+
+    Args:
+        env: The env to wrap.
+        distribution: The feature (read from the env's ``CpuEnvAccessor`` and the task
+            state), the target and the estimator.
+        weight: Weight of the added reward.
+        task_state: Returns the task state the feature reads from the unwrapped env; by
+            default the env's ``_task_state``, as its own terms receive it.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        distribution: Any,
+        weight: float = 1.0,
+        task_state: Callable[[gym.Env], dict[str, Any]] | None = None,
+    ) -> None:
+        RecordConstructorArgs.__init__(
+            self, distribution=distribution, weight=weight, task_state=task_state
+        )
+        gym.Wrapper.__init__(self, env)
+        self._distribution, self._weight, self._task_state_fn = (
+            distribution,
+            weight,
+            task_state,
+        )
+        self._feature_checked = False
+
+    def step(
+        self, action: Any, **kwargs: Any
+    ) -> tuple[Any, float, bool, bool, dict[str, Any]]:
+        """Step the env and add the distribution-matching reward (none on a step where
+        MuJoCo diverged)."""
+        from myosuite.terms.distribution_reward import distribution_matching_reward
+
+        obs, reward, terminated, truncated, info = (
+            self.env.step(action, **kwargs) if kwargs else self.env.step(action)
+        )
+        if info.get("mj_unstable"):
+            # MuJoCo reset the state to qpos0 (MyoGymnasiumEnv caps the reward): no
+            # reward from it, nothing learnt
+            info["distribution_reward"] = 0.0
+            return obs, reward, terminated, truncated, info
+        base = self.env.unwrapped
+        # the env's own accessor, rebuilt by each step
+        accessor = getattr(base, "_accessor", None)
+        if accessor is None:
+            raise TypeError(
+                "DistributionMatchingWrapper needs a MyoSuite CPU env "
+                "(MyoGymnasiumEnv), whose step sets _accessor"
+            )
+        task_state = (
+            base._task_state
+            if self._task_state_fn is None
+            else self._task_state_fn(base)
+        )
+        if not self._feature_checked:
+            # before the estimator could learn from a refused frame
+            shape = np.shape(self._distribution.feature(accessor, task_state))
+            if len(shape) != 1:
+                raise ValueError(
+                    "DistributionMatchingWrapper scores one frame per step: "
+                    "the feature must have shape (d,), "
+                    f"not {shape}"
+                )
+            self._feature_checked = True
+        out = distribution_matching_reward(
+            accessor, task_state, distribution=self._distribution
+        )
+        info["distribution_reward"] = float(out["dense"])
+        info["distribution_log_p"] = float(out["log_p"])
+        info["distribution_log_q"] = float(out["log_q"])
+        return (
+            obs,
+            float(reward) + self._weight * float(out["dense"]),
+            terminated,
+            truncated,
+            info,
+        )
+
+
 class _PicklableStage:
     """Pickle a muscle wrapper as (env, kwargs) and re-install its stage on restore.
 

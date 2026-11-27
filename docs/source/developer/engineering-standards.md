@@ -170,6 +170,7 @@ domain):
 | `base_event.py` | Reset / event functions |
 | `base_termination.py` | Termination terms |
 | `mimic_obs.py`, `mimic_reward.py` | MuscleMimic-specific terms |
+| `distribution_reward.py` | Distribution-matching reward (Gaussian-mixture target `p*`, online estimate `q`) |
 | `multiplayer/` | Multi-agent (chase-tag) terms |
 
 `ObsSpec.keys` entry `"foo"` resolves to `foo_obs`; `RewardSpec.terms` entry
