@@ -13,7 +13,8 @@ method:
   (:mod:`myosuite.terms.mimic_track`), a proposed dense reward (MimicReward), a
   failure rule (1 m relative sites / 1 m root / 1 rad root orientation) and success
   metrics that do not depend on the control step (:mod:`.metrics`);
-* model: a body adapter (:mod:`.models`; myo_sim's ``myofullbody`` so far), chosen with
+* model: a body adapter (:mod:`.models`: myo_sim's ``myofullbody``, the fixed-base
+  ``myoelbow2dof``, or a submodel added with ``register_model``), chosen with
   ``EnvConfig.model``;
 * method: presets (:mod:`.config`) select a method's MDP choices (``"supermimic"``,
   the default); training methods live outside the package, in ``training/<method>/``.

@@ -51,33 +51,41 @@ _SIDES = (
 _BARE_TWINS = ("_left", "_L", "_l", "_right", "_R", "_r")
 
 
-def partner_name(name: str) -> str:
+def _sides_of(pairs: Sequence[tuple[str, str]] | None) -> tuple:
+    """Both directions of left / right suffix pairs (``None``: the default ones)."""
+    if pairs is None:
+        return _SIDES
+    return tuple(x for a, b in pairs for x in ((a, b), (b, a)))
+
+
+def partner_name(name: str, sides: Sequence[tuple[str, str]] | None = None) -> str:
     """The name of a body's left / right partner by its side suffix (itself for a name without one)."""
-    for a, b in _SIDES:
+    for a, b in _sides_of(sides):
         if name.endswith(a):
             return name[: -len(a)] + b
     return name
 
 
-def partner_index(names: Sequence[str], what: str) -> list[int]:
+def partner_index(
+    names: Sequence[str], what: str, sides: Sequence[tuple[str, str]] | None = None
+) -> list[int]:
     """Each name's partner among ``names``: by side suffix, else a bare name's ``_left`` / ``_L`` / ``_l`` twin (or the
     twin's bare name), else itself (midline). Ambiguous or non-involutive pairings raise."""
     pos = {n: i for i, n in enumerate(names)}
+    twins = _BARE_TWINS if sides is None else tuple(x for pair in sides for x in pair)
     out = []
     for n in names:
-        p = partner_name(n)
+        p = partner_name(n, sides)
         if p != n:
             cands = (
                 [p]
                 if p in pos
                 else [
-                    n[: -len(s)]
-                    for s in _BARE_TWINS
-                    if n.endswith(s) and n[: -len(s)] in pos
+                    n[: -len(s)] for s in twins if n.endswith(s) and n[: -len(s)] in pos
                 ]
             )
         else:
-            cands = [n + s for s in _BARE_TWINS if n + s in pos]
+            cands = [n + s for s in twins if n + s in pos]
         if len(cands) > 1:
             raise ValueError(
                 f"mirror: {what} {n!r} has several left-right partners: {cands}"
@@ -103,13 +111,17 @@ class Mirror:
     }  # fmt: skip
 
     def __init__(self, kin: SkeletonKinematics, geo: MuscleGeometry | None, touch_bodies: Sequence[str], device: str,
-                 tol: float = 1.0, seed: int = 0):  # fmt: skip
+                 tol: float = 1.0, seed: int = 0, sides: Sequence[tuple[str, str]] | None = None):  # fmt: skip
         self.device = device
         M = self.M = torch.diag(torch.tensor([1.0, -1.0, 1.0], device=device))
         names = kin.body_names
-        bp = self.body_perm = torch.tensor(partner_index(names, "body"), device=device)
+        bp = self.body_perm = torch.tensor(
+            partner_index(names, "body", sides), device=device
+        )
         self.touch_perm = torch.tensor(
-            partner_index(list(touch_bodies), "touch body"), device=device
+            partner_index(list(touch_bodies), "touch body", sides),
+            device=device,
+            dtype=torch.long,
         )
         m, info = kin.info.m, kin.info
         nq = kin.num_q
@@ -198,7 +210,7 @@ class Mirror:
         self.muscle_perm = self.muscle_residual = None
         if geo is not None:
             mp = self.muscle_perm = torch.tensor(
-                partner_index(info.muscle_names, "muscle"), device=device
+                partner_index(info.muscle_names, "muscle", sides), device=device
             )
             L, Ld = geo.length_velocity(q, qd)
             Lm, Ldm = geo.length_velocity(Sm[4], Sm[5])

@@ -26,6 +26,28 @@ Changes since **v3.1.0** (2026-11-11).
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
 * **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files, or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, deployment model provenance, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
+* **`myoMimic-v0` and myoSuperMimic on submodels of a body ([#711]).** A model adapter (`MimicModelCfg`,
+  `register_model`) may have a fixed root (no free joint: the root observations, reward components and failure
+  checks drop out, the failure rule is the relative-site deviation), motors next to the muscles (`motor_expr`, joint or site
+  transmission: an action in [0, 1] maps onto each motor's control range, on the CPU and in the twin through
+  `MyoActionCfg.motor_ctrl_range`), any number of tracked bodies, no contact bodies (no ground, no touch), an
+  optional left-right mirror map, effectors whose position error is reported as a success metric and
+  the kinematic fingerprint of clips from another retargeting (`fingerprint`). Built-in
+  example: `myoelbow2dof` (myo_sim's 2-DoF elbow, fixed base, fingertip error in cm). myoSuperMimic trains on such
+  bodies (fixed-root world model, one analytic drive per actuator for muscles and direct or first-order motors,
+  mirror augmentation only with a map); the full body's results are bit-identical. The checkpoint task contract
+  adds the root kind, the motors and the effectors.
+* **`myoMimic-v0` goal in a body's frame** (`ObsCfg.goal_frame`, `goal_bodies`): the goal can be chosen tracked
+  bodies in a frame body's reference frame, now and over the lookahead, with that body's own future motion and no
+  clip phase (e.g. fingertip targets in a palm frame, which a higher-level controller can supply). myoSuperMimic
+  imagines with it unchanged.
+* **myoSuperMimic `noise_free_frac` and `budget_schedules`** (opt-in): a share of the training envs collects with
+  the noise-free policy, and the learning-rate decay (and an action-noise annealing) runs over the time budget.
+* **myoSuperMimic's `soft_width` is relative to each failure threshold.** The full body's thresholds are 1 m and
+  1 rad, so its results are unchanged; on a submodel with small thresholds the softened failure rule no longer
+  turns into a constant per-step death rate.
+* **myoSuperMimic on MuJoCo 3.17:** the world model's joint-type check rejected hinge joints, because a NumPy scalar
+  no longer compares equal to a MuJoCo enum member. Types are compared as Python ints.
 
 ### Fixed
 
@@ -417,6 +439,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#649]: https://github.com/MyoHub/myosuite/pull/649
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#711]: https://github.com/MyoHub/myosuite/pull/711
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#803]: https://github.com/MyoHub/myosuite/pull/803
 [#805]: https://github.com/MyoHub/myosuite/pull/805

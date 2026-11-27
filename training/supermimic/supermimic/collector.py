@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from supermimic.networks import WorldModel, explore
+from supermimic.networks import WorldModel
 from supermimic.heads import (
     StepCtx,
     flatten_body,
@@ -146,7 +146,7 @@ class Collector:
     # ------------------------------------------------------------------ one step (the captured body)
     def _step(self) -> dict:
         r, u, cmd, mjwarp = self.r, self.u, self.cmd, self.mjwarp
-        c, heads, m, sim = r.cfg, r.heads, cmd.motion, self.sim
+        _c, heads, m, sim = r.cfg, r.heads, cmd.motion, self.sim
         S = cmd.read_state(fresh_touch=True)[:7] + (self.touch.clone(),)
         f = cmd.f.clone()
         ep_step = u.episode_length_buf.clone()
@@ -156,10 +156,9 @@ class Collector:
         self.pi.obs_norm.update(obs)
         self.pi.goal_norm.update(goal)
         a = self.pi(obs, goal)
-        a = explore(a, c.action_noise, c.action_noise_dist).to(a.dtype)
-        self.ctrl[:, self.ctrl_ids] = (
-            a  # the muscle excitation action: excitation j is the ctrl of actuator j
-        )
+        a = r.explore_actions(a).to(a.dtype)
+        # action j drives actuator j: a muscle's excitation, a motor's command mapped onto its range (as the env)
+        self.ctrl[:, self.ctrl_ids] = cmd.to_ctrl(a)
         for _ in range(u.cfg.decimation):
             mjwarp.step(sim.wp_model, sim.wp_data)
         u.episode_length_buf.add_(1)
@@ -209,6 +208,15 @@ class Collector:
                  "ep_len": torch.where(nd > 0, (Tn * done).sum() / nd.clamp(min=1), nan),
                  "ep_ret": torch.where(nd > 0, (cmd.ep_ret / (Tn * mx) * done).sum() / nd.clamp(min=1), nan),
                  "term": (fail & done).float().sum(), "done": nd.float()}  # fmt: skip
+        if r.det_mask is not None:  # the noise-free envs' episodes (noise_free_frac)
+            dd = done & r.det_mask
+            nn_ = dd.sum()
+            stats["det_ret"] = torch.where(
+                nn_ > 0, (cmd.ep_ret / (Tn * mx) * dd).sum() / nn_.clamp(min=1), nan
+            )
+            stats["det_len"] = torch.where(
+                nn_ > 0, (Tn * dd).sum() / nn_.clamp(min=1), nan
+            )
 
         # episode ends: the eager reset's updates for the ended envs, as masked updates of every env
         cmd.finish_episodes_masked(done, fail, u.episode_length_buf)
@@ -256,7 +264,8 @@ class Collector:
             out = self.out
         self.r.buffer.advance_host()
         # mjlab's per-step caches would hold states of before the step
-        self.cmd.touch_sensor._invalidate_cache()
+        if self.cmd.touch_sensor is not None:
+            self.cmd.touch_sensor._invalidate_cache()
         return out
 
     def _capture(self):
