@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-s2pg"
+version = "0.1.0"
+description = "Stochastic Stateful Policy Gradient PPO (Al-Hafez, Zhao, Peters, Tateo, ICLR 2024) for MyoSuite tasks"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "LICENSE-loco-mujoco.txt"]
+dependencies = [
+    "myosuite",
+    "mujoco",
+    "numpy",
+    "torch",
+]
+
+[project.optional-dependencies]
+mjlab = ["myosuite[mjlab]", "tyro"]
+rl = ["myosuite[rl]"]
+test = ["pytest"]
+
+[project.scripts]
+s2pg-train-mjlab = "myosuite_s2pg.train_mjlab:main"
+s2pg-bench = "myosuite_s2pg.benchmark:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_s2pg*"]
