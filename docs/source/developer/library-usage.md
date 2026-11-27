@@ -23,7 +23,7 @@ Use the library version. Writing a custom re-implementation of a library feature
 | Per-env task state | `ManagerTermBase` instance attribute + `reset(env_ids)` | Module-level dict keyed by `id(env)` |
 | Resolve env_ids (`None` = all envs) | `from myosuite.envs.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids` (mjlab's `resolve_env_ids`, with a fallback) | Local `_normalize_env_ids` helper |
 
-See [docs/wiki/mjlab-design-guide.md](mjlab-design-guide.md) for the full pattern reference.
+See [docs/source/developer/mjlab-design-guide.md](mjlab-design-guide.md) for the full pattern reference.
 
 ---
 

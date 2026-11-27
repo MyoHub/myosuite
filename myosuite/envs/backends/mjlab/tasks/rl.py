@@ -109,7 +109,7 @@ def myo_ppo_runner_cfg(
     evaluation; ``load_rslrl_policy`` / ``export_rslrl_to_onnx`` fold them into
     the policy, which therefore still consumes the raw CPU observations. Tasks
     exporting to a browser must embed these frozen statistics in the ONNX actor
-    and apply them exactly once (see ``docs/wiki/cross-backend-contract.md``).
+    and apply them exactly once (see ``docs/source/developer/cross-backend-contract.md``).
 
     Args:
         experiment_name: Log directory name under ``logs/rsl_rl``.

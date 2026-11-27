@@ -1205,13 +1205,17 @@ def find_cache_root(
             continue
         tried.append(sib)
         clip = sib / probe
-        if clip.is_file():
-            meta = read_refit_meta(clip) or {}
-            if (meta.get("model"), meta.get("model_fingerprint")) == (
-                model_name, fingerprint,
-            ):  # fmt: skip
-                return sib, tried
+        if clip.is_file() and clip_fits(clip, model_name, fingerprint):
+            return sib, tried
     return None, tried
+
+
+def clip_fits(path: str | Path, model_name: str, fingerprint: str) -> bool:
+    """Whether a clip was refitted on *model_name* with kinematic *fingerprint*."""
+    meta = read_refit_meta(path) or {}
+    return (
+        meta.get("model") == model_name and meta.get("model_fingerprint") == fingerprint
+    )
 
 
 def save_refit(
@@ -1833,6 +1837,7 @@ __all__ = [
     "calibration_pose",
     "check_refit_meta",
     "choose_workers",
+    "clip_fits",
     "collect_clip_files",
     "default_cache_root",
     "empty_summary",

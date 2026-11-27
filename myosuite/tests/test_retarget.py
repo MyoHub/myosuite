@@ -377,6 +377,61 @@ def test_cache_lookup_finds_a_sibling_version(
     assert str(old_root) in str(err.value)
 
 
+class _LocalHub:
+    """A dataset on disk behind the ``huggingface_hub`` calls ``kit_root`` makes."""
+
+    def __init__(self, root: Path) -> None:
+        self.root, self.snapshots, self.listed = root, [], 0
+
+    def snapshot_download(self, repo_id, allow_patterns, **kw) -> str:
+        self.snapshots.append(allow_patterns)
+        return str(self.root)
+
+    def hf_hub_download(self, repo_id, filename, **kw) -> str:
+        return str(self.root / filename)
+
+    def list_repo_tree(self, repo_id, path_in_repo, **kw):
+        from huggingface_hub.hf_api import RepoFolder
+
+        self.listed += 1
+        return [RepoFolder(path=f"{path_in_repo}/{d.name}", oid="0")
+                for d in (self.root / path_in_repo).iterdir()]  # fmt: skip
+
+    def file_exists(self, repo_id, filename, **kw) -> bool:
+        return (self.root / filename).is_file()
+
+
+def test_dataset_falls_back_to_a_sibling_version(
+    model, walk, tmp_path, monkeypatch
+) -> None:
+    import huggingface_hub
+    import myo_sim
+
+    from myosuite.envs.myo.tasks.mimic import tracking as tr
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.delenv(tr.KIT_ROOT_ENV, raising=False)
+    monkeypatch.setenv(tr.DATASET_ENV, "owner/clips@abc")
+    hub = _LocalHub(tmp_path / "remote")
+    monkeypatch.setattr(huggingface_hub, "HfApi", lambda: hub)
+    for name in ("snapshot_download", "hf_hub_download"):
+        monkeypatch.setattr(huggingface_hub, name, getattr(hub, name))
+    rel = next(ln for ln in tr.kit_split("train").read_text().splitlines()
+               if ln.strip() and not ln.startswith("#"))  # fmt: skip
+    fitted = model_version("myofullbody")
+    folder = hub.root / "myofullbody" / fitted
+    _clip(folder / rel, model, walk[:2], fitted, kinematic_fingerprint("myofullbody"))
+    assert tr.kit_root() == folder and hub.listed == 0  # current version: no listing
+    monkeypatch.setattr(myo_sim, "__version__", other := _other_version())
+    assert tr.kit_root() == folder  # same body under another version
+    assert hub.snapshots[-2:] == [f"myofullbody/{other}/*", f"myofullbody/{fitted}/*"]
+    _clip(folder / rel, model, walk[:2], fitted, "0" * 16)
+    with pytest.raises(tr.MissingMotionData, match="owner/clips") as err:
+        tr.kit_root()
+    assert f"myofullbody/{other}, myofullbody/{fitted}" in str(err.value)
+
+
 def test_stamping_keeps_qpos(model, walk, tmp_path) -> None:
     version, fp = model_version("myofullbody"), kinematic_fingerprint("myofullbody")
     path = tmp_path / "c.npz"

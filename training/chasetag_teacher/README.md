@@ -32,7 +32,7 @@ of a walking policy, and its distillation into one 546 -> 354 network that plays
    role flag, turned off the fence like the teacher's planner) and writes a scored-game player (tutorial 5.6).
 
 This is a self-contained training project (`training/chasetag_teacher/`, import name `chasetag_teacher`), not
-part of the installable `myosuite` package; see `docs/wiki/training-guidelines.md`. MyoSuite never imports it.
+part of the installable `myosuite` package; see `docs/source/developer/training-guidelines.md`. MyoSuite never imports it.
 
 It replaces the earlier content of this project, a writer of (observation, action) pairs from the `mm-10m-2`
 steered teacher. That teacher stays available for playback as `ChaseTagSteeredPair` in
