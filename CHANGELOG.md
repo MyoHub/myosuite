@@ -26,6 +26,13 @@ Changes since **v3.1.0** (2026-11-11).
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
 * **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files, or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, deployment model provenance, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
+* **Muscle saturation metric and opt-in penalty on mjlab ([#566], [#588]).** Every muscle task logs `Episode_Metrics/muscle_saturation`:
+  - It is the fraction of muscle commands whose excitation is within 0.05 of 0 or 1, or whose action is clamped. There the action map is flat, so the policy gradient through the action vanishes and exploration only switches muscles on or off.
+  - During training the actions include the exploration noise. `scripts/eval_mjlab_policy.py` also prints the value for the evaluated policy.
+  - `scripts/train_mjlab.py --saturation-penalty W` adds a reward term `muscle_saturation` with weight `-W`: the mean squared distance of the muscle actions beyond those bounds. It is off by default, and no registered task's reward changes.
+  - The muscle action terms report their actions and saturation bounds through `muscle_action_bounds(margin)`. The bounds come from `myosuite.terms.base_action.muscle_saturation_bounds`.
+  - `myo_ppo_runner_cfg` takes `desired_kl` (default 0.03, see Changed).
+  - The table-tennis action term now stores the unclamped policy action as `raw_action`; the ctrl is unchanged.
 
 ### Fixed
 
@@ -45,6 +52,11 @@ Changes since **v3.1.0** (2026-11-11).
   `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
   keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
   Python 3.15 on Linux for the ONNX-free native CPU path.
+* **`myo_ppo_runner_cfg` uses `desired_kl` 0.03 (was 0.01) ([#566], [#588]).**
+  - This changes the training of pose, reach, leg, torso and `motorFinger*`. The MuscleMimic, ChaseTag, table-tennis and elbow configs keep 0.01.
+  - Why: the KL of a diagonal Gaussian sums over the action dimensions, so with many muscles 0.01 keeps the adaptive learning rate at its 1e-5 floor. That held for 65% of the iterations on `myoLegWalk-v0` (80 muscles) and 91% on `myoArmReachRandom-v0` (50 muscles); with 0.03 it fell to 1% and 20%.
+  - In an A/B of 3 seeds × 3000 iterations at 1024 envs, 0.03 solved leg walk in 3/3 runs (0.01: 0/3). On arm reach it raised deterministic success from 76% to 90%.
+  - Training defaults only. Observations, actions and dynamics are unchanged, and published checkpoints load and evaluate as before.
 
 ### Fixed
 
