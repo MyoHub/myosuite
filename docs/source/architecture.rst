@@ -9,7 +9,7 @@ A task has two matched halves under one ``env_id``:
   Parallel training on MuJoCo Warp.
 
 They share observation order, action mapping, and ``ctrl_dt``
-(see :doc:`backend_parity` and ``docs/wiki/cross-backend-contract.md``).
+(see :doc:`backend_parity` and ``docs/source/developer/cross-backend-contract.md``).
 
 An MJX (JAX) backend also exists. It is experimental — do not start new work
 on it.
@@ -58,7 +58,7 @@ Pure functions in ``myosuite/core/terms/``:
 * ``base_action.py``, ``base_event.py``, ``base_termination.py``
 
 Use ``accessor.array_module()``; do not hard-code numpy / jax / torch in shared
-terms. See ``docs/wiki/writing-term-functions.md``.
+terms. See ``docs/source/developer/writing-term-functions.md``.
 
 
 ModelBuilder

@@ -26,7 +26,7 @@ The single source of truth for review rules across all reviewers (people, Claude
 - Link human design agreement in feature/policy PRs. Human implementation approval must come from an eligible maintainer other than the author; an agent acting through a human account does not count. New implementation commits require renewed approval; scope changes require renewed design agreement. Revalidate affected checks when the base changes.
 - Keep one updated review summary: category, reproduction results, compatibility impact, checks run/not run, and merge decision. Separate defects from optional suggestions.
 
-Read the relevant wiki pages in `docs/wiki/` before making substantial changes.
+Read the relevant wiki pages in `docs/source/developer/` before making substantial changes.
 
 ---
 add minimal comments and descriptions in the code / python files
@@ -36,7 +36,7 @@ add minimal comments and descriptions in the code / python files
 
 > **A task has two matched halves under one `env_id`: a CPU `MyoGymnasiumEnv` (playback / fine-tune / debug) and a GPU mjlab `ManagerBasedRlEnvCfg` (parallel training). Reuse term functions and `ModelBuilder` recipes across both. Don't invent a new registration mechanism or backend-specific hack — extend the primitives instead.**
 
-- **Two supported backends only:** CPU = `MyoGymnasiumEnv` subclass, registered via `registry.register_env(...)`; GPU = mjlab `ManagerBasedRlEnvCfg` + runner cfg, registered via `register_cpu_twins(...)` (twins of CPU envs) or `register_mjlab_task(...)` (special tasks). They share one `env_id` and the cross-backend contract (`docs/wiki/cross-backend-contract.md`).
+- **Two supported backends only:** CPU = `MyoGymnasiumEnv` subclass, registered via `registry.register_env(...)`; GPU = mjlab `ManagerBasedRlEnvCfg` + runner cfg, registered via `register_cpu_twins(...)` (twins of CPU envs) or `register_mjlab_task(...)` (special tasks). They share one `env_id` and the cross-backend contract (`docs/source/developer/cross-backend-contract.md`).
 - **MJX (JAX) and the `TaskConfig` / `ModularTaskEnv` route are experimental** — may not be maintained long-term. Don't build new work on them; prefer CPU + mjlab.
 - Term functions are pure and backend-agnostic — use `accessor.array_module()` only.
 - Prefer typed `@dataclass` configs over raw dicts / `ConfigDict`.
@@ -45,9 +45,9 @@ add minimal comments and descriptions in the code / python files
 - Always return 5-tuple from `step()`: `(obs, rwd, terminated, truncated, info)`.
   **Exception:** `ModularMultiAgentTaskEnv` returns 5-tuples of per-agent dicts — intentional.
 - Use `myo_sim.get_path(...)` / `ModelBuilder` for assets — no hardcoded paths.
-- **Training/learning implementations:** read `docs/wiki/training-guidelines.md` before adding trainers, world models, algorithm-specific evaluation, or method-specific dependencies.
+- **Training/learning implementations:** read `docs/source/developer/training-guidelines.md` before adding trainers, world models, algorithm-specific evaluation, or method-specific dependencies.
   - Method-specific code (network architectures, trainers, buffers, self-play pools) goes in `training/<method>/`, not `myosuite/`, even when it only serves to load that method's checkpoints. Reviewers check placement against the guidelines' *Boundary* section.
-  - A new method ships with PPO comparisons on all four [required benchmark environments](docs/wiki/training-guidelines.md#benchmark-against-ppo), with matched seeds and budgets. CPU training and evaluation are mandatory; both CPU and GPU (mjlab) are preferred. Reviewers verify coverage, results and linked human approval for any exception.
+  - A new method ships with PPO comparisons on all four [required benchmark environments](docs/source/developer/training-guidelines.md#benchmark-against-ppo), with matched seeds and budgets. CPU training and evaluation are mandatory; both CPU and GPU (mjlab) are preferred. Reviewers verify coverage, results and linked human approval for any exception.
 
 ### CPU Env Contract
 
@@ -56,7 +56,7 @@ The Verification list below does not cover these. `test_obs_contract.py`, `test_
 - **Step overrides.**
   - Advance physics with `self._step_physics()`, which runs `mj_step` and then `mj_forward`. Finish with `self._finalize_step(obs_dict, rwd_dict)`.
   - Never refresh with `mj_kinematics` alone. Muscle length/velocity/force, sensors, contacts and `cvel` would then lag `qpos` by one substep.
-- **Observations are float32 and never clipped.** Declare spaces with `self._unbounded_obs_space(dim)` (see `docs/wiki/cross-backend-contract.md`).
+- **Observations are float32 and never clipped.** Declare spaces with `self._unbounded_obs_space(dim)` (see `docs/source/developer/cross-backend-contract.md`).
 - **`reset(seed=...)` must fully determine the episode.**
   - Draw every random quantity from `self.np_random`, including in sub-components: the fatigue reset (`FatigueWrapper`'s stage, run by `CtrlStageHost._run_reset_stages()`), opponents and terrain.
   - Never use `np.random.*`, `random.*` or an unseeded `default_rng()`.
@@ -67,7 +67,7 @@ The Verification list below does not cover these. `test_obs_contract.py`, `test_
 
 ### mjlab Non-Negotiables
 
-> **Read `docs/wiki/mjlab-design-guide.md` and `docs/wiki/library-usage.md` before touching any mjlab file.**
+> **Read `docs/source/developer/mjlab-design-guide.md` and `docs/source/developer/library-usage.md` before touching any mjlab file.**
 
 - **Physics options:** build every `MujocoCfg` from the CPU model with `tasks.cpu_reference.mujoco_cfg_from_model()`. mjlab ignores the spec's `<option>` and defaults to `implicitfast`, while every CPU model uses Euler.
 - **Root velocities:** `write_root_state_to_sim` takes a world-frame angular velocity, but a MuJoCo free-joint `qvel[3:6]` is body-frame. Rotate it first.
@@ -92,7 +92,7 @@ The ownership (`myo_sim` vs MyoSuite) and minimum-change rules live in [REVIEW.m
 
 - **Search before writing.** Follow the ownership and minimum-change rules in REVIEW.md: search both repositories and compare existing behavior and constraints before extending or importing a primitive.
 - **Don't duplicate across task variants.** When writing multiple variants of the same task (e.g. different host models, difficulty tiers, or agent counts), factor shared model-builder/config logic into one parameterized function or base class before duplicating a file — don't write near-identical sibling files side by side in the same change. (Flagged in PR #101 review: `chase_tag_vs_fullbody_model.py` / `chase_tag_vs_model.py` duplicated their model builders and `ModelMeta` classes wholesale instead of parameterizing one implementation.)
-- **Use the library.** Check `docs/wiki/library-usage.md` before writing any helper.
+- **Use the library.** Check `docs/source/developer/library-usage.md` before writing any helper.
 - No commented-out dead code, unused imports, or silent `except: pass`.
 - Type hints on all signatures. Google-style docstrings on all public APIs.
 - Python 3.10+. PEP 8. `pathlib.Path` over `os.path`.
@@ -100,7 +100,7 @@ The ownership (`myo_sim` vs MyoSuite) and minimum-change rules live in [REVIEW.m
 
 ### Package Boundaries and Motion Analysis
 
-Enforced in CI by `myosuite/tests/test_package_boundaries.py` and `myosuite/tests/test_package_discovery.py`; see [docs/wiki/repository-map.md](docs/wiki/repository-map.md) for the full directory map and allowed-import matrix. Use today's active owners below until each follow-up migration PR lands and turns its superseded path into a closed forwarding facade.
+Enforced in CI by `myosuite/tests/test_package_boundaries.py` and `myosuite/tests/test_package_discovery.py`; see [docs/source/developer/repository-map.md](docs/source/developer/repository-map.md) for the full directory map and allowed-import matrix. Use today's active owners below until each follow-up migration PR lands and turns its superseded path into a closed forwarding facade.
 
 | Location | Responsibility |
 |---|---|
@@ -114,7 +114,7 @@ Enforced in CI by `myosuite/tests/test_package_boundaries.py` and `myosuite/test
 | `envs/` | CPU `MyoGymnasiumEnv` (`gymnasium_env.py`), `wrappers.py`, `muscle_stages.py`, and task/backend implementations (today under `envs/myo/{tasks,backends,myoedits,assets}/`; planned flattening to `envs/{backends,tasks,assets}/` in a dedicated migration PR). |
 | `viz/` | Rendering and visual reconstruction, including interactive/offscreen playback, muscle meshes/tubes, skin and Blender/USD. |
 | `benchmarks/` *(planned target)* | Standardized evaluation suites (`paired_replay`, `push_*`, `performance_card`, `examine_env`, rollout logging — today in `utils/` and `logger/`). Lower layers (`core`, `physics`, `biomechanics`, `integrations`, `envs`, `viz`) must never import evaluation suites. |
-| `scripts/`, `tools/`, `training/` | Thin workflows/reports (`scripts/`), standalone perception extractors (`tools/<tool>/`), and RL trainers/buffers/models (`training/<method>/`, [docs/wiki/training-guidelines.md](docs/wiki/training-guidelines.md)). Runtime modules inside `myosuite/` must **never** import `training`, `tools`, `scripts`, or `myosuite.tests` (and `myosuite.tests` is excluded from built wheels). |
+| `scripts/`, `tools/`, `training/` | Thin workflows/reports (`scripts/`), standalone perception extractors (`tools/<tool>/`), and RL trainers/buffers/models (`training/<method>/`, [docs/source/developer/training-guidelines.md](docs/source/developer/training-guidelines.md)). Runtime modules inside `myosuite/` must **never** import `training`, `tools`, `scripts`, or `myosuite.tests` (and `myosuite.tests` is excluded from built wheels). |
 
 - **Reuse existing motion APIs.** `motion/` is not implemented in this branch yet: reuse `MotionClip` in `core/trajectory_io.py` and transforms in `core/trajectory_yaw.py` until the motion migration lands. Prefer `motion` to `mocap`: these contracts also serve simulation and playback. Keep task-specific sampling in tasks; consolidate reference-motion implementations only after comparing their contracts.
 - **Allowed dependencies.** Consumers may import shared motion contracts; motion must not import environments, trainers, visualization or source adapters. Adapters (`integrations/`) call reusable fitting/analysis (`biomechanics/`) and runtime policy APIs; solvers must not import adapters, environment implementations or visualization. Workflows compose these layers. MyoSuite imports public `myo_sim` APIs, never the reverse. `myosuite/tests/test_package_boundaries.py` enforces the exact module-import DAG and tracks the legacy cross-layer allowlist so removed violations cannot return.
@@ -181,12 +181,12 @@ commit `68a77811`) — there is no `test_boxing_registry.py` / `test_saber_env.p
 
 ## Wiki
 
-- `docs/wiki/getting-started.md` — developer onboarding; start here if new to the codebase.
-- `docs/wiki/engineering-standards.md` — architecture rules, checklist for new envs.
-- `docs/wiki/adding-a-new-task.md` — step-by-step worked example for registering a new task; read before adding any new env ID.
-- `docs/wiki/library-usage.md` — approved library feature map; read before writing any helper.
-- `docs/wiki/writing-term-functions.md` — signatures and the batch rule for obs / reward / termination / action terms.
-- `docs/wiki/mjlab-design-guide.md` — canonical mjlab patterns; read before writing any mjlab code.
-- `docs/wiki/cross-backend-contract.md` — obs/action/timing invariants for policy portability.
-- `docs/wiki/training-guidelines.md` — placement and dependency-isolation rules for training/learning methods.
-- `docs/wiki/repository-map.md` — subpackage ownership, allowed-import DAG, and directory map.
+- `docs/source/developer/getting-started.md` — developer onboarding; start here if new to the codebase.
+- `docs/source/developer/engineering-standards.md` — architecture rules, checklist for new envs.
+- `docs/source/developer/adding-a-new-task.md` — step-by-step worked example for registering a new task; read before adding any new env ID.
+- `docs/source/developer/library-usage.md` — approved library feature map; read before writing any helper.
+- `docs/source/developer/writing-term-functions.md` — signatures and the batch rule for obs / reward / termination / action terms.
+- `docs/source/developer/mjlab-design-guide.md` — canonical mjlab patterns; read before writing any mjlab code.
+- `docs/source/developer/cross-backend-contract.md` — obs/action/timing invariants for policy portability.
+- `docs/source/developer/training-guidelines.md` — placement and dependency-isolation rules for training/learning methods.
+- `docs/source/developer/repository-map.md` — subpackage ownership, allowed-import DAG, and directory map.

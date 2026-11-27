@@ -4,10 +4,6 @@ Append-only record of PRs to `dev` that introduced a new feature or a
 critical/breaking change, and why. Routine fixes, refactors, and doc edits
 don't get an entry here.
 
-## [2026-11-25] breaking | wheel excludes `myosuite.tests` and enforces subpackage import DAG
-
-- Excluded `myosuite.tests` and `tests/**` fixtures from built wheels (`include-package-data = false` with explicit subpackage discovery in `pyproject.toml`), enforced subpackage import boundaries via `myosuite/tests/test_package_boundaries.py`, and consolidated agent/review instructions into root `AGENTS.md` and `REVIEW.md` (moving `CLAUDE.md` to `.claude/CLAUDE.md`).
-
 ## [2026-11-15] feature | subject geometry scaling facade (`make_env(scales=...)`)
 
 - Delegated model-layer geometry and OpenSim scaling (`myosuite.core.body_scaling`) to `myo_sim` (`MyoHub/myo_sim#149`), keeping `make_env("myoLegWalk-v0", scales=..., total_mass=...)` across CPU and mjlab, skin binding, and checkpoint manifest provenance in MyoSuite. See [scaling-migration.md](scaling-migration.md).
@@ -24,7 +20,7 @@ don't get an entry here.
 
 - Created initial wiki structure (`index`, repository map, standards, workflow, log).
 - Established persistent wiki conventions for LLM-agent navigation and maintenance.
-- Linked wiki usage to agent operating instructions in `CLAUDE.md`.
+- Linked wiki usage to agent operating instructions in [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md).
 
 ## [2026-04-30] refactor | full repository reorganization executed (branch: refactor/repo-reorganization)
 
@@ -49,9 +45,9 @@ don't get an entry here.
 
 ## [2026-04-30] maintenance | moved wiki under docs
 
-- Relocated wiki files from `wiki/` to `docs/wiki/` to keep the repository root cleaner.
-- Updated `CLAUDE.md` mandatory wiki references to point to `docs/wiki/*`.
-- Updated internal wiki links and workflow instructions to use `docs/wiki/*`.
+- Relocated wiki files from `wiki/` to `docs/source/developer/` to keep the repository root cleaner.
+- Updated [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md) mandatory wiki references to point to `docs/source/developer/*`.
+- Updated internal wiki links and workflow instructions to use `docs/source/developer/*`.
 
 ## [2026-10-01] breaking | CPU observation contract (branch: fix/observation-contract)
 
