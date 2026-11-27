@@ -595,3 +595,131 @@ def walk_env_reward(
         "joint_angle_rew": joint_angle_rew,
         "dense": dense,
     }
+
+
+def gaze_alignment_reward(
+    accessor: EnvAccessor,
+    task_state: dict[str, Any],
+    angular_thd_rad: float = 0.15,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Reward aligning a 2-site head/eye gaze ray with ``task_state["target_pos"]``.
+
+    Args:
+        accessor: Environment state accessor.
+        task_state: Must contain ``"gaze_site_ids"`` ``(origin_id, forward_id)``
+            and ``"target_pos"`` ``(..., 3)``.
+        angular_thd_rad: Angular error threshold [rad] marking fixation as solved.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Dict with ``gaze_alignment`` in ``[0, 1]``, ``gaze_angle_rad``, ``dense``,
+        ``solved``, and ``done``.
+    """
+    del kwargs
+    xp = accessor.array_module()
+    sites = accessor.site_xpos(list(task_state["gaze_site_ids"]))
+    origin = sites[..., 0, :]
+    forward_pt = sites[..., 1, :]
+    gaze_vec = forward_pt - origin
+    gaze_dir = gaze_vec / xp.clip(
+        xp.linalg.norm(gaze_vec, axis=-1, keepdims=True), 1e-8, None
+    )
+
+    tgt = _xp_asarray(
+        xp,
+        task_state["target_pos"],
+        dtype=getattr(origin, "dtype", None),
+        device=getattr(origin, "device", None),
+    )
+    to_tgt = tgt - origin
+    tgt_dir = to_tgt / xp.clip(
+        xp.linalg.norm(to_tgt, axis=-1, keepdims=True), 1e-8, None
+    )
+    cos_ang = xp.clip(xp.sum(gaze_dir * tgt_dir, axis=-1), -1.0, 1.0)
+    angle = xp.arccos(cos_ang)
+    alignment = 0.5 * (1.0 + cos_ang)
+    solved = angle < float(angular_thd_rad)
+    done = xp.zeros_like(solved, dtype=bool)
+    return {
+        "gaze_alignment": _maybe_item(alignment),
+        "gaze_angle_rad": _maybe_item(angle),
+        "dense": _maybe_item(alignment),
+        "solved": _maybe_item(solved),
+        "done": _maybe_item(done),
+    }
+
+
+def posture_comfort_reward(
+    accessor: EnvAccessor,
+    task_state: dict[str, Any],
+    neutral_qpos: Any | None = None,
+    joint_indices: tuple[int, ...] | None = None,
+    joint_weights: Any | None = None,
+    comfort_scale: float = 2.0,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Reward staying near an ergonomic neutral posture across selected coordinates.
+
+    Args:
+        accessor: Environment state accessor.
+        task_state: Optional ``"neutral_qpos"`` override.
+        neutral_qpos: Reference posture ``(K,)`` or ``(nq,)``; defaults to zeros.
+        joint_indices: Optional tuple of ``qpos`` indices ``K`` to evaluate (e.g.
+            cervical, trunk, and shoulder coordinates).
+        joint_weights: Optional non-negative per-coordinate weights ``(K,)``.
+        comfort_scale: Exponential decay rate multiplying weighted squared deviation.
+        **kwargs: Unused extra keyword arguments.
+
+    Returns:
+        Dict with ``posture_comfort`` in ``(0, 1]``, ``posture_deviation``,
+        ``dense``, ``solved``, and ``done``.
+    """
+    del kwargs
+    xp = accessor.array_module()
+    qpos = accessor.joint_pos()
+    if joint_indices is not None:
+        idx = list(joint_indices)
+        coords = qpos[..., idx]
+    else:
+        coords = qpos
+
+    ref_raw = (
+        task_state["neutral_qpos"]
+        if isinstance(task_state, dict) and "neutral_qpos" in task_state
+        else neutral_qpos
+    )
+    if ref_raw is None:
+        diff = coords
+    else:
+        ref = _xp_asarray(
+            xp,
+            ref_raw,
+            dtype=getattr(coords, "dtype", None),
+            device=getattr(coords, "device", None),
+        )
+        diff = coords - ref
+
+    sq_err = diff * diff
+    if joint_weights is not None:
+        w = _xp_asarray(
+            xp,
+            joint_weights,
+            dtype=getattr(coords, "dtype", None),
+            device=getattr(coords, "device", None),
+        )
+        w_sum = xp.clip(xp.sum(w), 1e-8, None)
+        deviation = xp.sum(sq_err * w, axis=-1) / w_sum
+    else:
+        deviation = xp.mean(sq_err, axis=-1)
+
+    comfort = xp.exp(-float(comfort_scale) * deviation)
+    solved = deviation < 0.01
+    done = xp.zeros_like(solved, dtype=bool)
+    return {
+        "posture_comfort": _maybe_item(comfort),
+        "posture_deviation": _maybe_item(deviation),
+        "dense": _maybe_item(comfort),
+        "solved": _maybe_item(solved),
+        "done": _maybe_item(done),
+    }

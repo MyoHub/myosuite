@@ -323,3 +323,49 @@ def heading_cmd_obs(
     if cmd.ndim == 1 and batch_shape:
         return xp.broadcast_to(cmd, (*batch_shape, cmd.shape[0]))
     return cmd
+
+
+def gaze_target_offset_obs(
+    accessor: EnvAccessor,
+    gaze_site_ids: tuple[int, int],
+    target_pos: Any,
+    **kwargs: Any,
+) -> Any:
+    """Return 3D unit-ray error and cosine alignment between a gaze axis and target.
+
+    Computes the unit gaze ray from ``gaze_site_ids[0]`` (origin) through
+    ``gaze_site_ids[1]`` (forward reference site on the same head/eye body) and
+    compares it to the unit vector from ``gaze_site_ids[0]`` toward ``target_pos``.
+
+    Args:
+        accessor: Environment state accessor.
+        gaze_site_ids: Pair ``(origin_site_id, forward_site_id)``.
+        target_pos: World target position ``(3,)`` or ``(N, 3)``.
+        **kwargs: Unused; for uniform call signature.
+
+    Returns:
+        Float32 array ``[..., 4]`` containing ``[ray_err_x, ray_err_y, ray_err_z, cos_angle]``.
+    """
+    del kwargs
+    xp = accessor.array_module()
+    sites = accessor.site_xpos(list(gaze_site_ids))
+    origin = sites[..., 0, :]
+    forward_pt = sites[..., 1, :]
+    gaze_vec = forward_pt - origin
+    gaze_norm = xp.clip(xp.linalg.norm(gaze_vec, axis=-1, keepdims=True), 1e-8, None)
+    gaze_dir = gaze_vec / gaze_norm
+
+    if getattr(xp, "__name__", "") == "torch":
+        tgt = xp.as_tensor(target_pos, dtype=origin.dtype, device=origin.device)
+    else:
+        tgt = xp.asarray(target_pos, dtype=origin.dtype)
+    to_tgt = tgt - origin
+    tgt_norm = xp.clip(xp.linalg.norm(to_tgt, axis=-1, keepdims=True), 1e-8, None)
+    tgt_dir = to_tgt / tgt_norm
+
+    ray_err = tgt_dir - gaze_dir
+    cos_ang = xp.clip(xp.sum(gaze_dir * tgt_dir, axis=-1, keepdims=True), -1.0, 1.0)
+    out = xp.concatenate([ray_err, cos_ang], axis=-1)
+    if getattr(xp, "__name__", "") == "torch":
+        return out.to(dtype=xp.float32)
+    return xp.asarray(out, dtype=xp.float32)
