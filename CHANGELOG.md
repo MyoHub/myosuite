@@ -26,6 +26,7 @@ Changes since **v3.1.0** (2026-11-11).
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
 * **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files, or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, deployment model provenance, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
+* **Live joint kinematics** (`myosuite.biomechanics.streaming_kinematics`): `StreamingKinematics.push(time, qpos)` estimates positions, velocities and accelerations of a pose stream a fixed number of frames behind the newest pose, with a local polynomial (Savitzky-Golay) fit on the poses' own timestamps (jitter and dropped frames are fine) in the tangent space of free and ball joints, coupled joints projected. It feeds inverse dynamics and static optimization in a live shadow model. On myoArm reaches tracked at 90 Hz with 0.5 deg noise, the static-optimization activations' RMS error falls from 0.32 with no delay to 0.13 at 56 ms and 0.05 at 111 ms ([#656]).
 
 ### Fixed
 
@@ -416,6 +417,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#649]: https://github.com/MyoHub/myosuite/pull/649
+[#656]: https://github.com/MyoHub/myosuite/pull/656
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#803]: https://github.com/MyoHub/myosuite/pull/803
