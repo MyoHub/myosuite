@@ -7,7 +7,14 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
+
+needs_myo_sim_fingerprint = pytest.mark.skipif(
+    importlib.util.find_spec("myo_sim.fingerprint") is None,
+    reason="needs a myo-sim build with MyoHub/myo_sim#210 (0.2.5 lacks it)",
+)
 
 
 def require_musclemimic_models() -> None:

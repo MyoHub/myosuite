@@ -99,6 +99,9 @@ Muscle effort, EMG & movement quality
 .. automodule:: myosuite.biomechanics.emg
    :members:
 
+.. automodule:: myosuite.biomechanics.emg_validation
+   :members:
+
 .. automodule:: myosuite.biomechanics.kinematic_metrics
    :members:
 
