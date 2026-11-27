@@ -26,6 +26,7 @@ Changes since **v3.1.0** (2026-11-11).
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
 * **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files, or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, deployment model provenance, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
+* **myoSuperMimic: PODS-style action targets (opt-in, `training/supermimic`).** `--agent.pods` replaces the policy's step on the window gradient with regression onto targets `a_t + eta dJ/da_t` (after NablaMimic's `--action-target`): `eta` sets the RMS step over the rows with a finite nonzero gradient to `--agent.pods-step` (annealed to `pods_step_floor` x it), `pods_iters` minibatch steps at `pods_lr_mult` x the policy learning rate. `--agent.act-grad-clip` clips each imagined step's action gradient to a multiple of the median over the rows that carry gradient, in the graph and again on the targets. Both run inside the CUDA-graphed update without host syncs; off by default, and then the runner is bitwise unchanged ([#608]).
 
 ### Fixed
 
@@ -413,6 +414,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 [#166]: https://github.com/MyoHub/myosuite/issues/166
 [#525]: https://github.com/MyoHub/myosuite/pull/525
+[#608]: https://github.com/MyoHub/myosuite/pull/608
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#649]: https://github.com/MyoHub/myosuite/pull/649

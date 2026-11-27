@@ -99,6 +99,40 @@ The graphed collector writes `ctrl`, `qpos`, `qvel` and `act` of the MuJoCo-Warp
 `forward` and masked `reset_data` itself, so that one collection step, resets included, is captured as one CUDA graph
 (the manager env's step and reset cannot be). `tests/test_runner.py` checks it against `env.step` + `env.reset(ids)`.
 
+## Option: PODS-style action targets (experimental, off by default)
+
+After NablaMimic ([sailab-ai/NablaMimic](https://github.com/sailab-ai/NablaMimic), Apache-2.0: `--action-target`,
+`--act-cot-clip`) and PODS ([Zamora Mora et al., ICML 2021](https://proceedings.mlr.press/v139/mora21a.html)),
+re-implemented in PyTorch for excitation actions (`supermimic/pods.py`; no NablaMimic code is copied). With
+`--agent.pods True` the policy no longer takes one optimizer step on the window gradient:
+
+1. A zero offset `d_t` is added to every imagined action, after the in-graph clip below. It feeds the muscles, the
+   reward and the next observation's history, so `dJ/dd_t = dJ/da_t` holds every path, including the policy's own
+   feedback through later steps. The fast runner has no separate action penalty; all action terms are rewards.
+2. Rows (step x trajectory) whose gradient is zero (ended trajectories), has a non-finite entry or whose policy
+   input is non-finite get weight 0; non-finite entries are zeroed, so they never reach other rows.
+3. With `--agent.act-grad-clip K` the used rows' gradients are clipped to K x one median over all of them.
+4. Targets: `clamp(a_t + eta dJ/da_t, 0, 1)`, with `eta` so that the RMS step over the used rows is the current step
+   (no used row: `eta = 0`, targets = actions).
+5. `pods_iters` minibatch steps of the policy optimizer (Muon / Adam, the usual gradient clipping and non-finite
+   gate) on the weighted squared error, `pods_batch` samples each drawn from the window's horizon x `pi_batch` rows.
+
+| option | default | |
+|---|---:|---|
+| `--agent.pods` | `False` | PODS targets instead of the window-gradient step |
+| `--agent.pods-step` | `0.03` | RMS target step, excitation units |
+| `--agent.pods-step-floor` | `0.3` | the step follows the learning rate's cosine down to this x `pods-step` |
+| `--agent.pods-iters` | `8` | regression steps per policy update |
+| `--agent.pods-batch` | `16384` | samples per regression step |
+| `--agent.pods-lr-mult` | `3.0` | policy learning rate x this while `pods` is on |
+| `--agent.act-grad-clip` | `0` (off) | per-step clip of each trajectory's dJ/da_t to K x the median over rows with gradient (NablaMimic: 3); with `pods` also on the targets; works without `pods` too |
+
+`train_log.csv` then has `act_clip_frac` / `act_clip_removed` (share of rows clipped in the graph and share of
+their norm removed, per step), `pods_eta`, `pods_used` (share of rows used), `pods_nonfinite`, `pods_clip`,
+`pods_reg_loss`, `pods_step` and `pods_dq_rms`, the RMS excitation change of the update on the last minibatch: compare
+it to `pods_step` to tune `pods-lr-mult`. NablaMimic's ring buffer of past windows is not ported (one window, its
+K = 1). Both options run inside the captured CUDA graph without host syncs. Untuned on muscles: no A/B yet.
+
 ## Results
 
 Speed against muscle-supermimic on MuscleMimic's MyoFullBody (`musclemimic_models`), measured on 2026-11-08 with the

@@ -136,3 +136,33 @@ def test_the_recipe_collects_as_a_cuda_graph_concurrently(
     runner.cfg.max_hours = 1e-9
     runner.learn(num_learning_iterations=100)
     assert runner.it == 13 and (tmp_path / "model_000013.pt").exists()
+
+
+@pytest.mark.parametrize("compile_", [False, True], ids=["eager", "compiled"])
+def test_pods_runs_inside_the_policy_update_graph(
+    clips: Path, tmp_path: Path, compile_: bool
+) -> None:
+    """pods and act_grad_clip in the captured policy update (a host sync would fail the capture): the annealed step
+    and the statistics are read from device tensors, and the policy moves."""
+    from tests.test_runner import _make
+
+    _, runner = _make(str(clips / "clip0.npz"), device="cuda:0", pi_ema=0.9, wm_only_iters=0, pods=True,
+                      act_grad_clip=3.0, pods_batch=16, lr_decay_iters=4, compile=compile_, **GRAPH)  # fmt: skip
+    runner.log_dir = str(tmp_path)
+    before = copy.deepcopy(runner.pi.state_dict())
+    runner.learn(num_learning_iterations=6)
+    assert (
+        runner.graphs["policy"].graph is not None and runner.graphs["policy"].calls == 5
+    )
+    with open(tmp_path / "train_log.csv") as fh:
+        rows = list(csv.DictReader(fh))
+    assert all(r["nonfinite"] == "0" and float(r["pods_used"]) > 0 for r in rows)
+    assert (
+        abs(
+            float(rows[-1]["pods_step"])
+            - runner.cfg.pods_step * runner.cfg.pods_step_floor
+        )
+        < 1e-9
+    )
+    assert abs(float(runner.pods_delta) - runner.pods_step_at(5)) < 1e-9
+    assert any(not torch.equal(v, before[k]) for k, v in runner.pi.state_dict().items())
