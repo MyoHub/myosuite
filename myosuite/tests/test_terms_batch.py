@@ -31,6 +31,11 @@ class _Accessor:
     def ctrl_range(self):
         return self._ctrl_range
 
+    def joint_limits(self):
+        lo = self._ctrl_range[:, 0]
+        hi = self._ctrl_range[:, 1]
+        return lo, hi, np.ones(len(lo), dtype=bool)
+
 
 def test_reach_reward_scores_every_env() -> None:
     dist = np.array([0.0, 0.3, 0.6, 0.9])

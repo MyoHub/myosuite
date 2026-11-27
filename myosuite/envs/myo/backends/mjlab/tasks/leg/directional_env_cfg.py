@@ -111,8 +111,14 @@ def make_leg_directional_env_cfg(
     }
     metrics = {
         "success": MetricsTermCfg(
-            func=dmdp.heading_solved, params=reward_params, reduce="last"
-        )
+            func=dmdp.HeadingSolved,
+            params={**reward_params, "window_s": config.reward.solved_window_s},
+            reduce="last",
+        ),
+        # Share of the episode's steps on target (the CPU "on_target" flag).
+        "on_target": MetricsTermCfg(
+            func=dmdp.heading_on_target, params=reward_params, reduce="mean"
+        ),
     }
     # ModularTaskEnv.reset: keyframe 0 (qpos and qvel), on the joint couplings.
     events = {

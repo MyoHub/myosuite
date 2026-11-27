@@ -422,6 +422,39 @@ def test_walk_sustained_success_parity(env_id: str) -> None:
     assert values["on_target"][0] and not values["success"][0]
 
 
+@pytest.mark.parametrize(
+    "env_id", ["myoLegDirectionalForward-v0", "myoLegDirectionalRandom-v0"]
+)
+def test_directional_sustained_success_parity(env_id: str) -> None:
+    """The directional twin's success turns true on the CPU env's step (one second).
+
+    As :func:`test_walk_sustained_success_parity`, with the root moving at the
+    episode's commanded velocity (``target_speed * heading_dir``).
+    """
+    cpu, mj = _make_pair(env_id)
+    qpos = cpu.data.qpos.copy()
+    extra = cpu._task_config.reward.extra
+    heading = cpu._task_state.get("heading_dir", extra["heading_dir"])
+    command = float(extra["target_speed"]) * np.asarray(heading)
+    action = np.zeros(cpu.action_space.shape, dtype=np.float32)
+    window = round(1.0 / cpu._ctrl_dt)
+    solved, on_target = [], []
+    for _ in range(window + 3):
+        cpu.data.qpos[:] = qpos
+        cpu.data.qvel[:] = 0.0
+        cpu.data.qvel[:2] = command
+        _sync(cpu, mj)
+        _, _, cpu_term, _, cpu_info = cpu.step(action)
+        _, _, mj_term, _, _ = mj.step(torch.as_tensor(action[None]))
+        assert not cpu_term and not bool(mj_term[0])
+        values = dict(mj.metrics_manager.get_active_iterable_terms(0))
+        assert bool(values["success"][0]) == cpu_info["solved"]
+        solved.append(cpu_info["solved"])
+        on_target.append((values.get("on_target"), cpu_info.get("on_target")))
+    assert solved == [False] * (window - 1) + [True] * 4
+    assert on_target == [([1.0], True)] * len(solved)
+
+
 def test_fatigue_torch_matches_numpy() -> None:
     """Batched torch 3CC-r fatigue reproduces the CPU model step by step."""
     import mujoco  # noqa: PLC0415
@@ -652,6 +685,9 @@ COUPLED_TWIN_IDS = (
     "myoArmReachFixed-v0",
     "myoArmReachRandom-v0",
     "myoChallengeChaseTagFBP2-v0",
+    "myoChallengeTableTennisP0-v0",
+    "myoChallengeTableTennisP1-v0",
+    "myoChallengeTableTennisP2-v0",
     "myoFullBodyWaypoint-v0",
     "myoLegDirectionalBackward-v0",
     "myoLegDirectionalForward-v0",
@@ -664,13 +700,6 @@ COUPLED_TWIN_IDS = (
     "myoMimic-v0",
     "myoTorsoExoPoseFixed-v0",
     "myoTorsoPoseFixed-v0",
-)
-# Table tennis: the CPU env does not project at reset yet (its keyframe holds the
-# paddle off the shoulder couplings), so neither do the twins.
-_PENDING_COUPLED_TWINS = (
-    "myoChallengeTableTennisP0-v0",
-    "myoChallengeTableTennisP1-v0",
-    "myoChallengeTableTennisP2-v0",
 )
 # float32 states: rounding leaves ~1e-7 (positions) and ~1e-6 (velocities up to 5 rad/s).
 _TWIN_COUPLING_ATOL = 1e-5
@@ -729,6 +758,35 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
         cpu.close()
 
 
+def test_tabletennis_twin_projects_its_joint_noise() -> None:
+    """The table-tennis twin puts its noisy reset on the couplings, as the CPU env.
+
+    The registered phases draw no joint noise, so ``qpos_noise_range`` is set here.
+    """
+    import dataclasses  # noqa: PLC0415
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+
+    cfg = load_env_cfg("myoChallengeTableTennisP0-v0")
+    cfg.scene.num_envs = 4
+    params = cfg.events["tt_reset"].params
+    params["tt_cfg"] = dataclasses.replace(
+        params["tt_cfg"], qpos_noise_range={"low": -0.02, "high": 0.02}
+    )
+    mj = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    try:
+        mj.reset()
+        qpos = mj.sim.data.qpos[:].cpu().numpy().astype(np.float64)
+        for i in range(cfg.scene.num_envs):
+            pos, _ = joint_equality_residuals(mj.sim.mj_model, qpos[i])
+            assert np.abs(pos).max() < _TWIN_COUPLING_ATOL, f"env {i}: {pos}"
+        athlete = mj.scene.entities["table_tennis_robot"].data
+        noise = athlete.joint_pos - athlete.default_joint_pos
+        assert noise.abs().max() > 1e-3  # the noise was drawn
+    finally:
+        mj.close()
+
+
 def test_every_coupled_twin_is_listed() -> None:
     """Each base twin of a CPU env with joint couplings is in COUPLED_TWIN_IDS."""
     import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
@@ -743,7 +801,7 @@ def test_every_coupled_twin_is_listed() -> None:
         if _joint_equality_count(env.unwrapped.model):
             unlisted.append(env_id)
         env.close()
-    assert sorted(unlisted) == sorted(_PENDING_COUPLED_TWINS), unlisted
+    assert not unlisted, unlisted
 
 
 def test_every_twin_logs_a_success_metric() -> None:

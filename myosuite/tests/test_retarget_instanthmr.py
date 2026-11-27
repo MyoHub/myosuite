@@ -849,6 +849,12 @@ def test_real_instanthmr_fixture_end_to_end(
     assert loaded["fps"] == 30.0
     assert loaded["valid"].all()
 
+    res_legs = ri.solve_instanthmr_ik(fixture, model=myolegs)
+    assert res_legs.metrics["coupling_residual"] == pytest.approx(0.0, abs=1e-12)
+    assert res_legs.metrics["limit_violations"] == 0
+    assert res_legs.metrics["landmark_rmse_mm"] < 35.0
+
+    pytest.importorskip("myo_sim.scaling")
     from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
 
     spec_fb = model_cfg("myofullbody").build_spec(True)
@@ -860,11 +866,6 @@ def test_real_instanthmr_fixture_end_to_end(
     assert res_fb.metrics["landmark_rmse_mm"] < 45.0
     assert np.isfinite(res_fb.qpos).all()
     assert np.isfinite(res_fb.qvel).all()
-
-    res_legs = ri.solve_instanthmr_ik(fixture, model=myolegs)
-    assert res_legs.metrics["coupling_residual"] == pytest.approx(0.0, abs=1e-12)
-    assert res_legs.metrics["limit_violations"] == 0
-    assert res_legs.metrics["landmark_rmse_mm"] < 35.0
 
 
 def _closed_mesh_volume(vertices: np.ndarray, faces: np.ndarray) -> float:
@@ -1014,6 +1015,7 @@ def _write_test_muscle_glb(path: Path, ref_model: mujoco.MjModel) -> Path:
 def test_subject_scaling_invariants_fullbody_and_myolegs(
     fullbody: mujoco.MjModel,
 ) -> None:
+    pytest.importorskip("myo_sim.scaling")
     from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
     from myosuite.viz.muscle_tubes import muscle_actuators
 
@@ -1083,8 +1085,13 @@ def test_subject_scaling_invariants_fullbody_and_myolegs(
     assert np.allclose(norm0, norms, atol=1e-6)
 
     # Sole floor height at assembled qpos0 matches nominal model.
-    assert ri._sole_lowest_z(m_scaled, qs) == pytest.approx(
-        ri._sole_lowest_z(fullbody, q0), abs=1e-6
+    cal_nom = ri.calibrate(fullbody, ri.INSTANTHMR_MYOFULLBODY)
+    cal_s = ri.calibrate(m_scaled, ri.INSTANTHMR_MYOFULLBODY)
+    assert rt._foot_kinematics(m_scaled, cal_s.lmap, qs[None])[
+        0
+    ].min() == pytest.approx(
+        rt._foot_kinematics(fullbody, cal_nom.lmap, q0[None])[0].min(),
+        abs=1e-6,
     )
 
     # Polynomial knee coupling residual remains zero across flexion angles.
@@ -1119,6 +1126,7 @@ def test_subject_scaling_invariants_fullbody_and_myolegs(
 
 
 def test_solve_instanthmr_ik_metric_scaled_roundtrip() -> None:
+    pytest.importorskip("myo_sim.scaling")
     from myosuite.core.trajectory_io import expand_motion_clip_to_model
     from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
 
@@ -1193,6 +1201,7 @@ def test_solve_instanthmr_ik_metric_scaled_roundtrip() -> None:
 def test_reconstruct_muscle_meshes_volumetric_static_opt_and_glb(
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("myo_sim.scaling")
     import struct
 
     env = make_env("myoLegWalk-v0")
@@ -1271,6 +1280,7 @@ def test_reconstruct_muscle_meshes_volumetric_static_opt_and_glb(
 def test_reconstruct_skinned_glb_muscle_mesh_with_scaling(
     fullbody: mujoco.MjModel, myolegs: mujoco.MjModel, tmp_path: Path
 ) -> None:
+    pytest.importorskip("myo_sim.scaling")
     from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
     from myosuite.viz import blender_render as br
     from myosuite.viz.muscle_meshes import reconstruct_muscle_meshes
@@ -1349,6 +1359,7 @@ def test_reconstruct_skinned_glb_muscle_mesh_with_scaling(
 
 
 def test_cli_scale_and_muscle_export(myolegs: mujoco.MjModel, tmp_path: Path) -> None:
+    pytest.importorskip("myo_sim.scaling")
     from scripts.mimic import retarget_instanthmr as cli
 
     cal = ri.calibrate(myolegs, ri.INSTANTHMR_MYOLEGS)
@@ -1401,46 +1412,20 @@ def test_cli_scale_and_muscle_export(myolegs: mujoco.MjModel, tmp_path: Path) ->
     assert meta["muscle_glb"] == "subj_walk_muscles.glb"
 
 
-def test_scale_spec_resolves_active_and_passive_muscle_forces_independently() -> None:
-    from myosuite.envs.myo.assets._resolve import resolve_elbow_xml
+def test_scale_spec_from_instanthmr_delegates_to_canonical_facade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
 
-    spec = mujoco.MjSpec.from_file(str(resolve_elbow_xml()))
-    ac0 = spec.actuators[0]
-    gp0 = np.array(ac0.gainprm, dtype=np.float64)
-    gp0[2], gp0[3] = -1.0, 200.0
-    ac0.gainprm = gp0
-    bp0 = np.array(ac0.biasprm, dtype=np.float64)
-    bp0[2] = 20.0
-    ac0.biasprm = bp0
+    from myosuite.core import body_scaling
 
-    ac1 = spec.actuators[1]
-    gp1 = np.array(ac1.gainprm, dtype=np.float64)
-    gp1[2] = 150.0
-    ac1.gainprm = gp1
-    bp1 = np.array(ac1.biasprm, dtype=np.float64)
-    bp1[2], bp1[3] = -1.0, 120.0
-    ac1.biasprm = bp1
+    original = importlib.import_module
 
-    ac2 = spec.actuators[2]
-    gp2 = np.array(ac2.gainprm, dtype=np.float64)
-    gp2[2] = 0.0
-    ac2.gainprm = gp2
-    bp2 = np.array(ac2.biasprm, dtype=np.float64)
-    bp2[2] = 0.0
-    ac2.biasprm = bp2
+    def unavailable(name: str) -> object:
+        if name == "myo_sim.scaling":
+            raise ModuleNotFoundError(name, name=name)
+        return original(name)
 
-    m0 = spec.copy().compile()
-    m_scaled = ri.scale_spec_from_instanthmr(spec, {"r_humerus": 1.1}).compile()
-
-    assert m_scaled.actuator_gainprm[0, 2] == pytest.approx(
-        200.0 / float(m0.actuator_acc0[0]), rel=1e-9
-    )
-    assert m_scaled.actuator_biasprm[0, 2] == pytest.approx(20.0, abs=1e-12)
-
-    assert m_scaled.actuator_gainprm[1, 2] == pytest.approx(150.0, abs=1e-12)
-    assert m_scaled.actuator_biasprm[1, 2] == pytest.approx(
-        120.0 / float(m0.actuator_acc0[1]), rel=1e-9
-    )
-
-    assert m_scaled.actuator_gainprm[2, 2] == pytest.approx(0.0, abs=1e-12)
-    assert m_scaled.actuator_biasprm[2, 2] == pytest.approx(0.0, abs=1e-12)
+    monkeypatch.setattr(body_scaling.importlib, "import_module", unavailable)
+    with pytest.raises(ImportError, match=r"myo_sim PR #149"):
+        ri.scale_spec_from_instanthmr(mujoco.MjSpec(), {"femur_r": 1.1})

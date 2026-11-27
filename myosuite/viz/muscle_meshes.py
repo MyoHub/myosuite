@@ -44,7 +44,7 @@ from myosuite.viz.muscle_tubes import (
     resample_path,
     tube_mesh,
 )
-from myosuite.viz.skin_glb import _COMPONENTS, _TO_GLTF, _WIDTH, _node_matrices
+from myosuite.viz.skin_glb import _TO_GLTF, _load_glb, _node_matrices
 
 BONE_COLOR = (0.83, 0.79, 0.72, 1.0)
 
@@ -238,34 +238,7 @@ def _default_atlas_reference() -> mujoco.MjModel:
 
 
 def _read_glb_skinned_meshes(path: Path) -> list[dict[str, Any]]:
-    buf = path.read_bytes()
-    if len(buf) < 20:
-        raise ValueError(f"Not a glTF binary: {path}")
-    magic, _, _ = struct.unpack_from("<4sII", buf)
-    if magic != b"glTF":
-        raise ValueError(f"Not a glTF binary: {path}")
-    length, _ = struct.unpack_from("<I4s", buf, 12)
-    gltf = json.loads(buf[20 : 20 + length])
-    blob = buf[20 + length + 8 :]
-
-    def read(index: int) -> np.ndarray:
-        acc = gltf["accessors"][index]
-        if "sparse" in acc or "bufferView" not in acc:
-            raise ValueError(f"Unsupported glTF accessor in {path}")
-        view = gltf["bufferViews"][acc["bufferView"]]
-        dtype, width = np.dtype(_COMPONENTS[acc["componentType"]]), _WIDTH[acc["type"]]
-        stride = view.get("byteStride") or dtype.itemsize * width
-        start = view.get("byteOffset", 0) + acc.get("byteOffset", 0)
-        raw = np.frombuffer(
-            blob, np.uint8, (acc["count"] - 1) * stride + dtype.itemsize * width, start
-        )
-        rows = np.lib.stride_tricks.as_strided(
-            raw, (acc["count"], dtype.itemsize * width), (stride, 1)
-        )
-        out = rows.copy().view(dtype).reshape(acc["count"], width).astype(np.float64)
-        if acc.get("normalized"):
-            out /= np.iinfo(dtype).max
-        return out
+    gltf, read = _load_glb(path)
 
     node_worlds = _node_matrices(gltf)
     meshes_out: list[dict[str, Any]] = []
