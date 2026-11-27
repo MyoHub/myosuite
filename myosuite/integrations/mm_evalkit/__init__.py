@@ -11,11 +11,14 @@ import importlib
 from typing import Any
 
 _EXPORTS: dict[str, str] = {
+    "CheckoutCapabilityError": "myosuite.integrations.mm_evalkit.workflow",
+    "MODEL_SPEC_CAPABILITIES": "myosuite.integrations.mm_evalkit.workflow",
     "compare_emg_reports_mm_evalkit": "myosuite.integrations.mm_evalkit.stats_and_config",
     "compute_rsm_rsa": "myosuite.integrations.mm_evalkit.stats_and_config",
     "compute_wilcoxon_comparison": "myosuite.integrations.mm_evalkit.stats_and_config",
     "dump_policies_yaml": "myosuite.integrations.mm_evalkit.stats_and_config",
     "export_mm_evalkit_rollout": "myosuite.integrations.mm_evalkit.rollout_export",
+    "run_emg_validation": "myosuite.integrations.mm_evalkit.workflow",
     "write_mm_evalkit_policy_config": "myosuite.integrations.mm_evalkit.rollout_export",
 }
 
