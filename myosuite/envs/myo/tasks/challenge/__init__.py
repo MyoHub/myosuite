@@ -533,21 +533,15 @@ _reg(
 )
 
 # Register the two-agent 1v1 myoLeg chase-tag environment.
-try:
-    from myosuite.core.registry import register_task as _register_task
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
-        ChaseTagVsFullbodySteeredTaskConfig as _ChaseTagVsFullbodySteeredTaskConfig,
-    )
+from myosuite.core.registry import register_task as _register_task  # noqa: E402
+from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: E402
+    ChaseTagVsFullbodySteeredTaskConfig as _ChaseTagVsFullbodySteeredTaskConfig,
+)
 
-    _register_task(
-        _ChaseTagVsFullbodySteeredTaskConfig(), env_id="myoChallengeChaseTagFBVs-v0"
-    )
-    del (
-        _register_task,
-        _ChaseTagVsFullbodySteeredTaskConfig,
-    )
-except Exception as _e:  # noqa: BLE001
-    import warnings as _w
-
-    _w.warn(f"Chase-tag VS env not registered: {_e}", stacklevel=1)
-    del _e, _w
+_register_task(
+    _ChaseTagVsFullbodySteeredTaskConfig(), env_id="myoChallengeChaseTagFBVs-v0"
+)
+del (
+    _register_task,
+    _ChaseTagVsFullbodySteeredTaskConfig,
+)

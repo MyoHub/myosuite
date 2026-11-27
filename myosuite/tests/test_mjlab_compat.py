@@ -591,37 +591,27 @@ class TestMjlabTaskConfigs:
         cfg = BaodingCfg()
         assert cfg.model_path.exists(), f"Model not found: {cfg.model_path}"
 
-    def test_registered_tasks_covers_configs(self) -> None:
-        """REGISTERED_TASKS must include at least one entry per config class."""
-        from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
-        from myosuite.envs.myo.backends.mjlab.configs.baoding_cfg import BaodingCfg
-        from myosuite.envs.myo.backends.mjlab.configs.elbow_pose_cfg import ElbowPoseCfg
-        from myosuite.envs.myo.backends.mjlab.configs.finger_reach_cfg import (
-            FingerReachCfg,
-        )
-        from myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg import (
-            FingerPoseCfg,
-        )
-        from myosuite.envs.myo.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
-        from myosuite.envs.myo.backends.mjlab.configs.hand_reach_cfg import HandReachCfg
-        from myosuite.envs.myo.backends.mjlab.configs.musclemimic_bimanual_cfg import (
-            MuscleMimicBimanualCfg,
-        )
-        from myosuite.envs.myo.backends.mjlab.configs.musclemimic_fullbody_cfg import (
-            MuscleMimicFullbodyCfg,
-        )
-        from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
+    @pytest.mark.skipif(
+        not _MJLAB_AVAILABLE,
+        reason="mjlab not installed (pip install myosuite[mjlab])",
+    )
+    def test_registered_tasks_covers_families(self) -> None:
+        """``list_mjlab_tasks()`` must cover pose, reach, walk, mimic, and challenge families."""
+        from myosuite.envs.myo.backends.mjlab import list_mjlab_tasks
 
-        config_classes = set(REGISTERED_TASKS.values())
-        assert ElbowPoseCfg in config_classes
-        assert FingerPoseCfg in config_classes
-        assert FingerReachCfg in config_classes
-        assert HandPoseCfg in config_classes
-        assert HandReachCfg in config_classes
-        assert WalkCfg in config_classes
-        assert BaodingCfg in config_classes
-        assert MuscleMimicBimanualCfg in config_classes
-        assert MuscleMimicFullbodyCfg in config_classes
+        tasks = set(list_mjlab_tasks())
+        expected = {
+            "myoElbowPose1D6MRandom-v0",
+            "myoFingerPoseRandom-v0",
+            "myoFingerReachRandom-v0",
+            "myoHandPoseRandom-v0",
+            "myoHandReachRandom-v0",
+            "myoLegWalk-v0",
+            "myoMimic-v0",
+            "myoChallengeChaseTagFBP2-v0",
+            "myoChallengeTableTennisP0-v0",
+        }
+        assert expected.issubset(tasks)
 
 
 # ---------------------------------------------------------------------------
@@ -693,17 +683,7 @@ class TestMjlabIntegration:
 
         from myosuite import make_env
 
-        try:
-            env = make_env(env_id, backend="mjlab")
-        except ValueError as exc:
-            msg = str(exc)
-            # If the current mjlab build does not have MyoSuite tasks registered,
-            # treat this as an environment limitation rather than a hard failure.
-            if "not in mjlab task registry" in msg:
-                pytest.skip(
-                    f"{env_id}: not registered in mjlab task registry on this installation: {exc}"
-                )
-            raise
+        env = make_env(env_id, backend="mjlab")
         obs, info = env.reset(seed=0)
         obs_np = self._obs_to_numpy(obs)
         assert obs_np.size > 0, f"{env_id}: empty observation on reset"
@@ -749,11 +729,7 @@ class TestMjlabIntegration:
         missing = [
             task_id for task_id in self._SUPPORTED_TASK_IDS if task_id not in discovered
         ]
-        if missing:
-            pytest.skip(
-                f"Missing supported mjlab tasks in registry on this installation: {missing}. "
-                "Ensure myosuite's mjlab tasks are registered if you want to run these tests."
-            )
+        assert not missing, f"Missing supported mjlab tasks in registry: {missing}"
 
 
 @pytest.mark.skipif(
