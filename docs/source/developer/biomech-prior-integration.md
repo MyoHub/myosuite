@@ -10,7 +10,7 @@ Start with full-body models because the published prior includes arm coordinates
 
 ## Code placement
 
-Follow the training guidelines proposed in [MyoSuite #581](https://github.com/MyoHub/myosuite/pull/581) (`docs/wiki/training-guidelines.md`): MyoSuite defines the task and feature contract, and the prior is a method that consumes it.
+Follow the training guidelines proposed in [MyoSuite #581](https://github.com/MyoHub/myosuite/pull/581) (`docs/source/developer/training-guidelines.md`): MyoSuite defines the task and feature contract, and the prior is a method that consumes it.
 
 - **`training/biomech_prior/`.** A self-contained project with its own `pyproject.toml` (PyTorch and the upstream model code), README, tests and lockfile. It holds:
   - the network, and checkpoint and scaler loading;
@@ -85,10 +85,10 @@ The stage 1 feature fixtures should pin these constants with matched poses of bo
 
 These hooks exist on MyoSuite `dev`:
 
-- [MuscleMimic model bridge](../../myosuite/integrations/musclemimic/model_bridge.py) defines `FULLBODY_NAME_ALIASES`, including the elbow naming differences. Reuse its name mapping while validating the additional anatomical transforms against the training convention (see [MyoFullBody arm coordinates](#myofullbody-arm-coordinates)).
-- [CPU MuscleMimic tasks](../../myosuite/envs/myo/tasks/mimic/cpu.py) and [clip playback](../../myosuite/envs/myo/tasks/mimic/clip_env.py) expose reward/evaluation points for full-body motion.
-- [MuscleMimic mjlab configuration](../../myosuite/envs/myo/backends/mjlab/mimic_mjlab_env.py) builds the GPU task rewards. A future online scorer must preserve the same feature and score contract as CPU evaluation.
-- A separately trained leg prior could later use [CPU walking](../../myosuite/envs/myo/tasks/basic/leg/walk.py), [mjlab walking terms](../../myosuite/envs/myo/backends/mjlab/tasks/leg/walk_mdp.py) and [walking configuration](../../myosuite/envs/myo/backends/mjlab/tasks/leg/walk_env_cfg.py).
+- [MuscleMimic model bridge](https://github.com/MyoHub/myosuite/blob/dev/myosuite/integrations/musclemimic/model_bridge.py) defines `FULLBODY_NAME_ALIASES`, including the elbow naming differences. Reuse its name mapping while validating the additional anatomical transforms against the training convention (see [MyoFullBody arm coordinates](#myofullbody-arm-coordinates)).
+- [CPU MuscleMimic tasks](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/tasks/mimic/cpu.py) and [clip playback](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/tasks/mimic/clip_env.py) expose reward/evaluation points for full-body motion.
+- [MuscleMimic mjlab configuration](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/backends/mjlab/mimic_mjlab_env.py) builds the GPU task rewards. A future online scorer must preserve the same feature and score contract as CPU evaluation.
+- A separately trained leg prior could later use [CPU walking](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/tasks/basic/leg/walk.py), [mjlab walking terms](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/backends/mjlab/tasks/leg/walk_mdp.py) and [walking configuration](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/backends/mjlab/tasks/leg/walk_env_cfg.py).
 
 ## Evaluation and training stages
 
@@ -98,10 +98,10 @@ These hooks exist on MyoSuite `dev`:
 
 For CPU and mjlab integration, follow the [cross-backend contract](cross-backend-contract.md). Shared term functions remain pure and use `accessor.array_module()`; the frozen learned scorer comes from `training/biomech_prior/` and is passed to the term. Use a CPU adapter and device-resident Torch inference with the same normalization and per-environment reduction. Avoid the upstream MATLAB wrapper in a GPU step: it averages the entire batch into one scalar and transfers results through NumPy.
 
-Score fresh post-step forces. CPU steps already refresh derived fields; on mjlab use the existing [`sync_forward`](../../myosuite/envs/myo/backends/mjlab/tasks/mdp/terminations.py) ordering described in the [mjlab design guide](mjlab-design-guide.md). Keep inference vectorized, with no loops over environments, `.cpu()`, `.numpy()` or scalar synchronization in the GPU reward path. If future terms retain episode state, use `ManagerTermBase.reset(env_ids)`.
+Score fresh post-step forces. CPU steps already refresh derived fields; on mjlab use the existing [`sync_forward`](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/backends/mjlab/tasks/mdp/terminations.py) ordering described in the [mjlab design guide](mjlab-design-guide.md). Keep inference vectorized, with no loops over environments, `.cpu()`, `.numpy()` or scalar synchronization in the GPU reward path. If future terms retain episode state, use `ManagerTermBase.reset(env_ids)`.
 
 ## Acceptance checks
 
-An implementation PR should keep `training/biomech_prior/` independently installable and tested, with no new dependency in the root `pyproject.toml`. It should include matched-pose feature fixtures, CPU/GPU score agreement, tests for right/left contact swaps and invalid layouts, model/scaler compatibility checks, and throughput measurements at the intended environment count. Demonstrate that a zero reward coefficient leaves baseline behavior unchanged. Any intentional registered-task reward or distribution change needs a changelog entry and [checkpoint compatibility notes](../baseline_checkpoints.md).
+An implementation PR should keep `training/biomech_prior/` independently installable and tested, with no new dependency in the root `pyproject.toml`. It should include matched-pose feature fixtures, CPU/GPU score agreement, tests for right/left contact swaps and invalid layouts, model/scaler compatibility checks, and throughput measurements at the intended environment count. Demonstrate that a zero reward coefficient leaves baseline behavior unchanged. Any intentional registered-task reward or distribution change needs a changelog entry and [checkpoint compatibility notes](https://github.com/MyoHub/myosuite/blob/dev/docs/baseline_checkpoints.md).
 
 Keep the offline scorer and subsequent online reward reviewable separately from upstream BiomechPriorVAE fixes. No new task registration is needed for offline scoring; any future task variants must use the existing CPU/mjlab registration primitives and shared `env_id` contract.
