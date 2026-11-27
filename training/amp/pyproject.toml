@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myosuite-amp"
+version = "0.1.0"
+description = "Adversarial Motion Priors (Peng et al., SIGGRAPH 2021) and GAIL (Ho & Ermon, NeurIPS 2016) for MyoSuite tasks"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+dependencies = ["myosuite", "mujoco", "numpy", "torch"]
+
+[project.optional-dependencies]
+mjlab = ["myosuite[mjlab]", "tyro"]
+rl = ["myosuite[rl]"]
+test = ["pytest"]
+
+[project.scripts]
+amp-train-mjlab = "myosuite_amp.train_mjlab:main"
+amp-bench = "myosuite_amp.benchmark:main"
+
+[tool.setuptools.packages.find]
+include = ["myosuite_amp*"]
