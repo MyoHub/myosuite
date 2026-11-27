@@ -20,7 +20,7 @@ from myosuite.biomechanics.effort import (
     squared_activation,
     wasted_torque,
 )
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import buchanan_excitation, sigmoid_muscle_activation
 
 pytestmark = pytest.mark.tier1
 
@@ -32,6 +32,13 @@ _M = MUSCLE_SATURATION_MARGIN
 def test_sigmoid_bounds_give_margin_excitation(margin: float) -> None:
     lo, hi = muscle_saturation_bounds(sigmoid=True, margin=margin)
     excitation = sigmoid_muscle_activation(np.array([lo, hi]), np)
+    np.testing.assert_allclose(excitation, [margin, 1.0 - margin], rtol=1e-12)
+
+
+@pytest.mark.parametrize("margin", [0.01, _M, 0.2])
+def test_buchanan_bounds_give_margin_excitation(margin: float) -> None:
+    lo, hi = muscle_saturation_bounds(margin=margin)
+    excitation = buchanan_excitation(np.array([lo, hi]), np)
     np.testing.assert_allclose(excitation, [margin, 1.0 - margin], rtol=1e-12)
 
 

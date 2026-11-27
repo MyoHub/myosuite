@@ -608,7 +608,8 @@ def action_cfg(
     task: CpuTaskSpec,
     entity_name: str,
     action_range: tuple[float, float] = (-1.0, 1.0),
-    muscle_sigmoid: bool = True,
+    muscle_sigmoid: bool | None = None,
+    muscle_excitation: str | None = None,
 ) -> MyoActionCfg:
     """CPU action pipeline of *task* (normalization, motor noise, muscle condition).
 
@@ -636,10 +637,17 @@ def action_cfg(
     muscles = (task.wrapper_kwargs("FatigueWrapper") or {}).get("muscles")
     # The CPU fatigue reset options (only read by the CPU env under fatigue).
     reset_vec, reset_random = task.fatigue_reset if fatigue else (None, False)
+    exc_mode = (
+        muscle_excitation
+        if muscle_excitation is not None
+        else task.kwargs.get("muscle_excitation")
+    )
     return MyoActionCfg(
         entity_name=entity_name,
         normalize_act=bool(task.kwargs.get("normalize_act", True)),
         action_range=action_range,
+        muscle_excitation=exc_mode,
+        buchanan_shape_A=float(task.kwargs.get("buchanan_shape_A", -2.0)),
         muscle_sigmoid=muscle_sigmoid,
         muscle_fatigue=fatigue,
         fatigue_reset_vec=(

@@ -11,16 +11,12 @@ from typing import Any
 import mujoco
 import numpy as np
 
-import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.assets._resolve import warn_torso_pip_calibration_divergence
-from myosuite.core.terms.base_action import (
-    sigmoid_muscle_activation,
-)
 
 
 class TorsoEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
@@ -136,13 +132,7 @@ class TorsoEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
 
         # ── Action space ───────────────────────────────────────────────────
         self.normalize_act = normalize_act
-        if normalize_act:
-            act_low = -np.ones(self.model.nu, dtype=np.float32)
-            act_high = np.ones(self.model.nu, dtype=np.float32)
-        else:
-            act_low = self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-            act_high = self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(normalize_act)
 
         # ── Initial state ──────────────────────────────────────────────────
         mujoco.mj_forward(self.model, self.data)
@@ -185,8 +175,8 @@ class TorsoEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         ctrl = action.copy()
 
         if self.model.na > 0 and self.normalize_act:
-            ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind], np
+            ctrl[self._muscle_act_ind] = self._map_muscle_excitation(
+                ctrl[self._muscle_act_ind]
             )
         elif self.normalize_act:
             ctrl_range = self.model.actuator_ctrlrange

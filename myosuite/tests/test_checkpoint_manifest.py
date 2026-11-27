@@ -31,13 +31,28 @@ def test_contract_hash_is_stable_and_sensitive() -> None:
 
 def test_env_contract_of_a_registered_env() -> None:
     """The contract of the elbow pose env records its observation, action and control step."""
+    from myosuite import make_env
+
     contract = cm.env_contract("myoElbowPose1D6MFixed-v0")
     assert contract["obs_shape"] == [9]
     assert contract["action_shape"] == [6]
     assert contract["ctrl_dt"] == pytest.approx(0.02)
+    assert contract["action_mapping"] == {"mode": "buchanan", "shape_A": -2.0}
+    assert contract["action_bounds"] == [0.0, 1.0]
     assert cm.contract_hash(contract) == cm.contract_hash(
         cm.env_contract("myoElbowPose1D6MFixed-v0")
     )
+    with make_env("myoElbowPose1D6MFixed-v0", muscle_excitation="sigmoid") as sig_env:
+        sig_contract = cm.contract_from_env(sig_env)
+    assert sig_contract["action_mapping"] == {"mode": "sigmoid"}
+    assert sig_contract["action_bounds"] == [-1.0, 1.0]
+    assert cm.contract_hash(sig_contract) != cm.contract_hash(contract)
+    for unchanged_id in (
+        "motorFingerPoseFixed-v0",
+        "myoLegDirectionalForward-v0",
+        "myoMimic-v0",
+    ):
+        assert "action_mapping" not in cm.env_contract(unchanged_id)
 
 
 def test_manifest_roundtrip(tmp_path: Path) -> None:

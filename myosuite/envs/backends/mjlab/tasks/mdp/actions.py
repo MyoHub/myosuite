@@ -51,9 +51,12 @@ from myosuite.envs.muscle_stages import (
     warn_order_clash,
 )
 from myosuite.core.terms.base_action import (
+    DEFAULT_BUCHANAN_SHAPE_A,
     MotorNoiseCfg,
+    MuscleExcitationMode,
+    apply_muscle_excitation,
     sample_motor_noise,
-    sigmoid_muscle_activation,
+    validate_muscle_excitation,
 )
 
 if TYPE_CHECKING:
@@ -182,7 +185,9 @@ class MyoActionCfg(ActionTermCfg):
 
     normalize_act: bool = True
     action_range: tuple[float, float] = (-1.0, 1.0)
-    muscle_sigmoid: bool = True
+    muscle_excitation: MuscleExcitationMode | None = None
+    buchanan_shape_A: float = DEFAULT_BUCHANAN_SHAPE_A
+    muscle_sigmoid: bool | None = None
     muscle_fatigue: bool = False
     fatigue_reset_vec: tuple[float, ...] | None = None
     fatigue_reset_random: bool = False
@@ -190,6 +195,19 @@ class MyoActionCfg(ActionTermCfg):
     reroute: tuple[str, str] | None = None
     motor_noise: MotorNoiseCfg = field(default_factory=MotorNoiseCfg)
     excitation_stages: tuple[Callable[[], ExcitationStage], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.muscle_excitation is None:
+            if self.muscle_sigmoid is None:
+                mode = "buchanan"
+            else:
+                mode = "sigmoid" if self.muscle_sigmoid else "linear"
+        else:
+            mode = self.muscle_excitation
+        self.muscle_excitation, self.buchanan_shape_A = validate_muscle_excitation(
+            mode, self.buchanan_shape_A
+        )
+        self.muscle_sigmoid = self.muscle_excitation == "sigmoid"
 
     def build(self, env: ManagerBasedRlEnv) -> MyoAction:
         return MyoAction(self, env)
@@ -283,14 +301,21 @@ class MyoAction(ActionTerm):
         a_lo, a_hi = self.cfg.action_range
         if self.cfg.normalize_act:
             ctrl = torch.clamp(actions, a_lo, a_hi)
+            if self._has_activation and self.cfg.muscle_excitation != "sigmoid":
+                ctrl[:, self._muscle_cols] = torch.clamp(
+                    actions[:, self._muscle_cols], 0.0, 1.0
+                )
         else:
             ctrl = torch.clamp(actions, self._ctrl_lo, self._ctrl_hi)
 
         if self.cfg.normalize_act and self._has_activation:
-            if self.cfg.muscle_sigmoid:
-                ctrl[:, self._muscle_cols] = sigmoid_muscle_activation(
-                    ctrl[:, self._muscle_cols], torch
-                )
+            assert self.cfg.muscle_excitation is not None
+            ctrl[:, self._muscle_cols] = apply_muscle_excitation(
+                ctrl[:, self._muscle_cols],
+                torch,
+                mode=self.cfg.muscle_excitation,
+                shape_A=self.cfg.buchanan_shape_A,
+            )
         elif self.cfg.normalize_act:
             ctrl = self._ctrl_lo + (ctrl - a_lo) / (a_hi - a_lo) * (
                 self._ctrl_hi - self._ctrl_lo

@@ -183,7 +183,7 @@ def _make_elbow_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             },
         ),
     }
-    # Sigmoid activation matching CPU PoseEnvV0(normalize_act=True)
+    # Default Buchanan excitation matching CPU PoseEnvV0(normalize_act=True)
     actions = {
         "muscles": MyoMuscleActivationActionCfg(
             entity_name=_ELBOW_ENTITY_NAME,

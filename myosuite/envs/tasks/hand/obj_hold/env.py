@@ -11,7 +11,6 @@ from typing import Any
 import mujoco
 import numpy as np
 
-import gymnasium as gym
 from gymnasium.utils import EzPickle
 
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
@@ -104,13 +103,7 @@ class ObjHoldFixedEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
 
         # ── Action space ───────────────────────────────────────────────────
         self.normalize_act = normalize_act
-        if normalize_act:
-            act_low = -np.ones(self.model.nu, dtype=np.float32)
-            act_high = np.ones(self.model.nu, dtype=np.float32)
-        else:
-            act_low = self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-            act_high = self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(normalize_act)
 
         # ── Initial state ──────────────────────────────────────────────────
         # Old code: init_qpos[:-7] *= 0 (open hand), init_qpos[0] = -1.5 (palm up)

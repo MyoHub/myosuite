@@ -27,7 +27,11 @@ from mjlab.sim import SimulationCfg
 
 from myosuite.core.config import TaskConfig
 from myosuite.envs.backends.mjlab.mjlab_env_base import normalize_mjlab_env_ids
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import (
+    DEFAULT_BUCHANAN_SHAPE_A,
+    apply_muscle_excitation,
+    validate_muscle_excitation,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     import torch
@@ -66,7 +70,8 @@ class MyoMuscleActivationActionCfg(ActionTermCfg):
             vector preserves MuJoCo actuator order even when local actuator and
             tendon indices differ.
         action_mode: How raw policy actions are mapped to muscle excitations.
-            ``"sigmoid"`` applies the canonical MyoSuite sigmoid for training.
+            ``"buchanan"`` (default) applies Buchanan exponential twitch saturation
+            on ``[0, 1]``; ``"sigmoid"`` applies the legacy ``[-1, 1]`` sigmoid.
             ``"direct"`` clamps to ``[-1, 1]`` for checkpoint playback.
             ``"excitation"`` clamps to ``[0, 1]`` when the policy already
             outputs muscle excitations directly.
@@ -82,20 +87,23 @@ class MyoMuscleActivationActionCfg(ActionTermCfg):
         entity_name: str,
         actuator_names: tuple[str, ...],
         tendon_names: tuple[str, ...] | None = None,
-        action_mode: str = "sigmoid",
+        action_mode: str = "buchanan",
+        buchanan_shape_A: float = DEFAULT_BUCHANAN_SHAPE_A,
         muscle_fatigue: bool = False,
         ctrl_dt: float = 0.01,
         pre_physics_fn: Callable[..., None] | None = None,
     ) -> None:
-        if action_mode not in ("sigmoid", "direct", "excitation"):
+        if action_mode not in ("buchanan", "sigmoid", "direct", "excitation"):
             raise ValueError(
                 "MyoMuscleActivationActionCfg.action_mode must be "
-                f"'sigmoid', 'direct', or 'excitation', got {action_mode!r}."
+                f"'buchanan', 'sigmoid', 'direct', or 'excitation', got {action_mode!r}."
             )
+        _, validated_shape_A = validate_muscle_excitation("buchanan", buchanan_shape_A)
         super().__init__(entity_name=entity_name)
         self.actuator_names = actuator_names
         self.tendon_names = tendon_names
         self.action_mode = action_mode
+        self.buchanan_shape_A = validated_shape_A
         self.muscle_fatigue = muscle_fatigue
         self.ctrl_dt = ctrl_dt
         self.pre_physics_fn = pre_physics_fn
@@ -107,12 +115,12 @@ class MyoMuscleActivationActionCfg(ActionTermCfg):
 class MyoMuscleActivationAction(ActionTerm):
     """Map policy actions to muscle control targets.
 
-    The default ``sigmoid`` mode uses the normalisation of the pose and reach envs
-    on CPU: ``ctrl = sigmoid(5 * (a - 0.5))``. The leg walk envs do not use it:
-    their actions are ``[0, 1]`` activations used as controls directly.  ``direct`` mode clamps actions to
-    ``[-1, 1]`` for checkpoint inference paths that already emit MuJoCo controls.
-    Both modes write directly to tendon effort targets after resolving the
-    actuator-to-tendon mapping from the entity.
+    The default ``buchanan`` mode applies ``buchanan_excitation`` on ``[0, 1]``
+    muscle commands; ``sigmoid`` uses the legacy ``ctrl = sigmoid(5 * (a - 0.5))``
+    mapping; ``excitation`` clamps ``[0, 1]`` linearly; and ``direct`` clamps
+    actions to ``[-1, 1]`` for checkpoint inference paths that already emit
+    MuJoCo controls. All modes write directly to tendon effort targets after
+    resolving the actuator-to-tendon mapping from the entity.
     """
 
     cfg: MyoMuscleActivationActionCfg
@@ -241,8 +249,11 @@ class MyoMuscleActivationAction(ActionTerm):
         elif self.cfg.action_mode == "excitation":
             self._processed_actions[:] = torch.clamp(self._raw_actions, 0.0, 1.0)
         else:
-            self._processed_actions[:] = sigmoid_muscle_activation(
-                self._raw_actions, torch
+            self._processed_actions[:] = apply_muscle_excitation(
+                self._raw_actions,
+                torch,
+                mode=self.cfg.action_mode,
+                shape_A=self.cfg.buchanan_shape_A,
             )
         if self._fatigue is not None:
             step_dt = float(getattr(self._env, "step_dt", self.cfg.ctrl_dt))

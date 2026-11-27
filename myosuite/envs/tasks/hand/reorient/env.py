@@ -151,17 +151,7 @@ class ReorientEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
         self.observation_space = self._unbounded_obs_space(obs.size)
-        act_low = (
-            -np.ones(self.model.nu, dtype=np.float32)
-            if normalize_act
-            else self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-        )
-        act_high = (
-            np.ones(self.model.nu, dtype=np.float32)
-            if normalize_act
-            else self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        )
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(normalize_act)
 
     def _get_obs_dict(self, accessor: CpuEnvAccessor) -> dict[str, np.ndarray]:
         obs_dict: dict[str, np.ndarray] = {}

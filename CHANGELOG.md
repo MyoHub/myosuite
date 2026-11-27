@@ -58,6 +58,8 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **Default `buchanan_excitation` muscle action mapping across CPU and mjlab environments (`myosuite.core.terms.base_action`):**
+  Normalized muscle environments (`normalize_act=True`) now default to `buchanan_excitation` (`u(e) = (exp(A * clip(e, 0, 1)) - 1) / (exp(A) - 1)` with `A = -2.0` on `e in [0, 1]`, Buchanan et al. 2004; Lloyd & Besier 2003) instead of the legacy `[-1, 1] -> (0.00055, 0.924)` logistic curve (`sigmoid_muscle_activation`), achieving exact `0.0` muscle rest, full `1.0` MVC capacity, unified `[0, 1]` sEMG-envelope muscle action bounds across basic, locomotion, and challenge suites, and matched CPU/mjlab twin execution (`MyoAction`, `MyoMuscleActivationAction`, `MuscleActionTerm`). Added `inverse_buchanan_excitation`, `apply_muscle_excitation`, `normalized_action_bounds`, `muscle_saturation_bounds(mode="buchanan")`, and `action_mapping`/`action_bounds` recording in checkpoint/deployment manifests; legacy 3.0/3.1 checkpoints remain supported via `muscle_excitation="sigmoid"` (pose/reach/manipulation) and `muscle_excitation="linear"` (3.0/3.1 walk baselines).
 * **Minimal base dependencies with opt-in extras (`[viz]`, `[biomechanics]`, `[capture]`, `[onnx]`, `[examples]`, `[all]`) ([#942]).**
   Slimmed default `pip install myosuite` dependencies from 25 declarations down to core CPU simulation packages
   (`numpy`, `scipy`, `mujoco<4`, `myo-sim`, `gymnasium`, `huggingface_hub`, `click`, `termcolor`, `ml-collections`,
@@ -95,9 +97,10 @@ Changes since **v3.1.0** (2026-11-11).
   `mujoco_geom_utils`, `mujoco_joint_utils`, `asset_path_resolver`) into `myosuite/core/builder/`, pure backend-agnostic
   MDP term modules into `myosuite/core/terms/`, and `colored_noise` into `myosuite/physics/colored_noise.py`, keeping
   `sys.modules`-identical compatibility aliases at all former `myosuite.scenes.*`, `myosuite.terms.*`, and `myosuite.utils.*` paths.
-* **`myosuite.tests` excluded from built wheels ([#935]).** Set `include-package-data = false` with explicit runtime
-  subpackage discovery in `pyproject.toml` so published wheels ship only runtime `myosuite.*` subpackages and exclude
-  `myosuite/tests/**` fixtures/baselines (~2 MB wheel reduction). Running `pytest --pyargs myosuite.tests...` or
+* **`myosuite.tests` excluded from built wheels ([#935]).** Set `include-package-data = false` with `packages.find`
+  scoped to `myosuite` / `myosuite.*` (excluding `myosuite.agents*` and `myosuite.tests*`), explicit per-subpackage
+  `package-data` globs in `pyproject.toml`, and CI enforcement via `test_package_discovery.py` so published wheels ship
+  only approved runtime `myosuite.*` subpackages and exclude `myosuite/tests/**` fixtures/baselines (~2 MB wheel reduction). Running `pytest --pyargs myosuite.tests...` or
   importing `myosuite.tests.*` (e.g. `TestEnvs`) now requires a source checkout rather than a wheel install; PyPI
   pre- and post-release wheel verification (`.github/smoke_wheel.py`) steps every installable single-agent environment across all suites for 3 seeded steps and checks `pickle` round-trip step parity directly via `make_env`.
 * **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,

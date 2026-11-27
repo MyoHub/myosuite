@@ -59,7 +59,7 @@ from myosuite.envs.backends.mjlab.tasks.rl import (
 from myosuite.envs.tasks.games.tabletennis.env import (
     ContactTrajIssue,
 )
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
+from myosuite.core.terms.base_action import apply_muscle_excitation
 
 logger = logging.getLogger(__name__)
 
@@ -514,11 +514,13 @@ class TableTennisMixedCtrlAction(ActionTerm):
         return self._raw_actions
 
     def process_actions(self, actions: Any) -> None:
-        a = torch.clamp(actions.to(self.device), -1.0, 1.0)
-        self._raw_actions[:] = a
-        m = self._muscle_mask[None, :].expand_as(a)
+        a_dev = actions.to(self.device)
+        m = self._muscle_mask[None, :].expand_as(a_dev)
+        a_robot = torch.clamp(a_dev, -1.0, 1.0)
+        a_musc = torch.clamp(a_dev, 0.0, 1.0)
+        self._raw_actions[:] = torch.where(m, a_musc, a_robot)
         ctrl = torch.where(
-            m, sigmoid_muscle_activation(a, torch), self._mid + a * self._half
+            m, apply_muscle_excitation(a_musc, torch), self._mid + a_robot * self._half
         )
         self._processed[:] = ctrl
 

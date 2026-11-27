@@ -1627,7 +1627,7 @@ def _make_mimic_env_cfg(
     use_deepmimic_reward: bool = True,
     use_lookahead: bool = True,
     use_early_termination: bool = True,
-    action_mode: str = "sigmoid",
+    action_mode: str = "buchanan",
     mj_model: Any = None,
     enable_clip_state_terms: bool = True,
     reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
@@ -1658,10 +1658,11 @@ def _make_mimic_env_cfg(
             match the model but ``site_xpos`` remains usable.
         reward_mode: Reward composition mode.  Only ``"mimic"`` (the
             clip-tracking objective) is implemented.
-        action_mode: Muscle action interpretation. ``"sigmoid"`` keeps the
-            training path's canonical action normalisation; ``"direct"``
-            preserves checkpoint playback by clipping incoming values to
-            ``[-1, 1]`` before writing them as muscle controls.
+        action_mode: Muscle action interpretation. ``"buchanan"`` (default) maps
+            ``[0, 1]`` commands via Buchanan excitation; ``"sigmoid"`` uses the
+            legacy ``[-1, 1]`` sigmoid; ``"direct"`` preserves checkpoint playback
+            by clipping incoming values to ``[-1, 1]`` before writing them as
+            muscle controls.
 
     Returns:
         A configured :class:`~mjlab.envs.ManagerBasedRlEnvCfg` instance.
@@ -1879,7 +1880,7 @@ def register_mimic_mjlab_tasks_with_clip(
     use_deepmimic_reward: bool = True,
     use_lookahead: bool = True,
     use_early_termination: bool = True,
-    action_mode: str = "sigmoid",
+    action_mode: str = "buchanan",
     reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
     mimic_reward_weight: float = 5.0,
     env_reward_weight: float = 1.0,
@@ -1902,8 +1903,9 @@ def register_mimic_mjlab_tasks_with_clip(
         clip: Loaded :class:`~myosuite.motion.io.MotionClip` with
               ``site_xpos`` populated, or a tuple/list of such clips: every env
               then draws its clip and start frame on each reset.
-        action_mode: Muscle action interpretation. Leave as ``"sigmoid"`` for
-            training; use ``"direct"`` for fullbody checkpoint inference.
+        action_mode: Muscle action interpretation. Leave as ``"buchanan"`` (default)
+            for training; use ``"sigmoid"`` for pre-3.2 sigmoid checkpoints or
+            ``"direct"`` for fullbody checkpoint inference.
         reward_mode: Reward composition for the mimic task.  Only ``"mimic"``
             (clip tracking) is implemented: the Mimic tasks have no native
             task reward for ``"env"`` or ``"augmented"`` to use.
@@ -1956,7 +1958,7 @@ def _register_mimic_tasks(
     use_deepmimic_reward: bool = True,
     use_lookahead: bool = True,
     use_early_termination: bool = True,
-    action_mode: str = "sigmoid",
+    action_mode: str = "buchanan",
     reward_mode: str = _MIMIC_REWARD_MODE_MIMIC,
     mimic_reward_weight: float = 1.0,
 ) -> None:

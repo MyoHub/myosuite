@@ -7,24 +7,25 @@
 
 Action Normalisation
 --------------------
-All MyoSuite muscle environments use a **sigmoid action normalisation** by default
-(``normalize_act=True``).  Policy output is expected in ``[-1, 1]`` and is mapped
-to muscle excitation in ``(0, 1)`` via::
+All MyoSuite muscle environments use **Buchanan exponential twitch-saturation**
+by default (``normalize_act=True``, ``muscle_excitation="buchanan"``; Buchanan
+et al. 2004, *J. Appl. Biomech.* 20:367-395; Lloyd & Besier 2003, *J. Biomech.*
+36:765-776).  Policy muscle output is expected in ``[0, 1]`` (interpretable as
+the MVC-normalised linear sEMG / neural command envelope) and is mapped to
+muscle excitation in ``[0, 1]`` via::
 
-    excitation = 1 / (1 + exp(-5 * (action - 0.5)))
+    excitation = (exp(A * clip(action, 0, 1)) - 1) / (exp(A) - 1),   A = -2.0
 
-The sigmoid is centred at 0.5, so a policy output of **−1** maps to ≈ 0.06% excitation,
-**0** to ≈ 7.6%, **0.5** to 50% and **+1** to ≈ 92.4%: full (100%) excitation is never
-reached.  This is the legacy MyoSuite mapping.
+An action of **0** maps to exact **0%** excitation (true rest) and **+1** maps
+to exact **100%** MVC excitation, with concave twitch-summation saturation on
+``(0, 1)``.  Legacy ``muscle_excitation="sigmoid"`` retains the earlier
+``[-1, 1] -> (0.00055, 0.924)`` mapping ``1 / (1 + exp(-5 * (action - 0.5)))``
+for pre-3.2 checkpoint compatibility, and ``muscle_excitation="linear"`` clips
+``[0, 1]`` directly.
 
-**Action space vs. ctrl range**: when ``normalize_act=True`` the declared
-``action_space`` is ``Box([-1, 1]^n)``, but the underlying ``model.actuator_ctrlrange``
-is ``[0, 1]^n``.  If you switch ``normalize_act=False`` at inference time or
-load a pre-trained policy trained with a different setting, excitations will be
-wrong.  Always check ``env.normalize_act`` before deploying a policy.
-
-``muscle_normalize_action`` is backend-agnostic and uses
-``accessor.array_module()`` so it runs identically on CPU (numpy), MJX
+``buchanan_excitation``, ``sigmoid_muscle_activation``, and
+``muscle_normalize_action`` are backend-agnostic and use
+``accessor.array_module()`` so they run identically on CPU (numpy), MJX
 (jax.numpy), and mjlab (torch).
 
 Motor noise
@@ -42,16 +43,86 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
 if TYPE_CHECKING:
     from myosuite.core.protocols import EnvAccessor
 
+DEFAULT_BUCHANAN_SHAPE_A: float = -2.0
+MuscleExcitationMode = Literal["buchanan", "sigmoid", "linear"]
+MUSCLE_EXCITATION_MODES: tuple[str, ...] = ("buchanan", "sigmoid", "linear")
+
+
+def validate_muscle_excitation(
+    mode: str = "buchanan",
+    shape_A: float = DEFAULT_BUCHANAN_SHAPE_A,
+) -> tuple[MuscleExcitationMode, float]:
+    """Validate *mode* and *shape_A* for muscle excitation mapping."""
+    if mode not in MUSCLE_EXCITATION_MODES:
+        raise ValueError(
+            f"muscle_excitation must be one of {MUSCLE_EXCITATION_MODES}, got {mode!r}."
+        )
+    a = float(shape_A)
+    if not (math.isfinite(a) and -5.0 <= a <= 5.0):
+        raise ValueError(
+            f"buchanan_shape_A must be finite in [-5, 5], got {shape_A!r}."
+        )
+    return cast(MuscleExcitationMode, mode), a
+
+
+def buchanan_excitation(
+    action: Any,
+    xp: Any,
+    shape_A: float = DEFAULT_BUCHANAN_SHAPE_A,
+) -> Any:
+    """Apply Buchanan et al. (2004) exponential twitch-saturation ``[0, 1] -> [0, 1]``.
+
+    Maps a normalised neural command / sEMG envelope ``e = clip(action, 0, 1)``
+    to muscle excitation ``(exp(A * e) - 1) / (exp(A) - 1)`` with exact
+    endpoints ``0 -> 0`` and ``1 -> 1``.
+
+    Args:
+        action: Pre-excitation neural command array in ``[0, 1]``.
+        xp: Array module (``numpy``, ``jax.numpy``, or ``torch``).
+        shape_A: Nonlinear curvature parameter ``A`` (default ``-2.0``; linear as ``A -> 0``).
+
+    Returns:
+        Muscle excitation array in ``[0, 1]``, matching the dtype/shape of *action*.
+    """
+    _, a = validate_muscle_excitation("buchanan", shape_A)
+    e = xp.clip(action, 0.0, 1.0)
+    if abs(a) < 1e-6:
+        return e
+    denom = math.expm1(a)
+    return xp.clip(xp.expm1(a * e) / denom, 0.0, 1.0)
+
+
+def inverse_buchanan_excitation(
+    excitation: Any,
+    xp: Any,
+    shape_A: float = DEFAULT_BUCHANAN_SHAPE_A,
+) -> Any:
+    """Exact inverse of :func:`buchanan_excitation`, mapping ``u in [0, 1] -> e in [0, 1]``.
+
+    Args:
+        excitation: Muscle excitation array in ``[0, 1]``.
+        xp: Array module (``numpy``, ``jax.numpy``, or ``torch``).
+        shape_A: Nonlinear curvature parameter ``A`` passed to :func:`buchanan_excitation`.
+
+    Returns:
+        Pre-saturation neural command envelope ``e in [0, 1]``.
+    """
+    _, a = validate_muscle_excitation("buchanan", shape_A)
+    u = xp.clip(excitation, 0.0, 1.0)
+    if abs(a) < 1e-6:
+        return u
+    return xp.clip(xp.log1p(u * math.expm1(a)) / a, 0.0, 1.0)
+
 
 def sigmoid_muscle_activation(action: Any, xp: Any) -> Any:
-    """Apply the canonical MyoSuite sigmoid muscle mapping.
+    """Apply the legacy MyoSuite sigmoid muscle mapping ``[-1, 1] -> (0, 1)``.
 
     Args:
         action: Input activation-like array.
@@ -63,26 +134,78 @@ def sigmoid_muscle_activation(action: Any, xp: Any) -> Any:
     return 1.0 / (1.0 + xp.exp(-5.0 * (action - 0.5)))
 
 
-def muscle_normalize_action(accessor: EnvAccessor, action: Any, **kwargs: Any) -> Any:
-    """Map policy actions from [-1, 1] to muscle excitation in [0, 1] via sigmoid.
+def apply_muscle_excitation(
+    action: Any,
+    xp: Any,
+    mode: str = "buchanan",
+    shape_A: float = DEFAULT_BUCHANAN_SHAPE_A,
+) -> Any:
+    """Map raw policy muscle commands to excitations in ``[0, 1]``."""
+    m, a = validate_muscle_excitation(mode, shape_A)
+    if m == "buchanan":
+        return buchanan_excitation(action, xp, shape_A=a)
+    if m == "sigmoid":
+        return sigmoid_muscle_activation(action, xp)
+    return xp.clip(action, 0.0, 1.0)
+
+
+def normalized_action_bounds(
+    model: Any,
+    *,
+    normalize_act: bool = True,
+    muscle_excitation: str = "buchanan",
+    n_actuators: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute float32 ``(act_low, act_high)`` action-space bounds for *model*.
+
+    When ``normalize_act=True``, non-muscle actuators use ``[-1, 1]`` while
+    muscle actuators (``mjDYN_MUSCLE``) use ``[0, 1]`` for ``"buchanan"`` /
+    ``"linear"`` and ``[-1, 1]`` for legacy ``"sigmoid"``.
+    """
+    import mujoco  # noqa: PLC0415
+
+    m, _ = validate_muscle_excitation(muscle_excitation)
+    n = int(model.nu) if n_actuators is None else int(n_actuators)
+    if not normalize_act:
+        return (
+            model.actuator_ctrlrange[:n, 0].astype(np.float32),
+            model.actuator_ctrlrange[:n, 1].astype(np.float32),
+        )
+    low = -np.ones(n, dtype=np.float32)
+    high = np.ones(n, dtype=np.float32)
+    if m != "sigmoid" and n > 0:
+        is_muscle = model.actuator_dyntype[:n] == int(mujoco.mjtDyn.mjDYN_MUSCLE)
+        low[is_muscle] = 0.0
+    return low, high
+
+
+def muscle_normalize_action(
+    accessor: EnvAccessor,
+    action: Any,
+    mode: str = "buchanan",
+    shape_A: float = DEFAULT_BUCHANAN_SHAPE_A,
+    **kwargs: Any,
+) -> Any:
+    """Map policy muscle actions to muscle excitation in ``[0, 1]``.
 
     Uses ``accessor.array_module()`` so the same implementation runs on CPU
-    (numpy), MJX (jax.numpy), and mjlab (torch).
-
-    The sigmoid ``σ(5(a − 0.5))`` is the canonical MyoSuite muscle mapping:
-    it is centred at 0.5, so an action of -1 gives ~0.06% excitation, 0 gives ~7.6%
-    and +1 gives ~92.4% (the output range is [0.00055, 0.924], not the full [0, 1]).
+    (numpy), MJX (jax.numpy), and mjlab (torch). Defaults to
+    :func:`buchanan_excitation` (``[0, 1] -> [0, 1]`` with ``A = -2.0``); pass
+    ``mode="sigmoid"`` for the legacy ``1 / (1 + exp(-5 * (a - 0.5)))`` curve.
 
     Args:
         accessor: Environment state accessor (provides array_module).
-        action: Policy output array in [-1, 1], any shape.
+        action: Policy output array, any shape.
+        mode: ``"buchanan"`` (default), ``"sigmoid"``, or ``"linear"``.
+        shape_A: Shape factor ``A`` for ``"buchanan"``.
         **kwargs: Unused; for uniform call signature.
 
     Returns:
-        Muscle excitation array in (0, 1), same shape as *action*.
+        Muscle excitation array in ``[0, 1]``, same shape as *action*.
     """
+    del kwargs
     xp = accessor.array_module()
-    return sigmoid_muscle_activation(action, xp)
+    return apply_muscle_excitation(action, xp, mode=mode, shape_A=shape_A)
 
 
 @dataclass(frozen=True)
@@ -220,7 +343,10 @@ class MuscleActionTermCfg:
 
     Args:
         entity_name: Name of the articulation entity in the mjlab scene.
-        normalize: If True, map [-1, 1] → [0, 1]. If False, clamp to [0, 1].
+        normalize: If True, map raw muscle actions through *muscle_excitation*.
+            If False, clamp to ``[0, 1]``.
+        muscle_excitation: ``"buchanan"`` (default), ``"sigmoid"``, or ``"linear"``.
+        buchanan_shape_A: Curvature parameter ``A`` for ``"buchanan"``.
         muscle_fatigue: If True, apply 3-compartment cumulative fatigue dynamics
             to the processed excitations each control step.
         ctrl_dt: Control timestep in seconds; used as the integration step for
@@ -229,15 +355,22 @@ class MuscleActionTermCfg:
 
     entity_name: str = "robot"
     normalize: bool = True
+    muscle_excitation: MuscleExcitationMode = "buchanan"
+    buchanan_shape_A: float = DEFAULT_BUCHANAN_SHAPE_A
     muscle_fatigue: bool = False
     ctrl_dt: float = 0.01
+
+    def __post_init__(self) -> None:
+        self.muscle_excitation, self.buchanan_shape_A = validate_muscle_excitation(
+            self.muscle_excitation, self.buchanan_shape_A
+        )
 
 
 class MuscleActionTerm:
     """mjlab ActionTerm that drives MuJoCo muscle actuators.
 
     Maps policy output to muscle excitation:
-    - normalize=True:  canonical sigmoid mapping.
+    - normalize=True:  :func:`apply_muscle_excitation` (default ``"buchanan"``).
     - normalize=False: excitation = clamp(action, 0, 1)
 
     Args:
@@ -316,7 +449,12 @@ class MuscleActionTerm:
         else:
             xp = np
         if self.cfg.normalize:
-            self._processed = sigmoid_muscle_activation(actions, xp)
+            self._processed = apply_muscle_excitation(
+                actions,
+                xp,
+                mode=self.cfg.muscle_excitation,
+                shape_A=self.cfg.buchanan_shape_A,
+            )
         else:
             self._processed = xp.clip(actions, 0.0, 1.0)
         if self._fatigue is not None:

@@ -10,7 +10,6 @@ import collections
 import enum
 from typing import Any
 
-import gymnasium as gym
 from gymnasium.utils import EzPickle
 import mujoco
 import numpy as np
@@ -23,7 +22,6 @@ from myosuite.envs.tasks.suites.challenge_common import (
     mean_effort,
     solved_step_count,
 )
-from myosuite.core.terms.base_action import sigmoid_muscle_activation
 from myosuite.core.seeding import seed_envs
 from myosuite.core.builder.mujoco_geom_utils import refresh_geom_derived_fields
 from myosuite.physics.quat_math import mat2euler
@@ -184,17 +182,7 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
         self.observation_space = self._unbounded_obs_space(obs.size)
-        act_low = (
-            -np.ones(self.model.nu, dtype=np.float32)
-            if self.normalize_act
-            else self.model.actuator_ctrlrange[:, 0].astype(np.float32)
-        )
-        act_high = (
-            np.ones(self.model.nu, dtype=np.float32)
-            if self.normalize_act
-            else self.model.actuator_ctrlrange[:, 1].astype(np.float32)
-        )
-        self.action_space = gym.spaces.Box(act_low, act_high, dtype=np.float32)
+        self.action_space = self._build_normalized_action_space(self.normalize_act)
 
     def _center_box_mesh(self) -> None:
         """Express the visual box mesh in the collision box's frame.
@@ -421,8 +409,8 @@ class BimanualEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
                 / 2.0
             )
             if self.model.na > 0:
-                ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                    ctrl[self._muscle_act_ind], np
+                ctrl[self._muscle_act_ind] = self._map_muscle_excitation(
+                    ctrl[self._muscle_act_ind]
                 )
         ctrl = self._run_ctrl_stages(ctrl)
         return ctrl

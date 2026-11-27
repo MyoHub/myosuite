@@ -11,7 +11,8 @@ import numpy as np
 
 from myosuite.envs.muscle_stages import CtrlStageHost
 from myosuite.core.terms.base_action import (
-    sigmoid_muscle_activation,
+    DEFAULT_BUCHANAN_SHAPE_A,
+    apply_muscle_excitation,
 )
 
 
@@ -64,8 +65,11 @@ class MuscleActionMixin(CtrlStageHost):
             np.float64
         )
         if self.model.na > 0 and self.normalize_act:
-            ctrl[self._muscle_act_ind] = sigmoid_muscle_activation(
-                ctrl[self._muscle_act_ind], np
+            ctrl[self._muscle_act_ind] = apply_muscle_excitation(
+                ctrl[self._muscle_act_ind],
+                np,
+                mode=getattr(self, "muscle_excitation", "buchanan"),
+                shape_A=getattr(self, "buchanan_shape_A", DEFAULT_BUCHANAN_SHAPE_A),
             )
         elif self.normalize_act and self.model.nu > 0:
             cr = self.model.actuator_ctrlrange

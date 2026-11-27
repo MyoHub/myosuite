@@ -170,8 +170,8 @@ def test_sb3_onnx_export_matches_predict(
 ) -> None:
     """ONNX actions equal model.predict(deterministic=True) on the env's Box.
 
-    MyoSuite muscle envs expose Box(-1, 1); the [0, 1] case (an env
-    without action normalisation) exercises the rescaling of squashed actions.
+    MyoSuite muscle envs expose Box(0, 1) under default Buchanan excitation;
+    the [-1, 1] case exercises rescaling across signed action bounds.
     """
     pytest.importorskip("onnx")  # torch.onnx.export needs it (missing on py3.14)
     sb3 = pytest.importorskip("stable_baselines3")
@@ -179,7 +179,9 @@ def test_sb3_onnx_export_matches_predict(
     from myosuite.utils.export_onnx import export_sb3_to_onnx
 
     env = make_env(_ENV_ID)
-    if action_low != -1.0:
+    if (env.action_space.low != action_low).any() or (
+        env.action_space.high != 1.0
+    ).any():
         env = gym.wrappers.RescaleAction(
             env, min_action=np.float32(action_low), max_action=np.float32(1.0)
         )

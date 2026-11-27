@@ -203,41 +203,21 @@ requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-# Ship only the approved myosuite runtime subpackages (never tests, fixtures, or local scratch dirs).
+# Ship only the myosuite runtime package (never top-level repo dirs, agents, or tests);
+# test_package_discovery.py enforces the exact runtime subpackage allowlist in CI.
 include-package-data = false
 packages = { find = { include = [
     "myosuite",
-    "myosuite.benchmarks",
-    "myosuite.benchmarks.*",
-    "myosuite.biomechanics",
-    "myosuite.biomechanics.*",
-    "myosuite.core",
-    "myosuite.core.*",
-    "myosuite.envs",
-    "myosuite.envs.*",
-    "myosuite.integrations",
-    "myosuite.integrations.*",
-    "myosuite.logger",
-    "myosuite.logger.*",
-    "myosuite.motion",
-    "myosuite.motion.*",
-    "myosuite.physics",
-    "myosuite.physics.*",
-    "myosuite.policies",
-    "myosuite.policies.*",
-    "myosuite.scenes",
-    "myosuite.scenes.*",
-    "myosuite.terms",
-    "myosuite.terms.*",
-    "myosuite.utils",
-    "myosuite.utils.*",
-    "myosuite.viz",
-    "myosuite.viz.*",
+    "myosuite.*",
 ], exclude = [
     "myosuite.agents",
     "myosuite.agents.*",
     "myosuite.tests",
     "myosuite.tests.*",
+    "*.logs",
+    "*.logs.*",
+    "*.wandb",
+    "*.wandb.*",
 ] } }
 
 [tool.setuptools.package-data]

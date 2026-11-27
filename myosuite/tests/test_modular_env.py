@@ -792,22 +792,34 @@ def test_register_task_no_double_variant_expansion() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_muscle_normalize_action_midpoint() -> None:
-    """Action=0.5 should map to ~0.5 (symmetric sigmoid midpoint)."""
+def test_muscle_normalize_action_endpoints_and_concavity() -> None:
+    """Default Buchanan map hits exact 0 and 1 endpoints with concave twitch saturation."""
     import numpy as np
     from myosuite.envs.gymnasium_env import CpuEnvAccessor
-    from myosuite.terms.base_action import muscle_normalize_action
+    from myosuite.terms.base_action import (
+        buchanan_excitation,
+        inverse_buchanan_excitation,
+        muscle_normalize_action,
+    )
 
     model = mujoco.MjModel.from_xml_string(_ONE_HINGE_XML)
     data = mujoco.MjData(model)
     accessor = CpuEnvAccessor(model, data, ctrl_dt=0.002)
-    action = np.array([0.5], dtype=np.float64)
-    result = muscle_normalize_action(accessor, action)
-    assert float(result[0]) == pytest.approx(0.5, abs=1e-6)
+    pts = np.array([0.0, 0.25, 0.5, 0.75, 1.0], dtype=np.float64)
+    res = muscle_normalize_action(accessor, pts)
+    assert float(res[0]) == 0.0
+    assert float(res[-1]) == 1.0
+    assert float(res[2]) == pytest.approx(np.expm1(-1.0) / np.expm1(-2.0), abs=1e-12)
+    np.testing.assert_allclose(inverse_buchanan_excitation(res, np), pts, atol=1e-12)
+    np.testing.assert_allclose(
+        buchanan_excitation(pts, np, shape_A=0.0), pts, atol=1e-12
+    )
+    sig_mid = muscle_normalize_action(accessor, np.array([0.5]), mode="sigmoid")
+    assert float(sig_mid[0]) == pytest.approx(0.5, abs=1e-6)
 
 
 def test_muscle_normalize_action_bounds() -> None:
-    """muscle_normalize_action output stays in (0, 1)."""
+    """muscle_normalize_action output stays in [0, 1] with exact boundary clamping."""
     import numpy as np
     from myosuite.envs.gymnasium_env import CpuEnvAccessor
     from myosuite.terms.base_action import muscle_normalize_action
@@ -818,7 +830,7 @@ def test_muscle_normalize_action_bounds() -> None:
     for val in [-5.0, -1.0, 0.0, 0.5, 1.0, 5.0]:
         action = np.array([val], dtype=np.float64)
         result = muscle_normalize_action(accessor, action)
-        assert 0.0 < float(result[0]) < 1.0, f"Out of bounds for action={val}"
+        assert 0.0 <= float(result[0]) <= 1.0, f"Out of bounds for action={val}"
 
 
 def test_muscle_normalize_action_monotone() -> None:

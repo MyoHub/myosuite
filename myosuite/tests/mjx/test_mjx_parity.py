@@ -494,14 +494,16 @@ class TestNormActionsFlag:
         env._config.norm_actions = norm_actions
         return env
 
-    def test_norm_actions_true_applies_sigmoid(self):
-        """When norm_actions=True (default), _normalize_action applies sigmoid."""
+    def test_norm_actions_true_applies_buchanan(self):
+        """When norm_actions=True (default), _normalize_action applies buchanan_excitation."""
         env = _make_pose_env()
         assert env._config.norm_actions is True
 
-        action = jp.zeros(env._mj_model.nu)
+        action = jp.array(
+            [0.0, 0.25, 0.5, 0.75, 1.0, 0.1][: env._mj_model.nu], dtype=jp.float32
+        )
         result = env._normalize_action(action)
-        expected = 1.0 / (1.0 + jp.exp(-5.0 * (action - 0.5)))
+        expected = jp.expm1(-2.0 * action) / jp.expm1(-2.0)
         np.testing.assert_allclose(np.array(result), np.array(expected), atol=1e-6)
 
     def test_norm_actions_false_passes_through(self):
@@ -512,14 +514,13 @@ class TestNormActionsFlag:
         result = env._normalize_action(action)
         np.testing.assert_allclose(np.array(result), np.array(action), atol=1e-7)
 
-    def test_norm_actions_sigmoid_maps_zero_to_half(self):
-        """Sigmoid at 0.5 (midpoint) should give 0.5."""
+    def test_norm_actions_buchanan_endpoints(self):
+        """Buchanan map hits exact 0 at 0 and 1 at 1."""
         env = _make_pose_env()
-        action = jp.full((env._mj_model.nu,), 0.5)
-        result = env._normalize_action(action)
-        np.testing.assert_allclose(
-            np.array(result), np.full(env._mj_model.nu, 0.5), atol=1e-6
-        )
+        z = env._normalize_action(jp.zeros(env._mj_model.nu))
+        o = env._normalize_action(jp.ones(env._mj_model.nu))
+        np.testing.assert_allclose(np.array(z), 0.0, atol=1e-7)
+        np.testing.assert_allclose(np.array(o), 1.0, atol=1e-7)
 
     def test_default_configs_have_norm_actions_true(self):
         """All default configs should include norm_actions=True."""

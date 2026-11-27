@@ -12,7 +12,7 @@ import pytest
 import myosuite  # noqa: F401
 from myosuite.envs.tasks.arm.reorient_sar.env import ReorientSAREnvV0
 from myosuite.envs.wrappers import FatigueWrapper
-from myosuite.terms.base_action import sigmoid_muscle_activation
+from myosuite.terms.base_action import buchanan_excitation, sigmoid_muscle_activation
 from myosuite import make_env
 
 
@@ -40,9 +40,23 @@ def _make(env_id: str) -> ReorientSAREnvV0:
     return env
 
 
-@pytest.mark.parametrize("value", [-1.0, -0.5, 0.0, 1.0])
-def test_normalized_action_is_mapped_through_muscle_sigmoid(value: float) -> None:
+@pytest.mark.parametrize("value", [0.0, 0.25, 0.5, 1.0])
+def test_normalized_action_is_mapped_through_buchanan_default(value: float) -> None:
     env = _make("myoHandReorient8-v0")
+    np.testing.assert_array_equal(env.action_space.low, 0.0)
+    np.testing.assert_array_equal(env.action_space.high, 1.0)
+    action = np.full(env.action_space.shape, value, dtype=np.float32)
+    env.step(action)
+    expected = action.copy()
+    expected[:] = buchanan_excitation(action, np)
+    np.testing.assert_array_equal(env.data.ctrl, expected)
+
+
+@pytest.mark.parametrize("value", [-1.0, -0.5, 0.0, 1.0])
+def test_legacy_sigmoid_mode_remains_supported(value: float) -> None:
+    env = make_env("myoHandReorient8-v0", muscle_excitation="sigmoid").unwrapped
+    env.reset(seed=0)
+    np.testing.assert_array_equal(env.action_space.low, -1.0)
     action = np.full(env.action_space.shape, value, dtype=np.float32)
     env.step(action)
     expected = action.copy()
@@ -84,7 +98,7 @@ def test_fatigue_limits_excitation_and_resets() -> None:
     ctrl = env.unwrapped.data.ctrl
     assert np.all(fatigue.MF > 0)
     np.testing.assert_allclose(ctrl, fatigue.MA, rtol=1e-6)
-    assert np.all(ctrl < sigmoid_muscle_activation(1.0, np))
+    assert np.all(ctrl < buchanan_excitation(1.0, np))
     env.reset(seed=1)
     np.testing.assert_array_equal(fatigue.MF, 0.0)
     np.testing.assert_array_equal(fatigue.MA, 0.0)
@@ -111,7 +125,7 @@ def test_reafferentation_reroutes_eip_to_epl() -> None:
     action[eip] = 1.0
     env.step(action)
     assert env.data.ctrl[eip] == 0.0
-    assert env.data.ctrl[epl] == pytest.approx(sigmoid_muscle_activation(1.0, np))
+    assert env.data.ctrl[epl] == pytest.approx(buchanan_excitation(1.0, np))
 
 
 def test_removed_muscle_condition_kwarg_raises() -> None:

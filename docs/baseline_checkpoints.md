@@ -1,5 +1,7 @@
 # Default-run policies (mjlab / RSL-RL)
 
+**Default muscle excitation map (`buchanan_excitation`, 3.2.0):** MyoSuite 3.2.0 switches normalized muscle environments (`normalize_act=True`) from the legacy `[-1, 1] -> (0.00055, 0.924)` sigmoid (`sigmoid_muscle_activation`) and linear `[0, 1]` walk mapping to `buchanan_excitation` (`u(e) = (exp(A * clip(e, 0, 1)) - 1) / (exp(A) - 1)`, `A = -2.0`, `e in [0, 1]`; Buchanan et al. 2004; Lloyd & Besier 2003), giving exact `0.0` rest and `1.0` maximal voluntary excitation across CPU and mjlab twins. Checkpoints trained on MyoSuite 3.0/3.1 require their original excitation mode until 3.2 baselines are retrained: pass `muscle_excitation="sigmoid"` for 3.0/3.1 pose/reach/manipulation baselines, and `muscle_excitation="linear"` for 3.0/3.1 locomotion walk baselines (`myoLegWalk-v0`, `myoLegRoughTerrainWalk-v0`, `myoLegHillyTerrainWalk-v0`; `myoLegDirectional*-v0` remain linear `ModularTaskEnv` tasks).
+
 **Waypoint reset reward fix (3.1.0):** mjlab `myoFullBodyWaypoint-v0` now preserves the initial route distance after repeated resets. The first progress reward of each new episode uses the actual distance change instead of a spurious negative distance. Observation/action shapes and checkpoint loading are unchanged; returns from runs with the old reset bug should be re-evaluated. CPU behavior is unchanged.
 
 Every mjlab-registered env id with a default `scripts/train_mjlab.py` run (Sarc/Fati/Reaf
