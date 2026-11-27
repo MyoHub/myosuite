@@ -140,7 +140,7 @@ This is a vectorised mjlab env, not a Gymnasium env: observations, rewards and a
 row per env, and finished envs reset themselves.
 
 Pass an ``EnvConfig`` to override the episode length, the control step or the muscle-command features
-(noise, fatigue, ...) for either backend; see ``docs/wiki/cross-backend-contract.md``.
+(noise, fatigue, ...) for either backend; see ``docs/source/developer/cross-backend-contract.md``.
 
 Walk-through: ``tutorials/2.2_Train_MjLab_Policy.ipynb``.
 

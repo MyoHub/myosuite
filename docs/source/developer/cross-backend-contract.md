@@ -9,7 +9,7 @@ obvious error.
 
 The **MJX** (JAX) backend is experimental and may not be maintained. Its envs differ in observation order, reward
 weights, thresholds and reset distributions, so MJX-trained policies are not portable. Do not build new work on it
-(limitations: [myosuite/envs/backends/_experimental_mjx/README.md](../../myosuite/envs/backends/_experimental_mjx/README.md)).
+(limitations: [myosuite/envs/backends/_experimental_mjx/README.md](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/backends/_experimental_mjx/README.md)).
 
 ---
 
@@ -332,7 +332,7 @@ metadata and default sampling settings for the MyoSuite config. That successful 
 Register a MyoSuite-specific binding that implements those semantics and validate its reference state and clock;
 the built-in mapping is unsupported for `myoMimic-v0`. The heading-command pilot below does not test this path.
 
-The [SuperMimic training package](../../training/supermimic/README.md) returns an inference callable with separate
+The [SuperMimic training package](https://github.com/MyoHub/myosuite/blob/dev/training/supermimic/README.md) returns an inference callable with separate
 `policy` and `goal` observation slots. Its `Policy` module embeds both frozen normalizers, but the package currently
 has no dedicated ONNX export API. A two-input module export does not export observation/history assembly, motion
 sampling or the browser command binding; it is not an end-to-end SuperMimic browser deployment. The generic RSL-RL

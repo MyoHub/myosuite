@@ -1,4 +1,4 @@
-# Deployment manifests
+# Deployment Manifests
 
 Record the **actual configured model**, rather than a fresh default env, when scaling, strength, mass, wrappers or
 timing differ from the registration. `manifest.json` schema 2 keeps the schema-1 contract fields and can add a

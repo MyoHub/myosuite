@@ -49,7 +49,7 @@ simple to advanced; extra files of notebook `X.Y` live in `files/X.Y/`.
 | **4 — Modelling and conditions** | | |
 | 4.1 | [Move Hand Fingers](./4.1_Move_Hand_Fingers.ipynb) | `pip install -e ".[viz]"` |
 | 4.2 | [Fatigue Modeling](./4.2_Fatigue_Modeling.ipynb) | `pip install -e ".[rl,viz]"` |
-| 4.3 | [Modular Task Config](./4.3_Modular_Task_Config.ipynb) — **experimental**; prefer the `TaskSpec` / `ModelBuilder` workflow (`docs/wiki/adding-a-new-task.md`) | — |
+| 4.3 | [Modular Task Config](./4.3_Modular_Task_Config.ipynb) — **experimental**; prefer the `TaskSpec` / `ModelBuilder` workflow (`docs/source/developer/adding-a-new-task.md`) | — |
 | 4.4 | [Programmatic Waypoint Tasks](./4.4_Programmatic_Waypoint_Tasks.ipynb) — scene + actor + ordered waypoints (`myoFullBodyWaypoint-v0`), with optional TERRA-4B policy playback; [Open in Colab](https://colab.research.google.com/github/MyoHub/myosuite/blob/main/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb) ([pending-branch preview](https://colab.research.google.com/github/MyoHub/myosuite/blob/dev/tutorials/4.4_Programmatic_Waypoint_Tasks.ipynb)) | `.[musclemimic,viz]` + `orbax-checkpoint`; downloads public TERRA-4B; generates its terrain reference locally |
 | 4.4 ADL | [Optional furnished apartment extension](./files/4.4/adl_apartment/README.md) — a standalone TERRA policy walkthrough; **not run in CI** | manual/Colab execution; public TERRA checkpoint and rendering dependencies |
 | **5 — Full body (MuscleMimic, myoSuperMimic, MyoChallenge)** | | |

@@ -1,7 +1,5 @@
 # Training Guidelines
 
-> Related proposal: #580
-
 MyoSuite provides environments, simulation, task definitions, and reusable runtime functionality. Training algorithms and experimental learning methods should stay outside the installable `myosuite` package.
 
 ## Placement
@@ -52,10 +50,10 @@ Every new method under `training/<method>/` includes a benchmark against PPO on 
 
 | Task | Registered environment | Definition |
 |---|---|---|
-| Elbow random reaching (random target joint angle) | `myoElbowPose1D6MRandom-v0` | [Basic task registration](../../myosuite/envs/tasks/suites/basic.py) |
-| Single-arm MyoChallenge pick and place | `myoChallengeRelocateP1-v0` | [Challenge task registration](../../myosuite/envs/tasks/suites/challenge.py) |
-| Fullbody random directional locomotion | `myoFullBodyDirectional-v0` | [Directional task](../../myosuite/envs/tasks/mimic/cpu.py) |
-| Fullbody motion mimic | `myoMimic-v0` (default `myofullbody` model and `supermimic` preset) | [Mimic task registration](../../myosuite/envs/tasks/mimic/__init__.py) |
+| Elbow random reaching (random target joint angle) | `myoElbowPose1D6MRandom-v0` | [Basic task registration](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/tasks/suites/basic.py) |
+| Single-arm MyoChallenge pick and place | `myoChallengeRelocateP1-v0` | [Challenge task registration](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/tasks/suites/challenge.py) |
+| Fullbody random directional locomotion | `myoFullBodyDirectional-v0` | [Directional task](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/tasks/mimic/cpu.py) |
+| Fullbody motion mimic | `myoMimic-v0` (default `myofullbody` model and `supermimic` preset) | [Mimic task registration](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/tasks/mimic/__init__.py) |
 
 Use the registered defaults, including randomized targets/headings and the motion distribution. `myoMimicFullbody-v0` is random-target site tracking, not a substitute for motion mimic. Any task or backend exception requires explicit human approval linked in the PR and an explanation in the method's README; missing results must not be presented as benchmark completion.
 
@@ -66,7 +64,7 @@ Run the method's own trainer and PPO side by side on each backend being reported
 - Report final success rate or return as mean ± std over seeds, learning curves against environment steps and against wall-clock time, and peak memory or GPU hours.
 - State in one sentence how the method differs, with the numbers that show it: for example better final performance, more sample-efficient, faster in wall-clock, more robust, or able to do something PPO cannot.
 
-Put the table and curves in the method's README. Pin the checkpoints and evaluation logs on Hugging Face at a revision (see [AGENTS.md](../../AGENTS.md), *Model weights*). For methods where PPO is not the natural reference (imitation or offline learning, for example), add the closest standard baseline, such as behaviour cloning, and keep PPO as the common reference row.
+Put the table and curves in the method's README. Pin the checkpoints and evaluation logs on Hugging Face at a revision (see [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md), *Model weights*). For methods where PPO is not the natural reference (imitation or offline learning, for example), add the closest standard baseline, such as behaviour cloning, and keep PPO as the common reference row.
 
 ## Boundary
 

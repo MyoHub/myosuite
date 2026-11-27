@@ -85,7 +85,7 @@ Muscle-condition variants are registered for the base ``myo*`` CPU environments.
 the base env registered together with the matching wrapper (``SarcopeniaWrapper``,
 ``FatigueWrapper``, ``ReafferentationWrapper``), so the same features work on any env that runs
 muscle stages; see :doc:`quickstart_neuroscience` for examples and
-``docs/wiki/cross-backend-contract.md`` for how features are registered and which envs and
+``docs/source/developer/cross-backend-contract.md`` for how features are registered and which envs and
 backends support them:
 
 .. list-table::
