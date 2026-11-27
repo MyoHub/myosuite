@@ -9,9 +9,8 @@ myosuite/          # core package (see below)
 docs/source/       # Sphinx documentation (quickstarts, environment reference, API)
 docs/source/developer/         # this developer wiki
 scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
-training/          # method projects with their own pyproject.toml, outside the package (chasetag_teacher, dynsyn); see training-guidelines.md
+training/          # self-contained method projects with their own pyproject.toml, outside the package (see training/README.md & training-guidelines.md)
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
-training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, supermimic/)
 tools/             # standalone data/perception CLIs with isolated dependencies (instanthmr/)
 .github/           # CI and release workflows
 ```

@@ -70,6 +70,18 @@ All `--env.*` / `--agent.*` options of mjlab's configs apply, and so does `--fea
 as in `scripts/train_mjlab.py`. The console scripts `dynsyn-groups` and `dynsyn-train` are the same
 commands. The step counts of the schedule are environment steps summed over all envs.
 
+## Benchmark against PPO
+
+Matched `MjlabOnPolicyRunner` comparisons against default `scripts/train_mjlab.py` PPO (`desired_kl = 0.03` on both arms, `K = 40` centred length-similarity groups, `--stop-on-success` at `95%` deterministic success; PR `#572`):
+
+| Environment | Seeds | Default PPO (`80` actions, iters to `95%`) | `DynSyn` groups-only (`40` actions, `--max-amplitude 0`) | Summary |
+|---|---|---|---|---|
+| `myoLegWalk-v0` | `0–5` (`6` seeds) | `582, 662, 737, 839, 956, 1357` (median `788`) | **`502, 654, 720, 774, 811, 877`** (median **`747`**) | Converges faster in the median and cuts worst-seed tail iterations by `35%` (`877` vs `1357`). |
+| `myoLegRoughTerrainWalk-v0` | `0–1` (`2` seeds) | `736, 912` | **`561, 682`** | `24–25%` fewer PPO iterations on rough heightfields. |
+| `myoLegHillyTerrainWalk-v0` | `0–1` (`2` seeds) | `1014, >3000` (`88%` at iter `3000`) | **`894, 1612`** | Reaches `95%` deterministic success on both seeds where plain PPO plateaus at `88%` on seed `1`. |
+
+On `myoLegWalk-v0`, `K = 40` groups alone (`--max-amplitude 0`) outperformed enabling per-muscle amplitude corrections from the start (`1015` iters) or ramping them mid-run; start with `--max-amplitude 0` and only enable bounded per-muscle corrections when a task requires asymmetric within-group muscle individuation.
+
 ## Tests
 
 ```bash

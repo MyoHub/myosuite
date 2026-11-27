@@ -137,27 +137,28 @@ Muscle-condition variants of an env are separate ids with a prefix: `myoSarcElbo
 
 
 
-## Environments
+## Environments & Task Guide
 
-| Body      | Example IDs                                                     |
-| --------- | --------------------------------------------------------------- |
-| Elbow     | `myoElbowPose1D6MRandom-v0`, `myoFatiElbowPose1D6MRandom-v0` |
-| Finger    | `myoFingerPoseRandom-v0`, `myoFingerReachRandom-v0`         |
-| Hand      | `myoHandPoseRandom-v0`, `myoChallengeBaodingP2-v1`          |
-| Arm       | `myoArmReachRandom-v0`                                        |
-| Leg       | `myoLegWalk-v0`, `myoLegDirectionalForward-v0`              |
-| Full body | `myoMimicFullbody-v0`                                         |
-
-List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosuite.myosuite_env_suite))"`. Annotated catalog: [environments](https://myosuite.readthedocs.io/en/latest/environments.html).
-
-### Backends
-
-| Backend | Use | Build an env in Python | Train |
+| Task family | Representative `env_id`s | Actuation & horizon notes | Recommended training route |
 | --- | --- | --- | --- |
-| **CPU** (Gymnasium) | playback, debug, SB3 | `make_env(env_id)` | `scripts/train_sb3.py <env_id>` (PPO, SAC or TD3) |
-| **mjlab** (MuJoCo Warp) | parallel GPU training | `make_env(env_id, backend="mjlab", num_envs=...)` | `scripts/train_mjlab.py <env_id>` |
+| **Joint Pose & Spatial Reach** | `myoElbowPose1D6MRandom-v0`, `myoFingerReachRandom-v0`, `myoArmReachRandom-v0`, `myoTorsoPoseFixed-v0` | `5–290` muscles; terminal `solved` checks joint-angle norm or fingertip distance | GPU: `scripts/train_mjlab.py` (`--env.scene.num-envs 1024+`); CPU (`<=6` muscles): `scripts/train_sb3.py` |
+| **Dexterous Hand Manipulation** | `myoHandPoseRandom-v0`, `myoHandKeyTurnRandom-v0`, `myoHandReorient100-v0`, `myoChallengeBaodingP2-v1`, `myoChallengeRelocateP2-v0`, `myoChallengeBimanual-v0` | `39–126` muscles, multi-finger contacts; pose/reach have `mjlab` twins, contact manipulation runs on CPU or MuscleMimic bimanual (`myoMimicBimanual-v0`) | `scripts/train_mjlab.py` on `myoHandPose*`/`Reach*`; synergy basis ([`tutorials/2.3_SAR.ipynb`](tutorials/2.3_SAR.ipynb)) or imitation (`myoMimicBimanual-v0`) for contact manipulation |
+| **Bipedal Locomotion & Terrain** | `myoLegWalk-v0`, `myoLegDirectionalRandom-v0`, `myoLegRoughTerrainWalk-v0`, `myoLegHillyTerrainWalk-v0`, `myoChallengeOslRunRandom-v0` | `80` muscles; `solved` requires upright posture + planar velocity within `0.5 m/s` of target over the final `1 s` | `scripts/train_mjlab.py`, [`training/dynsyn`](training/dynsyn/README.md) (`K = 40` muscle synergies), or [`tutorials/2.4_MyoReflex_Walk.ipynb`](tutorials/2.4_MyoReflex_Walk.ipynb) |
+| **Full-Body Motion Tracking (Mimic)** | `myoMimic-v0`, `myoMimicFullbody-v0`, `myoFullBodyWaypoint-v0` | `354` muscles (`myofullbody`) or `700` muscles (`musclemimic`); single-clip or `972`-clip AMASS/KIT tracking | Multi-clip in ~30 min: [`training/supermimic`](training/supermimic/README.md); single-clip PPO/SAR: `scripts/train_mjlab.py` ([`tutorials/5.3`](tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb), [`5.5`](tutorials/5.5_MuscleMimic_SAR.ipynb)) |
+| **Competitive & Multi-Agent Sports** | `myoChallengeTableTennisP2-v0`, `myoChallengeChaseTagFBP2-v0`, `myoChallengeChaseTagFBVs-v0`, `myoChallengeSoccerP2-v0` | `63–354` muscles per agent; high-speed ball intercepts or `1v1` pursuit/evasion | Single-agent `mjlab` twins: `scripts/train_mjlab.py`; `1v1` `ChaseTagFBVs`: [`training/chasetag_teacher`](training/chasetag_teacher/README.md) ([`tutorials/5.6`](tutorials/5.6_ChaseTag_MyoChallenge.ipynb), [`5.7`](tutorials/5.7_ChaseTag_Steered_Teacher.ipynb)) |
+| **Clinical & Perturbed Conditions** | `myoFati*`, `myoSarc*`, `myoReaf*`, or `EnvConfig(..., features=...)` | Cumulative 3CC-r fatigue, `50%` sarcopenia peak force, tendon reafferentation, van Beers motor noise | Pass `--feature fatigue` / `motor-noise` to `scripts/train_mjlab.py` and `scripts/eval_mjlab_policy.py` ([neuroscience guide](docs/source/quickstart_neuroscience.rst)) |
 
-The mjlab backend needs `pip install -e ".[mjlab]"`. `make_env` only builds the env (to step it, evaluate a policy or write your own training loop); `scripts/train_sb3.py` (CPU) and `scripts/train_mjlab.py` (GPU) are the ready-made training scripts.
+List every registered CPU ID: `python -c "import myosuite; print('\n'.join(myosuite.myosuite_env_suite))"`. Full environment catalog: [environments](https://myosuite.readthedocs.io/en/latest/environments.html) · full method comparison and PPO benchmarks: [`training/README.md`](training/README.md) · default checkpoints: [`docs/baseline_checkpoints.md`](docs/baseline_checkpoints.md).
+
+### Backends & Training Modules
+
+| Layer | Purpose | Build / Install | Run |
+| --- | --- | --- | --- |
+| **CPU** (Gymnasium) | Playback, debugging, SB3 | `make_env(env_id)` (`pip install -e ".[rl]"`) | `python scripts/train_sb3.py <env_id>` (`PPO`, `SAC`, `TD3`) |
+| **mjlab** (MuJoCo Warp) | Parallel GPU RL | `make_env(env_id, backend="mjlab", num_envs=...)` (`pip install -e ".[mjlab]"`) | `python scripts/train_mjlab.py <env_id> --env.scene.num-envs 1024` |
+| **`training/<method>/`** | Specialized algorithms (synergies, world models, distillation) | `pip install -e training/<method>` (isolated dependencies) | See [`training/README.md`](training/README.md) for method comparison & benchmarks |
+
+`make_env` only builds the environment (to step it, evaluate a policy, or write a custom loop). Method-specific trainers live outside the installable `myosuite` wheel under [`training/`](training/README.md) and export portable checkpoints (`.pt` with `ActionMap`, or `.onnx` via `myosuite-export-onnx`) that replay on CPU and `mjlab` without the training package installed.
 
 A task’s CPU and mjlab halves share one `env_id` (see [cross-backend contract](docs/source/developer/cross-backend-contract.md)). `make_env(EnvConfig(env_id, backend=..., features=...))` builds either half with the same episode length, control step and muscle-command features. An MJX (JAX) path also exists; it is **experimental** and not the supported training route.
 

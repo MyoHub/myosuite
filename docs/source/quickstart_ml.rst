@@ -233,6 +233,42 @@ An MJX (JAX) backend also exists (``pip install -e ".[mjx]"``). It is
 experimental — prefer mjlab for new GPU work.
 
 
+Choosing a Training Method by Task
+-----------------------------------
+
+MyoSuite tasks span from 1-DoF / 6-muscle single-joint control to 354–700-muscle full-body
+locomotion and multi-agent sports. Beyond the built-in ``scripts/train_sb3.py`` and
+``scripts/train_mjlab.py`` runners, method-specific trainers live in ``training/<method>/``
+outside the core package (with side-by-side PPO benchmarks in
+`training/README.md <https://github.com/MyoHub/myosuite/blob/dev/training/README.md>`_):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 28 48
+
+   * - Task family
+     - Characteristics
+     - Recommended route
+   * - **Single-limb Pose & Reach** (``myoElbowPose*``, ``myoFinger*``, ``myoArmReach*``, ``myoTorsoPose*``)
+     - 5–290 muscles; smooth dense distance/angle shaping; ``solved`` checks terminal pose/tip threshold.
+     - Start with ``scripts/train_mjlab.py --env.scene.num-envs 1024`` on GPU, or ``scripts/train_sb3.py`` on CPU for small models (``myoElbow*``, ``myoFinger*``).
+   * - **Dexterous Hand Manipulation** (``myoHandPose*``, ``myoHandKeyTurn*``, ``myoHandReorient*``, ``Baoding``, ``Relocate``, ``Bimanual``)
+     - 39–126 muscles, coupled multi-joint tendons and intermittent object contacts.
+     - ``myoHandPose*`` / ``myoHandReach*`` have ``mjlab`` twins; for contact-rich hand tasks use synergy representations (``tutorials/2.3_SAR.ipynb``) or bimanual motion tracking (``myoMimicBimanual-v0``).
+   * - **Bipedal Locomotion & Terrain** (``myoLegWalk-v0``, ``myoLegDirectional*``, ``myoLeg{Rough,Hilly,Stair}TerrainWalk-v0``)
+     - 80 muscles; ``solved`` requires staying upright within 0.5 m/s of target velocity across the final second.
+     - ``scripts/train_mjlab.py`` (``num-envs 1024–4096``), ``training/dynsyn`` (``K = 40`` co-lengthening muscle synergies, faster and lower-variance on rough/hilly terrain), or spinal reflex control (``tutorials/2.4_MyoReflex_Walk.ipynb``).
+   * - **Full-Body Motion Tracking** (``myoMimic-v0``, ``myoMimicFullbody-v0``, ``myoFullBodyWaypoint-v0``)
+     - 354–700 muscles tracking retargeted AMASS / KIT clips.
+     - For multi-clip tracking (972 KIT clips in ~30 min on 1 GPU), use ``training/supermimic``. For single-clip PPO or SAR tracking, use ``scripts/train_mjlab.py`` (``tutorials/5.3_Fullbody_Train_MjLab_Policy.ipynb``, ``5.5_MuscleMimic_SAR.ipynb``).
+   * - **Competitive & Multi-Agent Sports** (``myoChallengeTableTennisP*``, ``myoChallengeChaseTagFBP2-v0``, ``myoChallengeChaseTagFBVs-v0``, ``Soccer``)
+     - High-speed intercepts or non-stationary 1v1 pursuit and evasion.
+     - ``TableTennis`` and single-agent ``ChaseTagFBP2`` run directly on ``mjlab``; for 1v1 ``myoChallengeChaseTagFBVs-v0``, steer a SuperMimic tracker and distil a yaw-canonicalised ONNX student with ``training/chasetag_teacher`` (``tutorials/5.6_ChaseTag_MyoChallenge.ipynb``, ``5.7_ChaseTag_Steered_Teacher.ipynb``).
+   * - **Degraded / Clinical Muscle Conditions** (``myoFati*``, ``myoSarc*``, ``myoReaf*``, ``--feature``)
+     - Cumulative 3CC-r muscle fatigue, 50% sarcopenia peak force, tendon transfer, signal-dependent motor noise.
+     - Pass matching ``--feature`` flags to both training and ``scripts/eval_mjlab_policy.py``; see :doc:`quickstart_neuroscience` and :doc:`quickstart_rehabilitation`.
+
+
 Environments
 ------------
 
