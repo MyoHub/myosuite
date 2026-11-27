@@ -26,6 +26,10 @@ class LambdaHoldOptions:
     damping_s: float = 0.04
     margin_fraction: float = 0.35
     hold_steps: int = 2
+    end_hold_steps: int | None = None
+    start_steps: float = 0.0
+    ramp_steps: float = 0.0
+    end_reflex_weight: float = 1.0
 
 
 def build_lambda_hold_for_mjlab_cfg(
@@ -88,6 +92,10 @@ def main(argv: list[str] | None = None) -> None:
         damping_s: float = 0.04
         margin_fraction: float = 0.35
         hold_steps: int = 2
+        end_hold_steps: int | None = None
+        start_steps: float = 0.0
+        ramp_steps: float = 0.0
+        end_reflex_weight: float = 1.0
         resume: str | None = None
         device: str | None = None
         log_root: str = "logs/rsl_rl"
@@ -125,7 +133,14 @@ def main(argv: list[str] | None = None) -> None:
         amap = build_lambda_hold_for_mjlab_cfg(
             cfg.env,
             LambdaHoldOptions(
-                cfg.kp, cfg.damping_s, cfg.margin_fraction, cfg.hold_steps
+                cfg.kp,
+                cfg.damping_s,
+                cfg.margin_fraction,
+                cfg.hold_steps,
+                cfg.end_hold_steps,
+                cfg.start_steps,
+                cfg.ramp_steps,
+                cfg.end_reflex_weight,
             ),
         )
         apply_action_map(cfg.env, amap)

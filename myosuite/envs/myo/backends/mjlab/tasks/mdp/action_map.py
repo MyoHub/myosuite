@@ -126,6 +126,13 @@ class ActionMapAction(ActionTerm):
             saved_counter=int(self._env.common_step_counter),
         )
 
+    def set_hold_steps(self, hold_steps: int) -> None:
+        """Override ``action_map.hold_steps`` at runtime."""
+        if hold_steps < 1:
+            raise ValueError(f"hold_steps must be >= 1, got {hold_steps}")
+        if hasattr(self.action_map, "hold_steps"):
+            self.action_map.hold_steps = int(hold_steps)
+
     def process_actions(self, actions: torch.Tensor) -> None:
         self._raw[:] = actions.to(self._raw.device)
         cur_steps = self.env_steps
