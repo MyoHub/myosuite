@@ -56,17 +56,20 @@ def compute_damage(
     data: mujoco.MjData,
     meta: ChaseTagVsModelMeta,
     config: ChaseTagVsConfig,
+    task: str = "CHASE",
 ) -> dict[str, float]:
     """Damage dict for the MultiAgentTaskEnv health/KO contract.
 
-    A tag delivers ``ko_health_threshold`` damage instantly to the runner,
-    which meets the KO condition on that same step and ends the episode.
+    A tag delivers ``ko_health_threshold`` damage instantly from the active
+    chaser to the active runner, meeting the KO condition on that same step.
     No damage is accrued otherwise.
     """
     tagged = is_tagged(data, meta, config)
+    chaser = CHASER_ID if task == "CHASE" else RUNNER_ID
+    runner = RUNNER_ID if task == "CHASE" else CHASER_ID
     return {
-        CHASER_ID: config.ko_health_threshold if tagged else 0.0,
-        RUNNER_ID: 0.0,
+        chaser: config.ko_health_threshold if tagged else 0.0,
+        runner: 0.0,
     }
 
 
@@ -93,9 +96,8 @@ def get_score(time: float, task: str, config: ChaseTagVsConfig) -> float:
         Score in [0, 1].
     """
     t = round(time, 4)
-    if task == "CHASE":
-        return 1.0 - t / config.maxTime
-    return t / config.maxTime
+    raw = 1.0 - t / config.maxTime if task == "CHASE" else t / config.maxTime
+    return float(np.clip(raw, 0.0, 1.0))
 
 
 def compute_agent_reward(

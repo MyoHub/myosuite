@@ -6,7 +6,7 @@ task's observation, reward and failure rule computed analytically, and a policy 
 imagined rollouts.
 
 This is a self-contained training project (`training/supermimic/`, import name `supermimic`), not part of the
-installable `myosuite` package; see `docs/wiki/training-guidelines.md`. MyoSuite never imports it.
+installable `myosuite` package; see `docs/source/developer/training-guidelines.md`. MyoSuite never imports it.
 
 ## Attribution and licences
 

@@ -1005,3 +1005,76 @@ def test_a_partial_edit_fn_hits_the_recipe_cache() -> None:
     info = model_builder._recipe_spec.cache_info()
     assert (info.hits, info.misses) == (2, 2)
     assert model.geom_rgba[0][3] == pytest.approx(0.5)
+
+
+@_REQUIRES_MYO_SIM
+def test_empty_prefix_attach_warning_is_suppressed_without_hiding_others(
+    tmp_path: Path,
+) -> None:
+    """Intentional empty-prefix fragment builds suppress only MuJoCo's prefix warning."""
+    import warnings
+
+    import myosuite.core.model_recipes  # noqa: F401
+    from myosuite.core.model_builder import (
+        ModelBuilder,
+        build_from_recipe,
+        clear_spec_caches,
+        suppress_empty_prefix_attach_warning,
+    )
+    from myosuite.core.model_recipes import materialize_recipe_xml
+
+    clear_spec_caches()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ModelBuilder().attach_fragment("elbow").build()
+        build_from_recipe("elbow_sarcopenia")
+        materialize_recipe_xml("hand_pose", tmp_path / "hand_pose.xml")
+        with suppress_empty_prefix_attach_warning():
+            warnings.warn(
+                "Attaching a spec with an empty prefix may prevent the model from "
+                "being saved correctly.",
+                UserWarning,
+                stacklevel=1,
+            )
+            warnings.warn("Unrelated compiler warning", UserWarning, stacklevel=1)
+
+    messages = [str(w.message) for w in caught]
+    assert not any("empty prefix" in m for m in messages), messages
+    assert any("Unrelated compiler warning" in m for m in messages), messages
+
+
+def test_attached_fragments_accumulate_nuserdata() -> None:
+    """Fragment nuserdata (such as myo_sim 0.3 compliant tendon state) survives attach."""
+    import warnings
+
+    import mujoco
+
+    from myosuite.core.model_builder import ModelBuilder
+
+    def fragment(body_name: str, nuserdata: int) -> mujoco.MjSpec:
+        spec = mujoco.MjSpec()
+        spec.nuserdata = nuserdata
+        body = spec.worldbody.add_body(name=body_name)
+        body.add_geom(size=[0.05, 0.0, 0.0], mass=1.0)
+        return spec
+
+    seed = fragment("base", 10)
+    arm_r = fragment("arm_r", 72)
+    arm_l = fragment("arm_l", 72)
+    builder = (
+        ModelBuilder.from_spec(seed)
+        .attach_spec(arm_r, name="arm_r")
+        .attach_spec(arm_l, name="arm_l")
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        single, _ = ModelBuilder().attach_spec(fragment("leg", 144), name="leg").build()
+        first, _ = builder.build()
+        second, _ = builder.build()
+
+    assert single.nuserdata == 144
+    assert first.nuserdata == 154
+    assert second.nuserdata == 154
+    assert (seed.nuserdata, arm_r.nuserdata, arm_l.nuserdata) == (10, 72, 72)
+    assert not any("nuserdata" in str(w.message) for w in caught)

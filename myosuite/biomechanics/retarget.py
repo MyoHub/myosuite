@@ -33,6 +33,7 @@ import json
 import math
 import os
 import sys
+import tempfile
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -41,6 +42,7 @@ from typing import Any, Protocol
 import mujoco
 import numpy as np
 
+from myosuite.core.retargeting import _geom_bottom as _geom_lowest_z
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 REFIT_META_KEY = "refit_meta"
@@ -537,27 +539,6 @@ def _orientation_errors(
     return out
 
 
-def _geom_lowest_z(m: mujoco.MjModel, d: mujoco.MjData, g: int) -> float:
-    """Lowest world z of a collision geom (sphere, capsule, cylinder, ellipsoid, box, mesh)."""
-    t, s = m.geom_type[g], m.geom_size[g]
-    R, z = d.geom_xmat[g].reshape(3, 3), d.geom_xpos[g, 2]
-    G = mujoco.mjtGeom
-    if t == G.mjGEOM_SPHERE:
-        return z - s[0]
-    if t == G.mjGEOM_CAPSULE:
-        return z - abs(R[2, 2]) * s[1] - s[0]
-    if t == G.mjGEOM_CYLINDER:
-        return z - abs(R[2, 2]) * s[1] - s[0] * np.sqrt(max(0.0, 1 - R[2, 2] ** 2))
-    if t == G.mjGEOM_ELLIPSOID:
-        return z - np.sqrt(((R[2] * s) ** 2).sum())
-    if t == G.mjGEOM_BOX:
-        return z - (np.abs(R[2]) * s).sum()
-    if t == G.mjGEOM_MESH:
-        a, n = m.mesh_vertadr[m.geom_dataid[g]], m.mesh_vertnum[m.geom_dataid[g]]
-        return z + (m.mesh_vert[a : a + n] @ R[2]).min()
-    return z
-
-
 def _foot_kinematics(
     m: mujoco.MjModel, lmap: LandmarkMap, qpos: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -690,25 +671,36 @@ def validate_refit(
     lo, hi = ik.lo[ik.bounded], ik.hi[ik.bounded]
     viol = int(((qpos[:, a] < lo - 1e-9) | (qpos[:, a] > hi + 1e-9)).sum())
     # dependent joints the polynomials carry outside their own range (informational)
-    dep_j = [int(np.flatnonzero(m.jnt_qposadr == q)[0]) for q in c.dep_qpos]
-    dep_lim = np.array([m.jnt_limited[j] for j in dep_j], bool)
-    dep_lo, dep_hi = m.jnt_range[dep_j].T
-    dq = qpos[:, c.dep_qpos]
-    dep_viol = int((dep_lim & ((dq < dep_lo - 1e-6) | (dq > dep_hi + 1e-6))).sum())
+    if len(c.dep_qpos) > 0:
+        dep_j = [int(np.flatnonzero(m.jnt_qposadr == q)[0]) for q in c.dep_qpos]
+        dep_lim = np.array([m.jnt_limited[j] for j in dep_j], bool)
+        dep_lo, dep_hi = m.jnt_range[dep_j].T
+        dq = qpos[:, c.dep_qpos]
+        dep_viol = int((dep_lim & ((dq < dep_lo - 1e-6) | (dq > dep_hi + 1e-6))).sum())
+    else:
+        dep_viol = 0
     # feet: penetration of the ground plane (z = 0), sliding and floating in contact
     low, org = _foot_kinematics(m, lmap, qpos)
     contact = np.asarray(targets.contact, bool)
     soles = low[np.isfinite(low)]
     pen = float(max(0.0, -soles.min()) * 1e3) if soles.size else None
-    slide = _sliding(org, contact, dt)
+    slide = _sliding(org, contact, dt) if len(qpos) >= 2 else None
     float_mm = np.maximum(low[contact & np.isfinite(low)], 0.0) * 1e3
     # velocity spikes: joint accelerations above the floor, off and at the limits
-    v = np.gradient(qpos[:, a], dt, axis=0)
-    acc = np.abs(np.diff(qpos[:, a], 2, axis=0)) / dt**2
-    at = (qpos[:, a] <= lo + 1e-9) | (qpos[:, a] >= hi - 1e-9)
-    at_limit = at[:-2] | at[1:-1] | at[2:]  # frames of each second difference
-    spikes = int(((acc > th.accel_spike_floor) & ~at_limit).sum())
-    stops = int(((acc > th.accel_spike_floor) & at_limit).sum())
+    v = (
+        np.gradient(qpos[:, a], dt, axis=0)
+        if len(qpos) >= 2
+        else np.zeros_like(qpos[:, a])
+    )
+    if len(qpos) >= 3:
+        acc = np.abs(np.diff(qpos[:, a], 2, axis=0)) / dt**2
+        at = (qpos[:, a] <= lo + 1e-9) | (qpos[:, a] >= hi - 1e-9)
+        at_limit = at[:-2] | at[1:-1] | at[2:]  # frames of each second difference
+        spikes = int(((acc > th.accel_spike_floor) & ~at_limit).sum())
+        stops = int(((acc > th.accel_spike_floor) & at_limit).sum())
+    else:
+        spikes = 0
+        stops = 0
     out: dict[str, Any] = {
         "frames": len(qpos),
         "landmark_rmse_mm": float(np.sqrt((err**2).mean())),
@@ -1045,13 +1037,17 @@ def find_cache_root(
             continue
         tried.append(sib)
         clip = sib / probe
-        if clip.is_file():
-            meta = read_refit_meta(clip) or {}
-            if (meta.get("model"), meta.get("model_fingerprint")) == (
-                model_name, fingerprint,
-            ):  # fmt: skip
-                return sib, tried
+        if clip.is_file() and clip_fits(clip, model_name, fingerprint):
+            return sib, tried
     return None, tried
+
+
+def clip_fits(path: str | Path, model_name: str, fingerprint: str) -> bool:
+    """Whether a clip was refitted on *model_name* with kinematic *fingerprint*."""
+    meta = read_refit_meta(path) or {}
+    return (
+        meta.get("model") == model_name and meta.get("model_fingerprint") == fingerprint
+    )
 
 
 def save_refit(
@@ -1069,17 +1065,27 @@ def save_refit(
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp.npz")
-    np.savez_compressed(
-        tmp,
-        qpos=qpos.astype(np.float64),
-        joint_names=np.array([model.joint(j).name for j in range(model.njnt)]),
-        jnt_type=model.jnt_type.astype(np.int32),
-        frequency=np.float64(frequency),
-        split_points=np.array([0, len(qpos)], np.int32),
-        **{REFIT_META_KEY: np.array(json.dumps(meta, sort_keys=True))},
-    )
-    tmp.replace(path)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=".npz",
+        delete=False,
+    ) as fh:
+        tmp = Path(fh.name)
+    try:
+        np.savez_compressed(
+            tmp,
+            qpos=qpos.astype(np.float64),
+            joint_names=np.array([model.joint(j).name for j in range(model.njnt)]),
+            jnt_type=model.jnt_type.astype(np.int32),
+            frequency=np.float64(frequency),
+            split_points=np.array([0, len(qpos)], np.int32),
+            **{REFIT_META_KEY: np.array(json.dumps(meta, sort_keys=True))},
+        )
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def read_refit_meta(path: str | Path) -> dict[str, Any] | None:
@@ -1258,15 +1264,24 @@ def stamp_fingerprint(
     with np.load(path, allow_pickle=False) as d:
         arrays = {k: d[k] for k in d.files}
     arrays[REFIT_META_KEY] = np.array(json.dumps(meta, sort_keys=True))
-    tmp = path.with_suffix(".tmp.npz")
-    np.savez_compressed(tmp, **arrays)
-    with np.load(tmp, allow_pickle=False) as d:
-        q = d["qpos"]
-        same = q.dtype == arrays["qpos"].dtype and q.shape == arrays["qpos"].shape
-        if not (same and q.tobytes() == arrays["qpos"].tobytes()):
-            tmp.unlink()
-            raise RuntimeError(f"{path}: qpos changed on rewrite; left untouched")
-    tmp.replace(path)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=".npz",
+        delete=False,
+    ) as fh:
+        tmp = Path(fh.name)
+    try:
+        np.savez_compressed(tmp, **arrays)
+        with np.load(tmp, allow_pickle=False) as d:
+            q = d["qpos"]
+            same = q.dtype == arrays["qpos"].dtype and q.shape == arrays["qpos"].shape
+            if not (same and q.tobytes() == arrays["qpos"].tobytes()):
+                raise RuntimeError(f"{path}: qpos changed on rewrite; left untouched")
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return True
 
 
@@ -1652,6 +1667,7 @@ __all__ = [
     "RefitThresholds",
     "check_refit_meta",
     "choose_workers",
+    "clip_fits",
     "collect_clip_files",
     "default_cache_root",
     "empty_summary",

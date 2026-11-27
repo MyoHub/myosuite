@@ -29,6 +29,25 @@ from myosuite.biomechanics.static_optimization import (
 pytestmark = pytest.mark.tier1
 
 
+def test_same_size_qp_rebuild_retains_fast_convergence() -> None:
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><body><joint/><geom size="0.1"/></body></worldbody></mujoco>'
+    )
+    optimizer = StaticOptimizer(model)
+    matrix = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
+    bounds = np.array([20.0, 0.0, 0.0])
+    weight = np.array([0.01, 1.0])
+    _, initial = optimizer._solve_qp(matrix, bounds, bounds, weight)
+    assert initial.status == "solved"
+
+    matrix[2, 1] = 1.0
+    solution, warm = optimizer._solve_qp(matrix, bounds, bounds, weight)
+    _, cold = StaticOptimizer(model)._solve_qp(matrix, bounds, bounds, weight)
+    assert warm.status == cold.status == "solved"
+    np.testing.assert_allclose(solution, [20.0, 0.0], rtol=0, atol=1e-6)
+    assert warm.iter < cold.iter
+
+
 def test_native_solver_diagnostics_are_returned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -402,6 +421,27 @@ def test_max_activation_bounds_one_frame() -> None:
         so.solve(qpos, zero, zero, load).activation, free.activation, atol=1e-6
     )
     env.close()
+
+
+def test_public_optimizer_keeps_caller_model_unchanged() -> None:
+    env = make_env("myoElbowPose1D6MRandom-v0")
+    try:
+        model = env.unwrapped.model
+        original = copy.deepcopy(model)
+        optimizer = StaticOptimizer(
+            model, StaticOptimizationConfig(contact_forces=True, contact_distance=0.05)
+        )
+        optimizer.solve(np.array([1.0]), np.zeros(1), np.zeros(1))
+        assert optimizer.model is not model
+        assert (optimizer.model.geom_margin >= 0.05).all()
+        np.testing.assert_array_equal(model.geom_margin, original.geom_margin)
+        np.testing.assert_array_equal(
+            model.actuator_actearly, original.actuator_actearly
+        )
+        assert model.opt.jacobian == original.opt.jacobian
+        assert model.opt.disableflags == original.opt.disableflags
+    finally:
+        env.close()
 
 
 def test_unsolved_frames_warn_once_per_clip(arm_motion) -> None:

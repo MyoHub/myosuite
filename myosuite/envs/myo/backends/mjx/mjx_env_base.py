@@ -121,6 +121,33 @@ class MjxEnvAccessor:
         """Actuator control range, shape ``(nu, 2)``."""
         return self._model.actuator_ctrlrange
 
+    def joint_limits(self) -> tuple[jax.Array, jax.Array, jax.Array]:
+        """Per-qpos scalar joint limits ``(lo, hi, limited)``, each of shape ``(nq,)``."""
+        nq = int(self._model.nq)
+        lo = jp.zeros((nq,), dtype=jp.float32)
+        hi = jp.zeros((nq,), dtype=jp.float32)
+        limited = jp.zeros((nq,), dtype=jp.bool_)
+        scalar_types = (
+            int(mujoco.mjtJoint.mjJNT_HINGE),
+            int(mujoco.mjtJoint.mjJNT_SLIDE),
+        )
+        for j in range(int(self._model.njnt)):
+            if int(self._model.jnt_type[j]) in scalar_types:
+                qadr = int(self._model.jnt_qposadr[j])
+                is_lim = jp.asarray(self._model.jnt_limited[j]) != 0
+                lo = lo.at[qadr].set(
+                    jp.where(
+                        is_lim, jp.asarray(self._model.jnt_range[j, 0], jp.float32), 0.0
+                    )
+                )
+                hi = hi.at[qadr].set(
+                    jp.where(
+                        is_lim, jp.asarray(self._model.jnt_range[j, 1], jp.float32), 0.0
+                    )
+                )
+                limited = limited.at[qadr].set(is_lim)
+        return lo, hi, limited
+
     def dt(self) -> float:
         """Control timestep in seconds."""
         return self._ctrl_dt
