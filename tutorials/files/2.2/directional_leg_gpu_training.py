@@ -6,7 +6,7 @@
 """Tutorial: train directional myoLeg locomotion on GPU (mjlab), play back on CPU.
 
 MyoSuite tasks have two matched halves under one ``env_id`` (see
-``docs/wiki/engineering-standards.md``):
+``docs/source/developer/engineering-standards.md``):
 
 - **CPU** (`make_env`, MuJoCo C++) — for playback, fine-tuning, and debugging.
 - **GPU** (mjlab / MuJoCo-Warp) — thousands of envs in parallel for fast RL.
