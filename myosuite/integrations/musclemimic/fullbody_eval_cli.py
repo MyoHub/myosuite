@@ -276,7 +276,8 @@ def _minimal_mjx_main(argv: list[str]) -> int:
         if "mjDSBL_PASSIVE" in msg or "mjtDisableBit" in msg:
             logger.error(
                 "MuJoCo and mujoco.mjx versions appear mismatched (try: pip "
-                "install -U 'mujoco>=3.3' or use Linux with myosuite[mjx]). "
+                "install -U 'mujoco>=3.11,<4' 'mujoco-mjx>=3.11,<4' or use Linux "
+                "with myosuite[mjx]). "
                 "See myosuite/integrations/musclemimic/README.md "
                 "(Troubleshooting)"
             )

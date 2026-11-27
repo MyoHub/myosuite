@@ -47,7 +47,7 @@ MyoSuite 3 brings the whole suite to fast, scalable training while keeping the s
 
 ## Install
 
-Python 3.11+ is recommended (Python 3.10–3.14 is supported; the GPU `[mjlab]` extra needs Python ≤3.13). From source (recommended):
+Python 3.11+ is recommended (Python 3.10–3.14 is supported; the GPU `[mjlab]` extra needs Python ≤3.13). Intel Macs are not supported: MuJoCo 3.11+ publishes no Intel macOS wheels. From source (recommended):
 
 ```bash
 git clone https://github.com/MyoHub/myosuite.git

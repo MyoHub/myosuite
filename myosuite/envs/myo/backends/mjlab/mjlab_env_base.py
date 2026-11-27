@@ -402,7 +402,7 @@ try:
 except ImportError:
 
     def normalize_mjlab_env_ids(env: Any, env_ids: Any) -> torch.Tensor:  # type: ignore[misc]
-        """Normalise env_ids to a 1-D long tensor (mjlab < 1.4 fallback)."""
+        """Normalise env_ids to a 1-D long tensor; fallback without mjlab."""
         import torch as _torch
 
         if env_ids is None:

@@ -67,7 +67,7 @@ _UNSUPPORTED_COMPILER_ATTRS = frozenset({"convexhull"})
 
 
 def _strip_unsupported_compiler_attrs(tree: ET.ElementTree) -> bool:
-    """Drop compiler attributes MuJoCo 3.8 does not accept (e.g. convexhull)."""
+    """Drop compiler attributes MuJoCo 3.8 and later reject (e.g. convexhull)."""
     changed = False
     for elem in tree.getroot().iter("compiler"):
         for attr in _UNSUPPORTED_COMPILER_ATTRS:

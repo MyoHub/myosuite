@@ -3,6 +3,9 @@ Installation
 
 Python 3.11+ is recommended (Python 3.10–3.14 is supported; the GPU ``[mjlab]`` extra needs Python ≤3.13).
 
+MyoSuite needs MuJoCo 3.11 or newer, which publishes wheels for Linux (x86_64 and aarch64), Windows (x86_64)
+and Apple-silicon Macs. Intel Macs are not supported.
+
 Security updates
 ~~~~~~~~~~~~~~~~
 

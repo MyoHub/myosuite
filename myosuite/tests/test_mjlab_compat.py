@@ -1021,7 +1021,7 @@ def test_mujoco_warp_version_has_sparse_tendon_transmission_fix() -> None:
     """mjlab installs must use MuJoCo-Warp with the sparse tendon fix."""
     from myosuite.tests.support.optional_deps import require_mujoco_warp
 
-    require_mujoco_warp(min_version="3.7.0")
+    require_mujoco_warp()
 
 
 @pytest.mark.skipif(
