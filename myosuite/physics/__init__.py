@@ -35,9 +35,30 @@ from __future__ import annotations
 
 from typing import Any
 
+from myosuite.physics.base_excitation import (
+    BaseExcitationProfile,
+    BaseKinematics,
+    CompositeBaseProfile,
+    HarmonicBaseProfile,
+    PulseBaseProfile,
+    RecordedBaseProfile,
+    StochasticBaseProfile,
+    inertial_body_wrenches,
+)
 from myosuite.physics.fatigue import CumulativeFatigue
 
-__all__ = ["CumulativeFatigue", "CumulativeFatigueJax"]
+__all__ = [
+    "BaseExcitationProfile",
+    "BaseKinematics",
+    "CompositeBaseProfile",
+    "CumulativeFatigue",
+    "CumulativeFatigueJax",
+    "HarmonicBaseProfile",
+    "PulseBaseProfile",
+    "RecordedBaseProfile",
+    "StochasticBaseProfile",
+    "inertial_body_wrenches",
+]
 
 
 def __getattr__(name: str) -> Any:
