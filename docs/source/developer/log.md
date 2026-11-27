@@ -20,7 +20,7 @@ don't get an entry here.
 
 - Created initial wiki structure (`index`, repository map, standards, workflow, log).
 - Established persistent wiki conventions for LLM-agent navigation and maintenance.
-- Linked wiki usage to agent operating instructions in [CLAUDE.md](../../CLAUDE.md).
+- Linked wiki usage to agent operating instructions in [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md).
 
 ## [2026-04-30] refactor | full repository reorganization executed (branch: refactor/repo-reorganization)
 
@@ -45,9 +45,9 @@ don't get an entry here.
 
 ## [2026-04-30] maintenance | moved wiki under docs
 
-- Relocated wiki files from `wiki/` to `docs/wiki/` to keep the repository root cleaner.
-- Updated [CLAUDE.md](../../CLAUDE.md) mandatory wiki references to point to `docs/wiki/*`.
-- Updated internal wiki links and workflow instructions to use `docs/wiki/*`.
+- Relocated wiki files from `wiki/` to `docs/source/developer/` to keep the repository root cleaner.
+- Updated [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md) mandatory wiki references to point to `docs/source/developer/*`.
+- Updated internal wiki links and workflow instructions to use `docs/source/developer/*`.
 
 ## [2026-10-01] breaking | CPU observation contract (branch: fix/observation-contract)
 
