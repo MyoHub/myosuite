@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.integrations.capture.markers import _read_markers
+from myosuite.integrations.capture import read_markers as _read_markers
 from myosuite.physics.inverse_kinematics import solve_ik
 
 _SOLE_GEOMS = {

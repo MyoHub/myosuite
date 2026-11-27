@@ -6,10 +6,19 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Mapping, Sequence
+from typing import Literal, Protocol
 
 import mujoco
 import numpy as np
+
+
+class ForcePlateWrench(Protocol):
+    """Frame-aligned force-plate wrench in world SI units (N, m, N m)."""
+
+    force: np.ndarray
+    cop: np.ndarray
+    free_torque: np.ndarray
 
 
 def _vector(value: np.ndarray | None, name: str) -> np.ndarray:
@@ -147,3 +156,69 @@ def held_mass_qfrc(
     if site is not None:
         return force_at_site(model, qpos, site, force)
     return force_at_body(model, qpos, body, force, point=point)
+
+
+def force_plates_to_qfrc(
+    model: mujoco.MjModel,
+    qpos: np.ndarray,
+    plates: Sequence[ForcePlateWrench],
+    *,
+    contact_bodies: Sequence[str] = ("calcn_r", "calcn_l"),
+    plate_bodies: Mapping[int, str] | None = None,
+    min_force_n: float = 5.0,
+    max_distance_m: float = 0.35,
+) -> np.ndarray:
+    """Map world-frame force-plate wrenches onto contacting model bodies as ``qfrc``.
+
+    Args:
+        model: Compiled MuJoCo model.
+        qpos: Synchronized poses ``(T, nq)`` or single pose ``(nq,)``.
+        plates: Force-plate records providing ``force`` [N], ``cop`` [m], and
+            ``free_torque`` [N m] in world coordinates.
+        contact_bodies: Candidate body names matched by proximity to ``cop`` when
+            ``plate_bodies`` does not explicitly assign a plate.
+        plate_bodies: Optional ``{plate_index: body_name}`` assignment override.
+        min_force_n: Force-magnitude threshold [N] below which a plate is unloaded.
+        max_distance_m: Maximum CoP-to-body-origin distance [m] for automatic matching.
+
+    Returns:
+        External generalized force ``(T, nv)`` (or ``(nv,)`` for a single pose).
+    """
+    poses = np.asarray(qpos, dtype=float)
+    single = poses.ndim == 1
+    if single:
+        poses = poses[None, :]
+    if poses.ndim != 2 or poses.shape[1] != model.nq:
+        raise ValueError(f"qpos must have shape (T, {model.nq}) or ({model.nq},)")
+
+    cand_ids = [model.body(name).id for name in contact_bodies]
+    data = mujoco.MjData(model)
+    out = np.zeros((len(poses), model.nv))
+
+    for t in range(len(poses)):
+        data.qpos[:] = poses[t]
+        mujoco.mj_fwdPosition(model, data)
+        for p_idx, plate in enumerate(plates):
+            f = plate.force[t]
+            if np.linalg.norm(f) < min_force_n or not np.isfinite(plate.cop[t]).all():
+                continue
+            if plate_bodies is not None and p_idx in plate_bodies:
+                body_name = plate_bodies[p_idx]
+            else:
+                dists = [
+                    np.linalg.norm(data.xpos[bid] - plate.cop[t]) for bid in cand_ids
+                ]
+                best = int(np.argmin(dists))
+                if dists[best] > max_distance_m:
+                    continue
+                body_name = contact_bodies[best]
+            out[t] += force_at_body(
+                model,
+                poses[t],
+                body_name,
+                f,
+                point=plate.cop[t],
+                torque=plate.free_torque[t],
+                frame="world",
+            )
+    return out[0] if single else out
