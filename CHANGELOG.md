@@ -38,6 +38,10 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Fixed
 
+* `myoMimic-v0` clips from `$MYOSUITE_MIMIC_DATASET` fall back like the local cache: without a
+  `<model>/<myo_sim version>` folder, the dataset's first `<model>/*` folder whose clips carry the installed body's
+  kinematic fingerprint is downloaded (`download_retargeted_clips(..., fingerprint, probe)`), so a myo_sim release
+  that leaves the body's kinematics alone keeps the dataset's clips ([#923]).
 * `myosuite.terms.catalog.catalog(include_mjlab=True)` now scans the six modules under
   `backends.mjlab.tasks.mdp.*` (`action_map`, `actions`, `commands`, `events`, `observations`,
   `terminations`); previously it attempted to import the nonexistent `backends.mjlab.mdp` package
@@ -441,6 +445,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#805]: https://github.com/MyoHub/myosuite/pull/805
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
+[#923]: https://github.com/MyoHub/myosuite/pull/923
 [#935]: https://github.com/MyoHub/myosuite/pull/935
 [#936]: https://github.com/MyoHub/myosuite/pull/936
 [#937]: https://github.com/MyoHub/myosuite/pull/937

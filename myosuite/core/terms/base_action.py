@@ -32,7 +32,7 @@ Motor noise
 ``motor_noise`` adds signal-dependent and constant Gaussian noise to muscle
 excitations (``MotorNoiseCfg``, off by default). Both backends apply it after
 the action -> excitation mapping and before fatigue; see
-``docs/wiki/cross-backend-contract.md``.
+``docs/source/developer/cross-backend-contract.md``.
 
 ``MuscleActionTerm`` is the mjlab (Isaac Lab manager API) integration wrapper.
 """
