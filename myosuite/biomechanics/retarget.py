@@ -539,7 +539,7 @@ def _orientation_errors(
     return out
 
 
-def _foot_kinematics(
+def foot_kinematics(
     m: mujoco.MjModel, lmap: LandmarkMap, qpos: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sole z ``(T, 2)`` and foot origins ``(T, 2, 3)``; missing geometry is NaN."""
@@ -561,6 +561,9 @@ def _foot_kinematics(
             if feet[s]:
                 org[t, s] = d.xpos[feet[s]].mean(0)
     return low, org
+
+
+_foot_kinematics = foot_kinematics
 
 
 def _sliding(org: np.ndarray, contact: np.ndarray, dt: float) -> float | None:
@@ -768,14 +771,48 @@ class ClipSource(Protocol):
 # ------------------------------------------------------------------ source helpers
 
 
-def _segment_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+def rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """``(..., 3, 3)`` shortest rotations taking direction vectors *a* onto *b*."""
+    orig_shape = np.shape(a)[:-1]
+    a_flat = np.asarray(a, dtype=np.float64).reshape(-1, 3)
+    b_flat = np.asarray(b, dtype=np.float64).reshape(-1, 3)
+    na = np.linalg.norm(a_flat, axis=-1, keepdims=True)
+    nb = np.linalg.norm(b_flat, axis=-1, keepdims=True)
+    valid = (na[:, 0] > 1e-12) & (nb[:, 0] > 1e-12)
+    ex = np.array([1.0, 0.0, 0.0])
+    ey = np.array([0.0, 1.0, 0.0])
+    a_u = np.where(na > 1e-12, a_flat / np.where(na > 1e-12, na, 1.0), ex)
+    b_u = np.where(nb > 1e-12, b_flat / np.where(nb > 1e-12, nb, 1.0), ex)
+    v = np.cross(a_u, b_u)
+    cos = (a_u * b_u).sum(-1)
+    zero = np.zeros_like(cos)
+    K = np.stack(
+        [zero, -v[:, 2], v[:, 1], v[:, 2], zero, -v[:, 0], -v[:, 1], v[:, 0], zero], -1
+    ).reshape(-1, 3, 3)
+    regular = (1.0 + cos) > 1e-8
+    denom = np.where(regular, 1.0 + cos, 1.0)
+    R_rod = np.eye(3) + K + (K @ K) / denom[:, None, None]
+    ref_axis = np.where(np.abs(a_u[:, :1]) < 0.9, ex, ey)
+    ortho = np.cross(a_u, ref_axis)
+    ortho_norm = np.linalg.norm(ortho, axis=-1, keepdims=True)
+    u = ortho / np.where(ortho_norm > 1e-12, ortho_norm, 1.0)
+    R_180 = 2.0 * (u[:, :, None] * u[:, None, :]) - np.eye(3)
+    R = np.where(regular[:, None, None], R_rod, R_180)
+    R = np.where(valid[:, None, None], R, np.eye(3))
+    return R.reshape(*orig_shape, 3, 3)
+
+
+def segment_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     """Angle (rad) between the segments ``a->b`` and ``b->c``."""
     u, v = b - a, c - b
     denom = np.maximum(np.linalg.norm(u, axis=-1) * np.linalg.norm(v, axis=-1), 1e-12)
     return np.arccos(np.clip((u * v).sum(-1) / denom, -1.0, 1.0))
 
 
-def _hinge_table(
+_segment_angle = segment_angle
+
+
+def hinge_table(
     m: mujoco.MjModel, d: mujoco.MjData, q: np.ndarray, h: Any
 ) -> np.ndarray:
     """``(2, 181)`` hinge values and model segment angles over ``h.joint``'s range."""
@@ -792,13 +829,16 @@ def _hinge_table(
         d.qpos[:] = x
         mujoco.mj_kinematics(m, d)
         end = d.xpos[mid] + d.xmat[mid].reshape(3, 3) @ tip
-        theta[k] = _segment_angle(d.xpos[prox], d.xpos[mid], end)
+        theta[k] = segment_angle(d.xpos[prox], d.xpos[mid], end)
     if np.any(np.diff(theta) <= 0):
         raise ValueError(f"{h.joint}: segment angle not increasing over the range")
     return np.stack([phi, theta])
 
 
-def _mat_to_quat(R: np.ndarray) -> np.ndarray:
+_hinge_table = hinge_table
+
+
+def mat_to_quat(R: np.ndarray) -> np.ndarray:
     """Convert ``(..., 3, 3)`` rotation matrices to ``(..., 4)`` ``wxyz`` quaternions."""
     out = np.empty((*R.shape[:-2], 4))
     flat_R, flat_q = R.reshape(-1, 9), out.reshape(-1, 4)
@@ -807,7 +847,10 @@ def _mat_to_quat(R: np.ndarray) -> np.ndarray:
     return out
 
 
-def _smooth(x: np.ndarray, sigma: float) -> np.ndarray:
+_mat_to_quat = mat_to_quat
+
+
+def smooth_signal(x: np.ndarray, sigma: float) -> np.ndarray:
     """Gaussian smoothing along axis 0 (edge-padded)."""
     if sigma <= 0:
         return x
@@ -818,7 +861,10 @@ def _smooth(x: np.ndarray, sigma: float) -> np.ndarray:
     return np.apply_along_axis(lambda c: np.convolve(c, k, mode="valid"), 0, pad)
 
 
-def _smooth_quat(
+_smooth = smooth_signal
+
+
+def smooth_quat(
     quat: np.ndarray, sigma: float, mask: np.ndarray | None = None
 ) -> np.ndarray:
     """Hemisphere-continuous Gaussian smoothing of ``(T, O, 4)`` quaternions."""
@@ -837,11 +883,14 @@ def _smooth_quat(
                 q[~ok, k] = q[nearest[~ok], k]
     sign = np.cumprod(np.where((q[1:] * q[:-1]).sum(-1) < 0, -1.0, 1.0), axis=0)
     q[1:] *= sign[..., None]
-    q = _smooth(q, sigma)
+    q = smooth_signal(q, sigma)
     return q / np.maximum(np.linalg.norm(q, axis=-1, keepdims=True), 1e-12)
 
 
-def _calibration_pose(
+_smooth_quat = smooth_quat
+
+
+def calibration_pose(
     m: mujoco.MjModel, calibration: dict[str, float]
 ) -> tuple[mujoco.MjData, np.ndarray]:
     """Evaluate *m* at ``qpos0`` overridden by *calibration* and projected onto couplings."""
@@ -855,7 +904,10 @@ def _calibration_pose(
     return d, q
 
 
-def _body_landmarks(
+_calibration_pose = calibration_pose
+
+
+def body_landmarks(
     m: mujoco.MjModel, d: mujoco.MjData, points: Sequence[Any], pos: np.ndarray
 ) -> tuple[Landmark, ...]:
     """Build body-local :class:`Landmark` entries for weighted calibration points."""
@@ -868,7 +920,10 @@ def _body_landmarks(
     return tuple(out)
 
 
-def _orientation_targets(
+_body_landmarks = body_landmarks
+
+
+def orientation_targets(
     m: mujoco.MjModel,
     d: mujoco.MjData,
     specs: Sequence[Any],
@@ -890,7 +945,10 @@ def _orientation_targets(
     return tuple(out)
 
 
-def _foot_contacts(
+_orientation_targets = orientation_targets
+
+
+def foot_contacts(
     sole: np.ndarray,
     sole_floor: np.ndarray,
     fps: float,
@@ -905,7 +963,10 @@ def _foot_contacts(
     return np.stack([near[:, :n_left].any(1), near[:, n_left:].any(1)], axis=1)
 
 
-def _start_pose(
+_foot_contacts = foot_contacts
+
+
+def start_pose(
     m: mujoco.MjModel,
     cal_qpos: np.ndarray,
     root_model_pos: np.ndarray,
@@ -934,7 +995,10 @@ def _start_pose(
     return q
 
 
-def _ground_clip(
+_start_pose = start_pose
+
+
+def ground_clip(
     m: mujoco.MjModel,
     lmap: LandmarkMap,
     targets: ClipTargets,
@@ -943,7 +1007,7 @@ def _ground_clip(
     ground_sigma: float,
 ) -> tuple[np.ndarray, ClipTargets, np.ndarray]:
     """Shift free-joint root height and target ``z`` so standing feet touch ``z = 0``."""
-    low, _ = _foot_kinematics(m, lmap, qpos)
+    low, _ = foot_kinematics(m, lmap, qpos)
     if not np.isfinite(low).any():
         dz = np.zeros(len(qpos))
     else:
@@ -958,7 +1022,7 @@ def _ground_clip(
             dz[:] = -np.nanmin(low)
         lift = -np.nanmin(low, axis=1)
         dz = np.maximum(
-            _smooth(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
+            smooth_signal(np.maximum(dz, lift), ground_sigma * targets.frequency), lift
         )
     root_jnt = next(
         j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
@@ -979,7 +1043,10 @@ def _ground_clip(
     return qpos_out, targets_out, dz
 
 
-def _knee_flexion_meta(
+_ground_clip = ground_clip
+
+
+def knee_flexion_meta(
     knee_flexion: dict[str, np.ndarray],
 ) -> dict[str, dict[str, float]]:
     """Summary statistics of per-side source knee flexion (hyperextension check)."""
@@ -991,6 +1058,9 @@ def _knee_flexion_meta(
         }
         for side, f in knee_flexion.items()
     }
+
+
+_knee_flexion_meta = knee_flexion_meta
 
 
 # ----------------------------------------------------------------------- output files
@@ -1615,9 +1685,11 @@ def collect_clip_files(
     *,
     default_dataset: str = "",
     limit: int = 0,
+    suffix: str = ".npz",
     skip_suffixes: tuple[str, ...] = (".tmp.npz", "_muscles.npz"),
 ) -> tuple[list[Path], Path, str]:
-    """Resolve a single ``.npz`` clip, directory or ``.txt`` list to ``(files, base, dataset)``."""
+    """Resolve a single clip, directory or ``.txt`` list to ``(files, base, dataset)``."""
+    sfx = suffix if suffix.startswith(".") else f".{suffix}"
     src = Path(input_path).expanduser()
     if src.is_file() and src.suffix == ".txt":
         files = [
@@ -1627,12 +1699,14 @@ def collect_clip_files(
         ]
         base = Path(os.path.commonpath([str(f.parent) for f in files]))
         dataset = default_dataset or base.name
-    elif src.is_file() and src.suffix == ".npz":
+    elif src.is_file() and src.suffix.lower() == sfx.lower():
         files, base = [src], src.parent
         dataset = default_dataset or base.name
     elif src.is_dir():
         files = [
-            f for f in sorted(src.rglob("*.npz")) if not f.name.endswith(skip_suffixes)
+            f
+            for f in sorted(src.rglob(f"*{sfx}"))
+            if not f.name.endswith(skip_suffixes)
         ]
         base = src
         dataset = default_dataset or src.name
@@ -1665,6 +1739,8 @@ __all__ = [
     "OrientationTarget",
     "RefitConfig",
     "RefitThresholds",
+    "body_landmarks",
+    "calibration_pose",
     "check_refit_meta",
     "choose_workers",
     "clip_fits",
@@ -1673,16 +1749,28 @@ __all__ = [
     "empty_summary",
     "file_sha256",
     "find_cache_root",
+    "foot_contacts",
+    "foot_kinematics",
+    "ground_clip",
+    "hinge_table",
     "is_cached_refit",
     "kinematic_fingerprint",
+    "knee_flexion_meta",
+    "mat_to_quat",
     "merge_quality_flags",
     "model_tag",
+    "orientation_targets",
     "pooled_twist",
     "read_refit_meta",
     "refit_clip",
+    "rotation_between",
     "save_refit",
+    "segment_angle",
+    "smooth_quat",
+    "smooth_signal",
     "stamp_fingerprint",
     "stamp_tree",
+    "start_pose",
     "summarize",
     "summary_markdown",
     "twist_asymmetry",
