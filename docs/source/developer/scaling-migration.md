@@ -1,4 +1,4 @@
-# Canonical model scaling
+# Canonical Model Scaling
 
 Geometry, OpenSim scale files and physical parameter edits belong to `myo_sim`.
 MyoSuite keeps task integration, IK, marker retargeting and participant calibration.
@@ -9,12 +9,7 @@ The library API returns a copy. Both the CPU walk and its mjlab twin assign that
 return value before compiling. The nominal source specification stays unchanged;
 discarding the return value would silently discard subject scaling.
 
-This integration requires [myo_sim#149](https://github.com/MyoHub/myo_sim/pull/149).
-Published `myo-sim==0.2.5` does not provide the scaling module. The feature raises
-an actionable import error when requested with that release. Nominal environments
-do not import the optional scaling module. Keep this PR draft until the dependency
-is available and the supported dependency constraint can name its released version.
-Do not install an unpinned development branch to make a production release pass.
+Subject scaling requires a `myo_sim` release that ships `myo_sim.scaling` ([myo_sim#149](https://github.com/MyoHub/myo_sim/pull/149); legacy `myo-sim==0.2.5` does not include this module and raises an actionable import error when scaling is requested). Nominal environments do not import the optional scaling module.
 
 The existing `retarget`, `scale_spec`, `scale_model` and checkpoint digest names
 resolve through `myosuite.core.body_scaling`. Private `_scale_spec` returns the

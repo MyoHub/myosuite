@@ -5,7 +5,7 @@ time for 1,228,800 transitions from 123.0 s to 48.8 s. Every final policy scored
 128/128 deterministic evaluation episodes. This is a bounded experiment on
 `myoElbowPose1D6MRandom-v0`, not a full-body training-speed claim.
 
-![Measured quality and stage costs](../validation/training-speed-pilot.png)
+![Measured quality and stage costs](../../validation/training-speed-pilot.png)
 
 ## Results
 
@@ -52,7 +52,7 @@ Script time includes imports, setup and evaluation; OS/Python bootstrap is
 excluded. Stage times use RSL-RL's wall clock. Torch peak memory excludes
 Warp/driver allocations. Setup and evaluation are substantial in the shorter run.
 
-[Run measurements](../validation/training-speed-pilot.json) retain model identity,
+[Run measurements](https://github.com/MyoHub/myosuite/blob/dev/docs/validation/training-speed-pilot.json) retain model identity,
 versions, protocol and all six curves. [Performance cards](performance-cards.md)
 preserve censoring and explicit clock/memory scopes. Reproduce the 256-env and 1,024-env runs across seeds `0, 1, 2` at commit
 `3d118ee3` with the upstream training and evaluation entry points:

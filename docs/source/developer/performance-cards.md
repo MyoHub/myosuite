@@ -1,4 +1,4 @@
-# Performance cards
+# Performance Cards
 
 `myosuite.utils.performance_card` summarizes data-only measurements from any
 training process. It imports NumPy/SciPy, with no trainer or RL dependency.
