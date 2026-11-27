@@ -319,6 +319,26 @@ def intrinsic_euler2quat(euler):
     return np.stack([w, x, y, z], axis=-1)
 
 
+def quat_from_euler_xyz(
+    rx: float = 0.0, ry: float = 0.0, rz: float = 0.0
+) -> tuple[float, float, float, float]:
+    """Convert intrinsic X-Y'-Z'' Euler angles [rad] (scipy ``"XYZ"``) to ``(w, x, y, z)``.
+
+    Uses :func:`euler2quat` (intrinsic ``"XYZ"`` in radians). Contrast with
+    :func:`quat_from_euler_xyz_deg`, which uses extrinsic ``"xyz"`` in degrees.
+
+    Args:
+        rx: Intrinsic roll about X [rad].
+        ry: Intrinsic pitch about Y' [rad].
+        rz: Intrinsic yaw about Z'' [rad].
+
+    Returns:
+        Unit quaternion ``(w, x, y, z)``.
+    """
+    w, x, y, z = euler2quat((float(rx), float(ry), float(rz)))
+    return (float(w), float(x), float(y), float(z))
+
+
 def quat_from_euler_xyz_deg(euler_deg: list[float]) -> list[float]:
     """Convert ``[roll, pitch, yaw]`` in degrees to a quaternion.
 

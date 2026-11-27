@@ -5,6 +5,33 @@
 
 """Scene management for MyoSuite environments."""
 
-from myosuite.scenes.library import SCENES, SceneSpec, ObjectSpec, FloorSpec
+from myosuite.scenes.library import SCENES
+from myosuite.scenes.scene_builder import (
+    apply_scene_to_spec,
+    get_scene,
+    scene_to_mjcf_xml,
+    scene_to_mjlab_cfg,
+)
+from myosuite.scenes.specs import (
+    FixtureSpec,
+    FloorSpec,
+    ObjectSpec,
+    SceneSpec,
+    SiteMarkerSpec,
+)
+from myosuite.scenes.workspaces import WorkspaceConfig, make_workspace_scene
 
-__all__ = ["SCENES", "SceneSpec", "ObjectSpec", "FloorSpec"]
+__all__ = [
+    "SCENES",
+    "FixtureSpec",
+    "FloorSpec",
+    "ObjectSpec",
+    "SceneSpec",
+    "SiteMarkerSpec",
+    "WorkspaceConfig",
+    "apply_scene_to_spec",
+    "get_scene",
+    "make_workspace_scene",
+    "scene_to_mjcf_xml",
+    "scene_to_mjlab_cfg",
+]
