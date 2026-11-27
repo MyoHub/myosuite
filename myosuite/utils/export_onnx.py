@@ -100,6 +100,7 @@ def _require_torch() -> Any:
 
 VERIFY_ATOL = 1e-4
 VERIFY_RTOL = 1e-4
+VERIFY_STEPS = 4
 
 
 def verify_onnx_parity(
@@ -107,26 +108,30 @@ def verify_onnx_parity(
     onnx_path: str | Path,
     obs_dim: int,
     *,
+    recurrent_shapes: tuple[tuple[int, int], ...] = (),
     atol: float = VERIFY_ATOL,
     rtol: float = VERIFY_RTOL,
+    steps: int = VERIFY_STEPS,
     seed: int = 0,
 ) -> float:
-    """Verify ONNX graph parity against ``policy`` across single and batched inputs.
+    """Verify ONNX graph parity against ``policy`` over single/batched or recurrent inputs.
 
     Args:
         policy: Reference PyTorch module in eval mode.
         onnx_path: Exported ``.onnx`` file to check.
         obs_dim: Input observation dimension.
+        recurrent_shapes: ``(num_layers, hidden_dim)`` per state input (1 for GRU, 2 for LSTM).
         atol: Absolute tolerance.
         rtol: Relative tolerance.
+        steps: Sequential steps to thread state over.
         seed: Deterministic RNG seed for test observations.
 
     Returns:
-        Maximum absolute difference observed across checked batches.
+        Maximum absolute difference observed across all checked steps.
 
     Raises:
         ImportError: When ``onnxruntime`` is not installed.
-        RuntimeError: When ONNX output deviates from PyTorch beyond ``(atol, rtol)``.
+        RuntimeError: When any step's ONNX output deviates beyond ``(atol, rtol)``.
     """
     _torch = _require_torch()
     from myosuite.utils.onnxruntime_utils import require_onnxruntime
@@ -145,23 +150,75 @@ def verify_onnx_parity(
     max_diff = 0.0
 
     with _torch.inference_mode():
-        for batch in (1, 4):
+        if not recurrent_shapes:
+            for batch in (1, 4):
+                obs_t = _torch.randn(
+                    batch, obs_dim, generator=gen, dtype=_torch.float32
+                )
+                want = policy_cpu(obs_t).detach().cpu().numpy()
+                (got,) = sess.run(["action"], {"obs": obs_t.numpy()})
+                if got.shape != want.shape or not np.allclose(
+                    got, want, atol=atol, rtol=rtol
+                ):
+                    diff = (
+                        float(np.max(np.abs(got - want)))
+                        if got.shape == want.shape
+                        else float("inf")
+                    )
+                    raise RuntimeError(
+                        f"Exported ONNX graph ({Path(onnx_path).name}) failed parity check "
+                        f"at batch={batch}: max_abs_diff={diff:.3e} (atol={atol}, rtol={rtol})."
+                    )
+                max_diff = max(max_diff, float(np.max(np.abs(got - want))))
+            return max_diff
+
+        batch = 3
+        state_names = ["h_in"] if len(recurrent_shapes) == 1 else ["h_in", "c_in"]
+        out_names = (
+            ["action", "h_out"]
+            if len(recurrent_shapes) == 1
+            else ["action", "h_out", "c_out"]
+        )
+        pt_states = [
+            _torch.zeros(nl, batch, hd, dtype=_torch.float32)
+            for nl, hd in recurrent_shapes
+        ]
+        ort_states = {
+            name: s.numpy().copy()
+            for name, s in zip(state_names, pt_states, strict=True)
+        }
+        for step in range(steps):
             obs_t = _torch.randn(batch, obs_dim, generator=gen, dtype=_torch.float32)
-            want = policy_cpu(obs_t).detach().cpu().numpy()
-            (got,) = sess.run(["action"], {"obs": obs_t.numpy()})
-            if got.shape != want.shape or not np.allclose(
-                got, want, atol=atol, rtol=rtol
-            ):
-                diff = (
-                    float(np.max(np.abs(got - want)))
-                    if got.shape == want.shape
-                    else float("inf")
-                )
+            pt_out = policy_cpu(obs_t, *pt_states)
+            want_tensors = [t.detach().cpu().numpy() for t in pt_out]
+            pt_states = [s.detach() for s in pt_out[1:]]
+
+            ort_out = sess.run(out_names, {"obs": obs_t.numpy(), **ort_states})
+            if len(ort_out) != len(want_tensors):
                 raise RuntimeError(
-                    f"Exported ONNX graph ({Path(onnx_path).name}) failed parity check "
-                    f"at batch={batch}: max_abs_diff={diff:.3e} (atol={atol}, rtol={rtol})."
+                    f"Exported recurrent ONNX graph ({Path(onnx_path).name}) returned "
+                    f"{len(ort_out)} outputs, expected {len(want_tensors)} ({out_names})."
                 )
-            max_diff = max(max_diff, float(np.max(np.abs(got - want))))
+            for out_name, got_arr, want_arr in zip(
+                out_names, ort_out, want_tensors, strict=True
+            ):
+                if got_arr.shape != want_arr.shape or not np.allclose(
+                    got_arr, want_arr, atol=atol, rtol=rtol
+                ):
+                    diff = (
+                        float(np.max(np.abs(got_arr - want_arr)))
+                        if got_arr.shape == want_arr.shape
+                        else float("inf")
+                    )
+                    raise RuntimeError(
+                        f"Exported recurrent ONNX graph ({Path(onnx_path).name}) failed parity "
+                        f"on {out_name!r} at step {step}: max_abs_diff={diff:.3e} "
+                        f"(atol={atol}, rtol={rtol})."
+                    )
+                max_diff = max(max_diff, float(np.max(np.abs(got_arr - want_arr))))
+            ort_states = {
+                name: val for name, val in zip(state_names, ort_out[1:], strict=True)
+            }
     return max_diff
 
 
@@ -201,6 +258,7 @@ def _write_policy_spec(
     obs_dim: int,
     act_dim: int,
     *,
+    recurrent_shapes: tuple[tuple[int, int], ...] = (),
     checkpoint: str | Path | None = None,
     framework: str = "pytorch",
     dest: Path | None = None,
@@ -208,6 +266,14 @@ def _write_policy_spec(
     """Write ``<stem>.policy_spec.json`` describing graph inputs, outputs, and provenance."""
     inputs: list[dict[str, Any]] = [{"name": "obs", "shape": ["batch", obs_dim]}]
     outputs: list[dict[str, Any]] = [{"name": "action", "shape": ["batch", act_dim]}]
+    if len(recurrent_shapes) >= 1:
+        nl, hd = recurrent_shapes[0]
+        inputs.append({"name": "h_in", "shape": [nl, "batch", hd]})
+        outputs.append({"name": "h_out", "shape": [nl, "batch", hd]})
+    if len(recurrent_shapes) == 2:
+        nl, hd = recurrent_shapes[1]
+        inputs.append({"name": "c_in", "shape": [nl, "batch", hd]})
+        outputs.append({"name": "c_out", "shape": [nl, "batch", hd]})
     onnx_meta: dict[str, Any] = {
         "file": onnx_path.name,
         "inputs": inputs,
@@ -282,6 +348,106 @@ def _export_policy(
                 act_dim,
                 checkpoint=checkpoint,
                 framework=framework,
+                dest=staging / spec_dest.name,
+            )
+            replacements.append((staged_spec, spec_dest))
+        else:
+            stale = (spec_dest,)
+        _commit_staged_artifacts(staging, replacements, stale=stale)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def export_recurrent_to_onnx(
+    policy: torch.nn.Module,
+    output: str | Path,
+    obs_dim: int,
+    act_dim: int,
+    *,
+    hidden_dim: int,
+    num_layers: int = 1,
+    rnn_type: str = "gru",
+    opset: int = 17,
+    verify: bool = True,
+    write_spec: bool = False,
+) -> None:
+    """Export a stateful GRU or LSTM policy with explicit hidden-state tensors to ONNX.
+
+    The exported graph takes ``(obs, h_in)`` -> ``(action, h_out)`` for ``rnn_type="gru"``
+    or ``(obs, h_in, c_in)`` -> ``(action, h_out, c_out)`` for ``rnn_type="lstm"``,
+    with dynamic batch axes on ``obs``/``action`` (axis 0) and hidden states (axis 1).
+
+    Args:
+        policy: PyTorch module mapping ``(obs, h_in[, c_in]) -> (action, h_out[, c_out])``.
+        output: Destination ``.onnx`` path.
+        obs_dim: Observation dimension.
+        act_dim: Action dimension.
+        hidden_dim: Recurrent hidden state width.
+        num_layers: Number of recurrent layers.
+        rnn_type: ``"gru"`` / ``"rnn"`` (1 state tensor) or ``"lstm"`` (2 state tensors).
+        opset: ONNX opset version.
+        verify: Run multi-step ``onnxruntime`` parity verification before atomic move.
+        write_spec: Emit ``<stem>.policy_spec.json`` sidecar alongside ``output``.
+    """
+    _torch = _require_torch()
+    kind = rnn_type.lower()
+    if kind not in ("gru", "rnn", "lstm"):
+        raise ValueError(f"rnn_type must be 'gru', 'rnn', or 'lstm'; got {rnn_type!r}.")
+    is_lstm = kind == "lstm"
+    rec_shapes = (
+        ((num_layers, hidden_dim), (num_layers, hidden_dim))
+        if is_lstm
+        else ((num_layers, hidden_dim),)
+    )
+    in_names = ["obs", "h_in", "c_in"] if is_lstm else ["obs", "h_in"]
+    out_names = ["action", "h_out", "c_out"] if is_lstm else ["action", "h_out"]
+    dyn_axes: dict[str, dict[int, str]] = {"obs": {0: "batch"}, "action": {0: "batch"}}
+    for name in in_names[1:] + out_names[1:]:
+        dyn_axes[name] = {1: "batch"}
+
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_dest = output_path.with_suffix(".policy_spec.json")
+    staging = Path(
+        tempfile.mkdtemp(prefix=".onnx-export-", dir=str(output_path.parent))
+    )
+    try:
+        staged_onnx = staging / output_path.name
+        dummy_obs = _torch.zeros(1, obs_dim, dtype=_torch.float32)
+        dummy_states = tuple(
+            _torch.zeros(nl, 1, hd, dtype=_torch.float32) for nl, hd in rec_shapes
+        )
+        policy_eval = policy.cpu().eval()
+        with _torch.no_grad():
+            test_out = policy_eval(dummy_obs, *dummy_states)
+        if int(test_out[0].shape[-1]) != act_dim:
+            raise ValueError(
+                f"Recurrent policy action width {test_out[0].shape[-1]} != act_dim {act_dim}."
+            )
+        _torch.onnx.export(
+            policy_eval,
+            (dummy_obs, *dummy_states),
+            str(staged_onnx),
+            opset_version=opset,
+            input_names=in_names,
+            output_names=out_names,
+            dynamic_axes=dyn_axes,
+            do_constant_folding=True,
+            dynamo=False,
+        )
+        if verify:
+            verify_onnx_parity(
+                policy_eval, staged_onnx, obs_dim, recurrent_shapes=rec_shapes
+            )
+        replacements: list[tuple[Path, Path]] = [(staged_onnx, output_path)]
+        stale: tuple[Path, ...] = ()
+        if write_spec:
+            staged_spec = _write_policy_spec(
+                staged_onnx,
+                obs_dim,
+                act_dim,
+                recurrent_shapes=rec_shapes,
+                framework=f"recurrent_{kind}",
                 dest=staging / spec_dest.name,
             )
             replacements.append((staged_spec, spec_dest))
@@ -782,15 +948,25 @@ def verify_onnx_on_cpu(
             allow_mismatch=allow_provenance_mismatch,
         )
         sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-        input_name = sess.get_inputs()[0].name
-        output_name = sess.get_outputs()[0].name
+        inputs = sess.get_inputs()
+        input_name = inputs[0].name
+        state_inputs = [inp for inp in inputs[1:] if inp.name in ("h_in", "c_in")]
+        state_feed = {
+            inp.name: np.zeros(
+                (int(inp.shape[0]), 1, int(inp.shape[2])), dtype=np.float32
+            )
+            for inp in state_inputs
+        }
         obs, _ = env.reset(seed=seed)
 
         total_reward = 0.0
         steps = 0
         term = False
         for _ in range(n_steps):
-            action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze(0)
+            outs = sess.run(None, {input_name: _onnx_obs(obs), **state_feed})
+            action = outs[0].squeeze(0)
+            for inp, next_s in zip(state_inputs, outs[1:], strict=True):
+                state_feed[inp.name] = next_s
             obs, rew, term, trunc, _ = env.step(action)
             total_reward += float(rew)
             steps += 1
