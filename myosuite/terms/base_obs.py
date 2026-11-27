@@ -12,6 +12,7 @@ for the current backend (numpy / jax.Array / torch.Tensor).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -200,10 +201,31 @@ def tip_pos_obs(accessor: EnvAccessor, site_ids: Any, **kwargs: Any) -> Any:
     return accessor.site_xpos(site_ids)
 
 
+def target_joint_pos(
+    accessor: EnvAccessor, n: int, qpos_ids: Sequence[int] | None = None
+) -> Any:
+    """Return the ``qpos`` entries a joint target refers to.
+
+    Args:
+        accessor: Environment state accessor.
+        n: Length of the target vector.
+        qpos_ids: ``qpos`` address of each target entry. ``None`` means the
+            leading ``n`` entries.
+
+    Returns:
+        Joint positions, shape ``(..., n)``.
+    """
+    qpos = accessor.joint_pos()
+    if qpos_ids is None:
+        return qpos[..., :n]
+    return qpos[..., list(qpos_ids)]
+
+
 def pose_error_obs(
     accessor: EnvAccessor,
     target: Any = None,
     target_angles: Any = None,
+    qpos_ids: Sequence[int] | None = None,
     **kwargs: Any,
 ) -> Any:
     """Return the signed difference between target and current joint positions.
@@ -220,11 +242,13 @@ def pose_error_obs(
         target_angles: Alias for ``target``.  Used when the task state dict
             contains ``"target_angles"`` (the default key from
             :func:`~myosuite.envs.modular_env._sample_goal`).
+        qpos_ids: ``qpos`` address of each target entry (see
+            :func:`target_joint_pos`); ``None`` for the leading entries.
         **kwargs: Unused; for uniform call signature.
 
     Returns:
         Pose error array (target - current). A target shorter than ``qpos``
-        covers the leading ``qpos`` entries only.
+        covers the leading ``qpos`` entries only, unless ``qpos_ids`` is given.
 
     Raises:
         ValueError: If neither ``target`` nor ``target_angles`` is provided.
@@ -234,7 +258,7 @@ def pose_error_obs(
         raise ValueError(
             "pose_error_obs requires 'target' or 'target_angles' in kwargs"
         )
-    return t - accessor.joint_pos()[..., : np.shape(t)[-1]]
+    return t - target_joint_pos(accessor, np.shape(t)[-1], qpos_ids)
 
 
 def time_obs(accessor: EnvAccessor, **kwargs: Any) -> Any:

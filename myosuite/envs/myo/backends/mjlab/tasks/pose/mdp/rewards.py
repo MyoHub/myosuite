@@ -30,6 +30,7 @@ def _components(
     pose_thd: float,
     far_thd: float,
     asset_cfg: SceneEntityCfg,
+    qpos_ids: tuple[int, ...] | None,
 ) -> dict[str, Any]:
     task_state = {"target_angles": env.command_manager.get_command(command_name)}
     return pose_reward(
@@ -37,6 +38,7 @@ def _components(
         task_state,
         pose_thd=pose_thd,
         far_thd=far_thd,
+        qpos_ids=qpos_ids,
     )
 
 
@@ -46,9 +48,12 @@ def pose_dist(
     pose_thd: float,
     far_thd: float,
     asset_cfg: SceneEntityCfg = _ROBOT,
+    qpos_ids: tuple[int, ...] | None = None,
 ) -> torch.Tensor:
     """``"pose"`` (and ``"sparse"``): negative L2 joint-space distance."""
-    return _components(env, command_name, pose_thd, far_thd, asset_cfg)["pose"]
+    return _components(env, command_name, pose_thd, far_thd, asset_cfg, qpos_ids)[
+        "pose"
+    ]
 
 
 def pose_bonus(
@@ -57,9 +62,12 @@ def pose_bonus(
     pose_thd: float,
     far_thd: float,
     asset_cfg: SceneEntityCfg = _ROBOT,
+    qpos_ids: tuple[int, ...] | None = None,
 ) -> torch.Tensor:
     """``"bonus"``: +1 within ``pose_thd``, +1 within ``1.5 * pose_thd``."""
-    return _components(env, command_name, pose_thd, far_thd, asset_cfg)["bonus"]
+    return _components(env, command_name, pose_thd, far_thd, asset_cfg, qpos_ids)[
+        "bonus"
+    ]
 
 
 def pose_penalty(
@@ -68,9 +76,12 @@ def pose_penalty(
     pose_thd: float,
     far_thd: float,
     asset_cfg: SceneEntityCfg = _ROBOT,
+    qpos_ids: tuple[int, ...] | None = None,
 ) -> torch.Tensor:
     """``"penalty"``: -1 when the distance exceeds ``far_thd``."""
-    return _components(env, command_name, pose_thd, far_thd, asset_cfg)["penalty"]
+    return _components(env, command_name, pose_thd, far_thd, asset_cfg, qpos_ids)[
+        "penalty"
+    ]
 
 
 def pose_solved(
@@ -79,9 +90,10 @@ def pose_solved(
     pose_thd: float,
     far_thd: float,
     asset_cfg: SceneEntityCfg = _ROBOT,
+    qpos_ids: tuple[int, ...] | None = None,
 ) -> torch.Tensor:
     """``"solved"`` as a float (only weighted when a CPU config weights it)."""
-    return _components(env, command_name, pose_thd, far_thd, asset_cfg)[
+    return _components(env, command_name, pose_thd, far_thd, asset_cfg, qpos_ids)[
         "solved"
     ].float()
 
@@ -92,9 +104,12 @@ def pose_done(
     pose_thd: float,
     far_thd: float,
     asset_cfg: SceneEntityCfg = _ROBOT,
+    qpos_ids: tuple[int, ...] | None = None,
 ) -> torch.Tensor:
     """``"done"`` as a float (only weighted when a CPU config weights it)."""
-    return _components(env, command_name, pose_thd, far_thd, asset_cfg)["done"].float()
+    return _components(env, command_name, pose_thd, far_thd, asset_cfg, qpos_ids)[
+        "done"
+    ].float()
 
 
 def act_norm(

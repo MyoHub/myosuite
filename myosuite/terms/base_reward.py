@@ -15,11 +15,13 @@ the backend.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from myosuite.terms._array import xp_asarray as _xp_asarray
+from myosuite.terms.base_obs import target_joint_pos
 
 if TYPE_CHECKING:
     from myosuite.core.protocols import EnvAccessor
@@ -65,19 +67,23 @@ def pose_reward(
     task_state: dict[str, Any],
     pose_thd: float = 0.35,
     far_thd: float = _POSE_PENALTY_THRESHOLD,
+    qpos_ids: Sequence[int] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Reward for reaching a target joint configuration.
 
     Returns a negative distance reward plus discrete bonuses for being
     within threshold and a penalty for wildly out-of-range poses. A target
-    shorter than ``qpos`` covers the leading ``qpos`` entries only.
+    shorter than ``qpos`` covers the leading ``qpos`` entries only, unless
+    ``qpos_ids`` names the scored entries.
 
     Args:
         accessor: Environment state accessor.
         task_state: Must contain ``"target_angles"`` — target joint positions.
         pose_thd: Distance threshold (radians) for the bonus reward.
         far_thd: Distance above which the penalty applies and the episode ends.
+        qpos_ids: ``qpos`` address of each target entry; ``None`` for the
+            leading entries.
         **kwargs: Unused extra keyword arguments.
 
     Returns:
@@ -86,7 +92,7 @@ def pose_reward(
     """
     xp = accessor.array_module()
     target = task_state["target_angles"]
-    qpos = accessor.joint_pos()[..., : np.shape(target)[-1]]
+    qpos = target_joint_pos(accessor, np.shape(target)[-1], qpos_ids)
     dist = xp.linalg.norm(target - qpos, axis=-1)
     pose = -dist
     bonus = 1.0 * (dist < pose_thd) + 1.0 * (

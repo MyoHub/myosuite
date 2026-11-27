@@ -23,8 +23,9 @@ def pose_diverged(
     command_name: str,
     far_thd: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    qpos_ids: tuple[int, ...] | None = None,
 ) -> torch.Tensor:
     """CPU ``done``: joint-space distance to the target exceeds ``far_thd``."""
     task_state = {"target_angles": env.command_manager.get_command(command_name)}
     accessor = MjlabEntityAccessor(env, asset_cfg.name)
-    return pose_reward(accessor, task_state, far_thd=far_thd)["done"]
+    return pose_reward(accessor, task_state, far_thd=far_thd, qpos_ids=qpos_ids)["done"]

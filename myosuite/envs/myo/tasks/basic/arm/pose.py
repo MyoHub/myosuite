@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import collections
+from collections.abc import Mapping, Sequence
 from typing import Any
 import warnings
 
@@ -18,9 +19,14 @@ from gymnasium.utils import EzPickle
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
 from myosuite.envs.gymnasium_env import CpuEnvAccessor, MyoGymnasiumEnv
 from myosuite.envs.myo.tasks.basic.muscle_mixin import MuscleActionMixin
+from myosuite.terms.base_event import fit_pose_target_to_couplings
 from myosuite.terms.base_obs import pose_error_obs
 from myosuite.terms.base_reward import pose_reward
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
+from myosuite.utils.target_ranges import (
+    joint_target_layout,
+    select_target_jnt_range,
+)
 
 
 class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
@@ -43,6 +49,11 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         target_jnt_range: Dict ``{joint_name: (min, max)}`` defining the
             random target range.  Mutually exclusive with *target_jnt_value*.
         target_jnt_value: Fixed target joint vector.
+        target_jnt_names: Joint of each ``target_jnt_value`` entry. Without
+            it the target covers the leading ``qpos`` entries.
+        model_target_jnt_ranges: ``{marker_joint: target_jnt_range}``: the
+            first range whose marker joint the loaded model has replaces
+            *target_jnt_range* (a model revision with its own target range).
         reset_type: One of ``"none"``, ``"init"``, or ``"random"``.
         target_type: One of ``"fixed"`` or ``"generate"``.
         obs_keys: Observation keys to include in the observation vector.
@@ -77,6 +88,8 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         viz_site_targets: tuple | None = None,
         target_jnt_range: dict | None = None,
         target_jnt_value: list | None = None,
+        target_jnt_names: Sequence[str] | None = None,
+        model_target_jnt_ranges: Mapping[str, Mapping[str, Any]] | None = None,
         reset_type: str = "init",
         target_type: str = "generate",
         obs_keys: list = DEFAULT_OBS_KEYS,
@@ -104,6 +117,8 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             viz_site_targets=viz_site_targets,
             target_jnt_range=target_jnt_range,
             target_jnt_value=target_jnt_value,
+            target_jnt_names=target_jnt_names,
+            model_target_jnt_ranges=model_target_jnt_ranges,
             reset_type=reset_type,
             target_type=target_type,
             obs_keys=obs_keys,
@@ -135,6 +150,12 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.target_type = target_type
         self.pose_thd = pose_thd
 
+        model_jnt_names = tuple(
+            self.model.joint(i).name for i in range(self.model.njnt)
+        )
+        target_jnt_range = select_target_jnt_range(
+            model_jnt_names, target_jnt_range, model_target_jnt_ranges
+        )
         if target_jnt_range is not None:
             jnt_ids, jnt_ranges = [], []
             for jnt_name, jnt_range in target_jnt_range.items():
@@ -143,12 +164,19 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self._target_jnt_ids: list[int] | None = jnt_ids
             self._target_jnt_range: np.ndarray | None = np.array(jnt_ranges)
             self.target_jnt_value = np.mean(self._target_jnt_range, axis=1)
+            target_names = tuple(target_jnt_range)
         else:
             self._target_jnt_ids = None
             self._target_jnt_range = None
             self.target_jnt_value = (
                 np.array(target_jnt_value) if target_jnt_value is not None else None
             )
+            target_names = tuple(target_jnt_names or ())
+        # Named targets: scored qpos entries (None = leading entries, as
+        # before) and coupled limits the random targets must respect.
+        layout = joint_target_layout(self.model, target_names) if target_names else None
+        self._target_qpos_ids = layout.qpos_ids if layout else None
+        self._target_couplings = layout.couplings if layout else ()
 
         # ── Visualisation sites ───────────────────────────────────────────
         self.tip_sids: list[int] = []
@@ -231,6 +259,13 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
     def target_jnt_value(self, value: np.ndarray | None) -> None:
         self._task_state["target_angles"] = value
 
+    @property
+    def target_qpos_ids(self) -> np.ndarray:
+        """``qpos`` address of each ``target_jnt_value`` entry."""
+        if self._target_qpos_ids is None:
+            return np.arange(len(self.target_jnt_value))
+        return np.array(self._target_qpos_ids)
+
     # ── Private helpers ────────────────────────────────────────────────────
 
     def _get_target_pose(self) -> np.ndarray:
@@ -242,10 +277,13 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         if self.target_type == "fixed":
             return self.target_jnt_value.copy()
         if self.target_type == "generate":
-            return self.np_random.uniform(
-                low=self._target_jnt_range[:, 0],
-                high=self._target_jnt_range[:, 1],
-            )
+            low, high = self._target_jnt_range[:, 0], self._target_jnt_range[:, 1]
+            target = self.np_random.uniform(low=low, high=high)
+            if self._target_couplings:
+                target = fit_pose_target_to_couplings(
+                    self._accessor, target, low, high, self._target_couplings
+                )
+            return target
         raise TypeError(f"Unknown target_type: {self.target_type!r}")
 
     def _update_target(self, restore_sim: bool = False) -> None:
@@ -262,7 +300,11 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.target_jnt_value = self._get_target_pose()
 
         # Drive the model to the target to read site positions
-        self.data.qpos[:] = self.target_jnt_value.copy()
+        if self._target_qpos_ids is None:
+            self.data.qpos[:] = self.target_jnt_value.copy()
+        else:  # joints outside the target at neutral
+            self.data.qpos[:] = self.model.qpos0
+            self.data.qpos[list(self._target_qpos_ids)] = self.target_jnt_value
         mujoco.mj_forward(self.model, self.data)
         for tip_sid, tgt_sid in zip(self.tip_sids, self.target_sids):
             self.model.site_pos[tgt_sid] = self.data.site_xpos[tip_sid].copy()
@@ -352,7 +394,9 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             "qpos": accessor.joint_pos(),
             "qvel": accessor.joint_vel() * accessor.dt(),
             "act": accessor.muscle_act(),
-            "pose_err": pose_error_obs(accessor, self.target_jnt_value),
+            "pose_err": pose_error_obs(
+                accessor, self.target_jnt_value, qpos_ids=self._target_qpos_ids
+            ),
         }
         return self._select_obs_keys(obs)
 
@@ -375,7 +419,10 @@ class PoseEnvV0(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             act_mag = act_mag / self.model.na
 
         pose_components = pose_reward(
-            self._accessor, self._task_state, pose_thd=self.pose_thd
+            self._accessor,
+            self._task_state,
+            pose_thd=self.pose_thd,
+            qpos_ids=self._target_qpos_ids,
         )
 
         rwd_dict = collections.OrderedDict(

@@ -1,0 +1,39 @@
+{
+  "description": "Random-target range of myoHandPoseRandom-v0 (and its myoSarc/myoFati/myoReaf variants) on the revised MyoHand of myo_sim >= 0.3 (MyoHub/myo_sim#147). Each scored joint is sampled uniformly within the measured active range of motion of healthy adults, intersected with the model's joint limits so every target is inside the model's range. Forearm and wrist stay at neutral, as in the target envelope of the released hand. The internal node_* joints and CMC4/CMC5 are not scored and stay at neutral.",
+  "marker_joint": "cmc4_flexion_r",
+  "unit": "deg",
+  "sign_convention": "Model joint angles: + = flexion for MCP/PIP/DIP 2-5 (negative = hyperextension), + = extension for the thumb MP and IP (mp_flexion_r, ip_flexion_r) and for the thumb CMC (cmc_flexion_r), + = abduction for cmc_abduction_r, + = radial deviation for MCP 2-5 abduction.",
+  "sources": {
+    "mohamed_ibrahim2024": "Mohamed Ibrahim BK, Baba PUF, Singh V, et al. The normal active range of motion of the index, middle, ring, and little fingers: a multicentre study. Indian J Plast Surg 57(4):248-255, 2024. doi:10.1055/s-0044-1788593. 195 adults (390 hands), active, finger goniometer; Table 2 national means.",
+    "gracia_ibanez2017": "Gracia-Ibanez V, Vergara M, Sancho-Bru JL, Mora MC, Piqueras C. Functional range of motion of the hand joints in activities of the International Classification of Functioning, Disability and Health. J Hand Ther 30(3):337-347, 2017. doi:10.1016/j.jht.2016.08.001. 24 adults, data glove; maximum active MCP extension 25.3 / 27.9 / 23.1 / 21.9 deg (digits 2-5), a check on the values used.",
+    "latz2019": "Latz D, Koukos C, Boeckers P, et al. Influence of wrist position on the metacarpophalangeal joint motion of the index through small finger. Hand (N Y) 14(2):259-263, 2019. doi:10.1177/1558944717736823. Active MCP deviation, 31 adults, wrist neutral.",
+    "skvarilova1996": "Skvarilova B, Plevkova A. Ranges of joint motion of the adult hand. Acta Chir Plast 38(2):67-71, 1996; as reported in Norkin CC, White DJ. Measurement of Joint Motion: A Guide to Goniometry, 5th ed., F.A. Davis, 2016, Table 7.3. 200 adults, active thumb range.",
+    "domalain2010": "Domalain M, Vigouroux L, Berton E. Determination of passive moment-angle relationships at the trapeziometacarpal joint. J Biomech Eng 132(7):071009, 2010. doi:10.1115/1.4001397. In vivo thumb CMC range of 10 adults (Sec. 3.1): 54.9 deg flexion-extension from maximal extension, 47.3 deg abduction-adduction from maximal abduction.",
+    "myo_sim_147": "MyoHub/myo_sim#147, docs/wiki/passive-moments-and-thenar.md (Finger and thumb joint ranges): joint limits of the revised hand (measured passive maxima) and the flexion-dependent MCP abduction limit."
+  },
+  "ranges": {
+    "pro_sup_r": {"range": [0.0, 0.0], "source": "task", "note": "Neutral, as in the released task."},
+    "deviation_r": {"range": [0.0, 0.0], "source": "task", "note": "Neutral, as in the released task."},
+    "flexion_r": {"range": [0.0, 0.0], "source": "task", "note": "Neutral, as in the released task."},
+    "cmc_flexion_r": {"range": [-14.8, 40.1], "source": "domalain2010", "note": "54.9 deg span from the model's extension limit (+40.1 deg), the alignment myo_sim#147 uses for the CMC springs. No active thumb CMC range is tabled in these sources."},
+    "cmc_abduction_r": {"range": [-2.61, 44.69], "source": "domalain2010", "note": "47.3 deg span from the model's abduction limit (+0.78 rad = 44.69 deg), as above."},
+    "mp_flexion_r": {"range": [-57.0, 13.7], "source": "skvarilova1996", "note": "Active flexion 57.0 / extension 13.7 deg."},
+    "ip_flexion_r": {"range": [-79.1, 23.2], "source": "skvarilova1996", "note": "Active flexion 79.1 / extension 23.2 deg."},
+    "mcp2_flexion_r": {"range": [-25.7, 84.0], "source": "mohamed_ibrahim2024", "note": "Active hyperextension 25.7 deg (index); flexion 84 deg, the lowest digit mean of 84-87."},
+    "mcp2_abduction_r": {"range": [-15.0, 25.0], "source": "latz2019", "note": "Active deviation 20.7 ulnar / 31.2 radial deg, cut to the model's limits. In flexion the model's flexion-dependent abduction limit narrows the range further (see the env code)."},
+    "pm2_flexion_r": {"range": [-10.0, 92.0], "source": "mohamed_ibrahim2024", "note": "Active flexion 92 deg (lowest digit mean of 92-97); active hyperextension 13-16 deg, cut to the model's 10 deg limit."},
+    "md2_flexion_r": {"range": [0.0, 82.0], "source": "mohamed_ibrahim2024", "note": "Active flexion 82 deg (lowest digit mean of 82-85); active hyperextension 6-8 deg, cut to the model's 0 deg limit."},
+    "mcp3_flexion_r": {"range": [-24.7, 84.0], "source": "mohamed_ibrahim2024", "note": "Active hyperextension 24.7 deg (middle); flexion as digit 2."},
+    "mcp3_abduction_r": {"range": [-15.0, 15.0], "source": "myo_sim_147", "note": "Model limit: Latz et al. 2019 give no usable wrist-neutral row for the middle finger."},
+    "pm3_flexion_r": {"range": [-10.0, 92.0], "source": "mohamed_ibrahim2024", "note": "As digit 2."},
+    "md3_flexion_r": {"range": [0.0, 82.0], "source": "mohamed_ibrahim2024", "note": "As digit 2."},
+    "mcp4_flexion_r": {"range": [-22.3, 84.0], "source": "mohamed_ibrahim2024", "note": "Active hyperextension 22.3 deg (ring); flexion as digit 2."},
+    "mcp4_abduction_r": {"range": [-15.0, 8.1], "source": "latz2019", "note": "Active radial deviation 8.1 deg; active ulnar 28.0 deg, cut to the model's 15 deg limit."},
+    "pm4_flexion_r": {"range": [-10.0, 92.0], "source": "mohamed_ibrahim2024", "note": "As digit 2."},
+    "md4_flexion_r": {"range": [0.0, 82.0], "source": "mohamed_ibrahim2024", "note": "As digit 2."},
+    "mcp5_flexion_r": {"range": [-26.3, 84.0], "source": "mohamed_ibrahim2024", "note": "Active hyperextension 26.3 deg (little); flexion as digit 2."},
+    "mcp5_abduction_r": {"range": [-27.0, 14.8], "source": "latz2019", "note": "Active radial deviation 14.8 deg; active ulnar 48.5 deg, cut to the model's 27 deg limit."},
+    "pm5_flexion_r": {"range": [-10.0, 92.0], "source": "mohamed_ibrahim2024", "note": "As digit 2."},
+    "md5_flexion_r": {"range": [0.0, 82.0], "source": "mohamed_ibrahim2024", "note": "As digit 2."}
+  }
+}

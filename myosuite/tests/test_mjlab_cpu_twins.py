@@ -37,6 +37,7 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
     TorchFatigueState,
 )
 from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
+from myosuite.envs.myo.backends.mjlab.tasks.pose import mdp as pose_mdp  # noqa: E402
 from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0  # noqa: E402
 from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.wrappers import FatigueWrapper  # noqa: E402
@@ -346,8 +347,9 @@ def _move_target_near(
         mujoco.mj_kinematics(cpu.model, cpu.data)
         return target
     n = len(cpu.target_jnt_value)
+    ids = getattr(cpu, "target_qpos_ids", np.arange(n))
     direction = rng.normal(size=n)
-    target = cpu.data.qpos[:n] + multiple * cpu.pose_thd * direction / np.linalg.norm(
+    target = cpu.data.qpos[ids] + multiple * cpu.pose_thd * direction / np.linalg.norm(
         direction
     )
     cpu.target_jnt_value = target.copy()
@@ -834,3 +836,39 @@ def test_twin_rejects_unknown_obs_key(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     with pytest.raises(KeyError, match="no_such_obs_key"):
         make_pose_env_cfg(env_id)
+
+
+@pytest.mark.parametrize("env_id", ["myoHandPoseRandom-v0", "myoHandPose3Fixed-v0"])
+def test_hand_pose_twin_scores_the_named_target(env_id: str) -> None:
+    """The twin scores the CPU's target joints at the same state (either hand).
+
+    Checked at a synced state, without a physics step, so it also holds where the
+    two physics engines drift apart within one step.
+    """
+    cpu, mj = _make_pair(env_id)
+    term = mj.command_manager.get_term("pose")
+    ids = cpu._target_qpos_ids
+    assert term.cfg.qpos_ids == ids
+    assert len(term.cfg.couplings) == (
+        len(cpu._target_couplings) if cpu.target_type == "generate" else 0
+    )
+    _sync(cpu, mj)
+    obs = mj.observation_manager.compute_group("actor")[0].numpy()
+    np.testing.assert_allclose(obs, cpu.get_obs(), atol=1e-5)
+    cpu_rwd = cpu.get_reward_dict(cpu.get_obs_dict(cpu._accessor))
+    params = mj.reward_manager.get_term_cfg("pose").params
+    for key in ("pose", "bonus", "penalty"):
+        cfg = mj.reward_manager.get_term_cfg(key)
+        value = float(cfg.func(mj, **cfg.params)[0])
+        np.testing.assert_allclose(value, float(cpu_rwd[key]), atol=1e-5)
+    assert bool(pose_mdp.pose_solved(mj, **params)[0]) == bool(cpu_rwd["solved"])
+
+    # Sampled targets stay in the box and inside the coupled limits.
+    low, high = np.array(term.cfg.low), np.array(term.cfg.high)
+    for _ in range(200):
+        term._resample_command(torch.zeros(1, dtype=torch.long))
+        target = term.command[0].numpy().astype(float)
+        assert np.all(target >= low - 1e-6) and np.all(target <= high + 1e-6)
+        for c in term.cfg.couplings:
+            value = c.coef * target[c.index] + c.other_coef * target[c.other]
+            assert c.lo - 1e-5 <= value <= c.hi + 1e-5
