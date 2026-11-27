@@ -53,9 +53,17 @@ def own_kinematics_obs(
         parts.append(qpos_for_joints(model, data, jnt_ids).astype(np.float32))
         parts.append(qvel_for_joints(model, data, jnt_ids).astype(np.float32))
     if config.observe_own_muscles:
-        act_idx = meta.act_indices[agent_id]
-        if data.act is not None and len(data.act) >= max(act_idx) + 1:
-            parts.append(data.act[act_idx].astype(np.float32))
+        act_idx = np.asarray(meta.act_indices[agent_id], dtype=np.intp)
+        if act_idx.size == 0:
+            parts.append(np.empty(0, dtype=np.float32))
+        elif data.act is not None and model.na > 0:
+            act_adr = model.actuator_actadr[act_idx]
+            vals = np.where(
+                act_adr >= 0,
+                data.act[np.maximum(act_adr, 0)],
+                data.ctrl[act_idx],
+            )
+            parts.append(vals.astype(np.float32))
         else:
             parts.append(data.ctrl[act_idx].astype(np.float32))
     return np.concatenate(parts) if parts else np.empty(0, dtype=np.float32)

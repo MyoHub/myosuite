@@ -4,6 +4,9 @@ A policy only works on the observations, actions and control step it was trained
 *contract* records exactly those; its short hash is stored in ``manifest.json`` next to the
 checkpoint and compared with the current env when a downloaded checkpoint is used.
 
+A policy trained on a subject (``make_env(env_id, scales=..., total_mass=...)``) also
+records that subject: its scales, total mass and the digest of the compiled model.
+
 A policy trained through an action map (:mod:`myosuite.utils.action_map`) does not command one
 action per muscle. Its checkpoint records the map under :data:`ACTION_MAP_FIELD` (in the
 checkpoint's ``infos`` and, if written, in ``manifest.json``); :func:`action_map_kind` finds
@@ -14,8 +17,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import warnings
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -92,6 +97,48 @@ def contract_from_env(env: Any) -> dict[str, Any]:
     return contract
 
 
+def _subject(
+    env_id: str,
+    scales: Mapping[str, Any] | str | os.PathLike[str] | None,
+    total_mass: float | None,
+    *,
+    model: Any | None = None,
+) -> dict[str, Any] | None:
+    """The subject an env of *env_id* is built for, or ``None`` for the nominal body.
+
+    Returns:
+        ``scales`` (as JSON data), ``total_mass`` and ``model_digest``, a hash of the
+        CPU env's compiled model without file paths (the mjlab twin builds the same
+        model).
+    """
+    if scales is None and total_mass is None:
+        return None
+    from myosuite.core.body_scaling import _model_digest, _plain_scales  # noqa: PLC0415
+
+    if model is not None:
+        digest = _model_digest(model)
+    else:
+        from myosuite import make_env  # noqa: PLC0415
+
+        env = make_env(env_id, scales=scales, total_mass=total_mass)
+        try:
+            digest = _model_digest(env.unwrapped.model)
+        finally:
+            env.close()
+    return {
+        "scales": None if scales is None else _plain_scales(scales),
+        "total_mass": total_mass,
+        "model_digest": digest,
+    }
+
+
+def _body(subject: dict[str, Any] | None) -> str:
+    """A subject for messages: its model digest, or the nominal body."""
+    if subject is None:
+        return "the nominal body"
+    return f"the subject with model digest {str(subject.get('model_digest'))[:12]}"
+
+
 def contract_hash(contract: dict[str, Any]) -> str:
     """Return a 12-character hash of a contract (stable across runs and platforms)."""
     canonical = json.dumps(contract, sort_keys=True, separators=(",", ":"))
@@ -121,6 +168,8 @@ def write_manifest(
     success: float | None = None,
     steps: int | None = None,
     note: str | None = None,
+    scales: Mapping[str, Any] | str | os.PathLike[str] | None = None,
+    total_mass: float | None = None,
     action_map: dict[str, Any] | None = None,
     deployment: dict[str, Any] | None = None,
     env: Any | None = None,
@@ -134,10 +183,12 @@ def write_manifest(
         success: Deterministic success rate in percent, if measured.
         steps: Environment steps the policy was trained for, if known.
         note: Free text (for example how success is scored).
+        scales: The ``scales`` the env was built with, if a subject.
+        total_mass: The ``total_mass`` the env was built with, if any.
         action_map: Manifest of the action map the policy acts through, if any.
         deployment: Explicit deployment provenance (actual model/I/O/reference data).
         env: Actual CPU env, including configured physical edits. When no explicit
-            contract is supplied, a default env is constructed and recorded. Passing
+            contract is supplied, an env for the supplied subject is constructed. Passing
             a contract alone preserves the inexpensive legacy metadata-only path.
 
     Returns:
@@ -146,12 +197,18 @@ def write_manifest(
         releases while the contract does not, and loaders build the recorded one.
     """
     checkpoint_dir = Path(checkpoint_dir)
+    subject: dict[str, Any] | None = None
+    subject_computed = False
     if deployment is None and (env is not None or contract is None):
         from myosuite import make_env
         from myosuite.utils.deployment_manifest import env_deployment_manifest
 
         owned_env = env is None
-        env = make_env(env_id) if owned_env else env
+        if owned_env:
+            kwargs: dict[str, Any] = {}
+            if scales is not None or total_mass is not None:
+                kwargs = {"scales": scales, "total_mass": total_mass}
+            env = make_env(env_id, **kwargs)
         try:
             if contract is None:
                 contract = contract_from_env(env)
@@ -165,6 +222,11 @@ def write_manifest(
                     )
                 },
             )
+            if owned_env:
+                subject = _subject(
+                    env_id, scales, total_mass, model=env.unwrapped.model
+                )
+                subject_computed = True
         finally:
             if owned_env:
                 env.close()
@@ -195,6 +257,10 @@ def write_manifest(
     models_version = env_models_version(env_id)
     if models_version is not None:
         manifest[MANIFEST_FIELD] = models_version
+    if not subject_computed:
+        subject = _subject(env_id, scales, total_mass)
+    if subject is not None:
+        manifest["subject"] = subject
     path = checkpoint_dir / MANIFEST_NAME
     path.write_text(json.dumps(manifest, indent=2) + "\n")
     return path
@@ -206,18 +272,47 @@ def read_manifest(checkpoint_dir: str | Path) -> dict[str, Any] | None:
     return json.loads(path.read_text()) if path.is_file() else None
 
 
-def check_contract(env_id: str, checkpoint_dir: str | Path) -> bool:
-    """Warn when a checkpoint's recorded contract differs from the current env.
+def check_contract(
+    env_id: str,
+    checkpoint_dir: str | Path,
+    *,
+    scales: Mapping[str, Any] | str | os.PathLike[str] | None = None,
+    total_mass: float | None = None,
+    strict: bool = False,
+) -> bool:
+    """Warn when a checkpoint's recorded contract or subject differs from the current env.
 
     Args:
         env_id: Registered env id the checkpoint is about to be used on.
         checkpoint_dir: Folder with the checkpoint and its manifest.
+        scales: The ``scales`` of the env the checkpoint is used on, if a subject.
+        total_mass: The ``total_mass`` of that env, if any.
+        strict: Raise instead of warning when the subjects differ.
 
     Returns:
-        ``False`` when the contract hashes differ, ``True`` otherwise (also when the folder
-        has no manifest, or the manifest records no contract, as for the MuscleMimic policy).
+        ``False`` when the subjects (model digests) or the contract hashes differ, ``True``
+        otherwise (also when the folder has no manifest, or the manifest records no contract,
+        as for the MuscleMimic policy). A nominal env with a nominal checkpoint is checked as
+        before.
+
+    Raises:
+        ValueError: With ``strict``, if the checkpoint's subject differs from the env's
+            (including a subject checkpoint on the nominal body, or the reverse).
     """
     manifest = read_manifest(checkpoint_dir)
+    trained = None if manifest is None else manifest.get("subject")
+    subject = _subject(env_id, scales, total_mass)
+    if (trained is None) != (subject is None) or (
+        subject is not None and trained.get("model_digest") != subject["model_digest"]
+    ):
+        message = (
+            f"The checkpoint for {env_id} was trained on {_body(trained)}, but the env "
+            f"is built for {_body(subject)}: the bodies differ, so the policy may not work."
+        )
+        if strict:
+            raise ValueError(message)
+        warnings.warn(message, stacklevel=2)
+        return False
     if manifest is None or not manifest.get("contract"):
         return True
     current = contract_hash(env_contract(env_id))

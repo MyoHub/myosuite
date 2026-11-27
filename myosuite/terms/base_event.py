@@ -13,7 +13,7 @@ the initial state, apply physiological conditions, etc.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -36,17 +36,21 @@ def reset_random_pose(
             uniform call signature).
         task_state: Current task state dict (mutated in-place).
         target_jnt_range: Array of shape (nj, 2) with [lo, hi] per joint.
-        rng: NumPy random generator. Uses ``np.random`` if None.
+        rng: Seeded NumPy random generator (e.g. ``env.np_random``).
         **kwargs: Unused extra keyword arguments.
 
     Returns:
         Updated task_state with ``"target_angles"`` set to a random sample.
+
+    Raises:
+        ValueError: If *rng* is ``None``.
     """
-    _rng: np.random.Generator | np.random.RandomState = (
-        rng if rng is not None else cast(np.random.RandomState, np.random)
-    )
+    if rng is None:
+        raise ValueError(
+            "reset_random_pose requires an explicit seeded rng (e.g. env.np_random)."
+        )
     lo, hi = target_jnt_range[:, 0], target_jnt_range[:, 1]
-    task_state["target_angles"] = _rng.uniform(lo, hi)
+    task_state["target_angles"] = rng.uniform(lo, hi)
     return task_state
 
 

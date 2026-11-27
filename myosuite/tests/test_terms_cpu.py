@@ -24,6 +24,7 @@ class _FakeAccessor:
         na: int = 6,
         nu: int = 4,
         ctrl_range: tuple[float, float] = (-1.0, 1.0),
+        joint_range: tuple[float, float] = (-1.0, 1.0),
     ) -> None:
         self._nq = nq
         self._na = na
@@ -34,6 +35,9 @@ class _FakeAccessor:
         self._ctrl_range = np.column_stack(
             [np.full(nu, ctrl_range[0]), np.full(nu, ctrl_range[1])]
         )
+        self._joint_lo = np.full(nq, joint_range[0], dtype=np.float64)
+        self._joint_hi = np.full(nq, joint_range[1], dtype=np.float64)
+        self._joint_limited = np.ones(nq, dtype=bool)
 
     @property
     def physics_path(self):
@@ -61,6 +65,13 @@ class _FakeAccessor:
 
     def ctrl_range(self):
         return self._ctrl_range.copy()
+
+    def joint_limits(self):
+        return (
+            self._joint_lo.copy(),
+            self._joint_hi.copy(),
+            self._joint_limited.copy(),
+        )
 
     def dt(self):
         return 0.01
@@ -176,21 +187,6 @@ def test_joint_penalty_zero_at_centre():
     assert result["joint_penalty"] == 0.0
 
 
-# joint_penalty and joint_limit_violation compare qpos (nq values) with the
-# actuator ctrl_range (nu rows). That holds only when every joint has one position
-# actuator whose ctrl_range equals the joint range, which is what the nq == nu,
-# ctrl_range [-1, 1] tests here model. For a muscle model (ctrl_range [0, 1],
-# nq != nu) it is wrong. EnvAccessor has no joint-range accessor yet, so these strict
-# xfails pin the intended behaviour until the terms read joint limits (follow-up).
-# No task uses either term today.
-_COMPARES_QPOS_WITH_CTRL_RANGE = pytest.mark.xfail(
-    strict=True,
-    raises=(AssertionError, ValueError),
-    reason="joint_penalty / joint_limit_violation compare qpos with actuator ctrl_range",
-)
-
-
-@_COMPARES_QPOS_WITH_CTRL_RANGE
 @pytest.mark.parametrize(("nq", "nu"), [(4, 4), (4, 6)])
 def test_joint_penalty_ignores_muscle_ctrl_range(nq: int, nu: int) -> None:
     """A mid-range joint angle is not penalised because muscle ctrl is in [0, 1]."""
@@ -201,7 +197,6 @@ def test_joint_penalty_ignores_muscle_ctrl_range(nq: int, nu: int) -> None:
     assert joint_penalty(acc, {})["joint_penalty"] == 0.0
 
 
-@_COMPARES_QPOS_WITH_CTRL_RANGE
 @pytest.mark.parametrize(("nq", "nu"), [(4, 4), (4, 6)])
 def test_joint_limit_violation_ignores_muscle_ctrl_range(nq: int, nu: int) -> None:
     """A mid-range joint angle is no violation because muscle ctrl is in [0, 1]."""

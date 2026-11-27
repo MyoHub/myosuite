@@ -84,10 +84,6 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         "solved": 10,
     }
 
-    ACTUATOR_PARAM: dict = {}
-    OSL_PARAM_LIST: list = []
-    OSL_PARAM_SELECT: int = 0
-
     PAIN_JNT = [
         "hip_adduction_l",
         "hip_adduction_r",
@@ -270,6 +266,9 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
             self.gait_cycle_headers = dict(zip(headers, range(len(headers))))
 
         # ── OSL controller ───────────────────────────────────────────────────
+        self.ACTUATOR_PARAM: dict[str, dict[str, Any]] = {}
+        self.OSL_PARAM_LIST: list[Any] = []
+        self.OSL_PARAM_SELECT: int = 0
         mujoco.mj_forward(self.model, self.data)
         self.OSL_CTRL = MyoOSLController(
             np.sum(self.model.body_mass),
@@ -280,6 +279,11 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self.muscle_space = self.model.na
         self.full_ctrl_space = self.model.nu
         self._get_actuator_params()
+        self._input_seed = seed
+
+        import gymnasium as _gym
+
+        _gym.Env.reset(self, seed=seed)
 
         # ── Terrain ──────────────────────────────────────────────────────────
         self.trackfield = TrackField(
@@ -357,11 +361,6 @@ class RunTrackEnv(MuscleActionMixin, MyoGymnasiumEnv, EzPickle):
         self._init_qpos = self.model.keyframe("stand").qpos.copy()
         self._init_qvel = np.zeros(self.model.nv)
         self.startFlag = False
-        self._input_seed = seed
-
-        import gymnasium as _gym
-
-        _gym.Env.reset(self, seed=seed)
 
         # ── Observation space ─────────────────────────────────────────────────
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
