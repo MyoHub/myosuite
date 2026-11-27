@@ -71,6 +71,32 @@ def _void_unstable_step(rwd_dict: dict) -> None:
         rwd_dict["lose"] = np.ones_like(rwd_dict["lose"])[()]
 
 
+def mj_diverged(data: Any) -> bool:
+    """Whether the simulation diverged since the last ``mj_resetData``.
+
+    ``mj_step`` counts a bad qpos/qvel/qacc in ``data.warning`` and then
+    auto-resets the data to ``qpos0``; ``mj_resetData`` zeroes the counters.
+
+    Args:
+        data: ``mujoco.MjData`` of the episode.
+
+    Returns:
+        True after a divergence, or when ``qpos`` / ``qvel`` are not finite.
+    """
+    import mujoco
+
+    bad = (
+        mujoco.mjtWarning.mjWARN_BADQPOS,
+        mujoco.mjtWarning.mjWARN_BADQVEL,
+        mujoco.mjtWarning.mjWARN_BADQACC,
+    )
+    return bool(
+        any(data.warning[int(w)].number > 0 for w in bad)
+        or not np.isfinite(data.qpos).all()
+        or not np.isfinite(data.qvel).all()
+    )
+
+
 def check_obs_keys(
     obs_keys: Iterable[str], available: Collection[str], owner: str
 ) -> None:
@@ -111,6 +137,9 @@ class CpuEnvAccessor:
         self._model = model
         self._data = data
         self._ctrl_dt = ctrl_dt
+        self._joint_limits_cache: tuple[np.ndarray, np.ndarray, np.ndarray] | None = (
+            None
+        )
 
     @property
     def physics_path(self) -> Any:
@@ -153,6 +182,31 @@ class CpuEnvAccessor:
 
     def ctrl_range(self) -> np.ndarray:
         return self._model.actuator_ctrlrange.copy()
+
+    def joint_limits(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if self._joint_limits_cache is None:
+            import mujoco
+
+            nq = int(self._model.nq)
+            lo = np.zeros(nq, dtype=np.float64)
+            hi = np.zeros(nq, dtype=np.float64)
+            limited = np.zeros(nq, dtype=bool)
+            scalar_types = (
+                int(mujoco.mjtJoint.mjJNT_HINGE),
+                int(mujoco.mjtJoint.mjJNT_SLIDE),
+            )
+            for j in range(int(self._model.njnt)):
+                if int(self._model.jnt_type[j]) in scalar_types and bool(
+                    self._model.jnt_limited[j]
+                ):
+                    qadr = int(self._model.jnt_qposadr[j])
+                    if qadr < nq:
+                        lo[qadr] = float(self._model.jnt_range[j, 0])
+                        hi[qadr] = float(self._model.jnt_range[j, 1])
+                        limited[qadr] = True
+            self._joint_limits_cache = (lo, hi, limited)
+        lo, hi, limited = self._joint_limits_cache
+        return lo.copy(), hi.copy(), limited.copy()
 
     def dt(self) -> float:
         return self._ctrl_dt
@@ -242,9 +296,20 @@ class MyoGymnasiumEnv(gym.Env):
     render_camera: str | None = None
     """Name of the model camera ``render()`` shows by default (``None``: the free camera)."""
 
+    supports_scales: bool = False
+    """Whether the env builds its model for a subject from ``scales``/``total_mass``
+    (:func:`myosuite.core.body_scaling.scale_model`); its mjlab twin must too."""
+
     def __new__(cls, *args: Any, **kwargs: Any) -> MyoGymnasiumEnv:
-        """Reject the constructor kwargs that wrappers replaced (they would be ignored)."""
+        """Reject constructor kwargs the env would ignore (replaced or unsupported)."""
         reject_removed_kwargs(cls, kwargs)
+        if not cls.supports_scales and any(
+            kwargs.get(name) is not None for name in ("scales", "total_mass")
+        ):
+            raise NotImplementedError(
+                f"{cls.__name__} does not build its model for a subject; it takes "
+                "no scales or total_mass."
+            )
         return super().__new__(cls)
 
     def __init__(
@@ -625,21 +690,7 @@ class MyoGymnasiumEnv(gym.Env):
         Returns:
             True if the episode should terminate.
         """
-        import mujoco
-
-        diverged = any(
-            self.data.warning[int(w)].number > 0
-            for w in (
-                mujoco.mjtWarning.mjWARN_BADQPOS,
-                mujoco.mjtWarning.mjWARN_BADQVEL,
-                mujoco.mjtWarning.mjWARN_BADQACC,
-            )
-        )
-        return bool(
-            diverged
-            or not np.isfinite(self.data.qpos).all()
-            or not np.isfinite(self.data.qvel).all()
-        )
+        return mj_diverged(self.data)
 
     def render(self, **kwargs):
         """Render the environment using a lazy MujocoRenderer.

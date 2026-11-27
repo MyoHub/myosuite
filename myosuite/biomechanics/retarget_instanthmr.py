@@ -6,8 +6,6 @@
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -25,7 +23,6 @@ from myosuite.biomechanics.retarget import (
     _body_landmarks,
     _calibration_pose,
     _foot_contacts,
-    _geom_lowest_z,
     _ground_clip,
     _hinge_table,
     _knee_flexion_meta,
@@ -38,8 +35,8 @@ from myosuite.biomechanics.retarget import (
     merge_quality_flags,
     validate_refit,
 )
+from myosuite.core.body_scaling import inherited_scales, scale_spec
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 if TYPE_CHECKING:
     from myosuite.viz.muscle_meshes import MuscleMeshReconstruction
@@ -1251,26 +1248,6 @@ def estimate_instanthmr_scales(
     return scales
 
 
-def _sole_lowest_z(model: mujoco.MjModel, qpos: np.ndarray) -> float | None:
-    body_names = {model.body(i).name for i in range(model.nbody)}
-    foot_names = ("calcn_l", "toes_l", "calcn_r", "toes_r")
-    if not all(b in body_names for b in foot_names):
-        return None
-    foot_ids = {model.body(b).id for b in foot_names}
-    geoms = [
-        g
-        for g in range(model.ngeom)
-        if model.geom_bodyid[g] in foot_ids
-        and (model.geom_contype[g] != 0 or model.geom_conaffinity[g] != 0)
-    ]
-    if not geoms:
-        return None
-    d = mujoco.MjData(model)
-    d.qpos[:] = qpos
-    mujoco.mj_kinematics(model, d)
-    return float(min(_geom_lowest_z(model, d, g) for g in geoms))
-
-
 def scale_spec_from_instanthmr(
     spec: mujoco.MjSpec,
     scales: dict[str, float | tuple[float, float, float]],
@@ -1279,249 +1256,12 @@ def scale_spec_from_instanthmr(
 ) -> mujoco.MjSpec:
     """Return a subject-scaled copy of *spec* from per-segment scale factors.
 
-    Delegates to ``myo_sim.scaling.scale_spec`` when installed, and otherwise applies
-    exact isotropic per-segment scaling across bone offsets, slide joints and polynomial
-    couplings, wrapping/collision geoms, meshes, body masses/inertias, spatial tendons,
-    muscle ``lengthrange`` (preserving peak isometric force) and sole floor alignment.
+    Propagates segment factors down the subject body trees via
+    :func:`myosuite.core.body_scaling.inherited_scales` and delegates model
+    scaling to :func:`myosuite.core.body_scaling.scale_spec`.
     """
-    if body_mass is not None and (not np.isfinite(body_mass) or body_mass <= 0):
-        raise ValueError(f"body_mass must be finite and positive, got {body_mass}")
-
-    if importlib.util.find_spec("myo_sim.scaling") is not None:
-        mod = importlib.import_module("myo_sim.scaling")
-        if hasattr(mod, "scale_spec"):
-            return mod.scale_spec(spec, scales, total_mass=body_mass)
-
-    scalar_scales: dict[str, float] = {}
-    for k, v in scales.items():
-        arr = np.asarray(v, dtype=np.float64).ravel()
-        if arr.size == 1:
-            s = float(arr[0])
-        elif arr.size == 3 and np.allclose(arr, arr[0], rtol=1e-5, atol=1e-6):
-            s = float(arr[0])
-        else:
-            raise ValueError(
-                f"Isotropic scaler requires scalar or uniform 3-vector for {k!r}, got {v}"
-            )
-        if not np.isfinite(s) or s <= 0:
-            raise ValueError(f"Scale for {k!r} must be finite and positive, got {s}")
-        scalar_scales[k] = s
-
-    body_names = {b.name for b in spec.bodies}
-    unknown = sorted(set(scalar_scales) - body_names)
-    if unknown:
-        raise ValueError(f"Unknown body names in scales: {unknown}")
-
-    out = spec.copy()
-    m0 = spec.copy().compile()
-    q0 = m0.qpos0.copy()
-    project_joint_couplings(JointCouplings.from_model(m0), q0)
-    d0 = mujoco.MjData(m0)
-    d0.qpos[:] = q0
-    mujoco.mj_forward(m0, d0)
-    z0 = _sole_lowest_z(m0, q0)
-
-    for i, ac in enumerate(out.actuators):
-        acc0 = max(float(m0.actuator_acc0[i]), 1e-10)
-        if ac.gaintype == mujoco.mjtGain.mjGAIN_MUSCLE and ac.gainprm[2] < 0:
-            gp = np.array(ac.gainprm, dtype=np.float64)
-            gp[2] = float(m0.actuator_gainprm[i, 3]) / acc0
-            ac.gainprm = gp
-        if ac.biastype == mujoco.mjtBias.mjBIAS_MUSCLE and ac.biasprm[2] < 0:
-            bp = np.array(ac.biasprm, dtype=np.float64)
-            bp[2] = float(m0.actuator_biasprm[i, 3]) / acc0
-            ac.biasprm = bp
-
-    top_roots = [
-        b
-        for b in out.worldbody.bodies
-        if any(j.type == mujoco.mjtJoint.mjJNT_FREE for j in b.joints)
-    ] or list(out.worldbody.bodies)
-
-    subject_bodies: list[Any] = []
-    body_scales: dict[str, float] = {}
-    body_parent_scale: dict[str, float | None] = {}
-    jnt_parent_scale: dict[str, float] = {}
-    jnt_types: dict[str, Any] = {}
-    mesh_scales: dict[str, float] = {}
-
-    def walk(body: Any, s_par: float, is_root: bool) -> None:
-        s_b = scalar_scales.get(body.name, s_par)
-        body_scales[body.name] = s_b
-        body_parent_scale[body.name] = None if is_root else s_par
-        subject_bodies.append(body)
-        if not is_root:
-            body.pos = s_par * np.asarray(body.pos, dtype=np.float64)
-        for j in body.joints:
-            jnt_parent_scale[j.name] = s_par
-            jnt_types[j.name] = j.type
-            if j.type != mujoco.mjtJoint.mjJNT_FREE:
-                j.pos = s_b * np.asarray(j.pos, dtype=np.float64)
-            if j.type == mujoco.mjtJoint.mjJNT_SLIDE:
-                j.range = s_par * np.asarray(j.range, dtype=np.float64)
-                j.ref = s_par * float(j.ref)
-                j.springref = s_par * float(j.springref)
-                j.margin = s_par * float(j.margin)
-                j.stiffness = np.asarray(j.stiffness, dtype=np.float64) / s_par
-                j.damping = np.asarray(j.damping, dtype=np.float64) / s_par
-        for st in body.sites:
-            st.pos = s_b * np.asarray(st.pos, dtype=np.float64)
-            st.size = s_b * np.asarray(st.size, dtype=np.float64)
-        for frm in getattr(body, "frames", ()):
-            frm.pos = s_b * np.asarray(frm.pos, dtype=np.float64)
-        for g in body.geoms:
-            g.pos = s_b * np.asarray(g.pos, dtype=np.float64)
-            ft = np.asarray(g.fromto, dtype=np.float64)
-            if np.all(np.isfinite(ft)):
-                g.fromto = s_b * ft
-            if np.isfinite(g.mass) and g.mass > 0:
-                g.mass = float(g.mass) * (s_b**3)
-            if g.meshname:
-                mesh_scales[g.meshname] = s_b
-            elif g.type != mujoco.mjtGeom.mjGEOM_PLANE:
-                g.size = s_b * np.asarray(g.size, dtype=np.float64)
-        if body.mass > 0:
-            body.mass = float(body.mass) * (s_b**3)
-            body.ipos = s_b * np.asarray(body.ipos, dtype=np.float64)
-            fi = np.asarray(body.fullinertia, dtype=np.float64)
-            if np.all(np.isfinite(fi)):
-                body.fullinertia = (s_b**5) * fi
-            else:
-                body.inertia = (s_b**5) * np.asarray(body.inertia, dtype=np.float64)
-        for child in body.bodies:
-            walk(child, s_b, False)
-
-    for rb in top_roots:
-        walk(rb, scalar_scales.get(rb.name, 1.0), True)
-
-    for mesh in out.meshes:
-        if mesh.name in mesh_scales:
-            sm = mesh_scales[mesh.name]
-            mesh.scale = sm * np.asarray(mesh.scale, dtype=np.float64)
-            mesh.refpos = sm * np.asarray(mesh.refpos, dtype=np.float64)
-
-    for eq in out.equalities:
-        if eq.type == mujoco.mjtEq.mjEQ_JOINT:
-            a = (
-                jnt_parent_scale.get(eq.name1, 1.0)
-                if jnt_types.get(eq.name1) == mujoco.mjtJoint.mjJNT_SLIDE
-                else 1.0
-            )
-            bm = (
-                jnt_parent_scale.get(eq.name2, 1.0)
-                if jnt_types.get(eq.name2) == mujoco.mjtJoint.mjJNT_SLIDE
-                else 1.0
-            )
-            edata = np.array(eq.data, dtype=np.float64)
-            for k in range(5):
-                edata[k] = a * edata[k] / (bm**k)
-            eq.data = edata
-
-    for key in out.keys:
-        kq = np.array(key.qpos, dtype=np.float64) if len(key.qpos) == m0.nq else None
-        kv = np.array(key.qvel, dtype=np.float64) if len(key.qvel) == m0.nv else None
-        for jname, jtype in jnt_types.items():
-            if jtype == mujoco.mjtJoint.mjJNT_SLIDE:
-                jid = m0.joint(jname).id
-                sp = jnt_parent_scale[jname]
-                if kq is not None:
-                    kq[m0.jnt_qposadr[jid]] *= sp
-                if kv is not None:
-                    kv[m0.jnt_dofadr[jid]] *= sp
-        if kq is not None:
-            key.qpos = kq
-        if kv is not None:
-            key.qvel = kv
-
-    m1 = out.compile()
-    recompiled_frames = False
-    for b in subject_bodies:
-        sp = body_parent_scale[b.name]
-        if sp is None:
-            continue
-        bid = m0.body(b.name).id
-        err_par = sp * m0.body_pos[bid] - m1.body_pos[bid]
-        if float(np.linalg.norm(err_par)) > 1e-12:
-            R_b = np.empty(9, dtype=np.float64)
-            mujoco.mju_quat2Mat(R_b, m0.body_quat[bid])
-            b_quat = np.asarray(b.quat, dtype=np.float64)
-            if float(np.linalg.norm(b_quat)) > 1e-12:
-                R_loc = np.empty(9, dtype=np.float64)
-                mujoco.mju_quat2Mat(R_loc, b_quat / np.linalg.norm(b_quat))
-                R_frm = R_b.reshape(3, 3) @ R_loc.reshape(3, 3).T
-            else:
-                R_frm = R_b.reshape(3, 3)
-            b.pos = np.asarray(b.pos, dtype=np.float64) + R_frm.T @ err_par
-            recompiled_frames = True
-    if recompiled_frames:
-        m1 = out.compile()
-    if body_mass is not None:
-        cur_mass = float(sum(m1.body_mass[m1.body(b.name).id] for b in subject_bodies))
-        if cur_mass <= 0:
-            raise ValueError("Cannot normalize body_mass on a massless model")
-        m_ratio = float(body_mass) / cur_mass
-        for b in subject_bodies:
-            if b.mass > 0:
-                b.mass = float(b.mass) * m_ratio
-                fi = np.asarray(b.fullinertia, dtype=np.float64)
-                if np.all(np.isfinite(fi)):
-                    b.fullinertia = m_ratio * fi
-                else:
-                    b.inertia = m_ratio * np.asarray(b.inertia, dtype=np.float64)
-            else:
-                for g in b.geoms:
-                    if np.isfinite(g.mass) and g.mass > 0:
-                        g.mass = float(g.mass) * m_ratio
-                    elif np.isfinite(g.density) and g.density > 0:
-                        g.density = float(g.density) * m_ratio
-    q1 = m1.qpos0.copy()
-    project_joint_couplings(JointCouplings.from_model(m1), q1)
-    d1 = mujoco.MjData(m1)
-    d1.qpos[:] = q1
-    mujoco.mj_forward(m1, d1)
-
-    ten_ratio = np.ones(m0.ntendon, dtype=np.float64)
-    for t in range(m0.ntendon):
-        if d0.ten_length[t] > 1e-6 and d1.ten_length[t] > 1e-6:
-            ten_ratio[t] = float(d1.ten_length[t] / d0.ten_length[t])
-
-    for t_idx, td in enumerate(out.tendons):
-        rt = ten_ratio[t_idx]
-        if abs(rt - 1.0) > 1e-12:
-            sl = np.asarray(td.springlength, dtype=np.float64)
-            td.springlength = np.where(sl >= 0.0, sl * rt, sl)
-            td.stiffness = np.asarray(td.stiffness, dtype=np.float64) / rt
-            td.damping = np.asarray(td.damping, dtype=np.float64) / rt
-            td.margin = float(td.margin) * rt
-            if td.limited == mujoco.mjtLimited.mjLIMITED_TRUE:
-                td.range = rt * np.asarray(td.range, dtype=np.float64)
-
-    for a_idx, ac in enumerate(out.actuators):
-        if ac.trntype == mujoco.mjtTrn.mjTRN_TENDON:
-            tid = int(m0.actuator_trnid[a_idx, 0])
-            rt = ten_ratio[tid]
-            lr = np.asarray(ac.lengthrange, dtype=np.float64)
-            if np.any(lr != 0.0):
-                ac.lengthrange = rt * lr
-
-    z1 = _sole_lowest_z(m1, q1)
-    if z0 is not None and z1 is not None and top_roots:
-        dz = z0 - z1
-        rb = top_roots[0]
-        rpos = np.array(rb.pos, dtype=np.float64)
-        rpos[2] += dz
-        rb.pos = rpos
-        free_jnts = [
-            j for j in range(m0.njnt) if m0.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
-        ]
-        if free_jnts:
-            z_adr = int(m0.jnt_qposadr[free_jnts[0]]) + 2
-            for key in out.keys:
-                if len(key.qpos) == m0.nq:
-                    kq = np.array(key.qpos, dtype=np.float64)
-                    kq[z_adr] += dz
-                    key.qpos = kq
-    return out
+    full_scales = {**inherited_scales(spec, scales), **scales}
+    return scale_spec(spec, full_scales, total_mass=body_mass)
 
 
 def scale_model_from_instanthmr(

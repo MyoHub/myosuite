@@ -59,19 +59,39 @@ Alternatives
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import os
+import warnings
 from collections import OrderedDict
+from collections.abc import Callable, Hashable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple, TypeAlias
-from collections.abc import Callable, Hashable
 
 import numpy as np
 import mujoco
 
 logger = logging.getLogger(__name__)
+
+_EMPTY_PREFIX_ATTACH_WARNING = (
+    r"^Attaching a spec with an empty prefix may prevent the model from being "
+    r"saved correctly\.$"
+)
+
+
+@contextlib.contextmanager
+def suppress_empty_prefix_attach_warning() -> Iterator[None]:
+    """Suppress MuJoCo's expected empty-prefix ``MjSpec.attach`` warning."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=_EMPTY_PREFIX_ATTACH_WARNING,
+            category=UserWarning,
+        )
+        yield
+
 
 # Registry of named model recipes (populated by @model_recipe decorator)
 _RECIPES: dict[str, Callable] = {}
@@ -828,7 +848,8 @@ class ModelBuilder:
             KeyError: If a named parent body does not exist in the spec.
         """
         spec = self.build_spec()
-        return spec.compile(), spec
+        with suppress_empty_prefix_attach_warning():
+            return spec.compile(), spec
 
     def build_spec(self) -> mujoco.MjSpec:
         """Compose a fresh spec from the seed, fragments, props, transforms and options.
@@ -874,6 +895,9 @@ class ModelBuilder:
             frame = parent_body.add_frame()
             frame.pos = frag.pos
             frame.quat = frag.quat
+            if frag_spec.nuserdata > 0:
+                spec.nuserdata += frag_spec.nuserdata
+                frag_spec.nuserdata = spec.nuserdata
             spec.attach(frag_spec, prefix="", suffix="", frame=frame)
 
         for fb in self._free_bodies:
@@ -894,8 +918,9 @@ class ModelBuilder:
         for mb in self._mesh_bodies:
             _add_mesh_body_to_spec(spec, mb)
 
-        for transform in self._transforms:
-            spec = transform(spec)
+        with suppress_empty_prefix_attach_warning():
+            for transform in self._transforms:
+                spec = transform(spec)
 
         if self._timestep is not None:
             spec.option.timestep = self._timestep
@@ -1088,9 +1113,12 @@ def _recipe_spec(
     paths a recipe may write (the TableTennis furniture meshes), *params* the
     reserved recipe kwargs.
     """
-    spec = spec_fn() if spec_fn is not None else recipe_fn(ModelBuilder()).build_spec()
-    if edit_fn is not None:
-        edit_fn(spec)
+    with suppress_empty_prefix_attach_warning():
+        spec = (
+            spec_fn() if spec_fn is not None else recipe_fn(ModelBuilder()).build_spec()
+        )
+        if edit_fn is not None:
+            edit_fn(spec)
     return spec
 
 
@@ -1127,4 +1155,5 @@ def build_from_recipe(
         _cache_edit_fn(edit_fn),
         tuple(sorted(kwargs.items())),
     )
-    return spec.compile(), spec
+    with suppress_empty_prefix_attach_warning():
+        return spec.compile(), spec

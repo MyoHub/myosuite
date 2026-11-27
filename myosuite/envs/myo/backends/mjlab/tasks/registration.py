@@ -19,15 +19,23 @@ from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import feature_overrid
 
 _log = logging.getLogger(__name__)
 
-# Prefixes the CPU registry uses for muscle-condition variants of ``myo*`` ids.
-_CONDITION_PREFIXES = ("myoSarc", "myoFati", "myoReaf")
+# Suffixes the CPU registry uses for muscle-condition variants (see _register_task_variants).
+_CONDITION_SUFFIXES = ("Sarc", "Fati", "Reaf")
+
+
+def _variant_env_id(base_env_id: str, suffix: str) -> str:
+    """Derive a condition-variant env id matching ``registry._register_task_variants``."""
+    if base_env_id.startswith("myo"):
+        return f"myo{suffix}{base_env_id[3:]}"
+    if "-" in base_env_id:
+        base, ver = base_env_id.rsplit("-", 1)
+        return f"{base}{suffix}-{ver}"
+    return f"{base_env_id}{suffix}"
 
 
 def condition_variants(env_id: str) -> list[str]:
     """CPU-registered muscle-condition variants of *env_id* (base id excluded)."""
-    if not env_id.startswith("myo"):
-        return []
-    candidates = (prefix + env_id[3:] for prefix in _CONDITION_PREFIXES)
+    candidates = (_variant_env_id(env_id, sfx) for sfx in _CONDITION_SUFFIXES)
     return [cid for cid in candidates if cid in gym.registry]
 
 
@@ -45,7 +53,8 @@ def rebuild_twin_cfg(
     Args:
         env_id: A CPU-twin id registered through :func:`register_cpu_twins`.
         features: ``EnvConfig.features`` (wrapper specs) added to the CPU registration.
-        task_kwargs: CPU constructor kwargs (``frame_skip``) replacing the registered ones.
+        task_kwargs: CPU constructor kwargs (``frame_skip``, the subject's
+            ``scales`` and ``total_mass``) replacing the registered ones.
         play: Build the play (evaluation) variant of the config.
 
     Returns:
@@ -58,7 +67,7 @@ def rebuild_twin_cfg(
     if factory is None:
         raise NotImplementedError(
             f"{env_id} is not a CPU twin: its mjlab config cannot be rebuilt from "
-            "EnvConfig.features or ctrl_dt."
+            "EnvConfig.features, ctrl_dt, scales or total_mass."
         )
     with feature_overrides(features, task_kwargs):
         return factory(env_id, play=play)

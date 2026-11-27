@@ -318,7 +318,7 @@ action instead, use a plain ``gymnasium.ActionWrapper``.
 To configure both backends, register an env id with a ``MotorNoiseWrapper`` in its
 ``additional_wrappers``: the mjlab twin reads it from the CPU registration like the muscle
 condition. For a single mjlab config, set ``env_cfg.actions["muscles"].motor_noise``. See
-``docs/wiki/cross-backend-contract.md`` for the order of operations and the random streams.
+``docs/source/developer/cross-backend-contract.md`` for the order of operations and the random streams.
 
 Mind the clip at low excitation: with the van Beers levels a command of ``u = 0.076`` (policy
 output 0 through the sigmoid) is clipped to 0 in 34 % of the steps and its mean rises to 0.118,

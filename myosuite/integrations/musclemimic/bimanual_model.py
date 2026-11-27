@@ -17,11 +17,11 @@ from __future__ import annotations
 import os
 import tempfile
 import warnings
-from pathlib import Path
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
-from ml_collections import config_dict
 import mujoco
+from ml_collections import config_dict
 
 from myosuite.core.model_builder import cached_spec
 from myosuite.integrations.musclemimic.model_versions import (
@@ -149,6 +149,49 @@ FINGER_MUSCLE_TOKENS = (
 )
 
 
+def _resolve_musclemimic_xml(
+    config: config_dict.ConfigDict, entry: str, needs: str
+) -> str:
+    """Return ``config.model_path`` or the ``musclemimic_models`` entry MJCF *entry*.
+
+    Args:
+        config: Task configuration with optional ``model_path``.
+        entry: ``musclemimic_models.get_xml_path`` key (``"bimanual"``, ``"myofullbody"``).
+        needs: Start of the error message naming what requires the asset.
+
+    Returns:
+        Path string for :func:`mujoco.MjSpec.from_file`.
+
+    Raises:
+        ImportError: If the default asset is requested but
+            ``musclemimic_models`` is not installed.
+    """
+    mp = getattr(config, "model_path", None)
+    if mp is not None:
+        return mp.as_posix() if hasattr(mp, "as_posix") else str(mp)
+    try:
+        from musclemimic_models import get_xml_path
+    except ImportError as err:
+        raise ImportError(
+            f"{needs} "
+            "https://github.com/amathislab/musclemimic (package "
+            "`musclemimic_models`). Install with: pip install "
+            "'musclemimic_models==1.0.6' or pip install "
+            "'myosuite[musclemimic]'."
+        ) from err
+    return get_xml_path(entry).as_posix()
+
+
+def _apply_mimic_solver_options(
+    spec: mujoco.MjSpec, config: config_dict.ConfigDict
+) -> None:
+    """Set the MuscleMimic timestep and solver options of *config* on *spec*."""
+    spec.option.timestep = float(config.sim_dt)
+    spec.option.iterations = int(config.model_iterations)
+    spec.option.ls_iterations = int(config.model_ls_iterations)
+    spec.option.disableflags = int(config.model_disableflags)
+
+
 def resolve_mimic_bimanual_xml(config: config_dict.ConfigDict) -> str:
     """Return absolute path to the MuscleMimic bimanual MJCF.
 
@@ -167,20 +210,9 @@ def resolve_mimic_bimanual_xml(config: config_dict.ConfigDict) -> str:
         ImportError: If the default upstream MJCF is requested but
             ``musclemimic_models`` is not installed.
     """
-    mp = getattr(config, "model_path", None)
-    if mp is not None:
-        return mp.as_posix() if hasattr(mp, "as_posix") else str(mp)
-    try:
-        from musclemimic_models import get_xml_path
-    except ImportError as err:
-        raise ImportError(
-            "MjxMimicBimanual-v0 needs the same bimanual MJCF as "
-            "https://github.com/amathislab/musclemimic (package "
-            "`musclemimic_models`). Install with: pip install "
-            "'musclemimic_models==1.0.6' or pip install "
-            "'myosuite[musclemimic]'."
-        ) from err
-    return get_xml_path("bimanual").as_posix()
+    return _resolve_musclemimic_xml(
+        config, "bimanual", "MjxMimicBimanual-v0 needs the same bimanual MJCF as"
+    )
 
 
 def _translate_finger_token(name: str, pool: frozenset[str]) -> str:
@@ -444,10 +476,7 @@ def compile_mimic_bimanual_mjmodel(
         Tuple of compiled model, the post-edit spec, and resolved XML path.
     """
     spec, xml_path = build_mimic_bimanual_spec(config)
-    spec.option.timestep = float(config.sim_dt)
-    spec.option.iterations = int(config.model_iterations)
-    spec.option.ls_iterations = int(config.model_ls_iterations)
-    spec.option.disableflags = int(config.model_disableflags)
+    _apply_mimic_solver_options(spec, config)
     mj_model = spec.compile()
     return mj_model, spec, xml_path
 
