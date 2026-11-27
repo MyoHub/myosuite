@@ -12,7 +12,7 @@ import importlib
 import re
 import warnings
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, runtime_checkable
 
 import mujoco
@@ -353,6 +353,7 @@ class EMGTrial:
     cycle_events: np.ndarray | None = None
     mvc_peaks: np.ndarray | None = None
     filter_config: EMGFilterConfig | None = None
+    supported_dofs: tuple[int, ...] = ()
     meta: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -442,8 +443,29 @@ def musculoskeletal_fingerprint(model: mujoco.MjModel) -> str:
     return fingerprint(model)
 
 
-def _non_root_dof_mask(model: mujoco.MjModel) -> np.ndarray:
+def _trial_optimization(
+    trial: EMGTrial, optimization: StaticOptimizationConfig | None
+) -> StaticOptimizationConfig | None:
+    """Fold trial-declared ``supported_dofs`` into *optimization* when unset."""
+    dofs = trial.supported_dofs or tuple(
+        int(d) for d in trial.meta.get("supported_dofs", ())
+    )
+    if not dofs:
+        return optimization
+    if optimization is None:
+        return StaticOptimizationConfig(supported_dofs=dofs)
+    if optimization.supported_dofs:
+        return optimization
+    return replace(optimization, supported_dofs=dofs)
+
+
+def _non_root_dof_mask(
+    model: mujoco.MjModel, optimization: StaticOptimizationConfig | None = None
+) -> np.ndarray:
+    """Dofs the muscles must drive: not free roots, tendon nodes or supported dofs."""
     mask = np.ones(model.nv, dtype=bool)
+    if optimization is not None:
+        mask[list(optimization.supported_dofs)] = False
     for j in np.flatnonzero(model.jnt_type == mujoco.mjtJoint.mjJNT_FREE):
         adr = int(model.jnt_dofadr[j])
         mask[adr : adr + 6] = False
@@ -569,8 +591,9 @@ def _effort_summary(
     res_sl: np.ndarray,
     tau_sl: np.ndarray,
     status_sl: np.ndarray,
+    optimization: StaticOptimizationConfig | None = None,
 ) -> dict[str, float]:
-    dof_mask = _non_root_dof_mask(model)
+    dof_mask = _non_root_dof_mask(model, optimization)
     moment_arms = _clip_moment_arms(model, qpos_sl)
     act_qfrc = np.einsum("tmn,tm->tn", moment_arms, frc_sl)
     ratios = _reserve_ratios(res_sl, tau_sl, dof_mask, act_qfrc)
@@ -674,6 +697,7 @@ def validate_inverse_emg(
         )
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = kinematics or clip_kinematics(
@@ -819,6 +843,7 @@ def validate_inverse_emg(
         so_res.reserve[sl],
         so_res.joint_torque[sl],
         so_res.status[sl],
+        optimization,
     )
 
     def _vals(key: str, *, active_only: bool = False) -> np.ndarray:
@@ -896,6 +921,7 @@ def validate_emg_feasibility(
         )
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = kinematics or clip_kinematics(
@@ -972,7 +998,7 @@ def validate_emg_feasibility(
         n_trim = 0
     sl = slice(n_trim, len(kin_time) - n_trim if n_trim > 0 else None)
 
-    dof_mask = _non_root_dof_mask(model)
+    dof_mask = _non_root_dof_mask(model, optimization)
     dof_indices = np.flatnonzero(dof_mask)
     tau_sl = nominal_so.joint_torque[sl]
     moment_sl = _clip_moment_arms(model, kin.qpos[sl])
@@ -1453,6 +1479,7 @@ def validate_trial(
         return report
 
     kin_time = trial.resolved_kinematics_time()
+    optimization = _trial_optimization(trial, optimization)
     dt = float(np.median(np.diff(kin_time)))
     q_proj = project_tendon_nodes(model, trial.qpos)
     kin = clip_kinematics(model, q_proj, dt, lowpass_hz=kinematics_lowpass_hz)
@@ -1519,6 +1546,7 @@ def validate_trial(
             nom_so.reserve[sl],
             nom_so.joint_torque[sl],
             nom_so.status[sl],
+            optimization,
         )
         report["effort"] = eff
         if eff["reserve_to_torque_ratio_p95"] > thr.max_unconstrained_reserve_ratio:

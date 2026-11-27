@@ -163,11 +163,107 @@ def _build_custom(args: argparse.Namespace) -> EMGSource:
     return ManifestEMGSource(args.manifest)
 
 
+def _build_quesada2024(args: argparse.Namespace) -> EMGSource:
+    from myosuite.integrations.emg.upper_limb_sources import Quesada2024UpperLimbSource
+
+    root = args.data_root or "downloads/emg/quesada2024"
+    win_s = args.window_s if args.window_s is not None else 8.0
+    return Quesada2024UpperLimbSource(
+        root,
+        subjects=_parse_subjects(args.subjects),
+        pattern=args.filter,
+        window_duration_s=win_s,
+        kinematics_rate_hz=args.kinematics_rate,
+    )
+
+
+def _build_emg2pose(args: argparse.Namespace) -> EMGSource:
+    from myosuite.integrations.emg.upper_limb_sources import Emg2PoseHandSource
+
+    root = args.data_root or "downloads/emg/emg2pose"
+    win_s = args.window_s if args.window_s is not None else 4.0
+    return Emg2PoseHandSource(
+        root,
+        window_duration_s=win_s,
+        kinematics_rate_hz=args.kinematics_rate,
+    )
+
+
+def _build_ninapro_db5(args: argparse.Namespace) -> EMGSource:
+    from myosuite.integrations.emg.upper_limb_sources import NinaProDB5Source
+
+    root = args.data_root or "downloads/emg/ninapro_db5"
+    return NinaProDB5Source(
+        root,
+        subjects=_parse_subjects(args.subjects),
+        pattern=args.filter,
+        kinematics_rate_hz=args.kinematics_rate,
+    )
+
+
+def _build_grabmyo(args: argparse.Namespace) -> EMGSource:
+    from myosuite.integrations.emg.upper_limb_sources import GrabMyoSource
+
+    root = args.data_root or "downloads/emg/grabmyo"
+    return GrabMyoSource(
+        root,
+        subjects=_parse_subjects(args.subjects),
+        pattern=args.filter,
+        kinematics_rate_hz=args.kinematics_rate,
+    )
+
+
+def _build_fritsche2026(args: argparse.Namespace) -> EMGSource:
+    from myosuite.integrations.emg.upper_limb_sources import Fritsche2026Source
+
+    root = args.data_root or "downloads/emg/fritsche2026"
+    win_s = args.window_s if args.window_s is not None else 8.0
+    return Fritsche2026Source(
+        root,
+        subjects=_parse_subjects(args.subjects),
+        pattern=args.filter,
+        window_duration_s=win_s,
+        kinematics_rate_hz=args.kinematics_rate,
+    )
+
+
+def _build_maurice2020(args: argparse.Namespace) -> EMGSource:
+    from myosuite.integrations.emg.upper_limb_sources import Maurice2020Source
+
+    root = args.data_root or "downloads/emg/maurice2020"
+    return Maurice2020Source(
+        root,
+        subjects=_parse_subjects(args.subjects),
+        pattern=args.filter,
+        kinematics_rate_hz=args.kinematics_rate,
+    )
+
+
+def _build_diaz2026(args: argparse.Namespace) -> EMGSource:
+    from myosuite.integrations.emg.upper_limb_sources import Diaz2026HandSource
+
+    root = args.data_root or "downloads/emg/diaz2026"
+    return Diaz2026HandSource(
+        root,
+        subjects=_parse_subjects(args.subjects),
+        pattern=args.filter,
+        max_window_s=args.window_s if args.window_s is not None else 10.0,
+        kinematics_rate_hz=args.kinematics_rate,
+    )
+
+
 _SOURCE_BUILDERS: dict[str, SourceBuilder] = {
     "rajagopal2016": _build_rajagopal,
     "lencioni2019": _build_lencioni,
     "dimitrov2023": _build_dimitrov,
     "camargo2021": _build_camargo,
+    "quesada2024": _build_quesada2024,
+    "emg2pose": _build_emg2pose,
+    "ninapro_db5": _build_ninapro_db5,
+    "grabmyo": _build_grabmyo,
+    "fritsche2026": _build_fritsche2026,
+    "maurice2020": _build_maurice2020,
+    "diaz2026": _build_diaz2026,
     "custom": _build_custom,
 }
 
@@ -314,9 +410,13 @@ def evaluate_model_on_source(
         use_contacts = contact_fallback and bool(
             trial.meta.get("contact_forces_fallback")
         )
+        supported = getattr(trial, "supported_dofs", ()) or tuple(
+            int(d) for d in trial.meta.get("supported_dofs", ())
+        )
         opt_cfg = StaticOptimizationConfig(
             contact_forces=use_contacts,
             contact_distance=0.03 if use_contacts else 0.01,
+            supported_dofs=supported,
         )
         ctrl_qadr = trial.meta.get("controlled_qpos_adr")
         rep = validate_trial(
@@ -600,7 +700,9 @@ def run_emg_validation(
     export_dir = Path(args.export_npz) if args.export_npz else None
 
     model_a, label_a = load_target_model(args.model)
-    rollout_audit = bool(args.rollout_audit)
+    rollout_audit = bool(
+        args.rollout_audit or args.dataset in ("emg2pose", "ninapro_db5", "grabmyo")
+    )
     reports_a, summary_a, trials_a = evaluate_model_on_source(
         model_a,
         label_a,
@@ -644,44 +746,50 @@ def run_emg_validation(
         )
 
     if args.export_mm_evalkit:
-        mm_dir = Path(args.export_mm_evalkit)
-        mm_dir.mkdir(parents=True, exist_ok=True)
-        slug_a = re.sub(r"[^a-zA-Z0-9_-]+", "_", label_a).strip("_") or "model_a"
-        ep_a = (mm_dir / f"{slug_a}_episodes.npz").resolve()
-        export_mm_evalkit_rollout(
-            model_a,
-            trials_a,
-            ep_a,
-            solver=args.rollout_solver,
-            motion_group=source.name,
-        )
-        policy_entries: list[dict[str, str]] = [
-            {
-                "id": slug_a,
-                "label": label_a,
-                "trajectory_data_path": str(ep_a),
-            }
-        ]
-        if model_b is not None and label_b is not None and trials_b is not None:
-            slug_b = re.sub(r"[^a-zA-Z0-9_-]+", "_", label_b).strip("_") or "model_b"
-            if slug_b == slug_a:
-                slug_b = f"{slug_b}_b"
-            ep_b = (mm_dir / f"{slug_b}_episodes.npz").resolve()
+        kin_a = [t for t in trials_a if t.qpos is not None]
+        if kin_a:
+            mm_dir = Path(args.export_mm_evalkit)
+            mm_dir.mkdir(parents=True, exist_ok=True)
+            slug_a = re.sub(r"[^a-zA-Z0-9_-]+", "_", label_a).strip("_") or "model_a"
+            ep_a = (mm_dir / f"{slug_a}_episodes.npz").resolve()
             export_mm_evalkit_rollout(
-                model_b,
-                trials_b,
-                ep_b,
+                model_a,
+                kin_a,
+                ep_a,
                 solver=args.rollout_solver,
                 motion_group=source.name,
             )
-            policy_entries.append(
+            policy_entries: list[dict[str, str]] = [
                 {
-                    "id": slug_b,
-                    "label": label_b,
-                    "trajectory_data_path": str(ep_b),
+                    "id": slug_a,
+                    "label": label_a,
+                    "trajectory_data_path": str(ep_a),
                 }
-            )
-        write_mm_evalkit_policy_config(mm_dir / "policies.yaml", policy_entries)
+            ]
+            if model_b is not None and label_b is not None and trials_b is not None:
+                kin_b = [t for t in trials_b if t.qpos is not None]
+                if kin_b:
+                    slug_b = (
+                        re.sub(r"[^a-zA-Z0-9_-]+", "_", label_b).strip("_") or "model_b"
+                    )
+                    if slug_b == slug_a:
+                        slug_b = f"{slug_b}_b"
+                    ep_b = (mm_dir / f"{slug_b}_episodes.npz").resolve()
+                    export_mm_evalkit_rollout(
+                        model_b,
+                        kin_b,
+                        ep_b,
+                        solver=args.rollout_solver,
+                        motion_group=source.name,
+                    )
+                    policy_entries.append(
+                        {
+                            "id": slug_b,
+                            "label": label_b,
+                            "trajectory_data_path": str(ep_b),
+                        }
+                    )
+            write_mm_evalkit_policy_config(mm_dir / "policies.yaml", policy_entries)
 
     safe_lbl = label_a.replace("/", "_").replace(":", "_")
     out_dir = (

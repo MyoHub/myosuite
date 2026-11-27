@@ -487,3 +487,34 @@ def test_unsolved_frames_raise_or_become_nan(arm_motion) -> None:
     assert np.isfinite(out.joint_torque).all()
     with pytest.raises(ValueError, match="on_failure"):
         StaticOptimizer(model, replace(config, on_failure="ignore"))
+
+
+def test_supported_dofs_spare_antagonists() -> None:
+    """A strapped elbow carries a wrist flexor's elbow torque: no triceps needed."""
+    model = mujoco.MjModel.from_xml_string(
+        """
+        <mujoco><option gravity="0 0 0"/><worldbody><body>
+          <joint name="elbow" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 .3 0 0" size=".02" mass="1"/>
+          <body pos=".3 0 0"><joint name="wrist" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 .08 0 0" size=".02" mass=".4"/>
+          </body></body></worldbody>
+          <tendon><fixed name="fcr"><joint joint="elbow" coef=".01"/>
+            <joint joint="wrist" coef=".02"/></fixed></tendon>
+          <actuator>
+            <motor name="FCR" tendon="fcr" gear="500" ctrlrange="0 1"/>
+            <motor name="TRI" joint="elbow" gear="-20" ctrlrange="0 1"/>
+            <motor name="ECR" joint="wrist" gear="-10" ctrlrange="0 1"/>
+          </actuator></mujoco>"""
+    )
+    zero = np.zeros(model.nv)
+    # Isometric wrist flexion: the muscles must supply 5 N m at the wrist, 0 at the elbow.
+    load = np.array([0.0, -5.0])
+    held = StaticOptimizer(model).solve(np.zeros(2), zero, zero, load)
+    assert held.activation[1] > 0.05  # triceps cancels the flexor's elbow torque
+    strapped = StaticOptimizer(
+        model, StaticOptimizationConfig(supported_dofs=(0,))
+    ).solve(np.zeros(2), zero, zero, load)
+    np.testing.assert_allclose(strapped.activation, [0.5, 0.0, 0.0], atol=1e-4)
+    # The strap takes the flexor's 2.5 N m at the elbow; the wrist keeps no reserve.
+    np.testing.assert_allclose(strapped.reserve, [-2.5, 0.0], atol=1e-3)
