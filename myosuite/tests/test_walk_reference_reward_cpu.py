@@ -27,7 +27,7 @@ def test_walk_reference_reward_matches_cpu(steps: int) -> None:
 
     import myosuite  # noqa: F401
 
-    from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0
+    from myosuite.envs.tasks.leg.walk.env import LegWalkEnvV0
     from myosuite.terms.base_reward import walk_env_reward
     from myosuite.envs.gymnasium_env import CpuEnvAccessor
 

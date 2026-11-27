@@ -14,10 +14,10 @@ pytestmark = pytest.mark.tier2
 
 def test_mjlab_mapping_for_finger_hand_targets() -> None:
     """MJLab registry should expose expected task config mappings."""
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
-    from myosuite.envs.myo.backends.mjlab.configs.finger_pose_cfg import FingerPoseCfg
-    from myosuite.envs.myo.backends.mjlab.configs.finger_reach_cfg import FingerReachCfg
-    from myosuite.envs.myo.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
+    from myosuite.envs.backends.mjlab import REGISTERED_TASKS
+    from myosuite.envs.backends.mjlab.configs.finger_pose_cfg import FingerPoseCfg
+    from myosuite.envs.backends.mjlab.configs.finger_reach_cfg import FingerReachCfg
+    from myosuite.envs.backends.mjlab.configs.hand_pose_cfg import HandPoseCfg
 
     assert REGISTERED_TASKS["myoFingerPoseFixed-v0"] is FingerPoseCfg
     assert REGISTERED_TASKS["myoFingerPoseRandom-v0"] is FingerPoseCfg
@@ -27,8 +27,8 @@ def test_mjlab_mapping_for_finger_hand_targets() -> None:
 
 def test_mjlab_mapping_for_leg_walk_sarc_variant() -> None:
     """MJLab registry should include leg walk and sarcopenia variant IDs."""
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
-    from myosuite.envs.myo.backends.mjlab.configs.walk_cfg import WalkCfg
+    from myosuite.envs.backends.mjlab import REGISTERED_TASKS
+    from myosuite.envs.backends.mjlab.configs.walk_cfg import WalkCfg
 
     assert REGISTERED_TASKS["myoLegWalk-v0"] is WalkCfg
     assert REGISTERED_TASKS["myoSarcLegWalk-v0"] is WalkCfg
@@ -37,7 +37,7 @@ def test_mjlab_mapping_for_leg_walk_sarc_variant() -> None:
 def test_mjx_mapping_for_finger_hand_targets() -> None:
     """MJX env list should include newly added finger/hand IDs."""
     try:
-        from myosuite.envs.myo.backends.mjx import ALL_ENVS
+        from myosuite.envs.backends._experimental_mjx import ALL_ENVS
     except (ImportError, AttributeError) as exc:
         pytest.skip(f"MJX not importable on this setup: {exc}")
 

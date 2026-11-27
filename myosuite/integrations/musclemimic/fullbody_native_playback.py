@@ -329,7 +329,7 @@ def _compute_site_tracking_error(
     the 17-site order of the retargeted MuscleMimic clips. Sites missing from
     the model or the clip are left out; ``None`` when none is left.
     """
-    from myosuite.envs.myo.tasks.mimic.clip_env import _CLIP_SITE_ORDER  # noqa: PLC0415
+    from myosuite.envs.tasks.mimic.clip_env import _CLIP_SITE_ORDER  # noqa: PLC0415
 
     xpos = clip.site_xpos
     if xpos is None or xpos.ndim != 3 or frame_idx >= xpos.shape[0]:

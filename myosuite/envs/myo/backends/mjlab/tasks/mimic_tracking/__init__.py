@@ -2,31 +2,30 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""mjlab twin of the motion-tracking task; importing registers it."""
+"""Backward-compatible package facade for :mod:`myosuite.envs.tasks.mimic.mjlab_register`."""
 
-from mjlab.rl import RslRlOnPolicyRunnerCfg
+from __future__ import annotations
 
-from myosuite.envs.myo.backends.mjlab.tasks.registration import register_cpu_twins
-from myosuite.envs.myo.backends.mjlab.tasks.rl import myo_ppo_runner_cfg
-from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
+import importlib as _importlib
+from typing import Any
 
-from .env_cfg import make_mimic_env_cfg
+_target = _importlib.import_module("myosuite.envs.tasks.mimic.mjlab_register")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
+)
 
-
-def mimic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-    """Generic PPO defaults (both observation groups to actor and critic).
-
-    Not tuned for this task: a MuscleMimic PPO config is a planned method preset.
-    """
-    cfg = myo_ppo_runner_cfg(
-        "myo_mimic",
-        hidden_dims=(1024, 512, 256),
-        critic_hidden_dims=(1024, 512, 256),
-        gamma=0.99,
-    )
-    groups = ("policy", "goal")
-    cfg.obs_groups = {"actor": groups, "critic": groups}
-    return cfg
+_CHILD_SUBMODULES = frozenset(
+    {
+        "commands",
+        "env_cfg",
+        "mdp",
+    }
+)
 
 
-register_cpu_twins((MIMIC_ENV_ID,), make_mimic_env_cfg, mimic_ppo_runner_cfg)
+def __getattr__(name: str) -> Any:
+    if name in _CHILD_SUBMODULES:
+        mod = _importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = mod
+        return mod
+    return getattr(_target, name)

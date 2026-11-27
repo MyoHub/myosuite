@@ -22,8 +22,8 @@ from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
 from mjlab.tasks.registry import load_env_cfg  # noqa: E402
 
 from myosuite import make_env  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.waypoint.mdp import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
+from myosuite.envs.tasks.fullbody.waypoint.mdp import (  # noqa: E402
     COMMAND,
     WaypointCommand,
 )
@@ -87,7 +87,7 @@ def _t(x: np.ndarray) -> torch.Tensor:
 
 @pytest.fixture(scope="module")
 def pair():
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cpu = make_env(ENV_ID).unwrapped
     mj = ManagerBasedRlEnv(cfg=load_env_cfg(ENV_ID), device="cpu")
@@ -216,7 +216,7 @@ def _slower_scene(spec: mujoco.MjSpec) -> None:
 
 def test_instance_overrides_share_one_id() -> None:
     from myosuite.core.config import EnvConfig
-    from myosuite.envs.waypoint import WaypointTaskCfg
+    from myosuite.envs.tasks.fullbody.waypoint.env import WaypointTaskCfg
 
     task = WaypointTaskCfg(waypoints=((0.0, -1.0),), arrival_radius=0.12)
     config = EnvConfig(

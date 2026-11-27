@@ -18,7 +18,7 @@ def test_episode_patch_updates_buffer_without_writer() -> None:
     rsl_rl = pytest.importorskip("rsl_rl")
     torch = pytest.importorskip("torch")
 
-    from myosuite.envs.myo.backends.mjlab.rsl_rl_logger_episode_patch import (
+    from myosuite.envs.backends.mjlab.rsl_rl_logger_episode_patch import (
         install_episode_reward_logging_patch,
         uninstall_episode_reward_logging_patch,
     )

@@ -269,7 +269,7 @@ def _minimal_mjx_main(argv: list[str]) -> int:
         _exit_no_jax_for_smoke()
 
     try:
-        from myosuite.envs.myo.backends.mjx import make
+        from myosuite.envs.backends._experimental_mjx import make
     except Exception as err:
         logger.error("MJX stack not available: %s", err)
         msg = str(err)
@@ -586,7 +586,7 @@ def _mjlab_play_main(argv: list[str]) -> int:
     # If --motion_path given, register Mimic tasks in trajectory mode so
     # mjlab play's NativeMujocoViewer tracks the clip's reference targets.
     try:
-        from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
+        from myosuite.envs.backends.mjlab.register_mjlab_tasks import (
             register_mjlab_tasks,
         )
 
@@ -595,11 +595,11 @@ def _mjlab_play_main(argv: list[str]) -> int:
                 load_motion_clip,
                 resolve_motion_path,
             )
-            from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
                 register_mimic_mjlab_tasks_with_clip,
             )
             from mjlab.tasks.registry import register_mjlab_task as _rmt
-            from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
+            from myosuite.envs.backends.mjlab.register_mjlab_tasks import (
                 _elbow_ppo_runner_cfg,
             )
 
@@ -707,7 +707,7 @@ def _mjlab_play_main(argv: list[str]) -> int:
         "-c",
         (
             "import sys; "
-            "from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import register_mjlab_tasks; "
+            "from myosuite.envs.backends.mjlab.register_mjlab_tasks import register_mjlab_tasks; "
             "register_mjlab_tasks(); "
             "sys.argv = " + repr(task_argv) + "; "
             "from mjlab.scripts.play import main; "

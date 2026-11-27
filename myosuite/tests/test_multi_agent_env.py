@@ -191,7 +191,7 @@ def test_scoring_hooks_read_post_integration_state() -> None:
 @pytest.mark.parametrize("fullbody", [False, True])
 def test_chase_tag_roles_follow_reset_seed(fullbody: bool) -> None:
     """Both chase-tag reset hooks consume the Gymnasium-seeded generator."""
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
         ChaseTagVsFullbodySteeredTaskConfig,
         ChaseTagVsTaskConfig,
     )
@@ -399,7 +399,7 @@ def test_the_divergence_check_can_be_switched_off() -> None:
 
 
 def test_divergence_on_final_step_voids_evade_timeout_score() -> None:
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
         ChaseTagVsTaskConfig,
     )
 

@@ -30,10 +30,10 @@ def test_chase_tag_vs_config_fields_are_subset_of_task_config() -> None:
     """
     import dataclasses
 
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_config import (
         ChaseTagVsConfig,
     )
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
         ChaseTagVsTaskConfig,
     )
 
@@ -75,7 +75,7 @@ class TestFullBodyChaseTagRegistry:
     ENV_ID = "myoChallengeChaseTagFBP2-v0"
 
     def test_registered_and_runs(self) -> None:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_fb_model import (
             CHASETAG_FB_ARENA_BYTES,
         )
 
@@ -113,7 +113,7 @@ class TestFullBodyChaseTagRegistry:
         """
         import mujoco
 
-        from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_fb_model import (
             CHASETAG_FB_ARENA_BYTES,
             build_fullbody_chasetag_spec,
         )
@@ -209,7 +209,7 @@ class TestChaseTagVsRegistry:
 
     def test_chaser_catching_runner_increases_runner_health(self) -> None:
         """Driving the chaser onto the runner's pelvis should accrue tag pressure."""
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
         from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
@@ -240,10 +240,10 @@ class TestChaseTagVsRegistry:
         """
         import mujoco
 
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_config import (
             ChaseTagVsConfig,
         )
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_model import (
             CHASETAG_VS_FULLBODY_ARENA_BYTES,
             _build_chase_tag_vs_fullbody_spec,
         )
@@ -324,7 +324,7 @@ class TestChaseTagVsRules:
     """1v1: tag or pursuer-fall ends the match; a runner fall does not."""
 
     def test_episode_is_over_hook(self) -> None:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
 
@@ -343,7 +343,7 @@ class TestChaseTagVsRules:
         assert cfg.episode_is_over(upright, {"agent_0": True, "agent_1": False}) is True
 
     def test_runner_fall_does_not_end_episode(self) -> None:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
         from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
@@ -368,7 +368,7 @@ class TestChaseTagVsRules:
             env.close()
 
     def test_pursuer_fall_ends_episode_as_runner_win(self) -> None:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
         from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
@@ -393,7 +393,7 @@ class TestChaseTagVsRules:
             env.close()
 
     def test_tag_still_ends_episode(self) -> None:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
         from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
@@ -416,7 +416,7 @@ class TestChaseTagVsRules:
             env.close()
 
     def test_downed_runner_can_still_be_tagged(self) -> None:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
         from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
@@ -443,7 +443,7 @@ class TestChaseTagVsRules:
             env.close()
 
     def test_evade_pursuer_fall_scores_the_runner(self) -> None:
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
             ChaseTagVsTaskConfig,
         )
         from myosuite.envs.multi_agent_modular_env import ModularMultiAgentTaskEnv
@@ -472,13 +472,13 @@ class TestChaseTagFullbodyBody:
 
     def test_bodies_come_from_myo_sim(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import myosuite.integrations.musclemimic.fullbody_model as fullbody
-        from myosuite.envs.myo.tasks.challenge.chase_tag_fb_model import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_fb_model import (
             build_fullbody_chasetag_spec,
         )
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_config import (
             ChaseTagVsConfig,
         )
-        from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_model import (
+        from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_model import (
             _build_fullbody_agent_spec,
         )
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 pytestmark = pytest.mark.tier2
 
-_ASSETS = Path(__file__).resolve().parents[1] / "envs" / "myo" / "assets"
+_ASSETS = Path(__file__).resolve().parents[1] / "envs" / "assets"
 _RELOCATE_XML = _ASSETS / "arm" / "myoarm_relocate.xml"
 _TABLETENNIS_XML = _ASSETS / "arm" / "myoarm_tabletennis.xml"
 

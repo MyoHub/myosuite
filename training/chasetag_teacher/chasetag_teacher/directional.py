@@ -38,7 +38,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from myosuite.envs.myo.tasks.mimic.policy import ActorCritic
+from myosuite.envs.tasks.mimic.policy import ActorCritic
 
 DIR_OBS_DIM, ACT_DIM, FBVS_OBS_DIM = 528, 354, 546
 HEADING_SLICE = slice(520, 522)
@@ -211,7 +211,7 @@ class DirectionalScene:
     def __init__(self, frame_skip: int = 5):
         import mujoco  # noqa: PLC0415
 
-        from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_scene  # noqa: PLC0415
+        from myosuite.envs.tasks.mimic.tracking.models import compiled_scene  # noqa: PLC0415
         from myosuite.physics.joint_coupling import JointCouplings  # noqa: PLC0415
 
         self.mj = mujoco
@@ -259,7 +259,7 @@ class DirectionalScene:
     @property
     def facing(self) -> float:
         """World yaw of the body's forward direction (the canonical root frame's x axis)."""
-        from myosuite.envs.myo.tasks.mimic.tracking.models import root_offset  # noqa: PLC0415
+        from myosuite.envs.tasks.mimic.tracking.models import root_offset  # noqa: PLC0415
 
         R = np.zeros(9)
         self.mj.mju_quat2Mat(R, self.data.qpos[3:7])

@@ -53,7 +53,7 @@ def walk_env(model: Any, tmp_path_factory: pytest.TempPathFactory) -> Iterator[A
     """Two-env CPU ``myoFullBodyWalkSAR-v0``, built by its registration."""
     from mjlab.envs import ManagerBasedRlEnv
 
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
     from myosuite.integrations.musclemimic.sar_extraction import (
         extract_synergies,
         save_synergy_model,
@@ -95,7 +95,7 @@ def _heel_to_toe_xy(model: Any, yaw: float = 0.0) -> np.ndarray:
 
 def test_forward_axis_is_the_way_the_feet_point(model: Any) -> None:
     """The anterior axis the reward uses is the heel-to-toe direction of the model."""
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     assert int(model.jnt_type[0]) == int(mujoco.mjtJoint.mjJNT_FREE)
     root_quat = model.key_qpos[0][3:7]

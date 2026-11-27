@@ -79,7 +79,7 @@ def _init(model_name: str, version: str, body_models: str, trim: int) -> None:
     warnings.filterwarnings("ignore")
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
     from myosuite.integrations import retarget_smplh as rs  # noqa: PLC0415
-    from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
+    from myosuite.envs.tasks.mimic.tracking.models import (  # noqa: PLC0415
         compiled_body,
         kinematic_fingerprint,
     )
@@ -162,7 +162,7 @@ def stamp(root: Path, model_name: str) -> int:
     import myo_sim  # noqa: PLC0415
 
     from myosuite.biomechanics import retarget as rt  # noqa: PLC0415
-    from myosuite.envs.myo.tasks.mimic.tracking.models import (  # noqa: PLC0415
+    from myosuite.envs.tasks.mimic.tracking.models import (  # noqa: PLC0415
         kinematic_fingerprint,
     )
 

@@ -14,7 +14,7 @@ import pytest
 
 @pytest.fixture(scope="session", name="body")
 def body_fixture() -> Any:
-    from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body
+    from myosuite.envs.tasks.mimic.tracking.models import compiled_body
 
     return compiled_body("myofullbody")
 
@@ -22,7 +22,7 @@ def body_fixture() -> Any:
 @pytest.fixture(scope="session", name="clips")
 def clips_fixture(tmp_path_factory: Any, body: Any) -> Path:
     """Three clips of 8, 7 and 6 s and a list of them; the last rises at 1 m/s, so envs reset onto it fail."""
-    from myosuite.envs.myo.tasks.mimic.tracking.motion import write_synthetic_clip
+    from myosuite.envs.tasks.mimic.tracking.motion import write_synthetic_clip
 
     d = tmp_path_factory.mktemp("clips")
     for i, (sec, speed, climb) in enumerate(

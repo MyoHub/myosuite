@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from gymnasium.utils.env_checker import check_env
 
-from myosuite.envs.waypoint import WaypointEnv, WaypointTaskCfg
+from myosuite.envs.tasks.fullbody.waypoint.env import WaypointEnv, WaypointTaskCfg
 from myosuite.terms.waypoint import (
     WaypointRouteCfg,
     sample_route,

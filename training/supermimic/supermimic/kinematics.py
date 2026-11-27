@@ -27,7 +27,7 @@ import torch
 
 from myosuite.physics.joint_coupling import projected_joint_couplings
 
-from myosuite.envs.myo.tasks.mimic.tracking.models import ModelInfo, root_offset
+from myosuite.envs.tasks.mimic.tracking.models import ModelInfo, root_offset
 from .rotations import (
     axis_angle_to_mat,
     mm3,

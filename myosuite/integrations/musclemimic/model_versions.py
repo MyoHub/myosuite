@@ -110,6 +110,9 @@ _MODELS_VALUES: dict[str, dict[str, dict[str, Any]]] = {
 SUPPORTED_MODELS_VERSIONS = tuple(_MODELS_VALUES)
 
 _MODELS_ENTRY_POINTS = {
+    "myosuite.envs.tasks.mimic.cpu:MuscleMimicBimanualEnv",
+    "myosuite.envs.tasks.mimic.cpu:MuscleMimicFullbodyEnv",
+    "myosuite.envs.tasks.mimic.cpu:MuscleMimicFullbodyDirectionalEnv",
     "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicBimanualEnv",
     "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyEnv",
     "myosuite.envs.myo.tasks.mimic.cpu:MuscleMimicFullbodyDirectionalEnv",
@@ -162,7 +165,10 @@ def uses_musclemimic_models(env_id: str) -> bool:
         return False
     if isinstance(spec.entry_point, str) and spec.entry_point in _MODELS_ENTRY_POINTS:
         return True
-    if spec.entry_point == "myosuite.envs.waypoint:WaypointEnv":
+    if isinstance(spec.entry_point, str) and spec.entry_point in {
+        "myosuite.envs.tasks.fullbody.waypoint.env:WaypointEnv",
+        "myosuite.envs.waypoint:WaypointEnv",
+    }:
         return (
             spec.kwargs.get("model") is None
             and spec.kwargs.get("model_path") is None

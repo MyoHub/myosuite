@@ -21,7 +21,7 @@ import argparse
 import mujoco
 import numpy as np
 
-from myosuite.envs.myo.assets._resolve import resolve_arm_xml
+from myosuite.envs.assets._resolve import resolve_arm_xml
 from myosuite.physics.inverse_kinematics import solve_ik
 from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
 

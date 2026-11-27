@@ -20,9 +20,17 @@ from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1
 
-# Scanning the live gym registry directly is robust to call order.
+# Scanning the live gym registry directly is robust to call order while ignoring
+# third-party plugins (e.g. ``myoInteract``) that may be installed in the environment.
 _ALL_ENV_IDS = sorted(
-    env_id for env_id in gym.envs.registry if env_id.startswith(("myo", "motor"))
+    env_id
+    for env_id, spec in gym.envs.registry.items()
+    if env_id.startswith(("myo", "motor"))
+    and (
+        spec.entry_point.startswith("myosuite.")
+        if isinstance(spec.entry_point, str)
+        else getattr(spec.entry_point, "__module__", "").startswith("myosuite.")
+    )
 )
 
 

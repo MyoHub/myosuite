@@ -1,19 +1,16 @@
-"""Finger reach (``myoFingerReach*`` / ``motorFingerReach*``) environment configurations."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.hand.reach.finger_mjlab_cfg`."""
 
-from mjlab.envs import ManagerBasedRlEnvCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.reach.reach_env_cfg import (
-    make_reach_env_cfg,
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.hand.reach.finger_mjlab_cfg import *  # noqa: F403
+
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.hand.reach.finger_mjlab_cfg"
 )
-
-FINGER_REACH_IDS = (
-    "myoFingerReachFixed-v0",
-    "myoFingerReachRandom-v0",
-    "motorFingerReachFixed-v0",
-    "motorFingerReachRandom-v0",
-)
-
-
-def finger_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
-    """Finger reach (``myoFingerReach*`` / ``motorFingerReach*``) task matching the CPU registration of *env_id*."""
-    return make_reach_env_cfg(env_id, play=play)

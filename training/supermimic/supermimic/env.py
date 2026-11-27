@@ -10,7 +10,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
+from myosuite.envs.tasks.mimic.tracking import MIMIC_ENV_ID
 
 
 @dataclass
@@ -47,7 +47,7 @@ _MUSCLE_OBS = ("muscle_length", "muscle_velocity", "muscle_force")
 
 def task_overrides(cfg: TaskEnvCfg) -> dict[str, Any]:
     """The task-config overrides (``MimicTaskCfg`` dotted keys) of the recipe's options."""
-    from myosuite.envs.myo.tasks.mimic.tracking.config import PRESETS  # noqa: PLC0415
+    from myosuite.envs.tasks.mimic.tracking.config import PRESETS  # noqa: PLC0415
 
     policy = tuple(n for n in PRESETS["supermimic"].obs.policy if n not in _MUSCLE_OBS)
     if cfg.muscle_obs:  # MuscleMimic's order: after the joint velocities
@@ -123,6 +123,6 @@ HELD_OUT = Path(__file__).parent / "data" / "kit_test.txt"
 
 def held_out_clips(model: str = "myofullbody") -> tuple[str, str]:
     """``(list, root)`` of the benchmark's held-out clips, for ``evaluate.build`` and ``evaluate_run``."""
-    from myosuite.envs.myo.tasks.mimic.tracking import kit_root  # noqa: PLC0415
+    from myosuite.envs.tasks.mimic.tracking import kit_root  # noqa: PLC0415
 
     return str(HELD_OUT), str(kit_root(model))

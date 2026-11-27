@@ -19,8 +19,8 @@ from scipy.interpolate import interp1d
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
-from myosuite.envs.myo.assets._resolve import resolve_arm_xml
-from myosuite.envs.myo.tasks.challenge.tabletennis import (
+from myosuite.envs.assets._resolve import resolve_arm_xml
+from myosuite.envs.tasks.games.tabletennis.env import (
     TableTennisEnv as TableTennisEnvV0,
 )
 from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path

@@ -36,8 +36,11 @@ from myosuite.terms.mimic_reward import (
     mimic_site_tracking_reward,
 )
 from myosuite.terms.mimic_track import quat_to_rotvec
-from myosuite.terms.multiplayer.chase_tag_vs_obs import own_kinematics_obs
-from myosuite.terms.multiplayer.chase_tag_vs_reward import compute_damage, get_score
+from myosuite.envs.tasks.games.chasetag.chase_tag_vs_obs import own_kinematics_obs
+from myosuite.envs.tasks.games.chasetag.chase_tag_vs_reward import (
+    compute_damage,
+    get_score,
+)
 
 pytestmark = pytest.mark.tier1
 
@@ -261,7 +264,7 @@ def test_quaternion_and_distance_terms_at_identity_and_antipodal() -> None:
 
 
 def test_chase_tag_evade_damage_score_clamp_and_hybrid_act_indexing() -> None:
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_config import (
         ChaseTagVsConfig,
     )
 

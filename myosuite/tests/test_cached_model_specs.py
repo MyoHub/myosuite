@@ -184,7 +184,7 @@ def test_bimanual_spec_cache_follows_the_scene_variable(monkeypatch) -> None:
 def test_mjlab_tabletennis_full_spec_is_built_once_for_three_calls(monkeypatch) -> None:
     pytest.importorskip("mjlab")
     from myosuite.core.model_builder import clear_spec_caches
-    from myosuite.envs.myo.backends.mjlab import register_mjlab_tabletennis as tt
+    from myosuite.envs.tasks.games.tabletennis import register_mjlab as tt
 
     clear_spec_caches()
     calls = _count_calls(monkeypatch, tt, "_add_tabletennis_furniture")

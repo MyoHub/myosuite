@@ -58,8 +58,8 @@ from supermimic.heads import (
 )
 from supermimic.mirror import Mirror
 from supermimic.task import TaskView
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM
-from myosuite.envs.myo.tasks.mimic.tracking.models import model_version
+from myosuite.envs.backends.mjlab.tasks.mdp import SYNC_TERM
+from myosuite.envs.tasks.mimic.tracking.models import model_version
 
 
 class AnalyticObsGroup:

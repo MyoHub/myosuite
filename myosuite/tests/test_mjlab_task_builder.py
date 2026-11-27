@@ -31,10 +31,10 @@ except ImportError:
     from mjlab.actuator import XmlMuscleActuatorCfg as _XmlWrappedActuatorCfg  # noqa: E402
 
 from myosuite.core.config import TaskConfig  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.mjlab_task_builder import (  # noqa: E402
+from myosuite.envs.backends.mjlab.mjlab_task_builder import (  # noqa: E402
     mjlab_env_cfg_from_task_config,
 )
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
+from myosuite.envs.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
     MyoMuscleActivationActionCfg,
     _ELBOW_ENTITY_NAME,
     _elbow_obs_act,

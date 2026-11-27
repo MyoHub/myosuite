@@ -232,7 +232,7 @@ def _compute_activations(
 
 
 def _default_atlas_reference() -> mujoco.MjModel:
-    from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body
+    from myosuite.envs.tasks.mimic.tracking.models import compiled_body
 
     return compiled_body("myofullbody")
 

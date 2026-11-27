@@ -15,7 +15,7 @@ import pytest
 
 import myosuite  # noqa: F401
 
-from myosuite.envs.myo.tasks.basic.arm.reorient_sar_geometries import (
+from myosuite.envs.tasks.arm.reorient_sar.reorient_sar_geometries import (
     GEOMETRIES_8,
     GEOMETRIES_100,
     sample_geometry_8,

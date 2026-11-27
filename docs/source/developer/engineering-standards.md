@@ -28,7 +28,7 @@ Before any new class, function, or wrapper:
 | Building an env (`make_env`, `EnvConfig`), `ModelBuilder`, scene/spec assembly | `myosuite/core/registry.py`, `myosuite/core/config.py`, `myosuite/core/model_builder.py`, `myosuite/core/builder/` |
 | Rendering, rollout logging/plotting, muscle meshes, skinning, Blender/USD | `myosuite/viz/` |
 | Evaluation suites (`paired_replay`, `push_*`, `performance_card`, `examine_env`) | `myosuite/benchmarks/` |
-| mjlab action/obs/event wiring | `myosuite/envs/myo/backends/mjlab/` |
+| mjlab action/obs/event wiring | `myosuite/envs/backends/mjlab/` and `myosuite/envs/tasks/<domain>/<family>/` |
 | RL trainers, replay buffers, world models | `training/<method>/` (**never** inside `myosuite/`, and **no new helpers in `myosuite/utils/`**) |
 
 ## Python Standards
@@ -88,7 +88,7 @@ Register it in the suite's `__init__.py`:
 from myosuite.core import registry
 registry.register_env(
     env_id="myoHandReachRandom-v0",
-    entry_point="myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0",
+    entry_point="myosuite.envs.tasks.arm.reach.env:ReachEnvV0",
     max_episode_steps=100,
     kwargs={...},
 )
@@ -97,7 +97,7 @@ registry.register_env(
 `MyoGymnasiumEnv` provides the default `step()`/`reset()`/render/close and the
 Gymnasium 5-tuple contract. Override `step()`/`reset()` only when needed (e.g.
 muscle-activation action mapping, custom init pose). See
-`envs/myo/tasks/basic/arm/reach.py` for the canonical, fully-commented example.
+`envs/tasks/arm/reach/env.py` for the canonical, fully-commented example.
 
 ### GPU side — mjlab `ManagerBasedRlEnvCfg`
 
@@ -108,12 +108,12 @@ Read [mjlab-design-guide.md](mjlab-design-guide.md) and
 
 - **Twins of the CPU envs** (pose, reach, torso, leg): the config is built from the CPU registration
   (`cpu_reference.cpu_task_spec(env_id)`), so parameters live in one place. A family has an env-config
-  function in `envs/myo/backends/mjlab/tasks/<family>/*_env_cfg.py` (for example
+  function in `envs/tasks/<domain>/<family>/*mjlab_cfg.py` (for example
   `make_leg_walk_env_cfg` for `myoLegWalk-v0`) and registers its ids, including the Sarc/Fati/Reaf
   variants, with `register_cpu_twins(env_ids, env_cfg_fn, rl_cfg_fn)`. The observation groups are
   `actor` and `critic`.
 - **Special tasks** (Table Tennis, ChaseTag, MuscleMimic): hand-written configs registered with
-  `register_mjlab_task(...)` in `envs/myo/backends/mjlab/register_mjlab_*.py` and `mimic_mjlab_env.py`.
+  `register_mjlab_task(...)` in `envs/backends/mjlab/register_mjlab_tasks.py`, `mimic_mjlab_env.py`, or the task family's `register_mjlab.py`.
   Table Tennis and ChaseTag use a single flat `policy` group, which the runner config maps to the
   actor and critic (`obs_groups={"actor": ("policy",), "critic": ("policy",)}`).
 - Size the MuJoCo-Warp constraint buffers (`njmax`/`nconmax`) for the task's contact load.
@@ -150,7 +150,7 @@ Read [mjlab-design-guide.md](mjlab-design-guide.md) and
 |---|---|---|---|---|
 | CPU (Gymnasium) | supported | playback / fine-tune / debug | `myosuite.envs.gymnasium_env.MyoGymnasiumEnv` subclass | `registry.register_env(...)` |
 | mjlab (Warp) | supported | parallel GPU training | mjlab `ManagerBasedRlEnvCfg` + runner cfg | `register_cpu_twins(...)` (twins of CPU envs, `backends/mjlab/tasks/`) or `register_mjlab_task(...)` (`register_mjlab_*.py`) |
-| MJX (JAX) | experimental | parallel GPU training | `envs/myo/backends/mjx/` env classes (JAX/brax) | `register_task(..., backends={"mjx"})` from a `TaskConfig` |
+| MJX (JAX) | experimental | parallel GPU training | `envs/backends/_experimental_mjx/` env classes (JAX/brax) | `register_task(..., backends={"mjx"})` from a `TaskConfig` |
 | CPU via `ModularTaskEnv` | experimental | data-driven CPU (elbow and leg directional refs) | generic `ModularTaskEnv` from a `TaskConfig` (runs the muscle stages) | `register_task(..., backends={"cpu"})` |
 
 The CPU and mjlab implementations of one task share a single `env_id` and the
@@ -188,7 +188,7 @@ parity is mostly a matter of using the same terms on both sides.
 ## Adding a New Environment (checklist)
 
 **1. CPU implementation (always):**
-1. Write the env class in `envs/myo/tasks/<collection>/<effector>/<task>.py`,
+1. Write the env class in `envs/tasks/<domain>/<family>/env.py`,
    subclassing `MyoGymnasiumEnv`. Implement `_get_obs_dict`, `get_reward_dict`,
    `reset_task`; override `step`/`reset` only if needed.
 2. Reuse term helpers from `myosuite/core/terms/` where they fit.

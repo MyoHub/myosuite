@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from myosuite.core.model_builder import build_from_recipe
-from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
+from myosuite.envs.tasks.suites.edits import edit_fn_arm_reaching
 from myosuite.biomechanics.inverse_dynamics import clip_kinematics, inverse_dynamics
 from myosuite.tests.support.joint_couplings import joint_equality_residuals
 

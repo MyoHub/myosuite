@@ -24,7 +24,7 @@ from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
 from mjlab.tasks.registry import load_env_cfg  # noqa: E402
 
 import myosuite  # noqa: E402, F401
-from myosuite.envs.myo.tasks.challenge.tabletennis import (  # noqa: E402
+from myosuite.envs.tasks.games.tabletennis.env import (  # noqa: E402
     ContactTrajIssue,
     PingpongContactLabels,
     evaluate_pingpong_trajectory,
@@ -39,7 +39,7 @@ _SOLVED_PAID = 500.0  # ``solved`` is +1000
 
 
 def _make_env(env_id: str, num_envs: int) -> ManagerBasedRlEnv:
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers tasks)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers tasks)
 
     cfg = load_env_cfg(env_id)
     cfg.scene.num_envs = num_envs
@@ -276,10 +276,10 @@ def test_second_rally_follows_a_solved_one() -> None:
     """With rally_count=2 a solved rally is paid, relaunches the ball and goes on."""
     import dataclasses  # noqa: PLC0415
 
-    from myosuite.envs.myo.backends.mjlab.configs.table_tennis_cfg import (  # noqa: PLC0415
+    from myosuite.envs.tasks.games.tabletennis.mjlab_cfg import (  # noqa: PLC0415
         TableTennisCfg,
     )
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (  # noqa: PLC0415
+    from myosuite.envs.tasks.games.tabletennis.register_mjlab import (  # noqa: PLC0415
         make_table_tennis_mjlab_env_cfg,
     )
 
@@ -349,7 +349,7 @@ def test_p2_randomizes_the_ball_and_paddle_per_env() -> None:
 
 def test_trajectory_state_matches_cpu_evaluation() -> None:
     """The per-step trajectory state gives ``evaluate_pingpong_trajectory`` of every prefix."""
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (  # noqa: PLC0415
+    from myosuite.envs.tasks.games.tabletennis.register_mjlab import (  # noqa: PLC0415
         _PingpongTrajectory,
         _trajectory_outcome,
     )
@@ -387,7 +387,7 @@ def test_trajectory_state_matches_cpu_evaluation() -> None:
 
 def test_contact_labels_use_only_live_rows() -> None:
     """Labels come from rows ``< nacon`` of the batched buffer, per world."""
-    from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (  # noqa: PLC0415
+    from myosuite.envs.tasks.games.tabletennis.register_mjlab import (  # noqa: PLC0415
         _ball_contact_labels,
     )
 

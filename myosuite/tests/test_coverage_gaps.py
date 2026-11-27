@@ -341,7 +341,9 @@ class TestMakeEnvBackends:
     def test_make_env_mjx_import_error(self) -> None:
         from myosuite import make_env
 
-        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+        with patch.dict(
+            "sys.modules", {"myosuite.envs.backends._experimental_mjx": None}
+        ):
             with pytest.raises(ImportError, match=r"myosuite\[mjx\]"):
                 make_env("NonExistent-v0", backend="mjx")
 
@@ -356,9 +358,11 @@ class TestMakeEnvBackends:
         def _make(env_name: str, config_overrides: Any = None) -> None:
             calls.append((env_name, config_overrides))
 
-        backend = types.ModuleType("myosuite.envs.myo.backends.mjx")
+        backend = types.ModuleType("myosuite.envs.backends._experimental_mjx")
         backend.make = _make  # type: ignore[attr-defined]
-        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": backend}):
+        with patch.dict(
+            "sys.modules", {"myosuite.envs.backends._experimental_mjx": backend}
+        ):
             make_env("Task-v0", backend="mjx", num_envs=8)
             make_env("Task-v0", backend="mjx")
         assert calls == [("Task-v0", {"num_envs": 8}), ("Task-v0", None)]
@@ -367,7 +371,9 @@ class TestMakeEnvBackends:
         """register_task() records the MJX twin without importing the MJX backend."""
         from myosuite.core import registry
 
-        with patch.dict("sys.modules", {"myosuite.envs.myo.backends.mjx": None}):
+        with patch.dict(
+            "sys.modules", {"myosuite.envs.backends._experimental_mjx": None}
+        ):
             env_id = registry.register_task(
                 _MyoVariantTask(), env_id="NoJaxMjxTask-v0", backends={"mjx"}
             )

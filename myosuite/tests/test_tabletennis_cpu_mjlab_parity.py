@@ -20,10 +20,10 @@ import pytest
 pytest.importorskip("mjlab")
 torch = pytest.importorskip("torch")
 
-from myosuite.envs.myo.backends.mjlab import (  # noqa: E402
-    register_mjlab_tabletennis as tt_mjlab,
+from myosuite.envs.tasks.games.tabletennis import env as tt_cpu  # noqa: E402
+from myosuite.envs.tasks.games.tabletennis import (  # noqa: E402
+    register_mjlab as tt_mjlab,
 )
-from myosuite.envs.myo.tasks.challenge import tabletennis as tt_cpu  # noqa: E402
 from myosuite import make_env  # noqa: E402
 
 pytestmark = pytest.mark.tier1

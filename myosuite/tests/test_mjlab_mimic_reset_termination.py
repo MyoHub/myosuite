@@ -142,7 +142,7 @@ def _make_env(
     """
     from mjlab.envs import ManagerBasedRlEnv
 
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     cfg, build, model, _ = _variant(variant)
     model = model if mj_model is None else mj_model
@@ -193,7 +193,7 @@ def _registered_cfgs(register: Callable[..., None], **kwargs: Any) -> dict[str, 
 
 def _register_full_body_sar(clip: MotionClip | None) -> dict[str, Any]:
     """Registration kwargs of ``myoMimicFullbody-SAR-v0``."""
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     n_muscles = len(mimic._muscle_actuator_names(_variant("fullbody")[2]))
     return _registered_cfgs(
@@ -437,7 +437,7 @@ def test_clip_step_syncs_only_to_detect_resets(
     (a ``reset_mask.any()`` host read) and indexed sites with a NumPy array (a
     host-to-device copy): 34 host syncs per step.
     """
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
     from myosuite.tests.support.host_sync import HostSyncCounter
 
     env, clip = request.getfixturevalue(f"{variant}_env")
@@ -463,7 +463,7 @@ def _reference_lookahead(
     env: Any, cache: dict[str, Any], entity: str, k: int, stride: int
 ) -> Any:
     """The lookahead observation, one future step at a time (the original loop)."""
-    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+    from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
         _clip_has_required_indices,
     )
 
@@ -507,7 +507,7 @@ def test_lookahead_matches_the_reference_loop(
     variant: str, request: pytest.FixtureRequest
 ) -> None:
     """The batched lookahead (its clip part shared by the obs groups) is bit-exact."""
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     env, clip = request.getfixturevalue(f"{variant}_env")
     torch.manual_seed(1)
@@ -534,7 +534,7 @@ def test_lookahead_holds_the_last_clip_frame(
     The synthetic clip's root moves along ``_ROOT_LIN_VEL`` on every frame, so the root
     deltas of the slots never decrease and their phase reaches 1 and stays there.
     """
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     env, clip = fullbody_env
     torch.manual_seed(1)
@@ -602,7 +602,7 @@ def test_sar_mimic_cfg_is_the_mimic_task_in_synergy_space() -> None:
     It used to drop RSI, early termination, the DeepMimic reward and its
     ``1 / ctrl_dt`` weight compensation, and the lookahead observation.
     """
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     clip = _synthetic_clip("fullbody", n_frames=30)
     sar = _register_full_body_sar(clip)
@@ -636,7 +636,7 @@ def test_sar_mimic_cfg_is_the_mimic_task_in_synergy_space() -> None:
 
 def test_directional_sar_task_has_runner_obs_groups(tmp_path: Any) -> None:
     """``myoFullBodyWalkSAR-v0`` defines the groups the default runner cfg uses."""
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     pytest.importorskip("sklearn")
     from myosuite.integrations.musclemimic.sar_extraction import (
@@ -676,7 +676,7 @@ def test_clip_registration_rejects_reward_options_it_cannot_honour(
     accepted and silently ignored: every mode registered the same
     clip-tracking reward and termination.
     """
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     registered: list[str] = []
     with pytest.raises(NotImplementedError, match="native task reward"):
@@ -691,7 +691,7 @@ def test_clip_registration_rejects_reward_options_it_cannot_honour(
 
 def test_reward_mode_reaches_the_env_cfg_builder() -> None:
     """``reward_mode`` is threaded through the registration to the cfg."""
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     clip = _synthetic_clip("fullbody", n_frames=10)
     cfg = _registered_cfgs(
@@ -722,7 +722,7 @@ def test_reward_mode_reaches_the_env_cfg_builder() -> None:
 
 
 def _lookahead(env: Any, clip: MotionClip, variant: str) -> Any:
-    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import _mimic_obs_lookahead
+    from myosuite.envs.backends.mjlab.mimic_mjlab_env import _mimic_obs_lookahead
 
     fn = _mimic_obs_lookahead(
         _ENTITY[variant], variant, clip, float(env.step_dt), k=2, stride=3
@@ -761,7 +761,7 @@ def test_deepmimic_reward_root_terms_only_for_free_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import myosuite.terms.mimic_reward as mimic_reward
-    from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+    from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
         _mimic_deepmimic_reward,
     )
 
@@ -786,7 +786,7 @@ def test_fullbody_viewer_follows_the_pelvis_and_keeps_mjlab_defaults_elsewhere()
     """The full body gets the tracking camera; the bimanual env keeps mjlab's default."""
     from mjlab.viewer import ViewerConfig
 
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     full = _make_env("fullbody", _synthetic_clip("fullbody"), num_envs=1)
     bimanual = _make_env("bimanual", _synthetic_clip("bimanual"), num_envs=1)
@@ -832,7 +832,7 @@ def _assert_envs_read_their_clips(
     *reset_ids*: envs just reset by RSI, whose joints must be on that frame (the
     coupled ones on their polynomials).
     """
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     cache = mimic._resolve_mimic_mjlab_ids(env, entity, "fullbody")
     source = cache["clip_source"]
@@ -871,7 +871,7 @@ def test_clip_bank_steps_are_sync_free_and_read_each_envs_clip() -> None:
     The bank gather looped over the clips with ``mask.any()`` and bool-mask
     indexing: three host syncs per clip for each of the step's gathers.
     """
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
     from myosuite.tests.support.host_sync import HostSyncCounter
 
     clips = (

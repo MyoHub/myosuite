@@ -5,7 +5,7 @@
 """Shared opponent-relative pose observation helper.
 
 Pure-numpy, backend-agnostic, dimension-agnostic (2D or 3D). Used by both the
-two-agent FBVs env (:mod:`myosuite.terms.multiplayer.chase_tag_vs_obs`) and
+two-agent FBVs env (:mod:`myosuite.envs.tasks.games.chasetag.chase_tag_vs_obs`) and
 the single-agent-vs-scripted-opponent :class:`ChaseTagEnv` variants. Each
 call site resolves its own pelvis/opponent position and velocity arrays (body
 name, site id, or mocap body — whichever applies) and hands plain arrays to

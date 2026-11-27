@@ -24,7 +24,7 @@ pytestmark = pytest.mark.tier2
 
 @pytest.mark.skipif(not _MJX_AVAILABLE, reason="JAX/MJX not available")
 def test_musclemimic_bimanual_smoke_reset() -> None:
-    from myosuite.envs.myo.backends.mjx import make
+    from myosuite.envs.backends._experimental_mjx import make
 
     env = make("MjxMimicBimanual-v0")
     state = env.reset(jax.random.PRNGKey(0))
@@ -35,7 +35,7 @@ def test_musclemimic_bimanual_smoke_reset() -> None:
 
 @pytest.mark.skipif(not _MJX_AVAILABLE, reason="JAX/MJX not available")
 def test_musclemimic_bimanual_default_sites() -> None:
-    from myosuite.envs.myo.backends.mjx import make
+    from myosuite.envs.backends._experimental_mjx import make
 
     env = make("MjxMimicBimanual-v0")
     assert tuple(env._config.mimic_site_names) == (
@@ -54,7 +54,7 @@ def test_musclemimic_fullbody_smoke_reset() -> None:
     pytest.importorskip("musclemimic_models")
     import jax
 
-    from myosuite.envs.myo.backends.mjx import make
+    from myosuite.envs.backends._experimental_mjx import make
 
     env = make("MjxMimicFullbody-v0")
     state = env.reset(jax.random.PRNGKey(0))
@@ -66,7 +66,7 @@ def test_musclemimic_fullbody_smoke_reset() -> None:
 @pytest.mark.skipif(not _MJX_AVAILABLE, reason="JAX/MJX not available")
 def test_musclemimic_fullbody_default_site_count() -> None:
     pytest.importorskip("musclemimic_models")
-    from myosuite.envs.myo.backends.mjx import make
+    from myosuite.envs.backends._experimental_mjx import make
 
     env = make("MjxMimicFullbody-v0")
     assert len(tuple(env._config.mimic_site_names)) == 17

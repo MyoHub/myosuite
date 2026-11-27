@@ -507,7 +507,6 @@ def test_legacy_hand_recipes_compile_without_wrapper_xml():
     wrapper = (
         Path(__file__).resolve().parents[1]
         / "envs"
-        / "myo"
         / "assets"
         / "hand"
         / "myohand_legacy.xml"
@@ -777,7 +776,7 @@ def test_motor_finger_recipe_uses_the_xml_gears() -> None:
     """The four motorFinger* envs use the gears of the myo_sim XML, unscaled."""
     import mujoco
 
-    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+    from myosuite.envs.assets._resolve import resolve_finger_xml
 
     xml_gears = mujoco.MjModel.from_xml_path(
         str(resolve_finger_xml("motorfinger_v0.xml"))

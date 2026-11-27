@@ -66,7 +66,7 @@ def test_dynsyn_length_similarity_short_trajectory_and_env_close(
     import myosuite
 
     fake_action_map = types.ModuleType(
-        "myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map"
+        "myosuite.envs.backends.mjlab.tasks.mdp.action_map"
     )
     fake_action_map.action_actuator_names = lambda *a, **kw: []  # type: ignore[attr-defined]
 
@@ -76,7 +76,7 @@ def test_dynsyn_length_similarity_short_trajectory_and_env_close(
     fake_action_map.muscle_action_terms = _boom  # type: ignore[attr-defined]
     monkeypatch.setitem(
         sys.modules,
-        "myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map",
+        "myosuite.envs.backends.mjlab.tasks.mdp.action_map",
         fake_action_map,
     )
     monkeypatch.setattr(myosuite, "make_env", lambda *a, **kw: _FakeEnv())
@@ -290,3 +290,9 @@ def test_docs_links_and_conftest_mjlab_regex() -> None:
     conftest = _load_module("_test_conftest_mjlab", "myosuite/tests/conftest.py")
     sample = 'env = make_env("myoElbowPose1D6MRandom-v0", ' + 'backend="mjlab")\n'
     assert conftest._MJLAB_SOURCE.search(sample) is not None
+    colocated = "from myosuite.envs.tasks.leg.walk import " + "walk_mdp\n"
+    assert conftest._MJLAB_SOURCE.search(colocated) is not None
+    boundaries_src = (
+        REPO_ROOT / "myosuite" / "tests" / "test_package_boundaries.py"
+    ).read_text(encoding="utf-8")
+    assert conftest._MJLAB_SOURCE.search(boundaries_src) is None

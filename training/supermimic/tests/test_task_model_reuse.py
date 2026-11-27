@@ -28,7 +28,7 @@ def test_task_view_reuses_the_configured_command_model(
 
     from myosuite import make_env
     from myosuite.core.config import EnvConfig
-    from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body
+    from myosuite.envs.tasks.mimic.tracking.models import compiled_body
     from myosuite.envs.wrappers import SarcopeniaWrapper
 
     features = (

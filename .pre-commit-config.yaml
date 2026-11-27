@@ -34,9 +34,9 @@ repos:
       - id: check-symlinks
       # The bundled upstream sim assets stay byte-identical.
       - id: end-of-file-fixer
-        exclude: ^myosuite/envs/myo/assets/(MPL_sim|YCB_sim|furniture_sim)/.*$
+        exclude: ^myosuite/envs/(myo/)?assets/(MPL_sim|YCB_sim|furniture_sim)/.*$
       - id: trailing-whitespace
-        exclude: ^myosuite/envs/myo/assets/(MPL_sim|YCB_sim|furniture_sim)/.*$
+        exclude: ^myosuite/envs/(myo/)?assets/(MPL_sim|YCB_sim|furniture_sim)/.*$
       - id: debug-statements
 
   # Guard: new code must not import the legacy MujocoEnv base class.

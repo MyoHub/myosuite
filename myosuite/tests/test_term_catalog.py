@@ -102,6 +102,13 @@ def test_catalog_covers_term_modules() -> None:
             loaded = importlib.import_module(module.name)
             if loaded.__name__ == module.name:
                 discovered.add(module.name)
+    for task_term_mod in (
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs_obs",
+        "myosuite.envs.tasks.games.chasetag.chase_tag_vs_reward",
+    ):
+        loaded = importlib.import_module(task_term_mod)
+        if loaded.__name__ == task_term_mod:
+            discovered.add(task_term_mod)
 
     indexed = [name for names in TERM_MODULES.values() for name in names]
     assert len(indexed) == len(set(indexed)), "Term modules must have one category"
@@ -185,3 +192,10 @@ def test_catalog_tracks_live_signatures(monkeypatch: pytest.MonkeyPatch) -> None
     )
     assert entry.summary == "Current parameter documentation."
     assert [(param.name, param.default) for param in entry.params] == [("gain", "0.25")]
+
+
+def test_catalog_include_mjlab_discovers_mdp_terms() -> None:
+    pytest.importorskip("mjlab")
+    entries = catalog(kind="mjlab", include_mjlab=True)
+    names = {entry.name for entry in entries}
+    assert {"MyoActionCfg", "HeadingCommandCfg", "write_cpu_state"} <= names

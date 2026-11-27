@@ -165,7 +165,7 @@ def _make_fake_env(
 @unittest.skipUnless(_torch_available(), "torch not available")
 class TestSARMuscleActivationAction(unittest.TestCase):
     def setUp(self) -> None:
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             SARMuscleActivationActionCfg,
         )
 
@@ -222,7 +222,7 @@ class TestSARMuscleActivationAction(unittest.TestCase):
         self.assertEqual(self.action.raw_action.shape, (4, N_SYN))
 
     def test_wrong_actuator_count_raises(self) -> None:
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             SARMuscleActivationActionCfg,
         )
 
@@ -235,7 +235,7 @@ class TestSARMuscleActivationAction(unittest.TestCase):
             cfg.build(self.env)
 
     def test_build_returns_action_instance(self) -> None:
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             SARMuscleActivationAction,
         )
 
@@ -255,10 +255,10 @@ class TestSARMuscleActivationActionMjlab(unittest.TestCase):
         import torch
         from mjlab.envs import ManagerBasedRlEnv
 
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             SARMuscleActivationActionCfg,
         )
-        from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (
+        from myosuite.envs.backends.mjlab.register_mjlab_tasks import (
             _ELBOW_ENTITY_NAME,
             _elbow_tendon_names,
             _make_elbow_env_cfg,
@@ -397,7 +397,7 @@ class TestSynergyActionRange(unittest.TestCase):
     N_ACTIONS = 2000
 
     def setUp(self) -> None:
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             SARMuscleActivationActionCfg,
         )
         from myosuite.integrations.musclemimic.sar_extraction import extract_synergies
@@ -477,7 +477,7 @@ class TestSynergyActionRange(unittest.TestCase):
 )
 class TestRegisterMimicMjlabTasksWithSar(unittest.TestCase):
     def test_missing_sar_dir_raises(self) -> None:
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             register_mimic_mjlab_tasks_with_sar,
         )
 
@@ -491,7 +491,7 @@ class TestRegisterMimicMjlabTasksWithSar(unittest.TestCase):
     def test_valid_sar_dir_does_not_raise(self) -> None:
         """With a real SAR dir, registration proceeds without error even
         when musclemimic_models is absent (silently skips registration)."""
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             register_mimic_mjlab_tasks_with_sar,
         )
         from myosuite.integrations.musclemimic.sar_extraction import (

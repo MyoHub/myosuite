@@ -29,8 +29,8 @@ from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
 import myosuite  # noqa: E402, F401
 from myosuite.core import registry  # noqa: E402
 from myosuite.envs.wrappers import MotorNoiseWrapper  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import cpu_task_spec  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.pose.config.elbow.env_cfgs import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.cpu_reference import cpu_task_spec  # noqa: E402
+from myosuite.envs.tasks.arm.pose.mjlab_cfg import (  # noqa: E402
     elbow_pose_env_cfg,
 )
 from myosuite.terms.base_action import MotorNoiseCfg  # noqa: E402
@@ -287,7 +287,7 @@ def test_twin_takes_every_registered_condition(conditions: tuple[str, ...]) -> N
     """The condition wrappers compose on the CPU env, so each one configures the twin."""
     import dataclasses
 
-    from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import action_cfg
+    from myosuite.envs.backends.mjlab.tasks.cpu_reference import action_cfg
     from myosuite.envs.wrappers import condition_wrapper_specs
 
     wrappers = tuple(s for c in conditions for s in condition_wrapper_specs(c))

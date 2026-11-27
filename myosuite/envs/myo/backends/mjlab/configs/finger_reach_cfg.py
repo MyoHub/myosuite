@@ -2,32 +2,15 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Task config for the finger fingertip-reaching task on the mjlab backend."""
+"""Backward-compatible alias for :mod:`myosuite.envs.backends.mjlab.configs.finger_reach_cfg`."""
 
-from __future__ import annotations
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-import pathlib
-from dataclasses import dataclass, field
+if _TYPE_CHECKING:
+    from myosuite.envs.backends.mjlab.configs.finger_reach_cfg import *  # noqa: F403
 
-from myosuite.envs.myo.assets._resolve import resolve_finger_xml
-
-
-@dataclass
-class FingerReachCfg:
-    """Configuration for the finger reach task on mjlab."""
-
-    model_path: pathlib.Path = field(
-        default_factory=lambda: resolve_finger_xml("myofinger_v0.xml")
-    )
-    sim_dt: float = 0.002
-    ctrl_dt: float = 0.02
-    max_episode_steps: int = 100
-    tip_site_name: str = "IFtip"
-    target_reach_range: tuple[
-        tuple[float, float, float], tuple[float, float, float]
-    ] = ((0.1, -0.1, 0.1), (0.27, 0.1, 0.3))
-    reach_thd: float = 0.05
-    reach_reward_weight: float = 1.0
-    bonus_weight: float = 4.0
-    penalty_weight: float = 50.0
-    num_envs: int = 4096
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.backends.mjlab.configs.finger_reach_cfg"
+)

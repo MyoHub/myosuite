@@ -22,7 +22,7 @@ from supermimic.heads import rel_sites
 from supermimic.kinematics import SkeletonKinematics
 from supermimic.rotations import mat_to_quat, quat_to_mat
 
-from myosuite.envs.myo.tasks.mimic.tracking.models import (
+from myosuite.envs.tasks.mimic.tracking.models import (
     ModelInfo,
     compiled_body,
     model_cfg,

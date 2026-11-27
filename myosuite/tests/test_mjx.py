@@ -39,7 +39,7 @@ class TestMjxFunctions:
             pytest.skip("MJX is not available")
 
         # Load a standard MuJoCo model for comparison and MJX model creation
-        from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+        from myosuite.envs.assets._resolve import resolve_finger_xml
 
         _finger = str(resolve_finger_xml("myofinger_v0.xml"))
         cls.mujoco_model = mujoco.MjModel.from_xml_path(_finger)

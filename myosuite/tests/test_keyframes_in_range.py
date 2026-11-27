@@ -21,7 +21,7 @@ from myosuite import make_env
 from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
 TOL = 1e-5
-ASSETS = Path(myosuite.__file__).parent / "envs" / "myo" / "assets"
+ASSETS = Path(myosuite.__file__).parent / "envs" / "assets"
 HINGE_SLIDE = (int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE))
 OBJ = mujoco.mjtObj
 

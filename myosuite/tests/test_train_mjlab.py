@@ -126,7 +126,7 @@ def test_train_config_from_task_applies_the_features() -> None:
     import sys
     from pathlib import Path
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
     from myosuite.utils.feature_cli import parse_feature_args
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))

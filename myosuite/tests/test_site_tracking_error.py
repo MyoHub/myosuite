@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from myosuite.core.trajectory_io import MotionClip
-from myosuite.envs.myo.tasks.mimic.clip_env import _CLIP_SITE_ORDER
+from myosuite.envs.tasks.mimic.clip_env import _CLIP_SITE_ORDER
 from myosuite.integrations.musclemimic.fullbody_native_playback import (
     _compute_site_tracking_error,
 )

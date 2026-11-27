@@ -71,7 +71,7 @@ Before changing anything, read this file top to bottom — it is the canonical,
 fully-commented CPU (`MyoGymnasiumEnv`) example:
 
 ```
-myosuite/envs/myo/tasks/basic/arm/reach.py
+myosuite/envs/tasks/arm/reach/env.py
 ```
 
 You will see the four pieces above: the constructor builds `self.model`/`self.data`

@@ -4,5 +4,5 @@
 # LICENSE file in the root directory of this source tree.
 """TaskConfig-based specs for basic environments."""
 
-import myosuite.envs.myo.tasks.basic.specs.elbow_pose_spec  # noqa: F401
-import myosuite.envs.myo.tasks.basic.leg.specs  # noqa: F401
+import myosuite.envs.tasks.arm.pose.spec  # noqa: F401
+import myosuite.envs.tasks.leg.directional.spec  # noqa: F401

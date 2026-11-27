@@ -23,7 +23,7 @@ from chasetag_teacher.directional import (
     role_heading_torch,
 )
 from myosuite.integrations.musclemimic.steering import aim_heading_xy
-from myosuite.envs.myo.tasks.mimic.policy import ActorCritic
+from myosuite.envs.tasks.mimic.policy import ActorCritic
 
 
 @pytest.fixture(scope="module", name="scene")

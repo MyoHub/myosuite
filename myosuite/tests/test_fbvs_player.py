@@ -14,7 +14,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from myosuite.envs.myo.tasks.mimic.policy import ActorCritic  # noqa: E402
+from myosuite.envs.tasks.mimic.policy import ActorCritic  # noqa: E402
 from myosuite.integrations.musclemimic.fbvs_player import (  # noqa: E402
     FBVS_OBS_DIM,
     FbvsDirectionalAdapter,
@@ -47,7 +47,7 @@ def _fbvs_obs(data: mujoco.MjData, opponent_xy: np.ndarray, runner: bool) -> np.
 @pytest.mark.parametrize("runner", [False, True])
 def test_adapter_matches_chasetag_heading_directional_obs(runner: bool) -> None:
     pytest.importorskip("musclemimic_models")
-    from myosuite.envs.myo.tasks.mimic.chasetag_obs import (
+    from myosuite.envs.tasks.mimic.chasetag_obs import (
         chasetag_heading_directional_obs,
     )
     from myosuite.integrations.musclemimic.fullbody_model import (

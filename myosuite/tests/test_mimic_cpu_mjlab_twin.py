@@ -47,7 +47,7 @@ _STEP_OBS_ATOL, _REW_ATOL = 1e-2, 5e-3
 @functools.cache
 def _registered_play_cfgs() -> dict[str, Any]:
     """Play env cfgs of the random-target registration (``num_envs=1``)."""
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     cfgs: dict[str, Any] = {}
 
@@ -70,8 +70,8 @@ def test_one_step_parity_with_the_mjlab_twin(env_id: str) -> None:
     from mjlab.envs import ManagerBasedRlEnv
 
     from myosuite.envs.gymnasium_env import CpuEnvAccessor
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab.tasks.mdp import write_cpu_state
 
     cpu = make_env(env_id).unwrapped
     cpu.reset(seed=0)
@@ -160,7 +160,7 @@ def test_twin_draws_the_cpu_posture_targets(env_id: str) -> None:
     require_musclemimic_models()
     from mjlab.envs import ManagerBasedRlEnv
 
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
 
     cfg = copy.deepcopy(_registered_play_cfgs()[env_id])
     cfg.scene.num_envs = 3

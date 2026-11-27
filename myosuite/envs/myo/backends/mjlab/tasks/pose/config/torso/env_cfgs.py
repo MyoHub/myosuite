@@ -1,17 +1,16 @@
-"""Torso pose environment configurations (``myoTorsoPoseFixed`` / ``myoTorsoExoPoseFixed``)."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.torso.pose.mjlab_cfg`."""
 
-from mjlab.envs import ManagerBasedRlEnvCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import (
-    make_torso_pose_env_cfg,
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.torso.pose.mjlab_cfg import *  # noqa: F403
+
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.torso.pose.mjlab_cfg"
 )
-
-TORSO_POSE_IDS = (
-    "myoTorsoPoseFixed-v0",
-    "myoTorsoExoPoseFixed-v0",
-)
-
-
-def torso_pose_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
-    """Torso pose task matching the CPU registration of *env_id*."""
-    return make_torso_pose_env_cfg(env_id, play=play)

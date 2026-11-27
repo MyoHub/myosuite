@@ -25,7 +25,7 @@ def _library_cache(tmp_path_factory: Any) -> None:
 
 @pytest.fixture(scope="session", name="body")
 def body_fixture() -> Any:
-    from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body
+    from myosuite.envs.tasks.mimic.tracking.models import compiled_body
 
     return compiled_body("myofullbody")
 
@@ -33,7 +33,7 @@ def body_fixture() -> Any:
 @pytest.fixture(scope="session", name="clips")
 def clips_fixture(tmp_path_factory: Any, body: Any) -> Path:
     """Two walking clips (8 s, 6 s) and a list of them."""
-    from myosuite.envs.myo.tasks.mimic.tracking.motion import write_synthetic_clip
+    from myosuite.envs.tasks.mimic.tracking.motion import write_synthetic_clip
 
     d = tmp_path_factory.mktemp("clips")
     for i, (sec, speed) in enumerate(((8.0, 1.0), (6.0, 1.2))):
@@ -56,7 +56,7 @@ def fbvs_obs_fixture() -> Any:
 
 @pytest.fixture(scope="session", name="kit_root")
 def kit_root_fixture() -> str:
-    from myosuite.envs.myo.tasks.mimic.tracking import KIT_ROOT_ENV
+    from myosuite.envs.tasks.mimic.tracking import KIT_ROOT_ENV
 
     root = os.environ.get(KIT_ROOT_ENV, "")
     if not root or not Path(root).is_dir():

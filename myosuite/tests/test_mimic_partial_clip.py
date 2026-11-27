@@ -13,7 +13,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.envs.myo.tasks.mimic.clip_env import (
+from myosuite.envs.tasks.mimic.clip_env import (
     _CLIP_IDX_FOR_MODEL,
     _MODEL_SITE_ORDER,
     MuscleMimicClipEnvV0,
@@ -128,7 +128,7 @@ def test_partial_joint_clip_tracks_named_subset(tmp_path: Path) -> None:
 def test_cpu_clip_resolves_elbow_aliases(
     prefix: str, reverse: bool, use_qvel: bool
 ) -> None:
-    from myosuite.envs.myo.tasks.mimic.clip_env import _resolve_joint_field_selection
+    from myosuite.envs.tasks.mimic.clip_env import _resolve_joint_field_selection
 
     source, target = "elbow_flex", "elbow_flexion"
     if reverse:

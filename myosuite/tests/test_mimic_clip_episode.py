@@ -12,7 +12,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.envs.myo.tasks.mimic.clip_env import (
+from myosuite.envs.tasks.mimic.clip_env import (
     _CLIP_IDX_FOR_MODEL,
     _MODEL_SITE_ORDER,
     MuscleMimicClipEnvV0,

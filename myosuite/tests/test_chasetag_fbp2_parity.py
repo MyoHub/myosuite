@@ -28,14 +28,14 @@ from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
 from mjlab.tasks.registry import load_env_cfg  # noqa: E402
 
 import myosuite  # noqa: E402, F401
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
+from myosuite.envs.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
     _powerlaw_psd_gaussian,
 )
-from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.cpu_reference import (  # noqa: E402
     mujoco_cfg_from_model,
 )
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
-from myosuite.envs.myo.tasks.mimic.chasetag_obs import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
+from myosuite.envs.tasks.mimic.chasetag_obs import (  # noqa: E402
     CHASETAG_OBS_DIM,
     CHASETAG_OBS_KEYS,
 )
@@ -102,7 +102,7 @@ _TERM_ATOL = 1e-5
 @pytest.fixture(scope="module")
 def pair() -> tuple[gym.Env, ManagerBasedRlEnv]:
     """The TimeLimit-wrapped CPU env and a 2-env mjlab env (env 0 is synced)."""
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cpu_env = make_env(ENV_ID)
     cpu_env.reset(seed=0)

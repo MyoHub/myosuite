@@ -996,13 +996,13 @@ def evaluate_mjlab(
     from mjlab.envs import ManagerBasedRlEnv
     from mjlab.tasks.registry import load_env_cfg
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
     from myosuite.policies.rslrl_policy import load_rslrl_policy
 
     os.environ.setdefault("MUJOCO_GL", "egl")
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     if features:
-        from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+        from myosuite.envs.backends.mjlab.tasks.registration import (
             rebuild_twin_cfg,
         )
 
@@ -1014,7 +1014,7 @@ def evaluate_mjlab(
     env_cfg.scene.num_envs = n_envs
     env_cfg.seed = cfg.seed
     if trained is not None:
-        from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (  # noqa: PLC0415
+        from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (  # noqa: PLC0415
             apply_trained_action_map,
         )
 

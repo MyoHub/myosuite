@@ -58,7 +58,7 @@ def register_all_envs() -> dict[str, list[str]]:
     suite_envs: set[str] = set()
 
     # Register MyoBase suite
-    import myosuite.envs.myo.tasks.basic as _myobase  # noqa: F401
+    import myosuite.envs.tasks.suites.basic as _myobase  # noqa: F401
 
     del _myobase
 
@@ -70,7 +70,7 @@ def register_all_envs() -> dict[str, list[str]]:
     # Register MyoMimic suite
     # Mimic first: the challenge package imports ``tasks.mimic`` (chasetag_obs), which
     # registers the mimic envs, so they would otherwise land in the challenge suite.
-    import myosuite.envs.myo.tasks.mimic as _myomimic  # noqa: F401
+    import myosuite.envs.tasks.mimic as _myomimic  # noqa: F401
 
     del _myomimic
 
@@ -80,7 +80,7 @@ def register_all_envs() -> dict[str, list[str]]:
     suite_envs |= set(myosuite_myomimic_suite)
 
     # Register MyoChallenge suite
-    import myosuite.envs.myo.tasks.challenge as _myochallenge  # noqa: F401
+    import myosuite.envs.tasks.suites.challenge as _myochallenge  # noqa: F401
 
     del _myochallenge
 
@@ -90,7 +90,7 @@ def register_all_envs() -> dict[str, list[str]]:
     suite_envs |= set(myosuite_myochal_suite)
 
     # Register MyoEdits suite
-    import myosuite.envs.myo.myoedits as _myoedits  # noqa: F401
+    import myosuite.envs.tasks.suites.edits as _myoedits  # noqa: F401
 
     del _myoedits
 

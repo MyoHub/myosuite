@@ -1,20 +1,14 @@
-"""Reach-task MDP terms (on top of the shared MyoSuite mjlab terms)."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible package facade for :mod:`myosuite.envs.backends.mjlab.tasks.reach.mdp`."""
 
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import *  # noqa: F401, F403
+import importlib as _importlib
 
-from .commands import (  # noqa: F401
-    ReachTargetCommand,
-    ReachTargetCommandCfg,
-    RelativeReachTargetCommand,
-    RelativeReachTargetCommandCfg,
-    WorkspaceReachTargetCommand,
-    WorkspaceReachTargetCommandCfg,
+_target = _importlib.import_module("myosuite.envs.backends.mjlab.tasks.reach.mdp")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
 )
-from .observations import reach_err, tip_pos  # noqa: F401
-from .rewards import (  # noqa: F401
-    leg_reach_components,
-    leg_reach_term,
-    reach_components,
-    reach_term,
-)
-from .terminations import leg_reach_failed, reach_failed  # noqa: F401
+__getattr__ = _target.__getattribute__
+del _importlib, _target

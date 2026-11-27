@@ -101,7 +101,7 @@ def test_find_checkpoint_reads_the_env_id_train_mjlab_records(
     from mjlab.tasks.registry import load_env_cfg
     from mjlab.utils.os import dump_yaml
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
 
     monkeypatch.setattr(
         "myosuite.core.hf_io.download_baseline_checkpoint", lambda env_id: None

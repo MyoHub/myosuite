@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
-from myosuite.envs.myo.tasks.challenge.bimanual import (
+from myosuite.envs.tasks.fullbody.bimanual.env import (
     CONTACT_TRAJ_MIN_LENGTH,
     evaluate_contact_trajectory,
 )

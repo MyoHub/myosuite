@@ -5,7 +5,7 @@
 """Helpers for the MyoTorso + table-tennis-style single-arm isolated MJCF.
 
 The on-disk file is
-:file:`myosuite/envs/myo/assets/arm/myotorso_tabletennis_isolated.xml`, which
+:file:`myosuite/envs/assets/arm/myotorso_tabletennis_isolated.xml`, which
 includes ``myotorso_arm_chain_host.xml`` (same ``full_body`` composition as
 ``myoarm_tabletennis.xml``). That chain has **one** ``myoarm_body``
 (conventionally the right arm in MyoSuite), plus pelvis and legs — **not** a
@@ -27,7 +27,6 @@ from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 _ARM_HOST_XML = (
     Path(__file__).resolve().parents[2]
     / "envs"
-    / "myo"
     / "assets"
     / "arm"
     / "myotorso_arm_chain_host.xml"
@@ -35,7 +34,6 @@ _ARM_HOST_XML = (
 _ISOLATED_XML = (
     Path(__file__).resolve().parents[2]
     / "envs"
-    / "myo"
     / "assets"
     / "arm"
     / "myotorso_tabletennis_isolated.xml"

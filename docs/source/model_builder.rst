@@ -85,7 +85,7 @@ This is always the most reliable approach:
    from pathlib import Path
    from myosuite.core.builder.asset_path_resolver import resolve_model_xml_path
 
-   xml = Path(myosuite.__file__).parent / "envs/myo/assets/hand/myohand_baoding.xml"
+   xml = Path(myosuite.__file__).parent / "envs/assets/hand/myohand_baoding.xml"
    model = mujoco.MjModel.from_xml_path(str(resolve_model_xml_path(xml)))
 
 Gymnasium entry points (recommended)
@@ -479,7 +479,7 @@ Right arm + ping-pong ball + table / net / paddle as mesh bodies with textures.
    import myosuite
    from myosuite.core.model_builder import ModelBuilder
 
-   assets = Path(myosuite.__file__).parent / "envs/myo/assets"
+   assets = Path(myosuite.__file__).parent / "envs/assets"
 
    model, spec = (
        ModelBuilder()
@@ -643,7 +643,7 @@ Two hand models are in use, and they differ in the order of the two thumb CMC jo
   behave differently.
 
 The ``myo_sim`` refactor of 2026-06 (PR #111, released as 0.2.0) exchanged the names and ranges of the two thumb
-joints; MyoSuite handles it in the pose targets (``tasks/basic/__init__.py``) and checks the order of the legacy
+joints; MyoSuite handles it in the pose targets (``envs/tasks/suites/basic.py``) and checks the order of the legacy
 envs in ``test_hand_recipe_parity.py``. Use joint names, not qpos indices, when you write targets or keyframes.
 
 Register your own recipe to share it across a project:

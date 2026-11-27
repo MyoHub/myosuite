@@ -24,7 +24,7 @@ from myosuite import make_env
 
 pytestmark = pytest.mark.tier1
 
-_ASSETS = Path(myosuite.__file__).resolve().parent / "envs" / "myo" / "assets"
+_ASSETS = apr._MYOSUITE_ASSETS
 assert _ASSETS.is_dir()
 _TETRA = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nf 1 3 2\nf 1 2 4\nf 1 4 3\nf 2 3 4\n"
 _PYRAMID = "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nv .5 .5 1\nf 1 3 2\nf 1 4 3\nf 1 2 5\nf 2 3 5\nf 3 4 5\nf 4 1 5\n"
@@ -101,6 +101,18 @@ def test_resolve_model_xml_path_reuses_one_copy(tmp_path: Path) -> None:
     assert _model_arrays(first)["mesh_vert"].shape == (4 + 5, 3)
 
 
+def test_resolve_model_xml_path_rewrites_legacy_envs_myo_assets_path() -> None:
+    """Direct legacy ``envs/myo/assets/...`` model paths resolve to ``envs/assets/...``."""
+    pkg = Path(myosuite.__file__).resolve().parent
+    legacy_model = pkg / "envs" / "myo" / "assets" / "arm" / "myoarm_relocate.xml"
+    assert not legacy_model.exists()
+
+    resolved = apr.resolve_model_xml_path(legacy_model)
+    assert resolved.is_file()
+    assert _ASSETS in resolved.parents or resolved.parent == apr.patched_xml_dir()
+    mujoco.MjModel.from_xml_path(str(resolved))
+
+
 def test_gym_make_twice_writes_no_new_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -123,7 +135,7 @@ def test_names_are_stable_across_processes(tmp_path: Path) -> None:
     code = (
         "import sys, pathlib\n"
         "import xml.etree.ElementTree as ET\n"
-        "from myosuite.utils import asset_path_resolver as apr\n"
+        "from myosuite.core.builder import asset_path_resolver as apr\n"
         "model = pathlib.Path(sys.argv[1])\n"
         "print(apr.resolve_model_xml_path(model).name)\n"
         "print(apr.write_patched_xml(ET.parse(model), model, 'probe').name)\n"
@@ -312,3 +324,13 @@ def test_write_once_replaces_a_stale_file(tmp_path: Path) -> None:
     assert apr._write_once(tmp_path, "probe", tmp_path / "source.xml", _DATA) == path
     assert path.read_bytes() == _DATA
     assert sorted(p.name for p in tmp_path.iterdir()) == ["names", path.name]
+
+
+def test_resolve_model_xml_path_does_not_rewrite_my_envs_assets(tmp_path: Path) -> None:
+    """A user directory named ``my_envs/assets/...`` must never match ``envs/assets/...``."""
+    user_missing = tmp_path / "my_envs" / "assets" / "arm" / "myoarm_relocate.xml"
+    assert apr._rewrite_relative_package_path(str(user_missing)) is None
+    assert apr.resolve_model_xml_path(user_missing) == user_missing.resolve()
+    proj_envs = tmp_path / "proj" / "envs" / "assets" / "torso" / "myotorso.xml"
+    assert apr._rewrite_relative_package_path(str(proj_envs)) is None
+    assert apr.resolve_model_xml_path(proj_envs) == proj_envs.resolve()

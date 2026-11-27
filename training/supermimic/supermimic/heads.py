@@ -24,7 +24,7 @@ from typing import Any
 
 import torch
 
-from myosuite.envs.myo.tasks.mimic.tracking.motion import MotionLib
+from myosuite.envs.tasks.mimic.tracking.motion import MotionLib
 from myosuite.core.terms import mimic_track as mt
 
 from .rotations import (

@@ -11,7 +11,7 @@ of a walking policy, and its distillation into one 546 -> 354 network that plays
    transform, jumps between clips by motion matching (pose and future-trajectory features) and warps the yaw within
    limits for the heading error left after the clip's own turning.
 2. **Student.** DAgger distils the teacher into an MLP on the player's own 546-d FBVs observation (the
-   `ActorCritic` of `myosuite.envs.myo.tasks.mimic.policy`, 512 x 6). Each round plays bouts in which the labelled
+   `ActorCritic` of `myosuite.envs.tasks.mimic.policy`, 512 x 6). Each round plays bouts in which the labelled
    players execute the previous student's action with probability 1 - beta (the teacher reads the executed
    excitation as its previous action, and in half the bouts takes over when the student's pelvis drops), against a
    second teacher, the shipped baseline or an idle player, from either side; the student is refitted (MSE on the
@@ -59,7 +59,7 @@ ChaseTag student (`onnx/chasetag_supermimic_student.onnx`, and a self-play refin
 
 - **Clips.** Retarget the AMASS KIT motions from your own AMASS download onto `myofullbody` with
   `scripts/mimic/retarget_amass.py` (in MyoSuite) and point `$MYOSUITE_KIT_ROOT` at the output folder, or name a
-  Hugging Face dataset of retargeted clips in `$MYOSUITE_MIMIC_DATASET` (`myosuite.envs.myo.tasks.mimic.tracking.kit_root`).
+  Hugging Face dataset of retargeted clips in `$MYOSUITE_MIMIC_DATASET` (`myosuite.envs.tasks.mimic.tracking.kit_root`).
   The AMASS licence (non-commercial research) applies to the clips and to anything derived from them.
 - **Tracker.** Train one with `training/supermimic` (its fast recipe; a 30-minute run was the teacher of the results
   below). The tracker must be trained on the same myo_sim version as the FBVs body (`check_same_body`).

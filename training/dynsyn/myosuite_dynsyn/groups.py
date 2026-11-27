@@ -249,7 +249,7 @@ def task_muscles(task: str) -> tuple[mujoco.MjModel, np.ndarray, list[str]]:
         The CPU ``MjModel`` of the twin, the actuator ids and their names.
     """
     from myosuite import make_env
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (
+    from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (
         action_actuator_names,
         muscle_action_terms,
     )

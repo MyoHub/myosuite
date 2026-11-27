@@ -13,7 +13,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from myosuite import make_env
-from myosuite.terms.multiplayer.chase_tag_vs_obs import agent_is_chaser
+from myosuite.envs.tasks.games.chasetag.chase_tag_vs_obs import agent_is_chaser
 
 AGENTS = ("agent_0", "agent_1")
 PREFIX = {"agent_0": "a0_", "agent_1": "a1_"}
@@ -159,7 +159,7 @@ def play(env: Any, players: dict[str, Player], seed: int, task: str, noise: floa
 def make(**kwargs: Any) -> Any:
     """The scored 1v1 env, without the gait/steering shaping reward (bouts score, they do not train; with its
     weights at 0 the env needs no gait clip). ``kwargs`` go to ``make_env`` (e.g. ``render_mode``)."""
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (  # noqa: PLC0415
         ChaseTagVsFullbodySteeredTaskConfig,
     )
 

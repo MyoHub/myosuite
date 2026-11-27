@@ -105,7 +105,7 @@ def test_baoding_score_is_the_solved_fraction_of_the_horizon() -> None:
 
 
 def test_bimanual_score_requires_a_clean_contact_history() -> None:
-    from myosuite.envs.myo.tasks.challenge.bimanual import (
+    from myosuite.envs.tasks.fullbody.bimanual.env import (
         CONTACT_TRAJ_MIN_LENGTH,
         GOAL_CONTACT,
         ContactTrajIssue,

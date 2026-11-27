@@ -50,11 +50,11 @@ def test_challenge_gym_registration_contract(env_id: str) -> None:
 def test_challenge_cross_backend_tier_a_target() -> None:
     """Gate: challenge family has both MJX and MJLab mappings."""
     try:
-        from myosuite.envs.myo.backends.mjx import ALL_ENVS
+        from myosuite.envs.backends._experimental_mjx import ALL_ENVS
     except (ImportError, AttributeError) as exc:
         pytest.skip(f"MJX not importable on this setup: {exc}")
 
-    from myosuite.envs.myo.backends.mjlab import REGISTERED_TASKS
+    from myosuite.envs.backends.mjlab import REGISTERED_TASKS
 
     # Canonical target rule for migration: each challenge family must have at
     # least one MJX and one MJLab representation before promotion to Tier A.

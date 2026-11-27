@@ -1,14 +1,16 @@
-"""Hand reach (``myoHandReach*``) environment configurations."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.hand.reach.hand_mjlab_cfg`."""
 
-from mjlab.envs import ManagerBasedRlEnvCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.reach.reach_env_cfg import (
-    make_reach_env_cfg,
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.hand.reach.hand_mjlab_cfg import *  # noqa: F403
+
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.hand.reach.hand_mjlab_cfg"
 )
-
-HAND_REACH_IDS = ("myoHandReachFixed-v0", "myoHandReachRandom-v0")
-
-
-def hand_reach_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
-    """Hand reach (``myoHandReach*``) task matching the CPU registration of *env_id*."""
-    return make_reach_env_cfg(env_id, play=play)

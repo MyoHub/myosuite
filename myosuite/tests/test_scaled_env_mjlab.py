@@ -15,8 +15,8 @@ torch = pytest.importorskip("torch")
 
 from myosuite import make_env  # noqa: E402
 from myosuite.core.config import EnvConfig  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.tasks.registration import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks import cpu_reference as ref  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.registration import (  # noqa: E402
     rebuild_twin_cfg,
 )
 

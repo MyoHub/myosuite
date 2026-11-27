@@ -18,7 +18,7 @@ ENV_ID = "myoChallengeChaseTagFBVs-v0"
 
 
 def _no_shaping_env():
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
         ChaseTagVsFullbodySteeredTaskConfig,
     )
 
@@ -61,7 +61,7 @@ def test_zero_shaping_weights_never_download(monkeypatch: pytest.MonkeyPatch) ->
     reason="gait clip (gated Hugging Face dataset) unavailable",
 )
 def test_default_weights_keep_obs_and_score() -> None:
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
         ChaseTagVsFullbodySteeredTaskConfig,
     )
 

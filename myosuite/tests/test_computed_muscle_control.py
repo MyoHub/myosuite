@@ -17,7 +17,7 @@ import pytest
 
 from myosuite import make_env
 from myosuite.core.model_builder import ModelBuilder, build_from_recipe
-from myosuite.envs.myo.myoedits import edit_fn_arm_reaching
+from myosuite.envs.tasks.suites.edits import edit_fn_arm_reaching
 from myosuite.biomechanics.computed_muscle_control import (
     ComputedMuscleControl,
     ComputedMuscleControlConfig,

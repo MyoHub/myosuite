@@ -113,7 +113,7 @@ def test_real_declaration_is_checked_against_installed_registry(
     """A fragment_versions declaration on a real task config is discovered and checked."""
     import myo_sim
 
-    from myosuite.envs.myo.tasks.basic.specs.elbow_pose_spec import ElbowPoseFixedTask
+    from myosuite.envs.tasks.arm.pose.spec import ElbowPoseFixedTask
 
     installed = myo_sim.FragmentRegistry.get("elbow").version
     monkeypatch.setattr(
@@ -121,3 +121,23 @@ def test_real_declaration_is_checked_against_installed_registry(
     )
 
     assert _load_script().main() == expected
+
+
+def test_discovery_does_not_import_torch() -> None:
+    """Scanning TaskConfig subclasses must work on core-only installs without importing torch."""
+    import subprocess
+    import sys
+
+    code = (
+        f"import importlib.util, sys\n"
+        f"spec = importlib.util.spec_from_file_location('cfc', {str(_SCRIPT)!r})\n"
+        f"mod = importlib.util.module_from_spec(spec)\n"
+        f"spec.loader.exec_module(mod)\n"
+        f"configs = list(mod._discover_task_configs())\n"
+        f"assert configs\n"
+        f"assert 'torch' not in sys.modules, 'torch was eagerly imported!'\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert proc.returncode == 0, proc.stderr

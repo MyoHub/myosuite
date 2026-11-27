@@ -27,7 +27,7 @@ from chasetag_teacher.distill import (
     train,
     yaw_rotate,
 )
-from myosuite.envs.myo.tasks.mimic.policy import ActorCritic
+from myosuite.envs.tasks.mimic.policy import ActorCritic
 
 pytestmark = pytest.mark.tier1
 

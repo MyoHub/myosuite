@@ -1,15 +1,14 @@
-"""Pose-task MDP terms (on top of the shared MyoSuite mjlab terms)."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible package facade for :mod:`myosuite.envs.backends.mjlab.tasks.pose.mdp`."""
 
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import *  # noqa: F401, F403
+import importlib as _importlib
 
-from .commands import JointPoseCommand, JointPoseCommandCfg  # noqa: F401
-from .observations import pose_err  # noqa: F401
-from .rewards import (  # noqa: F401
-    act_norm,
-    pose_bonus,
-    pose_dist,
-    pose_done,
-    pose_penalty,
-    pose_solved,
+_target = _importlib.import_module("myosuite.envs.backends.mjlab.tasks.pose.mdp")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
 )
-from .terminations import pose_diverged  # noqa: F401
+__getattr__ = _target.__getattribute__
+del _importlib, _target

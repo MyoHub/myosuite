@@ -36,12 +36,12 @@ from myosuite.core.muscle_conditions import (  # noqa: E402
     CumulativeFatigue,
     TorchFatigueState,
 )
-from myosuite.envs.myo.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
-from myosuite.envs.myo.tasks.basic.arm.reach import ReachEnvV0  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.mdp import write_cpu_state  # noqa: E402
+from myosuite.envs.tasks.arm.reach.env import ReachEnvV0  # noqa: E402
 from myosuite.envs.modular_env import ModularTaskEnv  # noqa: E402
 from myosuite.envs.wrappers import FatigueWrapper  # noqa: E402
-from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0  # noqa: E402
-from myosuite.envs.myo.tasks.basic.leg.walk import LegWalkEnvV0  # noqa: E402
+from myosuite.envs.tasks.leg.reach.env import LegReachEnvV0  # noqa: E402
+from myosuite.envs.tasks.leg.walk.env import LegWalkEnvV0  # noqa: E402
 from myosuite import make_env  # noqa: E402
 from myosuite.tests.support.joint_couplings import (  # noqa: E402
     joint_equality_residuals,
@@ -52,12 +52,12 @@ if sys.platform.startswith("linux"):  # "egl" is an invalid MUJOCO_GL on Windows
 
 # Entry points of the basic suite that have an mjlab twin.
 _PORTED_ENTRY_POINTS = (
-    "arm.pose:PoseEnvV0",
-    "torso.pose:TorsoEnvV0",
-    "arm.reach:ReachEnvV0",
-    "leg.reach:LegReachEnvV0",
-    "leg.walk:LegWalkEnvV0",
-    "leg.walk:LegTerrainEnvV0",
+    "myosuite.envs.tasks.arm.pose.env:PoseEnvV0",
+    "myosuite.envs.tasks.torso.pose.env:TorsoEnvV0",
+    "myosuite.envs.tasks.arm.reach.env:ReachEnvV0",
+    "myosuite.envs.tasks.leg.reach.env:LegReachEnvV0",
+    "myosuite.envs.tasks.leg.walk.env:LegWalkEnvV0",
+    "myosuite.envs.tasks.leg.walk.env:LegTerrainEnvV0",
 )
 
 PARITY_IDS = (
@@ -196,16 +196,17 @@ def _assert_obs_close(
 
 
 def _basic_suite_ids(entry_points: tuple[str, ...]) -> list[str]:
-    return sorted(
+    ids = sorted(
         env_id
         for env_id, spec in gym.registry.items()
-        if any(str(spec.entry_point).endswith(ep) for ep in entry_points)
-        and "tasks.basic" in str(spec.entry_point)
+        if str(spec.entry_point) in entry_points
     )
+    assert ids, f"No registered envs matched entry points: {entry_points}"
+    return ids
 
 
 def _make_pair(env_id: str) -> tuple[gym.Env, ManagerBasedRlEnv]:
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cpu = make_env(env_id).unwrapped
     cpu.reset(seed=0)
@@ -489,7 +490,7 @@ def test_twin_fatigue_parameters_match_cpu(env_id: str) -> None:
     to ``Default``. The step-parity test re-syncs MA / MR / MF every step, so
     it cannot see F / R / r.
     """
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cpu = make_env(env_id).muscle_fatigue
     mj = ManagerBasedRlEnv(cfg=load_env_cfg(env_id), device="cpu")
@@ -513,9 +514,9 @@ def test_twin_fatigue_reset_options_match_cpu(
     random reset draws a valid, seeded state per env (CPU and torch use different
     generators, so the draws themselves differ).
     """
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
-    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref  # noqa: PLC0415
-    from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
+    from myosuite.envs.backends.mjlab.tasks import cpu_reference as ref  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
         make_pose_env_cfg,
     )
 
@@ -582,9 +583,9 @@ def test_twin_fatigue_muscle_subset_matches_cpu(
     unsynced; the listed muscles (out of model order, with a reset vector) tire,
     the others keep their unfatigued ctrl.
     """
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
-    from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref  # noqa: PLC0415
-    from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
+    from myosuite.envs.backends.mjlab.tasks import cpu_reference as ref  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
         make_pose_env_cfg,
     )
 
@@ -640,7 +641,7 @@ def test_twin_fatigue_muscle_subset_matches_cpu(
 
 def test_every_ported_cpu_env_has_mjlab_twin() -> None:
     """Every basic-suite CPU id of a ported family is registered with mjlab."""
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415
 
     registered = set(list_tasks())
     missing = [
@@ -717,9 +718,9 @@ def test_twin_resets_on_the_joint_couplings(env_id: str) -> None:
     The walk keyframe left the patella rotation 0.74 rad off its knee coupling and the
     stand reset noise 0.18 rad; a deterministic CPU reset is replayed by the twin.
     """
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
-    from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData  # noqa: PLC0415
+    from myosuite.envs.tasks.mimic.tracking import MissingMotionData  # noqa: PLC0415
 
     try:
         cfg = load_env_cfg(env_id)
@@ -765,7 +766,7 @@ def test_tabletennis_twin_projects_its_joint_noise() -> None:
     """
     import dataclasses  # noqa: PLC0415
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     cfg = load_env_cfg("myoChallengeTableTennisP0-v0")
     cfg.scene.num_envs = 4
@@ -789,7 +790,7 @@ def test_tabletennis_twin_projects_its_joint_noise() -> None:
 
 def test_every_coupled_twin_is_listed() -> None:
     """Each base twin of a CPU env with joint couplings is in COUPLED_TWIN_IDS."""
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415
 
     unlisted = []
     for env_id in set(list_tasks()) - set(COUPLED_TWIN_IDS):
@@ -806,7 +807,7 @@ def test_every_coupled_twin_is_listed() -> None:
 
 def test_every_twin_logs_a_success_metric() -> None:
     """Success rate is a standard metric (``Episode_Metrics/success``) of every twin."""
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415
 
     registered = set(list_tasks())
     twins = [e for e in _basic_suite_ids(_PORTED_ENTRY_POINTS) if e in registered]
@@ -824,7 +825,7 @@ def test_every_twin_logs_a_success_metric() -> None:
 
 def test_twin_rejects_unknown_obs_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """A twin fails loudly on an obs key it has no term for, as the CPU env does."""
-    from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
+    from myosuite.envs.backends.mjlab.tasks.pose.pose_env_cfg import (  # noqa: PLC0415
         make_pose_env_cfg,
     )
 

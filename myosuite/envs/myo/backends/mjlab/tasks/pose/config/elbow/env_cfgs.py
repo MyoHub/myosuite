@@ -1,17 +1,16 @@
-"""Elbow pose environment configurations (``myoElbowPose1D6M*``, incl. exoskeleton)."""
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Backward-compatible alias for :mod:`myosuite.envs.tasks.arm.pose.mjlab_cfg`."""
 
-from mjlab.envs import ManagerBasedRlEnvCfg
+import importlib as _importlib
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from myosuite.envs.myo.backends.mjlab.tasks.pose.pose_env_cfg import make_pose_env_cfg
+if _TYPE_CHECKING:
+    from myosuite.envs.tasks.arm.pose.mjlab_cfg import *  # noqa: F403
 
-ELBOW_POSE_IDS = (
-    "myoElbowPose1D6MFixed-v0",
-    "myoElbowPose1D6MRandom-v0",
-    "myoElbowPose1D6MExoFixed-v0",
-    "myoElbowPose1D6MExoRandom-v0",
+_sys.modules[__name__] = _importlib.import_module(
+    "myosuite.envs.tasks.arm.pose.mjlab_cfg"
 )
-
-
-def elbow_pose_env_cfg(env_id: str, play: bool = False) -> ManagerBasedRlEnvCfg:
-    """Elbow pose task matching the CPU registration of *env_id*."""
-    return make_pose_env_cfg(env_id, play=play)

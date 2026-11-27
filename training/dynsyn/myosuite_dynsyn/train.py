@@ -6,7 +6,7 @@
 
 The task's env and runner configs come from mjlab's task registry (MyoSuite registers
 its twins there); DynSyn only puts an action term in front of the task's muscle term
-(:func:`~myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map.apply_action_map`).
+(:func:`~myosuite.envs.backends.mjlab.tasks.mdp.action_map.apply_action_map`).
 Every checkpoint stores the map and its training progress, so
 ``scripts/eval_mjlab_policy.py`` plays it without this package::
 
@@ -33,7 +33,7 @@ from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg, load_run
 from mjlab.utils.os import dump_yaml
 from mjlab.utils.torch import configure_torch_backends
 
-from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (
+from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (
     action_map_term,
     apply_action_map,
     apply_trained_action_map,
@@ -71,7 +71,7 @@ class DynSynTrainConfig:
     def from_task(task_id: str, features: tuple = ()) -> DynSynTrainConfig:
         """The task's registered configs; *features* rebuild the twin with them."""
         if features:
-            from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+            from myosuite.envs.backends.mjlab.tasks.registration import (
                 rebuild_twin_cfg,
             )
 
@@ -164,7 +164,7 @@ def train(task_id: str, cfg: DynSynTrainConfig) -> Path:
     Returns:
         The run directory (``params/`` and ``model_*.pt``).
     """
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
 
     device = cfg.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     configure_torch_backends()
@@ -209,7 +209,7 @@ def main() -> None:
     import mjlab
     import mjlab.tasks  # noqa: F401
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401  (registers the twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401  (registers the twins)
 
     task, rest = tyro.cli(
         tyro.extras.literal_type_from_choices(list_tasks()),

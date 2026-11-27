@@ -50,8 +50,8 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 
-from myosuite.envs.myo.tasks.mimic.tracking import resolve_clips
-from myosuite.envs.myo.tasks.mimic.tracking.motion import motion_files
+from myosuite.envs.tasks.mimic.tracking import resolve_clips
+from myosuite.envs.tasks.mimic.tracking.motion import motion_files
 from supermimic.rotations import mat_to_quat
 
 

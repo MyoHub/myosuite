@@ -44,7 +44,7 @@ def test_cpu_far_check_starts_at_first_step_after(env_id: str) -> None:
 @pytest.mark.parametrize("env_id", _IDS)
 def test_mjlab_twin_penalty_start_step_matches_cpu(env_id: str) -> None:
     pytest.importorskip("mjlab")
-    from myosuite.envs.myo.backends.mjlab.tasks.reach.reach_env_cfg import (
+    from myosuite.envs.backends.mjlab.tasks.reach.reach_env_cfg import (
         make_reach_env_cfg,
     )
 

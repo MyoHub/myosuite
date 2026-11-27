@@ -106,7 +106,7 @@ def test_soccer_torso_faces_same_way_as_legs() -> None:
 
 def test_plane_host_used_by_mjlab_is_also_aligned() -> None:
     """mjlab directional/walk loads ``myolegs_with_torso_plane.xml``."""
-    from myosuite.envs.myo.assets._resolve import resolve_leg_xml
+    from myosuite.envs.assets._resolve import resolve_leg_xml
     from myosuite.utils.asset_path_resolver import resolve_model_xml_path
 
     xml = resolve_model_xml_path(resolve_leg_xml("myolegs_with_torso_plane.xml"))

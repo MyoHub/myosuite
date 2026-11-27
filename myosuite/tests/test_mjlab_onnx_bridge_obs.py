@@ -109,7 +109,7 @@ def setup(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
     from mjlab.envs import ManagerBasedRlEnv
 
     from myosuite.core.trajectory_io import load_motion_clip
-    from myosuite.envs.myo.backends.mjlab import mimic_mjlab_env as mimic
+    from myosuite.envs.backends.mjlab import mimic_mjlab_env as mimic
     from myosuite.integrations.musclemimic.fullbody_local_policy import (
         FullbodyObsAdapter,
     )

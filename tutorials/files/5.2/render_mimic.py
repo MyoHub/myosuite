@@ -58,7 +58,7 @@ def _make_env(clip_path: pathlib.Path):
     Episodes end at the clip end (truncation) or on early termination.
     """
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-    from myosuite.envs.myo.tasks.mimic.clip_env import MuscleMimicClipEnvV0
+    from myosuite.envs.tasks.mimic.clip_env import MuscleMimicClipEnvV0
 
     return MuscleMimicClipEnvV0(
         clip_path=clip_path, frame_skip=5, random_start=False, use_obs_normalizer=False

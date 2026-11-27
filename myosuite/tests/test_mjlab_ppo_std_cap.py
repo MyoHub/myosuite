@@ -32,23 +32,23 @@ from rsl_rl.modules.distribution import GaussianDistribution  # noqa: E402
 from rsl_rl.utils import resolve_callable  # noqa: E402
 from tensordict import TensorDict  # noqa: E402
 
-import myosuite.envs.myo.backends.mjlab  # noqa: E402, F401
+import myosuite.envs.backends.mjlab.bootstrap  # noqa: E402, F401
 from mjlab.tasks.registry import list_tasks, load_rl_cfg  # noqa: E402
 from mjlab.utils.os import dump_yaml  # noqa: E402
-from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (  # noqa: E402
+from myosuite.envs.backends.mjlab.mimic_mjlab_env import (  # noqa: E402
     default_mimic_clip_on_policy_runner_cfg,
 )
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tabletennis import (  # noqa: E402
+from myosuite.envs.tasks.games.tabletennis.register_mjlab import (  # noqa: E402
     _table_tennis_ppo_runner_cfg,
 )
-from myosuite.envs.myo.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
+from myosuite.envs.backends.mjlab.register_mjlab_tasks import (  # noqa: E402
     _chasetag_ppo_runner_cfg,
     _elbow_ppo_runner_cfg,
 )
-from myosuite.envs.myo.backends.mjlab.tasks.distribution import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.distribution import (  # noqa: E402
     ProjectedGaussianDistribution,
 )
-from myosuite.envs.myo.backends.mjlab.tasks.rl import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.rl import (  # noqa: E402
     muscle_gaussian_distribution_cfg,
 )
 from myosuite.utils.rslrl_policy import load_rslrl_policy  # noqa: E402

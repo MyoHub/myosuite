@@ -14,14 +14,14 @@ import pytest
 
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
-from myosuite.envs.myo.tasks.mimic.tracking.config import ResetCfg
-from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body
-from myosuite.envs.myo.tasks.mimic.tracking.motion import (
+from myosuite.envs.tasks.mimic.tracking.config import ResetCfg
+from myosuite.envs.tasks.mimic.tracking.models import compiled_body
+from myosuite.envs.tasks.mimic.tracking.motion import (
     MotionLib,
     build_motion_lib,
     write_synthetic_clip,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.sampling import ResetSampler
+from myosuite.envs.tasks.mimic.tracking.sampling import ResetSampler
 
 pytestmark = pytest.mark.tier2
 
@@ -109,7 +109,7 @@ def test_disk_hit_reconstructs_transition_bins(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The data-only cache restores corrected bins without reprocessing frames."""
-    from myosuite.envs.myo.tasks.mimic.tracking import motion
+    from myosuite.envs.tasks.mimic.tracking import motion
 
     directory = str(tmp_path / "cache")
     cold = _library(tmp_path, (2, 101, 201), 100, directory)

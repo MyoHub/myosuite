@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
+from myosuite.envs.tasks.mimic.tracking import MissingMotionData
 from myosuite.tests.support.optional_deps import skip_if_hf_gated
 
 pytestmark = pytest.mark.tier1

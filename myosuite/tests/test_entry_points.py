@@ -12,7 +12,7 @@ CPU pattern::
 
 MJX + Brax pattern::
 
-    from myosuite.envs.myo.backends.mjx.brax_env import wrap_for_brax_training
+    from myosuite.envs.backends._experimental_mjx.brax_env import wrap_for_brax_training
     env = make_env("MjxElbowPoseRandom-v0", backend="mjx")
     brax_env = wrap_for_brax_training(env)
 
@@ -96,8 +96,8 @@ class TestMjxEntryPoint:
 
     def test_make_mjx_env(self):
         """make() returns a MyoMjxEnvBase subclass for MjxElbowPoseRandom-v0."""
-        from myosuite.envs.myo.backends.mjx import make
-        from myosuite.envs.myo.backends.mjx.mjx_env_base import MyoMjxEnvBase
+        from myosuite.envs.backends._experimental_mjx import make
+        from myosuite.envs.backends._experimental_mjx.mjx_env_base import MyoMjxEnvBase
 
         try:
             env = make("MjxElbowPoseRandom-v0")
@@ -114,8 +114,8 @@ class TestMjxEntryPoint:
         """wrap_for_brax_training() returns an object with reset and step attributes."""
         import jax
 
-        from myosuite.envs.myo.backends.mjx import make
-        from myosuite.envs.myo.backends.mjx.brax_env import (
+        from myosuite.envs.backends._experimental_mjx import make
+        from myosuite.envs.backends._experimental_mjx.brax_env import (
             wrap_for_brax_training,
         )
 
@@ -135,7 +135,7 @@ class TestMjxEntryPoint:
         import jax
         import jax.numpy as jp
 
-        from myosuite.envs.myo.backends.mjx.brax_env import (
+        from myosuite.envs.backends._experimental_mjx.brax_env import (
             wrap_for_brax_training,
         )
 
@@ -161,7 +161,7 @@ class TestMjxEntryPoint:
 
     def test_all_mjx_env_ids_listed(self):
         """ALL_ENVS contains at least the 6 expected environment names."""
-        from myosuite.envs.myo.backends.mjx import ALL_ENVS
+        from myosuite.envs.backends._experimental_mjx import ALL_ENVS
 
         expected = {
             "MjxElbowPoseFixed-v0",
@@ -176,7 +176,7 @@ class TestMjxEntryPoint:
 
     def test_make_all_mjx_envs(self):
         """make() succeeds for every name in ALL_ENVS without raising."""
-        from myosuite.envs.myo.backends.mjx import make, ALL_ENVS
+        from myosuite.envs.backends._experimental_mjx import make, ALL_ENVS
 
         for name in ALL_ENVS:
             try:

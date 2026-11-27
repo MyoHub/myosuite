@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import myosuite  # noqa: F401
-from myosuite.envs.myo.tasks.basic.arm.reorient_sar import ReorientSAREnvV0
+from myosuite.envs.tasks.arm.reorient_sar.env import ReorientSAREnvV0
 from myosuite.envs.wrappers import FatigueWrapper
 from myosuite.terms.base_action import sigmoid_muscle_activation
 from myosuite import make_env

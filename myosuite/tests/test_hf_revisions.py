@@ -89,10 +89,10 @@ def test_dataset_files_are_pinned(hub: list[dict], tmp_path: Path) -> None:
 
 
 def test_env_reference_clips_are_pinned(hub: list[dict]) -> None:
-    from myosuite.envs.myo.tasks.challenge.chase_tag_vs.chase_tag_vs_task_config import (
+    from myosuite.envs.tasks.games.chasetag.chase_tag_vs.chase_tag_vs_task_config import (
         ChaseTagVsFullbodySteeredTaskConfig,
     )
-    from myosuite.envs.myo.tasks.mimic.cpu import MuscleMimicFullbodyDirectionalEnv
+    from myosuite.envs.tasks.mimic.cpu import MuscleMimicFullbodyDirectionalEnv
 
     env = SimpleNamespace(_gait_repo=_CLIPS, _gait_file="a.npz")
     for load in ("_load_gait_clip", "_load_circular_clips"):
@@ -108,7 +108,7 @@ def test_env_reference_clips_are_pinned(hub: list[dict]) -> None:
 
 
 def test_tracking_dataset_takes_a_revision(hub: list[dict]) -> None:
-    from myosuite.envs.myo.tasks.mimic.tracking import download_retargeted_clips
+    from myosuite.envs.tasks.mimic.tracking import download_retargeted_clips
 
     download_retargeted_clips(f"{_CLIPS}", "myofullbody", "0.2.5")
     _assert_pinned(hub, _CLIPS)

@@ -24,8 +24,8 @@ from myosuite.core.muscle_conditions import (
     apply_sarcopenia_to_spec,
 )
 from myosuite.core.trajectory_io import load_motion_clip, motion_clip_from_states
-from myosuite.envs.myo.tasks.mimic.tracking.env import MimicEnv
-from myosuite.envs.waypoint import WaypointEnv, WaypointTaskCfg
+from myosuite.envs.tasks.mimic.tracking.env import MimicEnv
+from myosuite.envs.tasks.fullbody.waypoint.env import WaypointEnv, WaypointTaskCfg
 from myosuite.envs.wrappers import FatigueWrapper, MotorNoiseWrapper, SarcopeniaWrapper
 from myosuite.terms.base_action import MotorNoiseCfg
 

@@ -161,8 +161,8 @@ def test_runner_scores_like_the_env(setup: Any) -> None:
     the simulator reaches. They differ by the coupled joints' constraint violation, which the kinematics projects
     away (sub-millimetre; velocities more). The policy terms' tolerances catch a left/right site swap and a stale
     previous action."""
-    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp import SYNC_TERM
+    from myosuite.envs.tasks.mimic.tracking.models import model_cfg
+    from myosuite.envs.backends.mjlab.tasks.mdp import SYNC_TERM
     from supermimic.heads import StepCtx, analytic
 
     env, runner = setup

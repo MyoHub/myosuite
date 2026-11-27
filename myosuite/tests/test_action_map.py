@@ -187,8 +187,8 @@ def test_mjlab_action_term(walk_groups):
     from mjlab.envs import ManagerBasedRlEnv
     from mjlab.tasks.registry import load_env_cfg
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import apply_action_map
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401
+    from myosuite.envs.backends.mjlab.tasks.mdp.action_map import apply_action_map
 
     path, groups = walk_groups
     cfg = load_env_cfg("myoLegWalk-v0")
@@ -225,7 +225,7 @@ def _walk_cfg(num_envs: int):
     import mjlab.tasks  # noqa: F401
     from mjlab.tasks.registry import load_env_cfg
 
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401
 
     cfg = load_env_cfg("myoLegWalk-v0")
     cfg.scene.num_envs = num_envs
@@ -258,7 +258,7 @@ def _write_run(run: Path, cfg, counter: int, n_actions: int = 80) -> Path:
 def trained_run(walk_groups, tmp_path) -> Path:
     """Checkpoint of a 2-env DynSyn run after 100 env steps: bound 0.1 * 200 / 1000."""
     pytest.importorskip("mjlab")
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import apply_action_map
+    from myosuite.envs.backends.mjlab.tasks.mdp.action_map import apply_action_map
 
     cfg = _walk_cfg(2)
     apply_action_map(cfg, DynSyn(DynSynGroups.load(walk_groups[0]), 0, 1000))
@@ -304,7 +304,7 @@ def test_evaluation_keeps_the_trained_bound_on_both_backends(trained_run):
     from mjlab.envs import ManagerBasedRlEnv
 
     from myosuite import make_env
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (
+    from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (
         action_map_term,
         apply_trained_action_map,
     )
@@ -338,7 +338,7 @@ def test_resume_continues_the_schedule(trained_run, num_envs):
     torch = pytest.importorskip("torch")
     from mjlab.envs import ManagerBasedRlEnv
 
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (
+    from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (
         action_map_term,
         apply_trained_action_map,
     )
@@ -367,7 +367,7 @@ def test_both_backends_command_the_same_muscles(task):
     from mjlab.tasks.registry import load_env_cfg
 
     from myosuite import make_env
-    from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (
+    from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (
         action_actuator_names,
         action_map_term,
         apply_action_map,
@@ -437,7 +437,7 @@ def test_checkpoints_of_the_earlier_dynsyn_format_are_read_and_refused(
     term = {k: v for k, v in legacy.items() if k != "env_steps"}
     (run.parent / "params").mkdir()
     (run.parent / "params" / "env.yaml").write_text(
-        "actions:\n  muscles: !!python/object:myosuite.envs.myo.backends.mjlab."
+        "actions:\n  muscles: !!python/object:myosuite.envs.backends.mjlab."
         "dynsyn_action.DynSynActionCfg\n"
         + "".join(f"    {k}: {v!r}\n" for k, v in term.items() if k != "groups")
         + f"    groups: {json.dumps(term['groups'])}\n"

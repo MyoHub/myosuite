@@ -17,13 +17,13 @@ from myosuite import make_env
 from myosuite.biomechanics import retarget as rt
 from myosuite.biomechanics import retarget_instanthmr as ri
 from myosuite.biomechanics import retarget_smplh as rs
-from myosuite.envs.myo.tasks.mimic.tracking.models import (
+from myosuite.envs.tasks.mimic.tracking.models import (
     ModelInfo,
     compiled_body,
     kinematic_fingerprint,
     model_version,
 )
-from myosuite.envs.myo.tasks.mimic.tracking.motion import load_motion_lib
+from myosuite.envs.tasks.mimic.tracking.motion import load_motion_lib
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 pytestmark = pytest.mark.tier2
@@ -855,7 +855,7 @@ def test_real_instanthmr_fixture_end_to_end(
     assert res_legs.metrics["landmark_rmse_mm"] < 35.0
 
     pytest.importorskip("myo_sim.scaling")
-    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+    from myosuite.envs.tasks.mimic.tracking.models import model_cfg
 
     spec_fb = model_cfg("myofullbody").build_spec(True)
     res_fb = ri.solve_instanthmr_ik(fixture, spec=spec_fb, scale=True)
@@ -1016,7 +1016,7 @@ def test_subject_scaling_invariants_fullbody_and_myolegs(
     fullbody: mujoco.MjModel,
 ) -> None:
     pytest.importorskip("myo_sim.scaling")
-    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+    from myosuite.envs.tasks.mimic.tracking.models import model_cfg
     from myosuite.viz.muscle_tubes import muscle_actuators
 
     spec_fb = model_cfg("myofullbody").build_spec(True)
@@ -1126,7 +1126,7 @@ def test_subject_scaling_invariants_fullbody_and_myolegs(
 def test_solve_instanthmr_ik_metric_scaled_roundtrip() -> None:
     pytest.importorskip("myo_sim.scaling")
     from myosuite.core.trajectory_io import expand_motion_clip_to_model
-    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+    from myosuite.envs.tasks.mimic.tracking.models import model_cfg
 
     spec = model_cfg("myofullbody").build_spec(True)
     subject_scale = 1.15
@@ -1279,7 +1279,7 @@ def test_reconstruct_skinned_glb_muscle_mesh_with_scaling(
     fullbody: mujoco.MjModel, myolegs: mujoco.MjModel, tmp_path: Path
 ) -> None:
     pytest.importorskip("myo_sim.scaling")
-    from myosuite.envs.myo.tasks.mimic.tracking.models import model_cfg
+    from myosuite.envs.tasks.mimic.tracking.models import model_cfg
     from myosuite.viz import blender_render as br
     from myosuite.viz.muscle_meshes import reconstruct_muscle_meshes
 

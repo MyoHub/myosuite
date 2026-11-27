@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from myosuite.envs.myo.tasks.mimic.tracking.motion import MotionLib, motion_files
+from myosuite.envs.tasks.mimic.tracking.motion import MotionLib, motion_files
 
 LOCOMOTION = re.compile(
     r"(walking_(slow|medium|fast|run)|turn_(left|right)|(Left|Right)Turn|WalkIn(Counter)?ClockwiseCircle|WalkingStraight(Forwards?|Backwards))\d*_poses"

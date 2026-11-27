@@ -9,7 +9,7 @@ obvious error.
 
 The **MJX** (JAX) backend is experimental and may not be maintained. Its envs differ in observation order, reward
 weights, thresholds and reset distributions, so MJX-trained policies are not portable. Do not build new work on it
-(limitations: [myosuite/envs/myo/backends/mjx/README.md](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/myo/backends/mjx/README.md)).
+(limitations: [myosuite/envs/backends/_experimental_mjx/README.md](https://github.com/MyoHub/myosuite/blob/dev/myosuite/envs/backends/_experimental_mjx/README.md)).
 
 ---
 
@@ -325,7 +325,7 @@ binding. Custom action processing, per-substep application and command state nee
 alone does not demonstrate their support. Keep MyoSuite-specific support unverified until that task's pilot passes.
 
 **Motion tracking needs an explicit command binding.** MyoSuite's
-`tasks.mimic_tracking.commands.MotionCommandCfg` shares its class name with mjlab's config but describes a
+`envs.tasks.mimic.mjlab_commands.MotionCommandCfg` shares its class name with mjlab's config but describes a
 different command: `task.motion.clips`, its root/model, future goal frames and multi-clip reset/reference timing.
 The pinned mjswan registry matches that name to its built-in `TrackingCommand` and currently emits empty anchor/body
 metadata and default sampling settings for the MyoSuite config. That successful adaptation does not preserve the task.

@@ -17,9 +17,9 @@ import mujoco
 import numpy as np
 import pytest
 
-from myosuite.envs.myo.tasks.mimic.tracking import motion
-from myosuite.envs.myo.tasks.mimic.tracking.config import MotionCfg, resolve_task
-from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_scene, model_cfg
+from myosuite.envs.tasks.mimic.tracking import motion
+from myosuite.envs.tasks.mimic.tracking.config import MotionCfg, resolve_task
+from myosuite.envs.tasks.mimic.tracking.models import compiled_scene, model_cfg
 
 pytestmark = pytest.mark.tier2
 Inputs = tuple[list[str], mujoco.MjModel, tuple[str, ...]]
@@ -364,8 +364,8 @@ def test_cache_is_reused_in_a_fresh_process(inputs: Inputs, tmp_path: Path) -> N
     expected = motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
     script = """
 import sys
-from myosuite.envs.myo.tasks.mimic.tracking import motion
-from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_scene, model_cfg
+from myosuite.envs.tasks.mimic.tracking import motion
+from myosuite.envs.tasks.mimic.tracking.models import compiled_scene, model_cfg
 def fail(*args, **kwargs):
     raise AssertionError('preprocessing instead of reading the disk cache')
 motion._process_clip = fail

@@ -4,4 +4,4 @@
 # LICENSE file in the root directory of this source tree.
 """TaskConfig-based specs for myoLeg environments."""
 
-import myosuite.envs.myo.tasks.basic.leg.specs.leg_directional_spec  # noqa: F401
+import myosuite.envs.tasks.leg.directional.spec  # noqa: F401

@@ -2,125 +2,13 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Registration of myoedits environments (arm-reach with procedural model edits)."""
+"""Backward-compatible package facade for :mod:`myosuite.envs.tasks.suites.edits`."""
 
-import mujoco
+import importlib as _importlib
 
-import myosuite.core.registry as _registry
-from myosuite.envs.wrappers import condition_wrapper_specs
-from myosuite.core.builder.spec_processing import recursive_immobilize
-import numpy as np
-
-# Arm Reaching ==============================
-# Default free-camera framing of the arm-reach model (camera distance = 1.5 * extent).
-# The composed scene makes the automatic extent ~25 m, i.e. a camera far from the body.
-_REACH_CAMERA_EXTENT = 1.5
-_REACH_CAMERA_CENTER = [-0.17, -0.3, 1.2]
-
-
-def edit_fn_arm_reaching(
-    spec: mujoco.MjSpec, remove_wrist=False, min_moment=1e-10
-) -> None:
-    spec.stat.extent = _REACH_CAMERA_EXTENT
-    spec.stat.center = _REACH_CAMERA_CENTER
-    # Get the positions of each body of each digit. Names carry myo_sim's
-    # "_r" (right-side) suffix — this model is built via the "full_arm"
-    # recipe (myo_sim.load_spec("myoarm_r")), not the legacy bare-named XML.
-    root_list = ["firstmc_r", "secondmc_r", "thirdmc_r", "fourthmc_r", "fifthmc_r"]
-
-    if remove_wrist:
-        root_list = ["lunate_r"]
-        spec.delete(spec.joint("pro_sup_r"))
-
-    for root in root_list:
-        recursive_immobilize(spec, None, spec.body(root), remove_sites=False)
-
-    _m = spec.copy().compile()
-    _d = mujoco.MjData(_m)
-    mujoco.mj_step(_m, _d, nstep=100)
-
-    # Now that we immobilized fingers, som muscles have no effect and can be pruned. We check through the tendon
-    # moment arms to find them.
-    J_tendon = np.empty((_m.ntendon, _m.nv))
-    mujoco.mju_sparse2dense(
-        J_tendon, _d.ten_J, _m.ten_J_rownnz, _m.ten_J_rowadr, _m.ten_J_colind
-    )
-
-    for t in spec.tendons:
-        if np.sum(np.abs(J_tendon[_m.tendon(t.name).id, :])) < min_moment:
-            for a in spec.actuators:
-                if a.target == t.name:
-                    spec.delete(a)
-            spec.delete(t)
-
-    # Original site name, we'll duplicate the site to match both this site name and the one without the suffix
-    og_site = spec.site("IFtip_r")
-    spec.body("distph2_r").add_site(
-        name="IFtip",
-        size=og_site.size,
-        pos=og_site.pos,
-        rgba=og_site.rgba,
-        type=og_site.type,
-    )
-
-    # Add a reach target
-    spec.body("world").add_site(
-        name="IFtip_target",
-        type=mujoco.mjtGeom.mjGEOM_SPHERE,
-        size=[0.02, 0.02, 0.02],
-        pos=[-0.2, -0.2, 1.2],
-        rgba=[0.0, 0.0, 1.0, 0.3],
-    )
-
-
-_EP = "myosuite.envs.myo.tasks.basic.arm.reach:ReachEnvV0"
-# The fingertip starts with the arm hanging, 0.76 m from the centre of the random
-# target box, whose far corners are up to 1.24 m away (1.25 m from myo_sim's IFtip_r).
-# With a far threshold of 1.0 m, 16.5% of the resets started beyond it and ended at
-# step 2 unless the policy closed the gap in two steps. 1.3 m leaves 6 cm, more than
-# the tip drifts with zero action (1.4 cm) before the first far check.
-_RANDOM_FAR_TH = 1.3
-
-_fixed_kwargs = {
-    "model_recipe": "full_arm",
-    "target_reach_range": {
-        "IFtip": ((-0.175, -0.245, 1.405), (-0.175, -0.245, 1.405)),
-    },
-    "normalize_act": True,
-    "far_th": 1.0,
-    "edit_fn": edit_fn_arm_reaching,
-}
-_random_kwargs = {
-    "model_recipe": "full_arm",
-    "target_reach_range": {
-        "IFtip": (
-            (-0.175 - 0.175, -0.245 - 0.175, 1.405 - 0.425),
-            (-0.175 + 0.175, -0.245 + 0.175, 1.405 + 0.425),
-        ),
-    },
-    "normalize_act": True,
-    "far_th": _RANDOM_FAR_TH,
-    "edit_fn": edit_fn_arm_reaching,
-}
-
-for _env_id, _kw in [
-    ("myoArmReachFixed-v0", _fixed_kwargs),
-    ("myoArmReachRandom-v0", _random_kwargs),
-]:
-    _registry.register_env(
-        env_id=_env_id, entry_point=_EP, max_episode_steps=150, kwargs=_kw
-    )
-    _registry.register_env(
-        env_id="myoSarc" + _env_id[3:],
-        entry_point=_EP,
-        max_episode_steps=150,
-        kwargs=_kw,
-        additional_wrappers=condition_wrapper_specs("sarcopenia"),
-    )
-    _registry.register_env(
-        env_id="myoFati" + _env_id[3:],
-        entry_point=_EP,
-        max_episode_steps=150,
-        kwargs=_kw,
-        additional_wrappers=condition_wrapper_specs("fatigue"),
-    )
+_target = _importlib.import_module("myosuite.envs.tasks.suites.edits")
+__all__ = list(
+    getattr(_target, "__all__", [k for k in _target.__dict__ if not k.startswith("_")])
+)
+__getattr__ = _target.__getattribute__
+del _importlib, _target

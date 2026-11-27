@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from myosuite.envs.myo.assets.leg.myoosl_control import MyoOSLController
+from myosuite.envs.assets.leg.myoosl_control import MyoOSLController
 
 pytestmark = pytest.mark.tier1
 

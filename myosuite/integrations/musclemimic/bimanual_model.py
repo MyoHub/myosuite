@@ -9,7 +9,7 @@ and parity tooling can compile the same :class:`mujoco.MjModel` as
 https://github.com/amathislab/musclemimic ``MjxMyoBimanualArm``.
 
 The MJX task wrapper lives at
-:mod:`myosuite.envs.myo.backends.mjx.musclemimic_env`.
+:mod:`myosuite.envs.backends._experimental_mjx.musclemimic_env`.
 """
 
 from __future__ import annotations
@@ -465,7 +465,7 @@ def compile_mimic_bimanual_mjmodel(
     """Build the CPU :class:`mujoco.MjModel` for MuscleMimic bimanual parity.
 
     Applies the same ``MjSpec`` edits as
-    :class:`~myosuite.envs.myo.backends.mjx.musclemimic_env.MjxMuscleMimicIOEnv`
+    :class:`~myosuite.envs.backends._experimental_mjx.musclemimic_env.MjxMuscleMimicIOEnv`
     (finger pruning, mimic sites, solver options). Does not require MJX or
     mujoco_playground; safe for unit tests and parity checks.
 

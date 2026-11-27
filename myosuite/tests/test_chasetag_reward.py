@@ -15,7 +15,7 @@ pytestmark = pytest.mark.tier1
 
 
 def test_chasetag_default_weights_include_alive() -> None:
-    from myosuite.envs.myo.tasks.challenge.chasetag import ChaseTagEnv
+    from myosuite.envs.tasks.games.chasetag.env import ChaseTagEnv
 
     weights = ChaseTagEnv.DEFAULT_RWD_KEYS_AND_WEIGHTS
     assert "alive" in weights
@@ -53,7 +53,7 @@ def test_chasetag_distance_is_potential_based() -> None:
 def test_chasetag_evade_flips_distance_potential() -> None:
     """On EVADE, ``distance`` rewards fleeing (negated Δ range)."""
     import myosuite  # noqa: F401
-    from myosuite.envs.myo.tasks.challenge.chasetag import Task
+    from myosuite.envs.tasks.games.chasetag.env import Task
 
     env = make_env("myoChallengeChaseTagP1-v0")
     try:
@@ -102,7 +102,7 @@ def test_chasetag_evade_fall_is_lose() -> None:
     """EVADE must terminate on fall (challenge / docs contract)."""
     import mujoco
     import myosuite  # noqa: F401
-    from myosuite.envs.myo.tasks.challenge.chasetag import Task
+    from myosuite.envs.tasks.games.chasetag.env import Task
 
     env = make_env("myoChallengeChaseTagP1-v0")
     try:
@@ -120,7 +120,7 @@ def test_chasetag_evade_fall_is_lose() -> None:
 
 def test_chasetag_alive_keeps_tag_better_than_timeout() -> None:
     """``alive`` ≤ 0.5 so an early tag still beats surviving a CHASE timeout."""
-    from myosuite.envs.myo.tasks.challenge.chasetag import ChaseTagEnv
+    from myosuite.envs.tasks.games.chasetag.env import ChaseTagEnv
 
     w = ChaseTagEnv.DEFAULT_RWD_KEYS_AND_WEIGHTS
     alive_w = float(w["alive"])

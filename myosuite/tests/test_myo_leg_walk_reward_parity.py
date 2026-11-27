@@ -125,7 +125,7 @@ def test_myo_leg_walk_reward_parity_cpu_vs_mjlab() -> None:
     """
 
     import myosuite
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     from myosuite import make_env
 
@@ -232,7 +232,7 @@ def test_myo_leg_walk_reward_manager_matches_term_functions() -> None:
     velocity terms). The stable contract is rate-buffer ↔ dense reward.
     """
     import myosuite
-    import myosuite.envs.myo.backends.mjlab  # noqa: F401, PLC0415 (registers twins)
+    import myosuite.envs.backends.mjlab.bootstrap  # noqa: F401, PLC0415 (registers twins)
 
     from myosuite import make_env
 

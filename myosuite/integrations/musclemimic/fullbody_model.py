@@ -514,7 +514,7 @@ def default_mimic_fullbody_config() -> config_dict.ConfigDict:
     MuJoCo timestep on the host model (Loco-style CPU). Solver iterations and
     ``disableflags`` are applied when building the MJX env
     (
-    :class:`~myosuite.envs.myo.backends.mjx.musclemimic_fullbody_env.MjxMuscleMimicFullbodyEnv`
+    :class:`~myosuite.envs.backends._experimental_mjx.musclemimic_fullbody_env.MjxMuscleMimicFullbodyEnv`
     ). Extra keys (observation toggles, ``target_site_range``, ``nconmax``)
     are for that MJX task wrapper. ``arena_memory`` is the per-``MjData``
     arena in bytes (see :data:`MIMIC_FULLBODY_ARENA_BYTES`). ``model_version``

@@ -34,7 +34,7 @@ don't get an entry here.
 
 ## [2026-04-30] architecture | repository reorganization plan + wiki update
 
-- Defined target structure for `myosuite/envs/myo/tasks/` with effector × task taxonomy.
+- Defined target structure for `myosuite/envs/tasks/` with effector × task taxonomy.
 - Established `tasks/basic/<effector>/`, `tasks/mimic/`, `tasks/challenge/` as the three task collections.
 - Defined `myosuite/physics/` as the single home for all biomechanics/motor control math.
 - Defined `myosuite/terms/` organized by motor control domain (locomotion, posture, manipulation, reach, combat/).

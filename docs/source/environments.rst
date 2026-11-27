@@ -498,11 +498,11 @@ MJX (experimental)
 ------------------
 
 A JAX path exists (``pip install -e ".[mjx]"``,
-``from myosuite.envs.myo.backends.mjx import make``). Do not start new work on
+``from myosuite.envs.backends._experimental_mjx import make``). Do not start new work on
 it; use mjlab for GPU training. The MJX envs are not observation- or
 reward-compatible with the CPU/mjlab envs of the same task, so MJX-trained
 policies do not transfer to them (see the limitations in
-``myosuite/envs/myo/backends/mjx/README.md``).
+``myosuite/envs/backends/_experimental_mjx/README.md``).
 
 Supported envs:
 
@@ -526,4 +526,4 @@ Supported envs:
 MJX ids use the ``Mjx`` prefix and are not the ``myo…`` ids of the CPU and mjlab
 backends; there is no MJX version of the torso, arm, leg terrain/stand/directional
 envs or of the ``myoSarc…``/``myoFati…``/``myoReaf…`` variants. The list is defined in
-``myosuite/envs/myo/backends/mjx/__init__.py``.
+``myosuite/envs/backends/_experimental_mjx/__init__.py``.

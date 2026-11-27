@@ -20,9 +20,9 @@ import pytest
 
 from myosuite import make_env
 from myosuite.core.config import EnvConfig
-from myosuite.envs.myo.tasks.mimic.tracking import MIMIC_ENV_ID
-from myosuite.envs.myo.tasks.mimic.tracking.models import compiled_body
-from myosuite.envs.myo.tasks.mimic.tracking.motion import write_synthetic_clip
+from myosuite.envs.tasks.mimic.tracking import MIMIC_ENV_ID
+from myosuite.envs.tasks.mimic.tracking.models import compiled_body
+from myosuite.envs.tasks.mimic.tracking.motion import write_synthetic_clip
 
 pytestmark = pytest.mark.tier2
 

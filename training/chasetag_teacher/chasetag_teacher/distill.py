@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from myosuite.envs.myo.tasks.mimic.policy import ActorCritic
+from myosuite.envs.tasks.mimic.policy import ActorCritic
 
 OBS_DIM, ACT_DIM = 546, 354
 

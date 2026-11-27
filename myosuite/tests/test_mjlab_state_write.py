@@ -24,10 +24,10 @@ from mjlab.managers.observation_manager import (  # noqa: E402
 from mjlab.scene import SceneCfg  # noqa: E402
 from mjlab.sim import SimulationCfg  # noqa: E402
 
-from myosuite.envs.myo.backends.mjlab.tasks.cpu_reference import (  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.cpu_reference import (  # noqa: E402
     mujoco_cfg_from_model,
 )
-from myosuite.envs.myo.backends.mjlab.tasks.mdp.events import write_cpu_state  # noqa: E402
+from myosuite.envs.backends.mjlab.tasks.mdp.events import write_cpu_state  # noqa: E402
 
 pytestmark = pytest.mark.tier2
 

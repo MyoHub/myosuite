@@ -15,8 +15,8 @@ from mjlab.envs import ManagerBasedRlEnv  # noqa: E402
 from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper  # noqa: E402
 from mjlab.tasks.registry import load_env_cfg, load_rl_cfg  # noqa: E402
 
-import myosuite.envs.myo.backends.mjlab  # noqa: E402, F401  (registers the twins)
-from myosuite.envs.myo.backends.mjlab.tasks.mdp.action_map import (  # noqa: E402
+import myosuite.envs.backends.mjlab.bootstrap  # noqa: E402, F401  (registers the twins)
+from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (  # noqa: E402
     action_map_term,
     apply_action_map,
 )

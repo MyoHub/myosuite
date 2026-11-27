@@ -292,7 +292,7 @@ def reset_mjlab_env_to_clip_frame(
             ctrl_dt = float(physics_dt) * float(decimation)
 
     if ctrl_dt is not None:
-        from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+        from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
             _mimic_episode_steps,
             _resolve_mimic_mjlab_ids,
         )
@@ -531,7 +531,7 @@ class _FullbodyMjlabPolicyBridge:
         if self._clip_source_failed or self._ctrl_dt is None:
             return None
         try:
-            from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
                 _resolve_mimic_mjlab_ids,
             )
 
@@ -556,7 +556,7 @@ class _FullbodyMjlabPolicyBridge:
         """``(n_selected,)`` int64 clip frame of each selected env, on the sim device."""
         source = self._trajectory_source()
         if source is not None:
-            from myosuite.envs.myo.backends.mjlab.mimic_mjlab_env import (
+            from myosuite.envs.backends.mjlab.mimic_mjlab_env import (
                 _mimic_episode_steps,
             )
 

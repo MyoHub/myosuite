@@ -2,7 +2,7 @@
 
 Representative renders for the **MyoChallenge catalog** registered in this
 repo, plus the elbow, leg-walk and directional tasks. This is **not** the full 200+ env MyoSuite catalog — see
-`myosuite/envs/myo/tasks/` for the complete registry.
+`myosuite/envs/tasks/` for the complete registry.
 
 One image per task family. P1/P2/eval variants share a scene unless noted;
 `myoSarc*` / `myoFati*` muscle-condition aliases are not snapshotted separately.
@@ -26,7 +26,7 @@ here, also has one.)
 
 - **MSK model**: 6-muscle 1-DOF elbow (`myoElbowPose1D6M`), 29 bodies.
 - **Task**: drive `r_elbow_flex` to a **fixed target of 2.0 rad** (`ElbowPoseFixedTask`
-  in `myosuite/envs/myo/tasks/basic/specs/elbow_pose_spec.py`). Purely a pose-tracking
+  in `myosuite/envs/tasks/arm/pose/spec.py`). Purely a pose-tracking
   reward against the target joint angle shown as the sphere in the image.
 - **Dims**: obs `(9,)`, action `(6,)`, `na=6`, `nu=6`.
 - **Backends**: CPU (`PoseEnvV0`) + mjlab GPU twin.
@@ -51,7 +51,7 @@ here, also has one.)
 ![leg directional forward](task_snapshots/leg_directional_forward.png)
 
 - **MSK model**: same `myolegs_with_torso`, 80 muscles, 16 bodies, as `myoLegWalk-v0`.
-- **Task**: track a commanded planar heading + speed (`myosuite/envs/myo/tasks/basic/leg/specs/leg_directional_spec.py`).
+- **Task**: track a commanded planar heading + speed (`myosuite/envs/tasks/leg/directional/spec.py`).
   Reward = `1.0 * heading + 0.1 * act_reg`, where `heading` rewards CoM velocity
   along `heading_dir` at `target_speed`.
   - **Forward**: `heading_dir=(0, -1)`, `target_speed=1.0 m/s`, fixed per episode (the model faces `-y`).
@@ -251,7 +251,7 @@ here, also has one.)
 - **Task**: 1v1 self-play chase-tag — one agent is the chaser, one the runner
   (role sampled per episode); the chaser is rewarded for closing pelvis-to-pelvis
   distance and landing a tag (`ko_health_threshold` damage), the runner for
-  evading (`myosuite/terms/multiplayer/chase_tag_vs_reward.py`).
+  evading (`myosuite/envs/tasks/games/chasetag/chase_tag_vs_reward.py`).
 - **Scoring & divergence**: `info["score"]` reports `1 - t/maxTime` on a chase win
   and `t/maxTime` on an evade win (`0.0` otherwise). If MuJoCo diverges on a step,
   `info["mj_unstable"]` is `True`, both agents terminate with `info["score"] == 0.0`

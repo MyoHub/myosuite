@@ -18,8 +18,8 @@ import pytest
 pytestmark = pytest.mark.tier1
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_MJLAB_DIR = _REPO_ROOT / "myosuite" / "envs" / "myo" / "backends" / "mjlab"
-_MJX_DIR = _REPO_ROOT / "myosuite" / "envs" / "myo" / "backends" / "mjx"
+_MJLAB_DIR = _REPO_ROOT / "myosuite" / "envs" / "backends" / "mjlab"
+_MJX_DIR = _REPO_ROOT / "myosuite" / "envs" / "backends" / "_experimental_mjx"
 
 
 def test_episode_length_formula_avoids_ieee754_ceil_overshoot() -> None:
@@ -33,17 +33,15 @@ def test_episode_length_formula_avoids_ieee754_ceil_overshoot() -> None:
 
 def test_mjlab_modules_import_without_torch_or_mjlab() -> None:
     """mjlab_env_base and mimic_mjlab_env must remain importable on CPU-only installs."""
-    env_base = importlib.import_module(
-        "myosuite.envs.myo.backends.mjlab.mjlab_env_base"
-    )
-    mimic = importlib.import_module("myosuite.envs.myo.backends.mjlab.mimic_mjlab_env")
+    env_base = importlib.import_module("myosuite.envs.backends.mjlab.mjlab_env_base")
+    mimic = importlib.import_module("myosuite.envs.backends.mjlab.mimic_mjlab_env")
     assert hasattr(env_base, "normalize_mjlab_env_ids")
     assert hasattr(mimic, "_mimic_cache_key")
 
 
 def test_mimic_cache_key_isolates_instances_sharing_cfg() -> None:
     """Two envs sharing one cfg must not collide, while wrappers share unwrapped."""
-    mimic = importlib.import_module("myosuite.envs.myo.backends.mjlab.mimic_mjlab_env")
+    mimic = importlib.import_module("myosuite.envs.backends.mjlab.mimic_mjlab_env")
     shared_cfg = SimpleNamespace(decimation=5)
     env_a = SimpleNamespace(cfg=shared_cfg)
     env_b = SimpleNamespace(cfg=shared_cfg)
@@ -83,13 +81,19 @@ def test_no_step_rate_any_host_sync_in_clip_trajectory_or_mimic_sync() -> None:
 
 def test_all_four_mjlab_builders_use_episode_length_helper() -> None:
     """mjlab_task_builder, mimic_mjlab_env (both builders), and tabletennis use helper."""
-    for rel in (
-        "mjlab_task_builder.py",
-        "mimic_mjlab_env.py",
-        "register_mjlab_tabletennis.py",
+    for path in (
+        _MJLAB_DIR / "mjlab_task_builder.py",
+        _MJLAB_DIR / "mimic_mjlab_env.py",
+        _REPO_ROOT
+        / "myosuite"
+        / "envs"
+        / "tasks"
+        / "games"
+        / "tabletennis"
+        / "register_mjlab.py",
     ):
-        text = (_MJLAB_DIR / rel).read_text(encoding="utf-8")
-        assert "episode_length_s(" in text, f"{rel} missing episode_length_s helper"
+        text = path.read_text(encoding="utf-8")
+        assert "episode_length_s(" in text, f"{path} missing episode_length_s helper"
 
 
 def test_mjx_lazy_logging_and_modular_spec_assignment() -> None:
@@ -124,7 +128,7 @@ def test_mjx_lazy_logging_and_modular_spec_assignment() -> None:
 def test_tracked_site_pos_subtracts_env_origins_for_floating_base() -> None:
     """Floating-base mimic site reads subtract env_origins; fixed-base do not."""
     torch = pytest.importorskip("torch")
-    mimic = importlib.import_module("myosuite.envs.myo.backends.mjlab.mimic_mjlab_env")
+    mimic = importlib.import_module("myosuite.envs.backends.mjlab.mimic_mjlab_env")
 
     origins = torch.tensor([[5.0, -3.0, 0.5], [-2.0, 4.0, 0.0]], dtype=torch.float32)
     world_sites = torch.tensor(
@@ -152,9 +156,7 @@ def test_tracked_site_pos_subtracts_env_origins_for_floating_base() -> None:
 def test_entity_accessor_slices_entity_muscle_activations() -> None:
     """MjlabEntityAccessor.muscle_act returns only the entity's stateful activations."""
     torch = pytest.importorskip("torch")
-    env_base = importlib.import_module(
-        "myosuite.envs.myo.backends.mjlab.mjlab_env_base"
-    )
+    env_base = importlib.import_module("myosuite.envs.backends.mjlab.mjlab_env_base")
 
     all_act = torch.tensor([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]])
     mj_model = SimpleNamespace(

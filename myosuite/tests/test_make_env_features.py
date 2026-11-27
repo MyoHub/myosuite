@@ -221,7 +221,7 @@ class TestMjlab:
 
     def test_features_reach_a_taskconfig_twin(self) -> None:
         """The leg-directional twin (a ModularTaskEnv id) is rebuilt with the features too."""
-        from myosuite.envs.myo.backends.mjlab.tasks.registration import (
+        from myosuite.envs.backends.mjlab.tasks.registration import (
             rebuild_twin_cfg,
         )
 

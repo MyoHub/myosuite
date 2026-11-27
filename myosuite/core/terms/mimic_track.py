@@ -1,7 +1,7 @@
 # Copyright 2026 The muscle-supermimic Authors. Modified for MyoSuite by the MyoSuite Authors.
 #
 # Licensed under the Apache License, Version 2.0. See NOTICE-muscle-supermimic.txt in
-# myosuite/envs/myo/tasks/mimic/tracking/ for the notices of the code it includes.
+# myosuite/envs/tasks/mimic/tracking/ for the notices of the code it includes.
 """Motion-tracking terms of ``myoMimic-v0`` as pure, backend-agnostic functions.
 
 Every function takes the array module ``xp`` (numpy or torch) and a :class:`TrackState`

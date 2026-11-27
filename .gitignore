@@ -159,7 +159,7 @@ myosuite/agents/
 renders/
 runs/
 # Root-only: scratch planning notes (see AGENTS.md workflow), not the
-# myosuite/envs/myo/tasks/ or .../backends/mjlab/tasks/ source packages.
+# myosuite/envs/tasks/ or .../backends/mjlab/tasks/ source packages.
 /tasks/
 
 # local GPU smoke bundles

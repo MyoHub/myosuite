@@ -69,7 +69,7 @@ from myosuite.core.model_builder import (
 )
 
 # Root of the myosuite package — used to locate asset files.
-_ASSETS = Path(__file__).parent.parent / "envs" / "myo" / "assets"
+_ASSETS = Path(__file__).parent.parent / "envs" / "assets"
 
 
 def materialize_recipe_xml(
@@ -149,7 +149,7 @@ def _elbow_sarcopenia(b: ModelBuilder) -> ModelBuilder:
 @model_recipe("motor_finger")
 def _motor_finger(b: ModelBuilder) -> ModelBuilder:
     """Tendon-motor finger (``motorfinger_v0.xml``)."""
-    from myosuite.envs.myo.assets._resolve import resolve_finger_xml
+    from myosuite.envs.assets._resolve import resolve_finger_xml
 
     return ModelBuilder.from_xml_file(resolve_finger_xml("motorfinger_v0.xml"))
 
@@ -912,7 +912,7 @@ def _add_baoding_sites(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     """Add ball1_site/ball2_site (on the balls) and target1_site/target2_site
     (rigidly attached to the palm's "trapezium_r" bone, matching the legacy
     myohand_baoding.xml local offsets exactly — verified against
-    myosuite/envs/myo/assets/hand/assets/myohand_body.xml).
+    myosuite/envs/assets/hand/assets/myohand_body.xml).
 
     Deliberately omits the two purely-decorative spatial tendons the legacy
     XML draws between each ball and its target ("string" visualisation) —
