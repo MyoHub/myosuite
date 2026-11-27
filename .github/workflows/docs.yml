@@ -10,7 +10,7 @@ on:
       - ".github/workflows/docs.yml"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: ["main", "dev"]
+    branches: ["main", "dev", "docs/motion-biomechanics-agent-guidelines"]
     paths:
       - "docs/**"
       - "myosuite/**"

@@ -29,6 +29,10 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Fixed
 
+* `myoMimic-v0` clips from `$MYOSUITE_MIMIC_DATASET` fall back like the local cache: without a
+  `<model>/<myo_sim version>` folder, the dataset's first `<model>/*` folder whose clips carry the installed body's
+  kinematic fingerprint is downloaded (`download_retargeted_clips(..., fingerprint, probe)`), so a myo_sim release
+  that leaves the body's kinematics alone keeps the dataset's clips ([#923]).
 * `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
   per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
@@ -37,15 +41,15 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
+  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
+  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
+  Python 3.15 on Linux for the ONNX-free native CPU path.
 * **`myosuite.tests` excluded from built wheels ([#935]).** Set `include-package-data = false` with explicit runtime
   subpackage discovery in `pyproject.toml` so published wheels ship only runtime `myosuite.*` subpackages and exclude
   `myosuite/tests/**` fixtures/baselines (~2 MB wheel reduction). Running `pytest --pyargs myosuite.tests...` or
   importing `myosuite.tests.*` (e.g. `TestEnvs`) now requires a source checkout rather than a wheel install; PyPI
   pre- and post-release wheel verification (`.github/smoke_wheel.py`) steps every installable single-agent environment across all suites for 3 seeded steps and checks `pickle` round-trip step parity directly via `make_env`.
-* **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
-  `pipy_release.yml`), Read the Docs and `uv` setup examples now pin to Python 3.11 instead of 3.10. Package metadata
-  keeps `requires-python = ">=3.10"` (tested on Linux CI) until the MuJoCo 4 transition, and the full CI matrix adds
-  Python 3.15 on Linux for the ONNX-free native CPU path.
 
 ### Fixed
 
@@ -423,6 +427,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#805]: https://github.com/MyoHub/myosuite/pull/805
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
+[#923]: https://github.com/MyoHub/myosuite/pull/923
 [#935]: https://github.com/MyoHub/myosuite/pull/935
 ## [3.1.0] - 2026-11-11
 

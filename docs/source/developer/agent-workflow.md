@@ -2,17 +2,17 @@
 
 ## Before Starting
 
-1. Read [docs/wiki/index.md](index.md), then the relevant thematic page(s).
+1. Read [docs/source/developer/index.md](index.md), then the relevant thematic page(s).
 2. **Search before writing** — `grep -r "keyword" myosuite/` and check [library-usage.md](library-usage.md). If something similar exists (≥ 80%), extend or import it.
 3. For tasks with 3+ steps or architectural decisions: write a plan to `tasks/todo.md` and confirm with the user.
 
 ## Work Loop
 
 1. Implement following [engineering-standards.md](engineering-standards.md).
-2. Verify correctness (tests, diffs). Run the commands in [AGENTS.md](../../AGENTS.md).
+2. Verify correctness (tests, diffs). Run the commands in [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md).
 3. Update any wiki page affected by the change.
 4. If this change is going into a PR to `dev` introducing a new feature or a
-   critical/breaking change, append an entry to [docs/wiki/log.md](log.md). Routine
+   critical/breaking change, append an entry to [docs/source/developer/log.md](log.md). Routine
    fixes, refactors, and doc edits don't need a log entry.
 
 ## After a User Correction
