@@ -1,0 +1,211 @@
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""Participant group-strength calibration and steady MVC regression tests."""
+
+from __future__ import annotations
+
+import copy
+import json
+
+import mujoco
+import numpy as np
+import pytest
+
+from myosuite.core import muscle_strength
+from myosuite.biomechanics.calibration import (
+    fit_strength_from_mvcs,
+    max_joint_torque,
+    posture_at,
+    scale_strength,
+    strength_from_mvc,
+)
+
+_library = pytest.importorskip(
+    "myo_sim.physics.muscle_strength",
+    reason="Requires MyoHub/myo_sim#186 and #195",
+)
+pytestmark = [
+    pytest.mark.tier1,
+    pytest.mark.skipif(
+        not hasattr(_library, "max_joint_torque"),
+        reason="Requires MyoHub/myo_sim#211",
+    ),
+]
+
+
+def _arm(*, auto: bool = False, coupled: bool = False) -> mujoco.MjModel:
+    child = (
+        '<body><joint name="dependent" axis="0 1 0" range="0 6"/>'
+        '<geom size=".05" mass="1"/></body>'
+        if coupled
+        else ""
+    )
+    equality = (
+        '<equality><joint joint1="dependent" joint2="elbow" polycoef="0 2 0 0 0"/>'
+        "</equality>"
+        if coupled
+        else ""
+    )
+    force = -1 if auto else 100
+    return mujoco.MjModel.from_xml_string(
+        f"""<mujoco><compiler angle="radian"/><worldbody>
+        <body name="torso"><geom size=".1" mass="20"/>
+        <body name="arm"><joint name="elbow" axis="0 1 0" range="0 3"
+        stiffness="2" springref="0"/>
+        <geom type="capsule" fromto="0 0 0 1 0 0" size=".04" mass="3"/>
+        <site name="elbow_landmark"/><site name="hand" pos="1 0 0"/>{child}</body></body></worldbody>
+        {equality}<actuator>
+        <muscle name="flexor" joint="elbow" gear="-1" lengthrange="-3 0" force="{force}"/>
+        <muscle name="extensor" joint="elbow" lengthrange="0 3" force="80"/>
+        </actuator></mujoco>"""
+    )
+
+
+def test_selected_mvc_retains_unscaled_passive_and_joint_torque() -> None:
+    model = _arm()
+    q = posture_at(model, {"elbow": 2.7})
+    original, _ = max_joint_torque(model, q, "elbow")
+    target = original * 0.5
+    cal = strength_from_mvc(model, q, "elbow", target)
+    assert cal.scale != pytest.approx(0.5)
+    assert cal.agonists == ("flexor",)
+    scaled = scale_strength(model, cal.scale, cal.agonists)
+    assert scaled.actuator_gainprm[1, 2] == model.actuator_gainprm[1, 2]
+    achieved, _ = max_joint_torque(scaled, q, "elbow")
+    assert achieved == pytest.approx(target, abs=1e-8)
+    json.dumps(cal.record(), allow_nan=False)
+    ext = strength_from_mvc(model, q, "elbow", -60.0)
+    assert max_joint_torque(
+        scale_strength(model, ext.scale, ext.agonists), q, "elbow", -1
+    )[0] == pytest.approx(-60.0)
+
+
+def test_multi_posture_strength_fit_exposes_mismatch() -> None:
+    model = _arm()
+    postures = [posture_at(model, {"elbow": q}) for q in (0.3, 1.5, 2.7)]
+    actual = scale_strength(model, 1.4, ["flexor"])
+    measured = [max_joint_torque(actual, q, "elbow")[0] for q in postures]
+    fit = fit_strength_from_mvcs(model, postures, "elbow", measured)
+    assert fit.scale == pytest.approx(1.4)
+    assert fit.rmse < 1e-8
+    measured[0] += 10
+    assert fit_strength_from_mvcs(model, postures, "elbow", measured).rmse > 1
+    json.dumps(fit.record(), allow_nan=False)
+
+
+def test_early_activation_fit_is_reproduced_by_native_mujoco() -> None:
+    model = _arm()
+    q = posture_at(model, {"elbow": 1.0})
+    model.actuator_actearly[:] = 1
+    cal = strength_from_mvc(model, q, "elbow", 40.0)
+    scaled = scale_strength(model, cal.scale, cal.agonists)
+    assert np.all(model.actuator_actearly == 1)
+    data = mujoco.MjData(scaled)
+    data.qpos[:] = q
+    flexor = scaled.actuator("flexor").id
+    data.act[scaled.actuator_actadr[flexor]] = 1
+    data.ctrl[flexor] = 1
+    mujoco.mj_forward(scaled, data)
+    assert (data.qfrc_actuator + data.qfrc_passive)[0] == pytest.approx(40.0)
+
+
+@pytest.mark.parametrize("clamp", ["actuator", "joint", "multi_state"])
+def test_mvc_apis_reject_nonaffine_or_multistate_actuators(clamp: str) -> None:
+    model = _arm()
+    if clamp == "actuator":
+        model.actuator_forcelimited[0] = True
+        model.actuator_forcerange[0] = [-50.0, 0.0]
+    elif clamp == "joint":
+        model.jnt_actfrclimited[0] = True
+        model.jnt_actfrcrange[0] = [0.0, 20.0]
+    else:
+        model = mujoco.MjModel.from_xml_string(
+            '<mujoco><worldbody><body><joint name="elbow"/>'
+            '<geom size=".1" mass="1"/></body></worldbody>'
+            '<actuator><general joint="elbow" dyntype="user" actdim="2"/>'
+            "</actuator></mujoco>"
+        )
+    q = posture_at(model, {"elbow": 1.0})
+    with pytest.raises(ValueError, match="Force clamps and multi-state"):
+        strength_from_mvc(model, q, "elbow", 40.0)
+    with pytest.raises(ValueError, match="Force clamps and multi-state"):
+        fit_strength_from_mvcs(model, [q, q], "elbow", [40.0, 40.0])
+
+
+@pytest.mark.parametrize("route_to_actuation", [False, True])
+def test_gravity_corrected_mvc_rejects_compensation_in_either_routing(
+    route_to_actuation: bool,
+) -> None:
+    model = _arm()
+    model.body_gravcomp[model.body("arm").id] = 1
+    model.jnt_actgravcomp[:] = route_to_actuation
+    q = posture_at(model, {"elbow": 1.0})
+    with pytest.raises(ValueError, match="gravity compensation"):
+        strength_from_mvc(model, q, "elbow", 40.0)
+    with pytest.raises(ValueError, match="gravity compensation"):
+        fit_strength_from_mvcs(model, [q, q], "elbow", [40.0, 40.0])
+
+
+def _stateless_muscle() -> mujoco.MjModel:
+    return mujoco.MjModel.from_xml_string(
+        '<mujoco><compiler angle="radian"/><worldbody><body>'
+        '<joint name="elbow" range="0 3"/><geom size=".1" mass="1"/>'
+        '</body></worldbody><actuator><general name="flexor" joint="elbow" '
+        'gear="-1" dyntype="none" gaintype="muscle" biastype="muscle" '
+        'gainprm=".75 1.05 100 200 .5 1.6 1.5 1.3 1.2" '
+        'biasprm=".75 1.05 100 200 .5 1.6 1.5 1.3 1.2" '
+        'lengthrange="-3 0" ctrllimited="true" ctrlrange="0 1"/>'
+        "</actuator></mujoco>"
+    )
+
+
+@pytest.mark.parametrize("lower,upper", [(0.0, 0.5), (0.2, 1.0)])
+def test_mvc_rejects_restricted_stateless_controls(lower: float, upper: float) -> None:
+    model = _stateless_muscle()
+    model.actuator_ctrlrange[0] = [lower, upper]
+    q = posture_at(model, {"elbow": 1.0})
+    data = mujoco.MjData(model)
+    data.qpos[:] = q
+    data.ctrl[:] = 0.5
+    mujoco.mj_forward(model, data)
+    assert data.qfrc_actuator[0] == pytest.approx(49.0)
+    with pytest.raises(ValueError, match="stateless muscle control clamps"):
+        strength_from_mvc(model, q, "elbow", 40.0)
+    with pytest.raises(ValueError, match="stateless muscle control clamps"):
+        fit_strength_from_mvcs(model, [q, q], "elbow", [40.0, 40.0])
+
+
+@pytest.mark.parametrize("bad", [0, -1, float("nan"), float("inf")])
+def test_invalid_strength_scale_fails_early(bad: float) -> None:
+    with pytest.raises(ValueError):
+        scale_strength(_arm(), bad)
+
+
+def test_scale_strength_returns_an_independent_copy_scaling_only_the_selection() -> (
+    None
+):
+    model = _arm(auto=True)
+    gain, bias = model.actuator_gainprm.copy(), model.actuator_biasprm.copy()
+    scaled = scale_strength(model, 2.0, ["extensor"])
+    np.testing.assert_array_equal(model.actuator_gainprm, gain)
+    np.testing.assert_array_equal(model.actuator_biasprm, bias)
+    np.testing.assert_array_equal(scaled.actuator_gainprm[0], gain[0])
+    assert scaled.actuator_gainprm[1, 2] == pytest.approx(160)
+
+
+def test_facade_forwards_selection_and_probe_to_the_library() -> None:
+    model = _arm(auto=True)
+    q = posture_at(model, {"elbow": 2.0})
+    expected = copy.deepcopy(model)
+    _library.scale_muscle_strength(expected, 1.5, muscles=["flexor"])
+    actual = copy.deepcopy(model)
+    muscle_strength.scale_muscle_strength(actual, 1.5, muscles=["flexor"])
+    np.testing.assert_array_equal(actual.actuator_gainprm, expected.actuator_gainprm)
+    assert muscle_strength.max_joint_torque(
+        model, q, "elbow", -1.0
+    ) == _library.max_joint_torque(model, q, "elbow", -1.0)
+    assert max_joint_torque(model, q, "elbow") == muscle_strength.max_joint_torque(
+        model, q, "elbow"
+    )

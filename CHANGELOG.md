@@ -9,6 +9,7 @@ Changes since **v3.1.0** (2026-11-11).
 ### Added
 
 * **Subject-specific muscle strength facade (`myosuite.core.muscle_strength`):** delegates native active/passive muscle force scaling (`scale_muscle_strength`, `scale_muscle_strength_spec`) and isometric maximal voluntary torque probing & bounded strength calibration (`MaxTorqueMeasurement`, `StrengthCalibration`, `strength_factor_from_body_mass`, `max_torque_terms`, `calibrate_muscle_strength`) lazily to `myo_sim.physics.muscle_strength` (`MyoHub/myo_sim#186`, `MyoHub/myo_sim#195`), while keeping legacy gain-only sarcopenia (`apply_sarcopenia_to_model`) available without `myo_sim.physics.muscle_strength` ([#649]).
+* Participant group-strength calibration across signed MVC postures and fatigued steady MVC probes, delegating the joint torque probe (`max_joint_torque`) and selected-muscle strength scaling to `myo_sim.physics.muscle_strength` (MyoHub/myo_sim#211); participant fitting stays in MyoSuite ([#717]).
 * **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink), now a core dependency: each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.core.retargeting.retarget(model, markers)` fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
@@ -416,6 +417,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#649]: https://github.com/MyoHub/myosuite/pull/649
+[#717]: https://github.com/MyoHub/myosuite/pull/717
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#803]: https://github.com/MyoHub/myosuite/pull/803
