@@ -1,6 +1,6 @@
 # Engineering Standards
 
-> **Source of truth priority:** code and tests → [CLAUDE.md](../../CLAUDE.md) → this wiki.
+> **Source of truth priority:** code and tests → [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md) → this guide.
 > If this page disagrees with the code, the code wins — please fix this page.
 
 ## Design Principles
@@ -136,7 +136,7 @@ Read [mjlab-design-guide.md](mjlab-design-guide.md) and
 - The full **CPU env contract** (physics step via `_step_physics`, float32 unclipped observations, `reset(seed=...)`
   fully determining the episode, mocap targets, runtime model edits) and the **mjlab rules** (physics options from
   the CPU model, root velocities, anchored joint-name regexes, per-episode state, step order, vectorised terms) are
-  in [CLAUDE.md](../../CLAUDE.md); `test_obs_contract.py`, `test_reset_reproducibility.py` and
+  in [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md); `test_obs_contract.py`, `test_reset_reproducibility.py` and
   `test_runtime_geometry_consistency.py` check them.
 
 ### Base classes (what actually exists)
@@ -213,7 +213,7 @@ walked through in [adding-a-new-task.md](adding-a-new-task.md).
 `pytest myosuite/tests/test_parity.py -v` after every env change. CPU parity is
 gated at `atol ≤ 1e-6` (some contact-rich envs are relaxed); regressions block
 PRs. To regenerate a baseline after an
-*intentional* change (with the package versions CI resolves, see [CLAUDE.md](../../CLAUDE.md)):
+*intentional* change (with the package versions CI resolves, see [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md)):
 
 ```bash
 python scripts/generate_parity_baselines.py --env-id <env-id>
@@ -225,7 +225,7 @@ python scripts/generate_parity_baselines.py --env-id <env-id>
 - `pre-commit run --all-files` must pass.
 - Self-review: smallest change that solves the problem? Searched first? No duplication?
 - A change to a registered env's observations, actions, dynamics or task distribution needs a CHANGELOG entry and a
-  note in `docs/baseline_checkpoints.md`: published checkpoints are tied to the old contract.
+  note in [docs/baseline_checkpoints.md](https://github.com/MyoHub/myosuite/blob/dev/docs/baseline_checkpoints.md): published checkpoints are tied to the old contract.
 
 ```bash
 pre-commit run --all-files
@@ -238,4 +238,4 @@ pytest myosuite/tests/test_registry.py -v
 
 ## Ownership and reuse gate
 
-Follow the ownership and minimum-change rules in [REVIEW.md](../../REVIEW.md). Search both MyoHub repositories, name the reused primitives and justify each new abstraction. Review the actual diff for duplicated transformations and code that can be removed; lint success alone does not clear this gate.
+Follow the ownership and minimum-change rules in [REVIEW.md](https://github.com/MyoHub/myosuite/blob/dev/REVIEW.md). Search both MyoHub repositories, name the reused primitives and justify each new abstraction. Review the actual diff for duplicated transformations and code that can be removed; lint success alone does not clear this gate.
