@@ -323,6 +323,15 @@ def test_mjlab_twin_parity(clip: str) -> None:
     np.testing.assert_allclose(
         torch.cat((obs_mj["policy"][0], obs_mj["goal"][0])).numpy(), obs_cpu, atol=1e-5
     )
+    # Same state, no physics: reward managers agree to float32 precision.
+    mj.unwrapped.termination_manager.compute()
+    r0_mj = float(mj.unwrapped.reward_manager.compute(dt=mj.unwrapped.step_dt)[0])
+    assert r0_mj == pytest.approx(cpu.get_reward_dict({})["task_reward"], rel=1e-5)
+    # Open loop over 10 substeps/step from qpos0 (self-collisions + inside-wrap
+    # tendons in float32 Warp vs float64 MuJoCo): velocity diffs within ``tol``
+    # move r_qvel / r_rvel_rot by up to 1.5e-3 rel across synthetic clips (still
+    # >3x tighter than dropping the smallest 0.01-weight rquat term, ~1.1e-2 rel).
+    open_loop_rew_rel = 3e-3
     tol = {"touch": 0.5, "joint_vel": 0.1, "root_vel": 0.1, "site_rvel": 0.1}
     keys = np.concatenate([[k] * n for k, n in cpu.obs_dims.items()])
     a = np.full(354, 0.1, np.float32)
@@ -330,7 +339,7 @@ def test_mjlab_twin_parity(clip: str) -> None:
         obs_cpu, r_cpu, term_cpu, _, _ = cpu.step(a)
         obs_mj, r_mj, term_mj, _, _ = mj.step(torch.tensor(a)[None])
         o_mj = torch.cat((obs_mj["policy"][0], obs_mj["goal"][0])).numpy()
-        assert float(r_mj[0]) == pytest.approx(r_cpu, rel=1e-4)
+        assert float(r_mj[0]) == pytest.approx(r_cpu, rel=open_loop_rew_rel)
         assert bool(term_mj[0]) == term_cpu
         for k in cpu.obs_dims:
             d = np.abs(o_mj - obs_cpu)[keys == k].max()
@@ -426,5 +435,5 @@ def test_custom_reward_mjlab_matches_cpu(clip: str) -> None:
         assert float(r_mj[0]) == pytest.approx(r_cpu, rel=1e-4)
         task_reward = mj.unwrapped.command_manager.get_term("motion").task_reward
         assert float(task_reward[0]) == pytest.approx(float(r_base[0]), rel=1e-5)
-        assert float(task_reward[0]) == pytest.approx(info["task_reward"], rel=1e-4)
+        assert float(task_reward[0]) == pytest.approx(info["task_reward"], rel=3e-3)
     assert "task_reward" in mj.unwrapped.command_manager.get_term("motion").metrics

@@ -292,8 +292,10 @@ def _geom_bottom(model: mujoco.MjModel, data: mujoco.MjData, index: int) -> floa
         extent = size[1] * abs(up[2]) + size[0] * np.hypot(up[0], up[1])
     elif kind == int(mujoco.mjtGeom.mjGEOM_BOX):
         extent = np.abs(up) @ size
-    else:  # ellipsoid
+    elif kind == int(mujoco.mjtGeom.mjGEOM_ELLIPSOID):
         extent = np.linalg.norm(up * size)
+    else:
+        extent = 0.0
     return float(data.geom_xpos[index, 2] - extent)
 
 

@@ -31,13 +31,14 @@ import tempfile
 import warnings
 from pathlib import Path
 
-from ml_collections import config_dict
 import mujoco
+from ml_collections import config_dict
 
 from myosuite.integrations.musclemimic.bimanual_model import (
     BODY2SITES_FOR_MIMIC,
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
+    _apply_mimic_solver_options,
     _translate_finger_token,
     apply_mimic_bimanual_spec_edits,
     default_mimic_config,
@@ -369,7 +370,10 @@ def build_native_myotorso_bimanual_mimic_spec(
     spec.attach(legs_spec, prefix="", suffix="", frame=legs_frame)
 
     if config.disable_fingers:
-        model = spec.compile()
+        from myosuite.core.model_builder import suppress_empty_prefix_attach_warning
+
+        with suppress_empty_prefix_attach_warning():
+            model = spec.compile()
         joint_pool = frozenset(
             mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
             for i in range(model.njnt)
@@ -454,10 +458,7 @@ def compile_myotorso_bimanual_mimic_mjmodel(
         Tuple of compiled model, post-edit spec, and tag string.
     """
     spec, tag = build_myotorso_bimanual_mimic_spec(config)
-    spec.option.timestep = float(config.sim_dt)
-    spec.option.iterations = int(config.model_iterations)
-    spec.option.ls_iterations = int(config.model_ls_iterations)
-    spec.option.disableflags = int(config.model_disableflags)
+    _apply_mimic_solver_options(spec, config)
     mj_model = spec.compile()
     return mj_model, spec, tag
 

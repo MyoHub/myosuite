@@ -116,6 +116,43 @@ class MjlabEnvAccessor(EnvAccessor):
             )
         return self._ctrl_range
 
+    def joint_limits(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Per-qpos scalar joint limits ``(lo, hi, limited)``, each of shape ``(nq,)``."""
+        import numpy as np
+        import torch
+
+        device = getattr(self._data.qpos, "device", None)
+        nq = int(self._data.qpos.shape[-1])
+        if not hasattr(self._model, "jnt_range") or not hasattr(
+            self._model, "jnt_type"
+        ):
+            zeros = torch.zeros(nq, dtype=torch.float32, device=device)
+            return zeros, zeros, torch.zeros(nq, dtype=torch.bool, device=device)
+
+        import mujoco
+
+        lo = np.zeros(nq, dtype=np.float32)
+        hi = np.zeros(nq, dtype=np.float32)
+        limited = np.zeros(nq, dtype=bool)
+        scalar_types = (
+            int(mujoco.mjtJoint.mjJNT_HINGE),
+            int(mujoco.mjtJoint.mjJNT_SLIDE),
+        )
+        for j in range(int(self._model.njnt)):
+            if int(self._model.jnt_type[j]) in scalar_types and bool(
+                self._model.jnt_limited[j]
+            ):
+                qadr = int(self._model.jnt_qposadr[j])
+                if qadr < nq:
+                    lo[qadr] = float(self._model.jnt_range[j, 0])
+                    hi[qadr] = float(self._model.jnt_range[j, 1])
+                    limited[qadr] = True
+        return (
+            torch.as_tensor(lo, dtype=torch.float32, device=device),
+            torch.as_tensor(hi, dtype=torch.float32, device=device),
+            torch.as_tensor(limited, dtype=torch.bool, device=device),
+        )
+
     def dt(self) -> float:
         """Control timestep in seconds."""
         return self._ctrl_dt
@@ -153,6 +190,9 @@ class MjlabEntityAccessor(EnvAccessor):
         self._ctrl_range: torch.Tensor | None = None
         self._act_ids: torch.Tensor | None = None
         self._act_ids_resolved: bool = False
+        self._joint_limits_cache: (
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
+        ) = None
 
     def warm_cache(self) -> None:
         """Resolve per-entity activation indices and ``ctrl_range`` during setup."""
@@ -323,6 +363,52 @@ class MjlabEntityAccessor(EnvAccessor):
         if cache is not None and self._env.device in cache:
             return cache[self._env.device]
         return self._resolve_ctrl_range(self._env.device)
+
+    def joint_limits(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Per-qpos scalar joint limits ``(lo, hi, limited)`` matching :meth:`joint_pos`."""
+        if self._joint_limits_cache is None:
+            import mujoco
+            import numpy as np
+            import torch
+
+            mj_model = self._env.sim.mj_model
+            prefix = 0 if self._entity.is_fixed_base else 7
+            joint_ids = self._entity.indexing.joint_ids.cpu().numpy()
+            nq = prefix + int(self._entity.data.joint_pos.shape[-1])
+            lo = np.zeros(nq, dtype=np.float32)
+            hi = np.zeros(nq, dtype=np.float32)
+            limited = np.zeros(nq, dtype=bool)
+            scalar_types = (
+                int(mujoco.mjtJoint.mjJNT_HINGE),
+                int(mujoco.mjtJoint.mjJNT_SLIDE),
+            )
+            offset = prefix
+            for jid in joint_ids:
+                j = int(jid)
+                jtype = int(mj_model.jnt_type[j])
+                width = (
+                    7
+                    if jtype == int(mujoco.mjtJoint.mjJNT_FREE)
+                    else 4
+                    if jtype == int(mujoco.mjtJoint.mjJNT_BALL)
+                    else 1
+                )
+                if (
+                    jtype in scalar_types
+                    and bool(mj_model.jnt_limited[j])
+                    and offset < nq
+                ):
+                    lo[offset] = float(mj_model.jnt_range[j, 0])
+                    hi[offset] = float(mj_model.jnt_range[j, 1])
+                    limited[offset] = True
+                offset += width
+            device = self._env.device
+            self._joint_limits_cache = (
+                torch.as_tensor(lo, dtype=torch.float32, device=device),
+                torch.as_tensor(hi, dtype=torch.float32, device=device),
+                torch.as_tensor(limited, dtype=torch.bool, device=device),
+            )
+        return self._joint_limits_cache
 
     def dt(self) -> float:
         """Control timestep in seconds."""

@@ -8,6 +8,7 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
+* **Subject-specific muscle strength facade (`myosuite.core.muscle_strength`):** delegates native active/passive muscle force scaling (`scale_muscle_strength`, `scale_muscle_strength_spec`) and isometric maximal voluntary torque probing & bounded strength calibration (`MaxTorqueMeasurement`, `StrengthCalibration`, `strength_factor_from_body_mass`, `max_torque_terms`, `calibrate_muscle_strength`) lazily to `myo_sim.physics.muscle_strength` (`MyoHub/myo_sim#186`, `MyoHub/myo_sim#195`), while keeping legacy gain-only sarcopenia (`apply_sarcopenia_to_model`) available without `myo_sim.physics.muscle_strength` ([#649]).
 * **Inverse kinematics and marker retargeting:** `myosuite.physics.inverse_kinematics.solve_ik(model, targets)` (implemented in `myosuite.biomechanics.inverse_kinematics`) returns the `qpos` that places one or more sites at target positions and/or `wxyz` orientations on any `MjModel`. It iterates the differential IK of [mink](https://github.com/kevinzakka/mink), now a core dependency: each step is a quadratic program on MuJoCo's analytic Jacobians, applied with `mj_integratePos` (ball and free joints included). Hinge and slide joints stay within `jnt_range` and equality-coupled joints stay tied; a joint that follows another through a joint equality is set by its coupling, not its range, since MyoLeg's knee couplings leave their followers' ranges. `joints=` restricts which joints move, and unreachable targets raise `IKError` (`strict=False` returns the closest pose). It replaces `qpos_from_site_pose`, which still works but emits a `DeprecationWarning`. `myosuite.core.retargeting.retarget(model, markers)` fits a `.trc` or `.c3d` file (`.c3d` needs the new `capture` extra, `ezc3d`) or marker arrays frame by frame and returns a `MotionClip`; its new `metadata` field holds the per-frame marker error and sole height. Markers named like sites need no map, NaN samples are skipped, and a free-root clip is shifted so its sole touches the ground. Tutorial 3.2 uses `solve_ik` and shows mink's realtime IK, using mink's `daqp` QP backend alongside the MyoChallenge 2025 IK demos. New tutorial 3.7 retargets a two-link arm.
 * Configurable preprocessing workers and an opt-in validated NumPy disk cache for
   `myoMimic-v0` reference motions (`motion.workers`, `motion.cache_dir`), shared by
@@ -24,10 +25,15 @@ Changes since **v3.1.0** (2026-11-11).
   activation reconstruction (`reconstruct_muscle_meshes`, `reconstruct_from_instanthmr`,
   glTF 2.0 `.glb` export), `scripts/mimic/retarget_instanthmr.py`, and standalone
   monocular video extractor `tools/instanthmr` ([#749]).
+* **Subject body scaling (`make_env(scales=...)` and `scale_model` facade over `myo_sim`):** `myosuite.core.body_scaling.scale_spec` and `scale_model(spec, scales, *, total_mass=None)` delegate OpenSim Scale Tool geometry, muscle-length, and mass scaling to `myo_sim.scaling` (`MyoHub/myo_sim#149`), accepting body factors, OpenSim ScaleSet / `.osim` files, or per-body point correspondences. `make_env("myoLegWalk-v0", scales=..., total_mass=...)` (or `EnvConfig.task_kwargs`) builds the identical subject model on the CPU and on mjlab; other tasks raise `NotImplementedError`, and nominal envs without `scales` do not import `myo_sim.scaling`. `write_manifest` and `check_contract` record `scales`, `total_mass`, deployment model provenance, and a path-free model digest (`strict=True` rejects checkpoints for another body). Skin influences (`myosuite.viz.skin`, `skin_glb`) support segment-local anisotropic scaling, and SMPL retargeting with `gmr_plus` is documented ([#166], [#525]).
 * **Co-contraction cost for the MuscleMimic full-body tasks.** `myosuite.terms.cocontraction` scores the joint torque that antagonist muscles cancel, `sum_m |tau_mj| - |sum_m tau_mj|` summed over a joint set (default: hip flexion, hip adduction, knee and ankle of both legs) and divided by body mass, with the effective moment arms of MuJoCo's `actuator_moment` on CPU and mujoco-warp, including tibia/patella and other coupled-joint motion through the shared joint projection. It is opt-in and off by default: `make_env(EnvConfig("myoMimicFullbody-v0", task_kwargs={"wasted_torque": WastedTorqueCfg(weight=0.005)}))` subtracts `weight` per N·m/kg each step and logs `wasted_torque` in `info` (also `myoFullBodyDirectional-v0`). The mjlab full-body Mimic tasks log it as the `wasted_torque` metric and carry a `wasted_torque` reward term of weight 0 (`--env.rewards.wasted-torque.weight=-0.5` is weight 0.005 at `ctrl_dt` 0.01; or `wasted_torque=` in `register_mimic_mjlab_tasks*`). Directional SAR instead treats `WastedTorqueCfg.weight` as reward per second per N m/kg and subtracts `weight * wasted_torque * ctrl_dt`, like its other reward rates. mjlab rejects a positive or nonfinite `wasted_torque` reward weight; the cost magnitude must be finite and nonnegative. Observations, actions, rewards and dynamics of the registered envs are unchanged. Proposed in the analysis of #573 ([#607]).
 
 ### Fixed
 
+* `myoMimic-v0` clips from `$MYOSUITE_MIMIC_DATASET` fall back like the local cache: without a
+  `<model>/<myo_sim version>` folder, the dataset's first `<model>/*` folder whose clips carry the installed body's
+  kinematic fingerprint is downloaded (`download_retargeted_clips(..., fingerprint, probe)`), so a myo_sim release
+  that leaves the body's kinematics alone keeps the dataset's clips ([#923]).
 * `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
   per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
@@ -117,6 +123,8 @@ Changes since **v3.1.0** (2026-11-11).
 * Uncertainty bands now reject failed/nonfinite nominal and sampled solves instead of
   including them in quantiles. OSQP statuses, iterations and residuals are retained;
   accepting `solved inaccurate` requires `UncertaintyConfig(allow_inaccurate=True)`.
+* Uncertainty analysis no longer copies each private sampled model twice. Public
+  static-optimization calls continue to leave the caller's model unchanged.
 * **`myoArmReachFixed-v0` and `myoArmReachRandom-v0` are registered once.** Since 3.0 the basic suite also
   registered them (and their `myoSarc` / `myoFati` variants) on a 63-muscle, 38-dof arm with a `forearm_tip`
   target, before `myosuite.envs.myo.myoedits` replaced them with the documented 50-muscle, 18-dof index-fingertip
@@ -184,11 +192,20 @@ Changes since **v3.1.0** (2026-11-11).
   and Baoding models, which have no couplings), the mjlab twin of `myoChallengeChaseTagFBP2-v0` projects in
   `reset_to_cpu_state`, and the couplings are read once per model instead of at every reset. This changes the start
   state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
-  unchanged, and the parity baseline of `myoChallengeRelocateP1-v0` is regenerated. Two families are **not** changed
-  and stay expected failures of `test_joint_coupling.py`: `myoChallengeTableTennisP{0,1,2}-v0`, whose keyframe holds
-  the paddle with the shoulder rhythm 0.59 rad off its couplings (projected, the grasp site is 6.9 cm from the
-  paddle handle instead of 1.7 cm, so it first needs a keyframe on the couplings), and
-  `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off). See `docs/baseline_checkpoints.md`.
+  unchanged, and the parity baseline of `myoChallengeRelocateP1-v0` is regenerated. Table tennis follows in the next
+  entry; `myoChallengeChaseTagFBVs-v0` (the two-agent env, patella 5.2 cm off) is **not** changed and stays an
+  expected failure of `test_joint_coupling.py`. See `docs/baseline_checkpoints.md`.
+* **Table-tennis resets start on the joint couplings, with the paddle still in the hand.** The `default` keyframe of
+  `myoChallengeTableTennisP{0,1,2}-v0` set the right shoulder rhythm (sternoclavicular, acromioclavicular, scapula and
+  humerus rotations, `shoulder1_r2_r`) up to 0.59 rad and the lumbar `L3_L4_FE` 0.097 rad off their couplings, and
+  projecting it as it was would have moved the grasp site 7.9 cm, off the paddle handle. The seven right-arm joints
+  (`elv_angle_r` to `deviation_r`) are re-solved, by up to 0.42 rad (`shoulder_rot_r`), so that every coupled joint is
+  on its polynomial while `S_grasp` keeps its pose (5e-6 m, 2e-4 rad) and the wrist stays 2 degrees inside its flexion
+  limit. The paddle spawn, the 1.7 cm handle-to-grasp distance and the seven hand-paddle and arm-torso contacts are
+  unchanged; the largest coupling force at t=0 falls from 928 to 190. The CPU reset and the mjlab twins
+  (`TableTennisReset`, also after joint noise) now project like the other MyoChallenge envs. This changes the start
+  state of these ids and of their `myoFati` / `myoSarc` variants; the observation, action and reward definitions are
+  unchanged, and no parity baseline covers them.
 * **`myoFullBodyWalkSAR-v0` rewards walking forwards.** The forward-velocity term tracked the root's world `+y`
   velocity, but the MuscleMimic full body faces `-y` (heel to toe is `(0, -1, 0)` at the keyframe), so the reward
   peaked for walking backwards: at the 1.2 m/s target it paid 5 x 0.003 forwards and 5 x 1.0 backwards. It now tracks
@@ -369,13 +386,44 @@ Changes since **v3.1.0** (2026-11-11).
   the second step. The sign now comes from the compiled positions, so a seeded episode is bit-identical on any
   instance. Rollouts of the Die Reorient ids change at the 1e-13 level (in Demo and P1 the die geoms now sit exactly
   at their compiled positions, up to 1e-16 away before).
+* **`solved` of the directional walks means sustained walking too.** `myoLegDirectionalForward-v0`,
+  `myoLegDirectionalBackward-v0` and `myoLegDirectionalRandom-v0` counted every step on which the body was upright
+  and within 0.5 m/s of the commanded velocity, so random actions that fall after about 1 s had 15 to 69 solved steps
+  and `evaluate_success` reported 100 % for the forward and backward ids. They now use the same one-second rule as
+  the walks (200 control steps of 0.005 s), through the new `RewardSpec.solved_window_s` of the `TaskConfig` route
+  (default 0: the per-step flag of the reward terms, unchanged for every other task). The per-step flag is `on_target`
+  in `info`; the mjlab twins log `Episode_Metrics/on_target` next to the new `Episode_Metrics/success`. Rewards,
+  observations and dynamics are unchanged. See `docs/baseline_checkpoints.md`.
+* Motion caches checksum all JSON metadata, including curation flags, so accidental metadata corruption triggers a rebuild. The cache schema is updated; previous entries are rebuilt without changing source clips or the task contract.
 
+* **Pure joint-limit terms, batched term shapes and ChaseTag-vs EVADE scoring ([#803]).** `joint_penalty` and `joint_limit_violation` now read `EnvAccessor.joint_limits()` (`jnt_range` on limited hinge/slide coordinates) instead of `actuator_ctrlrange`, which mismatched `qpos` whenever `nq != nu` or muscles had `[0, 1]` control ranges. `MuscleActionTerm` scopes fatigue muscle counts to the entity's indexed muscle actuators and writes through `write_ctrl_to_sim`; pure observation, reward and termination terms preserve leading batch dimensions and target devices; `reset_random_pose` requires an explicit seeded `rng`; and `ChaseTagVs` `compute_damage` / `get_score` route tag damage according to the active `CHASE`/`EVADE` role and clamp scores to `[0, 1]` (`docs/baseline_checkpoints.md`).
+* `DictObservationWrapper` and `PerturbationWrapper` forward public unwrapped environment attributes (`model`, `data`, `mj_render`), `DictObservationWrapper` accepts `obs_keys` / `filter_obs_keys=True` to expose only `env.unwrapped.obs_keys`, and `ModularMultiAgentSingleAgentWrapper` draws default random opponent actions from `env.unwrapped.np_random` instead of an unseeded `action_space.sample()` ([#805]).
+* `HeightField.size` reads `hfield.data.size`, `ChaseTagField.flatten_agent_patch` passes `(y, x)` to `cart2map` matching `_compute_heightmap_obs`, and `ChaseTagEnv` seeds `self.np_random` before building terrain and opponents, clamps keyframe indices on single-keyframe models (`myoChallengeChaseTagFBP2-v0`), and handles exact-equilibrium repeller offsets and sub-unit probability sums.
+* `myoChallengeBimanual-v0` (and its `myoSarc` / `myoFati` variants) updates `touch_history`, `max_force` and `goal_touch` in `reset()` and `step()` rather than inside `_get_obs_dict` / `get_reward_dict`, and keeps `obs_dict["time"]` as a 1-element array on drop termination.
+* `myoChallengeTableTennisP{0,1,2}-v0` (and variants) updates `contact_trajectory` and multi-rally `relaunch_ball()` inside `reset()` / `step()` instead of `_get_obs_dict` / `get_reward_dict`, calls `mj_forward` and refreshes `obs_dict` after a ball relaunch, and samples `cal_ball_qvel` when `ball_qvel=True` even without `ball_xyz_range`.
+* `myoChallengeSoccerP1/P2-v0` (and variants) sets `rwd_dict["sparse"] = float(goal_scored)` instead of `float(done)` so falls no longer award sparse points, enforces `min_agent_spawn_distance` between the root and the ball at reset, and defaults `goalkeeper_policy` to `"stationary"` when goalkeeper probabilities sum below 1.
+* `RunTrackEnv` (`myoChallengeOslRunFixed/Random-v0`) stores `ACTUATOR_PARAM` and `OSL_PARAM_LIST` per environment instance rather than mutating shared class-level containers, and seeds `self.np_random` before constructing `TrackField`.
+* `myoLegStandRandom-v0` (`LegReachEnvV0._generate_qpos`) perturbs and clips only `jnt_limited` coordinates instead of clamping the pelvis freejoint `qpos[0]` to `0.0` at reset.
+* **The two-agent env ends a diverged episode.** `ModularMultiAgentTaskEnv` (`myoChallengeChaseTagFBVs-v0`) had no
+  divergence check, and `MjInstabilityTerminationWrapper` found none to call, so after MuJoCo reset a diverged
+  simulation to `qpos0` the match went on from that state and could be scored as a tag. Its `step` now uses the same
+  check as `MyoGymnasiumEnv` (`mj_diverged`): the diverged step deals no damage, sees no falls, pays no positive
+  reward or `info["score"]` (even on the final time-limit step of an `EVADE` bout) to either agent and terminates
+  both; `info["mj_unstable"]` is on every step so evaluators can record diverged bouts as void/draw, and
+  `env.unwrapped.mj_instability_termination = False` switches it off.
+
+[#166]: https://github.com/MyoHub/myosuite/issues/166
+[#525]: https://github.com/MyoHub/myosuite/pull/525
 [#630]: https://github.com/MyoHub/myosuite/pull/630
 [#644]: https://github.com/MyoHub/myosuite/pull/644
+[#649]: https://github.com/MyoHub/myosuite/pull/649
 [#672]: https://github.com/MyoHub/myosuite/pull/672
 [#749]: https://github.com/MyoHub/myosuite/pull/749
+[#803]: https://github.com/MyoHub/myosuite/pull/803
+[#805]: https://github.com/MyoHub/myosuite/pull/805
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
+[#923]: https://github.com/MyoHub/myosuite/pull/923
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.

@@ -141,6 +141,82 @@ def test_invalid_cache_is_rebuilt(inputs: Inputs, tmp_path: Path, damage: str) -
     )
 
 
+def test_flags_only_metadata_corruption_is_rebuilt(
+    inputs: Inputs, tmp_path: Path
+) -> None:
+    files, model, tracked = inputs
+    cache = tmp_path / "cache"
+    expected = motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
+    path = next(cache.glob("*.npz"))
+    with np.load(path, allow_pickle=False) as data:
+        arrays = {name: data[name] for name in data.files}
+    meta = json.loads(str(arrays["metadata"]))
+    meta["quality_flags"][0] = ["source_knee_hyperextension"]
+    arrays["metadata"] = np.array(json.dumps(meta))
+    np.savez(path, **arrays)
+
+    with pytest.warns(RuntimeWarning, match="invalid metadata checksum"):
+        actual = motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
+    _same(expected, actual)
+    _same(
+        expected, motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
+    )
+
+
+def test_metadata_checksum_accepts_equivalent_json(
+    inputs: Inputs, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from myosuite.biomechanics import retarget
+
+    files, model, tracked = inputs
+    cache = tmp_path / "cache"
+    expected = motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
+    path = next(cache.glob("*.npz"))
+    with np.load(path, allow_pickle=False) as data:
+        arrays = {name: data[name] for name in data.files}
+    meta = json.loads(str(arrays["metadata"]))
+    arrays["metadata"] = np.array(
+        json.dumps(dict(reversed(list(meta.items()))), indent=2)
+    )
+    np.savez(path, **arrays)
+    monkeypatch.setattr(
+        motion, "_process_clip", lambda *a, **k: pytest.fail("cache miss")
+    )
+    monkeypatch.setattr(
+        retarget,
+        "read_refit_meta",
+        lambda *a, **k: pytest.fail("source metadata reread"),
+    )
+
+    _same(
+        expected, motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
+    )
+
+
+def test_legacy_schema_builds_a_new_cache_entry(
+    inputs: Inputs, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files, model, tracked = inputs
+    cache = tmp_path / "cache"
+    current = motion._CACHE_SCHEMA
+    with monkeypatch.context() as patch:
+        patch.setattr(motion, "_CACHE_SCHEMA", current - 1)
+        expected = motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
+    legacy = next(cache.glob("*.npz"))
+    with np.load(legacy, allow_pickle=False) as data:
+        arrays = {name: data[name] for name in data.files if name != "metadata_sha256"}
+    np.savez(legacy, **arrays)
+
+    _same(
+        expected, motion.build_motion_lib(files, model, tracked, 0.02, cache_dir=cache)
+    )
+    assert len(list(cache.glob("*.npz"))) == 2
+    with np.load(
+        next(cache.glob(f"motion-v{current}-*.npz")), allow_pickle=False
+    ) as data:
+        assert "metadata_sha256" in data.files
+
+
 def test_concurrent_writers_publish_complete_archives(
     inputs: Inputs, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

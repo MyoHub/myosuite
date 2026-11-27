@@ -23,7 +23,9 @@ from __future__ import annotations
 import argparse
 import json
 import struct
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import mujoco
 import numpy as np
@@ -43,17 +45,28 @@ def _rest(model: mujoco.MjModel) -> mujoco.MjData:
     return data
 
 
-def write_skin_glb(skin: Skin, model: mujoco.MjModel, path: Path | str) -> None:
+def write_skin_glb(
+    skin: Skin | SkinPose,
+    model: mujoco.MjModel,
+    path: Path | str,
+    *,
+    allow_approximate: bool = False,
+) -> None:
     """Write *skin* as a rigged ``.glb`` in *model*'s rest pose.
 
     Args:
-        skin: Parsed skin.
+        skin: Parsed skin, or a pose with explicit body scaling.
         model: Model whose bodies the skin bones are named after.
         path: Output ``.glb`` file.
+        allow_approximate: Allow a weighted common bind mesh when segment-local
+            offsets cannot be represented exactly; see :meth:`SkinPose.bake`.
 
     Raises:
-        ValueError: Some bone names are not bodies of *model*.
+        ValueError: Some bone names are not bodies of *model*, or the common
+            bind mesh cannot preserve the pose's offsets exactly.
     """
+    if isinstance(skin, SkinPose):
+        skin = skin.bake(model, allow_approximate=allow_approximate)
     pose = SkinPose.bind(skin, model)
     data = _rest(model)
     vert = pose.vertices(data).astype(np.float64)
@@ -215,29 +228,28 @@ def _node_matrices(gltf: dict) -> list[np.ndarray]:
     return [world(i) for i in range(len(local))]
 
 
-def read_skin_glb(path: Path | str, model: mujoco.MjModel) -> Skin:
-    """Read a rigged ``.glb`` skin (as written by :func:`write_skin_glb`, edited or not).
+def _load_glb(path: Path | str) -> tuple[dict[str, Any], Callable[[int], np.ndarray]]:
+    """Parse a glTF binary into its JSON and a reader for its accessors.
 
     Args:
-        path: ``.glb`` file with one skinned mesh in *model*'s rest pose.
-        model: Model whose bodies the joints are named after; each bone binds
-            to its body's pose at ``qpos0``.
+        path: ``.glb`` file.
 
     Returns:
-        The skin, with the file's vertices, faces, UVs and blend weights.
+        ``(gltf, read)``: the glTF JSON, and ``read(i)`` returning accessor ``i``
+        as a float64 ``(count, width)`` array (normalized integers scaled to ``[0, 1]``).
 
     Raises:
-        ValueError: Not a glTF binary, or no skinned mesh, or a joint that is
-            not a body of *model*.
+        ValueError: Not a glTF binary.
     """
     buf = Path(path).read_bytes()
+    if len(buf) < 20:
+        raise ValueError(f"Not a glTF binary: {path}")
     magic, _, _ = struct.unpack_from("<4sII", buf)
     if magic != b"glTF":
         raise ValueError(f"Not a glTF binary: {path}")
     length, _ = struct.unpack_from("<I4s", buf, 12)
     gltf = json.loads(buf[20 : 20 + length])
-    bin_start = 20 + length + 8
-    blob = buf[bin_start:]
+    blob = buf[20 + length + 8 :]
 
     def read(index: int) -> np.ndarray:
         acc = gltf["accessors"][index]
@@ -257,6 +269,26 @@ def read_skin_glb(path: Path | str, model: mujoco.MjModel) -> Skin:
         if acc.get("normalized"):
             out /= np.iinfo(dtype).max
         return out
+
+    return gltf, read
+
+
+def read_skin_glb(path: Path | str, model: mujoco.MjModel) -> Skin:
+    """Read a rigged ``.glb`` skin (as written by :func:`write_skin_glb`, edited or not).
+
+    Args:
+        path: ``.glb`` file with one skinned mesh in *model*'s rest pose.
+        model: Model whose bodies the joints are named after; each bone binds
+            to its body's pose at ``qpos0``.
+
+    Returns:
+        The skin, with the file's vertices, faces, UVs and blend weights.
+
+    Raises:
+        ValueError: Not a glTF binary, or no skinned mesh, or a joint that is
+            not a body of *model*.
+    """
+    gltf, read = _load_glb(path)
 
     nodes = [n for n in gltf["nodes"] if "mesh" in n and "skin" in n]
     if not nodes:
