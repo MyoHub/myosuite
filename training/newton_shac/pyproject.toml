@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "myosuite-newton-shac"
+version = "0.1.0"
+description = "Short-Horizon Actor-Critic (SHAC) with analytic muscle-tendon gradients for MyoSuite"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "myosuite",
+    "mujoco>=3.3.0",
+    "mujoco-warp",
+    "warp-lang>=1.7.0",
+    "torch>=2.2.0",
+    "numpy>=1.26.0",
+]
+
+[project.optional-dependencies]
+onnx = ["onnx>=1.15.0", "onnxruntime>=1.17.0"]
+test = ["pytest>=8.0.0", "onnx>=1.15.0", "onnxruntime>=1.17.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["newton_shac"]
