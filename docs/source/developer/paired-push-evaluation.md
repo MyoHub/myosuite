@@ -1,4 +1,4 @@
-# Paired push evaluation
+# Paired Push Evaluation
 
 Use the existing CPU policy adapters and `PerturbationWrapper` to compare pushed
 and unpushed rollouts from the same native simulator, controller/history and RNG

@@ -30,6 +30,10 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Fixed
 
+* `myoMimic-v0` clips from `$MYOSUITE_MIMIC_DATASET` fall back like the local cache: without a
+  `<model>/<myo_sim version>` folder, the dataset's first `<model>/*` folder whose clips carry the installed body's
+  kinematic fingerprint is downloaded (`download_retargeted_clips(..., fingerprint, probe)`), so a myo_sim release
+  that leaves the body's kinematics alone keeps the dataset's clips ([#923]).
 * `load_rslrl_policy` decides the action head from the checkpoint: with a learned std the actor must output one value
   per action, without one one or two. A policy with twice the env's action count was taken for a mean-and-std head
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
@@ -419,6 +423,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#805]: https://github.com/MyoHub/myosuite/pull/805
 [#808]: https://github.com/MyoHub/myosuite/pull/808
 [#810]: https://github.com/MyoHub/myosuite/pull/810
+[#923]: https://github.com/MyoHub/myosuite/pull/923
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.
