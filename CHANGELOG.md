@@ -8,6 +8,10 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Added
 
+* **Standalone reference PPO training package (`training/ppo/`) ([#941]).**
+  Extracted MyoSuite's Stable-Baselines3 CPU (`myosuite_ppo.sb3_train`) and RSL-RL `mjlab` GPU (`myosuite_ppo.mjlab_train`)
+  PPO trainers into `training/ppo/` (`myosuite-ppo` CLI) while keeping `scripts/train_sb3.py` and `scripts/train_mjlab.py`
+  as backward-compatible source-checkout wrappers, and promoted `solved_from_info` and `FOUR_BENCHMARK_TASKS` to `myosuite.benchmarks` (re-exported in `myosuite_ppo` and `myosuite.utils.sb3_sweep.solved_from_info`).
 * **Flat `myosuite.motion` subpackage, composable `EMGTrial` / `KinematicTrial`, and `myosuite.integrations` format readers ([#937]).**
   Consolidated `MotionClip` & trajectory I/O (`myosuite.motion.io`), root-yaw transforms (`myosuite.motion.transforms`),
   playback contracts (`myosuite.motion.playback`), HF dataset cache (`myosuite.motion.hf_cache`), and reference motion
@@ -54,6 +58,12 @@ Changes since **v3.1.0** (2026-11-11).
 
 ### Changed
 
+* **SB3 training helpers extracted out of the runtime `myosuite` wheel (`myosuite.utils.sb3_*`) ([#941]).**
+  `OnnxCheckpointCallback` (`myosuite.utils.sb3_callbacks`) and SB3 sweep helpers (`WinnerPpoConfig`, `budget_for`,
+  `improved`, `improvement_threshold`, `is_excluded_env_id`, `parse_act_dim` in `myosuite.utils.sb3_sweep`) now live
+  exclusively in `myosuite_ppo.sb3_callbacks` and `myosuite_ppo.sb3_sweep` (`training/ppo/`) so runtime `myosuite`
+  never imports `training/`. Accessing those moved symbols on `myosuite.utils.sb3_*` now raises `ImportError` with
+  migration instructions (`solved_from_info` remains importable from both `myosuite.benchmarks` and `myosuite.utils.sb3_sweep`).
 * **`myosuite.envs` flattened with anatomical/functional task co-location (`envs/tasks/<domain>/<family>/`) ([#939]).**
   Replaced the `myosuite/envs/myo/{tasks,backends,myoedits,assets}/` nesting with `myosuite/envs/tasks/<domain>/<family>/`
   (`arm/`, `hand/`, `leg/`, `torso/`, `fullbody/`, `games/`, `mimic/`, plus `suites/{basic,challenge,edits}.py`),
@@ -467,6 +477,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#937]: https://github.com/MyoHub/myosuite/pull/937
 [#938]: https://github.com/MyoHub/myosuite/pull/938
 [#939]: https://github.com/MyoHub/myosuite/pull/939
+[#941]: https://github.com/MyoHub/myosuite/pull/941
 ## [3.1.0] - 2026-11-11
 
 Changes since **v3.0.0** (2026-10-07). `git log v3.0.0..v3.1.0` has the full commit list.

@@ -21,8 +21,8 @@
 | **Visualization** | `myosuite/viz/` | Active | Offscreen/interactive viewer, rollout logging/plotting/video I/O (`roboset_logger`, `grouped_datasets`, `examine_logs`, `examine_reference`, `path_plotting`, `policy_playback`, `video_io`), volumetric `muscle_meshes`/`muscle_tubes`, `.skn`/`.glb` skinning, USD/Blender export | `core`, `scenes`, `physics`, `motion`, `policies`, `biomechanics`, `envs`, `viz` |
 | **Evaluation Suites** | `myosuite/benchmarks/` | Active | Standardized evaluation suites (`paired_replay`, `push_*`, `performance_card`, `examine_env`, `examine_sim`, `env_check`, `term_catalog` / `myosuite-terms`, `musclemimic_fullbody_eval_cli`) | `core`, `terms`, `physics`, `motion`, `policies`, `biomechanics`, `integrations`, `envs`, `viz`, `benchmarks` |
 | **Rollout Logging (Shim)** | `myosuite/logger/` | Closed facade | Backward-compatible aliases to `viz/` and `motion/` | `core`, `physics`, `motion`, `viz`, `logger` |
-| **Shared Utilities (Shim)** | `myosuite/utils/` | Closed facade *(+ legacy `sb3_*` until training isolation)* | Backward-compatible aliases to `core/`, `policies/`, `envs/`, `viz/`, and `benchmarks/` | `core`, `terms`, `physics`, `motion`, `policies`, `biomechanics`, `envs`, `viz`, `benchmarks`, `utils` |
-| **Out-of-Wheel RL** | `training/<method>/` | Active | Self-contained RL/control projects with independent `pyproject.toml` (`chasetag_teacher`, `dynsyn`, `supermimic`, ...); see [training-guidelines.md](training-guidelines.md) | Consumes `myosuite`; **never** imported by `myosuite/**` |
+| **Shared Utilities (Shim)** | `myosuite/utils/` | Closed facade | Backward-compatible aliases to `core/`, `policies/`, `envs/`, `viz/`, and `benchmarks/` (plus `sb3_{callbacks,sweep}.py` migration stubs raising `ImportError` for SB3 helpers moved to `myosuite_ppo`, while keeping `solved_from_info`) | `core`, `terms`, `physics`, `motion`, `policies`, `biomechanics`, `envs`, `viz`, `benchmarks`, `utils` |
+| **Out-of-Wheel RL** | `training/<method>/` | Active | Self-contained RL/control projects with independent `pyproject.toml` (`ppo`, `chasetag_teacher`, `dynsyn`, `supermimic`); see [training-guidelines.md](training-guidelines.md) | Consumes `myosuite`; **never** imported by `myosuite/**` |
 | **Out-of-Wheel Tools** | `tools/<tool>/` | Active | Heavy CV/perception extractors (`instanthmr`) with independent `pyproject.toml` | Consumes `myosuite`; **never** imported by `myosuite/**` |
 
 ## Top-Level
@@ -31,8 +31,8 @@
 myosuite/          # core package (see below; tests/ excluded from built wheels)
 docs/source/       # Sphinx documentation (quickstarts, environment reference, API)
 docs/source/developer/ # this developer guide
-scripts/           # training, evaluation and rendering CLIs (train_mjlab, train_sb3, eval_mjlab_policy, render_blender), parity baselines
-training/          # self-contained training projects outside the package, one per method (chasetag_teacher/, dynsyn/, supermimic/); see training-guidelines.md
+scripts/           # evaluation, rendering, and backward-compatible CLI wrappers (train_mjlab, train_sb3 -> training/ppo/)
+training/          # self-contained training projects outside the package, one per method (ppo/, chasetag_teacher/, dynsyn/, supermimic/); see training-guidelines.md
 tutorials/         # notebooks (1.x-5.x) and their companion files in files/X.Y/
 tools/             # standalone data/perception CLIs with isolated dependencies (instanthmr/)
 .github/           # CI and release workflows
@@ -55,7 +55,7 @@ tools/             # standalone data/perception CLIs with isolated dependencies 
 | `envs/myo/` | Closed backward-compatible `sys.modules` alias facade to `envs/tasks/`, `envs/backends/`, and `envs/assets/` |
 | `policies/` | Checkpoint/ONNX/Orbax loading (`rslrl_policy.py`, `onnx_checkpoint.py`, `onnxruntime_utils.py`, `orbax_checkpoint.py`, `checkpoint_utils.py`), `export_onnx.py`, `checkpoint_manifest.py`, `deployment_manifest.py`, `action_map.py` |
 | `benchmarks/` | Evaluation suites (`paired_replay.py`, `push_*.py`, `performance_card.py`, `examine_env.py`, `examine_sim.py`, `env_check.py`, `term_catalog.py`) |
-| `utils/` | Backward-compatible aliases to `core/`, `policies/`, `envs/`, `viz/`, and `benchmarks/` (plus `sb3_*` helpers) |
+| `utils/` | Backward-compatible aliases to `core/`, `policies/`, `envs/`, `viz/`, and `benchmarks/` (plus `sb3_{callbacks,sweep}.py` migration stubs raising `ImportError` for SB3 helpers moved to `myosuite_ppo`, while keeping `solved_from_info`) |
 | `viz/` | Rendering, rollout logging/plotting (`roboset_logger.py`, `grouped_datasets.py`, `examine_logs.py`, `path_plotting.py`, `policy_playback.py`, `video_io.py`), `blender_render.py`, `muscle_tubes.py`, `muscle_meshes.py`, and `skin.py` |
 | `logger/` | Backward-compatible aliases to `viz/` and `motion/` |
 | `scenes/` | Backward-compatible aliases to `core/builder/` |

@@ -12,8 +12,10 @@ on:
       - "!**/*.md"
       - "!.pre-commit-config.yaml"
       - "!CITATION.cff"
-      # training/<method>/ projects are outside this suite; no workflow runs their tests.
+      # External training/<method>/ projects are outside this suite, except the
+      # reference training/ppo/ package tested below.
       - "!training/**"
+      - "training/ppo/**"
       # Other workflows do not change the tests; this one and the probe test_newton_compat_probe imports do.
       - "!.github/**"
       - ".github/workflows/python-app.yml"
@@ -170,7 +172,8 @@ jobs:
             3.14|3.15) uv pip install -e ".[mjlab,rl]" "mujoco==3.14.0" ;;
             *)         uv pip install -e ".[mjlab,rl]" ;;
           esac
-          uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch ipython "musclemimic_models==1.0.6" "usd-core; python_version < '3.15'" "pytest-testmon; python_version < '3.15'"
+          uv pip install pytest pytest-xvfb pytest-benchmark ffmpeg torch tyro ipython "musclemimic_models==1.0.6" "usd-core; python_version < '3.15'" "pytest-testmon; python_version < '3.15'"
+          uv pip install --no-deps -e ./training/ppo
 
       - name: Check and report resolved dependencies
         run: |
@@ -179,7 +182,9 @@ jobs:
 
       - name: Pytest tier-1 (fast, backend-agnostic contracts)
         if: ${{ runner.os != 'Linux' }}
-        run: uv run python -m pytest -o addopts= myosuite/tests -m "tier1 and not slow" -v
+        run: |
+          uv run python -m pytest -o addopts= myosuite/tests -m "tier1 and not slow" -v
+          uv run python -m pytest -o addopts= training/ppo/tests -m "tier1" -v
 
       # One process per job: with pytest-xdist, two workers already reach ~14 GB on
       # the mjlab tests (16 GB runners) and offscreen MuJoCo rendering can abort a worker.
@@ -259,6 +264,13 @@ jobs:
         with:
           path: .testmondata
           key: testmon-${{ matrix.group }}-${{ github.sha }}
+
+      - name: Pytest — reference training package (ppo)
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          SELECT: ${{ matrix.group == 'cpu' && 'not slow and not mjlab' || matrix.group == 'mjlab' && 'not slow and mjlab' || 'not slow' }}
+          NO_SYNC: ${{ matrix.python-version == '3.15' && '--no-sync' || '' }}
+        run: uv run ${NO_SYNC:-} python -m pytest -o addopts= training/ppo/tests -v -m "$SELECT"
 
       # @slow tests (benchmarks, long rollouts) only on the nightly run.
       - name: Pytest — slow tests (nightly)

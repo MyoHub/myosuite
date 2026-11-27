@@ -38,10 +38,10 @@ from myosuite.envs.backends.mjlab.tasks.mdp.action_map import (
     apply_action_map,
     apply_trained_action_map,
 )
+from myosuite.envs.feature_cli import parse_feature_args
 from myosuite.policies.action_map import DynSyn, DynSynGroups, trained_action_map
 from myosuite.policies.checkpoint_manifest import ACTION_MAP_FIELD
 from myosuite.policies.checkpoint_utils import resume_checkpoint
-from myosuite.envs.feature_cli import parse_feature_args
 
 
 @dataclass(frozen=True)

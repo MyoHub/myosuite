@@ -25,7 +25,7 @@ def _load() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     sys.modules["train_sb3"] = module
     spec.loader.exec_module(module)
-    return module
+    return sys.modules["train_sb3"]
 
 
 @pytest.mark.parametrize("algo", ["ppo", "sac"])

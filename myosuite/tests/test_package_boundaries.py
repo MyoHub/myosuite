@@ -41,7 +41,17 @@ _APPROVED_RUNTIME_SUBPACKAGES = frozenset(
 _ZERO_EXEMPTION_SUBPACKAGES = frozenset({"motion", "policies", "benchmarks"})
 
 # Out-of-wheel repository directories that runtime modules must never import.
-_FORBIDDEN_EXTERNAL_IMPORTS = frozenset({"training", "tools", "scripts"})
+_FORBIDDEN_EXTERNAL_IMPORTS = frozenset(
+    {
+        "training",
+        "tools",
+        "scripts",
+        "myosuite_ppo",
+        "myosuite_dynsyn",
+        "supermimic",
+        "chasetag_teacher",
+    }
+)
 
 # Allowed runtime imports between myosuite.<src> and myosuite.<dst> subpackages.
 # "__root__" denotes myosuite/__init__.py and myosuite/version.py.
