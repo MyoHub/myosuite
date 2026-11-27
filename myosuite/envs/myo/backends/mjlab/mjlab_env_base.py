@@ -81,6 +81,15 @@ class MjlabEnvAccessor(EnvAccessor):
         """Cartesian positions of requested sites, shape ``(N, len, 3)``."""
         return self._data.site_xpos[:, site_ids, :]
 
+    def site_xmat(self, site_ids: Any) -> torch.Tensor:
+        """Orientations of requested sites as rotation matrices, shape ``(N, len, 3, 3)``."""
+        return self._data.site_xmat[:, site_ids]
+
+    def site_ang_vel(self, site_ids: Any) -> torch.Tensor:
+        """Angular velocities of requested sites (their bodies'), shape ``(N, len, 3)``."""
+        # accepted: no stable API for raw cvel; the rotational part, as mjlab's site_ang_vel_w
+        return self._data.cvel[:, self._model.site_bodyid[site_ids], :3]
+
     def site_id(self, name: str) -> int:
         """Return the integer id for a site name."""
         if hasattr(self._model, "site"):
@@ -321,6 +330,16 @@ class MjlabEntityAccessor(EnvAccessor):
         if self._entity.is_fixed_base:
             return pos
         return pos - self._env.scene.env_origins[:, None, :]
+
+    def site_xmat(self, site_ids: Any) -> torch.Tensor:
+        """Orientations of the entity's sites in the world frame, as rotation matrices, ``(N, k, 3, 3)``."""
+        from mjlab.utils.lab_api.math import matrix_from_quat
+
+        return matrix_from_quat(self._entity.data.site_quat_w[:, site_ids, :])
+
+    def site_ang_vel(self, site_ids: Any) -> torch.Tensor:
+        """Angular velocities of the entity's sites (their bodies') in the world frame, ``(N, k, 3)``."""
+        return self._entity.data.site_ang_vel_w[:, site_ids, :]
 
     def site_id(self, name: str) -> int:
         """Entity-local id of site *name*."""
