@@ -191,6 +191,9 @@ class ClipTargets:
             (the map's fixed values).
         quat_mask: Optional ``(T, O)`` per-frame weight multiplier (or boolean mask)
             suppressing degenerate orientation targets.
+        qpos: Optional ``(T, nq)`` pre-mapped joint trajectory; when set,
+            :func:`refit_clip` projects couplings via :meth:`LandmarkIK.project`
+            instead of running landmark Gauss-Newton iterations.
     """
 
     frequency: float
@@ -200,6 +203,7 @@ class ClipTargets:
     contact: np.ndarray
     posture: np.ndarray | None = None
     quat_mask: np.ndarray | None = None
+    qpos: np.ndarray | None = None
 
 
 def file_sha256(path: str | Path) -> str:
@@ -753,7 +757,7 @@ class ClipSource(Protocol):
     name: str
 
     def targets(
-        self, path: str | Path, model: mujoco.MjModel, lmap: LandmarkMap
+        self, path: Any, model: mujoco.MjModel, lmap: LandmarkMap
     ) -> ClipTargets:
         """The clip's targets on *model*."""
         ...
@@ -975,6 +979,7 @@ def _ground_clip(
         targets.contact,
         targets.posture,
         targets.quat_mask,
+        qpos_out if targets.qpos is not None else None,
     )
     return qpos_out, targets_out, dz
 
@@ -1053,6 +1058,8 @@ def clip_fits(path: str | Path, model_name: str, fingerprint: str) -> bool:
 def save_refit(
     path: str | Path, model: mujoco.MjModel, qpos: np.ndarray, frequency: float,
     meta: dict[str, Any],
+    *,
+    require_redistributable: bool = False,
 ) -> None:  # fmt: skip
     """Write a refitted clip in the MuscleMimic trajectory layout the motion library reads.
 
@@ -1062,7 +1069,13 @@ def save_refit(
         qpos: ``(T, nq)`` poses.
         frequency: Frame rate (Hz).
         meta: Metadata stored as JSON under :data:`REFIT_META_KEY`.
+        require_redistributable: When ``True``, verify ``meta['license']`` permits
+            redistributing derived clips before writing.
     """
+    if require_redistributable:
+        from myosuite.biomechanics.motion_dataset import ensure_redistributable  # noqa: PLC0415
+
+        ensure_redistributable(meta.get("license"))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -1325,16 +1338,31 @@ def refit_clip(
     ik = ik or LandmarkIK(model, lmap, config)
     targets = source.targets(src, model, lmap)
     t0 = time.perf_counter()
-    qpos, iters = ik.fit(
-        targets.pos, targets.quat, targets.seed, targets.posture, targets.quat_mask
-    )
+    if targets.qpos is not None:
+        qpos = ik.project(targets.qpos)
+        iters = np.zeros(len(qpos), dtype=np.int32)
+    else:
+        qpos, iters = ik.fit(
+            targets.pos, targets.quat, targets.seed, targets.posture, targets.quat_mask
+        )
     qpos, targets, extra = source.finish(ik, targets, qpos)
     seconds = time.perf_counter() - t0
     metrics = validate_refit(ik, targets, qpos, thresholds)
+    if hasattr(hash_src, "sha256") and hasattr(hash_src, "source_label"):
+        src_label = str(hash_src.source_label())
+        src_hash = str(hash_src.sha256())
+    else:
+        src_label = str(hash_src)
+        src_hash = file_sha256(hash_src)
+    lic_meta = (
+        {"license": src.license.as_dict()}
+        if hasattr(src, "license") and getattr(src, "license") is not None
+        else {}
+    )
     meta = {
-        "source": str(hash_src),
+        "source": src_label,
         "source_format": source.name,
-        "source_sha256": file_sha256(hash_src),
+        "source_sha256": src_hash,
         "model": model_name,
         "model_version": model_version,
         **({"model_fingerprint": model_fingerprint} if model_fingerprint else {}),
@@ -1345,6 +1373,7 @@ def refit_clip(
         "iterations_mean": float(iters.mean()),
         "iterations_max": int(iters.max()),
         "metrics": metrics,
+        **lic_meta,
         **extra,
     }
     return qpos, targets.frequency, meta
