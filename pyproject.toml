@@ -177,16 +177,40 @@ requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-# Ship only the myosuite package: without `include`, setuptools also installs the
-# repo's docs/, scripts/, training/ and tutorials/ as top-level packages.
-packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite.agents", "myosuite.agents.*"] } }
+# Ship only the approved myosuite runtime subpackages (never tests, fixtures, or local scratch dirs).
+include-package-data = false
+packages = { find = { include = [
+    "myosuite",
+    "myosuite.biomechanics",
+    "myosuite.biomechanics.*",
+    "myosuite.core",
+    "myosuite.core.*",
+    "myosuite.envs",
+    "myosuite.envs.*",
+    "myosuite.integrations",
+    "myosuite.integrations.*",
+    "myosuite.logger",
+    "myosuite.logger.*",
+    "myosuite.physics",
+    "myosuite.physics.*",
+    "myosuite.scenes",
+    "myosuite.scenes.*",
+    "myosuite.terms",
+    "myosuite.terms.*",
+    "myosuite.utils",
+    "myosuite.utils.*",
+    "myosuite.viz",
+    "myosuite.viz.*",
+], exclude = [
+    "myosuite.agents",
+    "myosuite.agents.*",
+    "myosuite.tests",
+    "myosuite.tests.*",
+] } }
 
 [tool.setuptools.package-data]
 "myosuite" = [
-    # Keep distribution size down by excluding `myosuite/agents/**` entirely.
-    # `myosuite.agents` is intentionally excluded from `packages` (see above),
-    # but we also need to avoid shipping large training assets that live under
-    # `myosuite/agents/` via broad package-data globs.
+    # Keep distribution size down by excluding `myosuite/agents/**` and `myosuite/tests/**`.
     "biomechanics/**",
     "core/**",
     "envs/**",
@@ -200,9 +224,12 @@ packages = { find = { include = ["myosuite", "myosuite.*"], exclude = ["myosuite
 ]
 
 [tool.setuptools.exclude-package-data]
-# Keep docs-only MJX benchmark plots and local bytecode caches out of the wheel.
+# Keep tests/fixtures, docs-only MJX benchmark plots, and local caches out of the wheel.
 "myosuite" = [
+    "tests/**",
     "envs/myo/backends/mjx/*.png",
+    "**/logs/**",
+    "**/wandb/**",
     "**/__pycache__/*",
     "**/*.pyc",
     "**/.myosuite_resolved_*.xml",

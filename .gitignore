@@ -149,13 +149,16 @@ outputs/vaf_fullbody/activations.npy
 exports/
 outputs/
 .claude/*
+!.claude/CLAUDE.md
 !.claude/approvals.yml
+!.claude/agents/
+!.claude/agents/**
 _untracked/
 myosuite/composer/
 myosuite/agents/
 renders/
 runs/
-# Root-only: scratch planning notes (see CLAUDE.md workflow), not the
+# Root-only: scratch planning notes (see AGENTS.md workflow), not the
 # myosuite/envs/myo/tasks/ or .../backends/mjlab/tasks/ source packages.
 /tasks/
 

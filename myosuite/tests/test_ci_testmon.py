@@ -28,6 +28,8 @@ _REQUIRED = {
     "test_parity.py",
     "test_registry.py",
     "test_import_footprint.py",
+    "test_package_boundaries.py",
+    "test_package_discovery.py",
     "test_mjlab_warning_filters.py",
     "test_train_mjlab.py",
 }

@@ -11,6 +11,10 @@ from pathlib import Path
 from packaging.specifiers import SpecifierSet
 import pytest
 from setuptools import find_namespace_packages
+from setuptools.config.pyprojecttoml import apply_configuration
+from setuptools.dist import Distribution
+
+from myosuite.tests.test_package_boundaries import _APPROVED_RUNTIME_SUBPACKAGES
 
 try:
     import tomllib
@@ -26,9 +30,20 @@ def test_package_discovery_is_limited_to_myosuite() -> None:
     pyproject = _REPO / "pyproject.toml"
     if not pyproject.is_file():
         pytest.skip("needs a source checkout")
-    find = tomllib.loads(pyproject.read_text())["tool"]["setuptools"]["packages"][
-        "find"
+    setuptools_cfg = tomllib.loads(pyproject.read_text(encoding="utf-8"))["tool"][
+        "setuptools"
     ]
+    find = setuptools_cfg["packages"]["find"]
+    pkg_data = setuptools_cfg["package-data"]["myosuite"]
+    excl_data = setuptools_cfg["exclude-package-data"]["myosuite"]
+
+    assert setuptools_cfg.get("include-package-data") is False
+    assert "myosuite.agents" in find["exclude"]
+    assert "myosuite.tests" in find["exclude"]
+    assert "myosuite.tests.*" in find["exclude"]
+    assert "tests/**" in excl_data
+    assert "tests/**" not in pkg_data
+
     # pyproject's `find` is namespace-aware, so docs/, scripts/ etc. would match.
     packages = find_namespace_packages(
         where=str(_REPO),
@@ -38,6 +53,37 @@ def test_package_discovery_is_limited_to_myosuite() -> None:
     stray = sorted({p.split(".")[0] for p in packages} - {"myosuite"})
     assert not stray, f"top-level packages besides myosuite: {stray}"
     assert "myosuite.agents" not in packages
+    assert not any(
+        p == "myosuite.tests" or p.startswith("myosuite.tests.") for p in packages
+    )
+
+    dist = apply_configuration(Distribution(), str(pyproject))
+    discovered = set(dist.packages or ())
+    assert "myosuite" in discovered
+    assert any(pkg.startswith("myosuite.envs.") for pkg in discovered)
+    assert any(pkg.startswith("myosuite.core") for pkg in discovered)
+    assert any(".tasks" in pkg for pkg in discovered)
+    assert any(".backends" in pkg for pkg in discovered)
+    leaked = sorted(
+        pkg
+        for pkg in discovered
+        if pkg == "myosuite.tests"
+        or pkg.startswith("myosuite.tests.")
+        or (
+            pkg.startswith("myosuite.")
+            and pkg.split(".")[1] not in _APPROVED_RUNTIME_SUBPACKAGES
+        )
+    )
+    assert not leaked, f"Unapproved packages discovered for wheel: {leaked}"
+    discovered_top = {
+        pkg.split(".")[1]
+        for pkg in discovered
+        if pkg.startswith("myosuite.") and len(pkg.split(".")) >= 2
+    }
+    assert discovered_top == _APPROVED_RUNTIME_SUBPACKAGES, (
+        f"Wheel discovery mismatch vs _APPROVED_RUNTIME_SUBPACKAGES: "
+        f"{sorted(discovered_top)} != {sorted(_APPROVED_RUNTIME_SUBPACKAGES)}"
+    )
 
 
 def test_python_310_remains_installable_until_mujoco_4() -> None:

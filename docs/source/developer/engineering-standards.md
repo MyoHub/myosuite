@@ -16,15 +16,17 @@ Before any new class, function, or wrapper:
 2. Check [library-usage.md](library-usage.md) — confirm no library already provides it.
 3. Compare the existing behavior and constraints; extend or import it when it satisfies the requirement. Record this evidence in the PR.
 
-| Kind of code | Canonical location |
+| Kind of code | Canonical location (see [repository-map.md](repository-map.md)) |
 |---|---|
 | Obs / reward / action / event / termination term functions | `myosuite/terms/` |
-| Physics math (quat, fatigue, min-jerk) | `myosuite/physics/` |
+| Physics math (quat, fatigue, joint couplings, running stats) | `myosuite/physics/` |
+| Numerical biomechanics solvers (IK, ID, SO, CMC, EMG, effort) | `myosuite/biomechanics/` |
+| Lightweight format/dataset readers & `musclemimic` runtime adapters | `myosuite/integrations/` (heavy CV inference → `tools/`) |
 | Muscle noise / fatigue / reafferentation / sarcopenia (wrappers and stages) | `myosuite/envs/wrappers.py`, `myosuite/envs/muscle_stages.py` |
-| Building an env on either backend (`make_env`, `EnvConfig`) | `myosuite/core/registry.py`, `myosuite/core/config.py` |
-| Generic utilities | `myosuite/utils/` |
-| MuscleMimic helpers | `myosuite/integrations/musclemimic/` |
+| Building an env on either backend (`make_env`, `EnvConfig`, `ModelBuilder`) | `myosuite/core/registry.py`, `myosuite/core/config.py`, `myosuite/core/model_builder.py` |
+| Rendering, rollout video, muscle meshes, skinning, Blender/USD | `myosuite/viz/` |
 | mjlab action/obs/event wiring | `myosuite/envs/myo/backends/mjlab/` |
+| RL trainers, replay buffers, world models | `training/<method>/` (**never** inside `myosuite/`) |
 
 ## Python Standards
 

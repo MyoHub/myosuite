@@ -137,11 +137,26 @@ jobs:
             raise SystemExit(f"Built wheel version {actual} != expected {expected}")
         print(f"Verified wheel version {actual}")
         with zipfile.ZipFile(wheels[0]) as zf:
-            tops = {n.split("/")[0] for n in zf.namelist() if not n.split("/")[0].endswith(".dist-info")}
+            names = zf.namelist()
+            tops = {n.split("/")[0] for n in names if not n.split("/")[0].endswith(".dist-info")}
+            leaked_tests = [n for n in names if n.startswith("myosuite/tests/")]
         if tops != {"myosuite"}:
             raise SystemExit(f"Wheel must contain only the myosuite package, found: {sorted(tops)}")
-        print("Verified wheel top level: myosuite")
+        if leaked_tests:
+            raise SystemExit(f"Wheel must not ship myosuite/tests, found {len(leaked_tests)} entries")
+        print("Verified wheel top level: myosuite (without myosuite/tests)")
         PY
+
+    - name: Smoke-test built wheel in an isolated virtualenv before publishing
+      env:
+        EXPECTED_VERSION: ${{ needs.get_next_version.outputs.new_version }}
+      run: |
+        sudo apt-get update -y -qq
+        sudo apt-get install -y xvfb x11-xserver-utils
+        python3 -m venv /tmp/myosuite-wheel-smoke
+        /tmp/myosuite-wheel-smoke/bin/pip install --upgrade pip
+        /tmp/myosuite-wheel-smoke/bin/pip install dist/*.whl scipy
+        (cd /tmp && xvfb-run -a /tmp/myosuite-wheel-smoke/bin/python "$GITHUB_WORKSPACE/.github/smoke_wheel.py" --expected-version "$EXPECTED_VERSION")
 
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
@@ -236,6 +251,12 @@ jobs:
           - macos-latest
           - windows-latest
     steps:
+      - name: Checkout wheel smoke script
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/smoke_wheel.py
+          sparse-checkout-cone-mode: false
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -253,7 +274,7 @@ jobs:
         run: |
           echo "Test exact MyoSuite PyPI release"
           for attempt in 1 2 3 4 5 6; do
-            if pip install --no-cache-dir "myosuite==$RELEASE_VERSION" scipy pytest; then
+            if pip install --no-cache-dir "myosuite==$RELEASE_VERSION" scipy; then
               break
             fi
             if [ "$attempt" = 6 ]; then
@@ -262,9 +283,9 @@ jobs:
             fi
             sleep 20
           done
-          python -c "import myosuite; assert myosuite.__version__ == '$RELEASE_VERSION', myosuite.__version__"
+          SMOKE_SCRIPT="$GITHUB_WORKSPACE/.github/smoke_wheel.py"
           if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run -a python -m pytest -o addopts= -p no:cacheprovider --pyargs myosuite.tests.test_myo
+            (cd /tmp && xvfb-run -a python "$SMOKE_SCRIPT" --expected-version "$RELEASE_VERSION")
           else
-            python -m pytest -o addopts= -p no:cacheprovider --pyargs myosuite.tests.test_myo
+            (cd /tmp && python "$SMOKE_SCRIPT" --expected-version "$RELEASE_VERSION")
           fi

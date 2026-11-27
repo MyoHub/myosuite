@@ -2,12 +2,18 @@ Judge one question about this MyoSuite pull request: does the code it adds belon
 the ownership and reuse evidence that REVIEW.md asks for? Go by what the diff and the code on the branch and on the base branch do, not by
 what the title or description claims.
 
-Ownership, as REVIEW.md states it:
+Ownership, as REVIEW.md and docs/wiki/repository-map.md state it:
 - `myo_sim` owns reusable model construction and anatomical/physical transforms: geometry and segment scaling, mass and
   inertia, muscle and tendon parameters, model-only calibration, MJCF/XML model definitions and their composition.
-- MyoSuite owns measurement and source adapters, scientific analysis, experiment and subject-fitting workflows, task
-  configuration, rewards, observations, training and CPU/mjlab wiring.
-- A thin compatibility facade that calls the `myo_sim` API is fine. A copy of a `myo_sim` algorithm, a fallback that
+- MyoSuite owns measurement and source adapters (`myosuite/integrations/`), shared numerical helpers (`myosuite/physics/`),
+  scientific analysis and subject-fitting solvers (`myosuite/biomechanics/`), task configuration, rewards, observations,
+  runtime policy inference, visualization (`myosuite/viz/`) and CPU/mjlab wiring (`myosuite/envs/`).
+- Out-of-wheel `training/<method>/` owns RL trainers, replay buffers, world models and method-specific architectures
+  (`docs/wiki/training-guidelines.md`); out-of-wheel `tools/<tool>/` owns heavy CV/perception inference stacks. Runtime
+  modules under `myosuite/` must never import `training`, `tools`, `scripts` or `myosuite.tests`.
+- Inside `myosuite/`, new runtime code belongs in its active canonical subpackage following the upward import DAG in
+  `docs/wiki/repository-map.md` (and never in namespaces that have already been converted into compatibility facades).
+- A thin compatibility facade or re-export shim is fine. A copy of a `myo_sim` algorithm, a fallback that
   re-implements one, or a new model transform written in MyoSuite is not.
 
 pass: every new model transform in the diff calls the `myo_sim` API (or a linked, version-gated `myo_sim` PR), nothing in the

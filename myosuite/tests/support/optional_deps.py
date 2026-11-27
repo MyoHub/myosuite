@@ -85,19 +85,13 @@ def skip_if_hf_gated(env_id: str, exc: Exception) -> None:
         env_id: The env being tested.
         exc: The exception its construction, reset or step raised.
     """
+    from myosuite.core.hf_io import is_gated_or_transient_hf_error
     from myosuite.envs.myo.tasks.mimic.tracking import MissingMotionData
 
     if isinstance(exc, MissingMotionData):
         pytest.skip(f"{env_id}: motion clips unavailable ({exc})")
-    try:
-        from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
-    except ImportError:
-        return
-    if isinstance(exc, GatedRepoError):
-        pytest.skip(f"{env_id}: gated HF dataset unavailable ({exc})")
-    status = getattr(getattr(exc, "response", None), "status_code", None)
-    if isinstance(exc, HfHubHTTPError) and (status == 429 or (status or 0) >= 500):
-        pytest.skip(f"{env_id}: Hugging Face unavailable (HTTP {status})")
+    if is_gated_or_transient_hf_error(exc):
+        pytest.skip(f"{env_id}: gated or transient Hugging Face error ({exc})")
 
 
 def build_fullbody_spec() -> object:

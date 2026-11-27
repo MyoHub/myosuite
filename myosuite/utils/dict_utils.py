@@ -99,6 +99,53 @@ def flatten_dict(data: dict, name: str = "", delimiter: str = "/") -> dict:
     return flat_dict
 
 
+def assert_nested_close(
+    prm1: object, prm2: object, atol: float = 1e-5, rtol: float = 1e-8
+) -> bool:
+    """Assert nested dicts, sequences, sets, strings, and NumPy arrays match within tolerance.
+
+    Args:
+        prm1: First nested value (e.g. ``obs`` or ``info`` before ``pickle``).
+        prm2: Second nested value (e.g. ``obs`` or ``info`` after ``pickle``).
+        atol: Absolute tolerance for numeric comparisons.
+        rtol: Relative tolerance for numeric comparisons.
+
+    Returns:
+        ``True`` when all leaves match.
+    """
+    if prm1 is None and prm2 is None:
+        return True
+    if isinstance(prm1, dict) and isinstance(prm2, dict):
+        assert set(prm1.keys()) == set(prm2.keys()), (
+            set(prm1.keys()),
+            set(prm2.keys()),
+        )
+        for key in prm1:
+            assert_nested_close(prm1[key], prm2[key], atol=atol, rtol=rtol)
+        return True
+    if isinstance(prm1, (set, frozenset, str)) or isinstance(
+        prm2, (set, frozenset, str)
+    ):
+        assert prm1 == prm2, (prm1, prm2)
+        return True
+    if isinstance(prm1, (list, tuple)) and isinstance(prm2, (list, tuple)):
+        assert len(prm1) == len(prm2), (len(prm1), len(prm2))
+        for p1, p2 in zip(prm1, prm2):
+            assert_nested_close(p1, p2, atol=atol, rtol=rtol)
+        return True
+    if isinstance(prm1, np.ndarray) or isinstance(prm2, np.ndarray):
+        arr1, arr2 = np.asarray(prm1), np.asarray(prm2)
+        if np.issubdtype(arr1.dtype, np.number) and np.issubdtype(
+            arr2.dtype, np.number
+        ):
+            np.testing.assert_allclose(arr1, arr2, atol=atol, rtol=rtol)
+        else:
+            assert np.array_equal(arr1, arr2), (arr1, arr2)
+        return True
+    np.testing.assert_allclose(prm1, prm2, atol=atol, rtol=rtol)
+    return True
+
+
 def demo_dict_util():
     data = {
         "none": None,
