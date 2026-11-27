@@ -93,9 +93,10 @@ Changes since **v3.1.0** (2026-11-11).
   `mujoco_geom_utils`, `mujoco_joint_utils`, `asset_path_resolver`) into `myosuite/core/builder/`, pure backend-agnostic
   MDP term modules into `myosuite/core/terms/`, and `colored_noise` into `myosuite/physics/colored_noise.py`, keeping
   `sys.modules`-identical compatibility aliases at all former `myosuite.scenes.*`, `myosuite.terms.*`, and `myosuite.utils.*` paths.
-* **`myosuite.tests` excluded from built wheels ([#935]).** Set `include-package-data = false` with explicit runtime
-  subpackage discovery in `pyproject.toml` so published wheels ship only runtime `myosuite.*` subpackages and exclude
-  `myosuite/tests/**` fixtures/baselines (~2 MB wheel reduction). Running `pytest --pyargs myosuite.tests...` or
+* **`myosuite.tests` excluded from built wheels ([#935]).** Set `include-package-data = false` with `packages.find`
+  scoped to `myosuite` / `myosuite.*` (excluding `myosuite.agents*` and `myosuite.tests*`), explicit per-subpackage
+  `package-data` globs in `pyproject.toml`, and CI enforcement via `test_package_discovery.py` so published wheels ship
+  only approved runtime `myosuite.*` subpackages and exclude `myosuite/tests/**` fixtures/baselines (~2 MB wheel reduction). Running `pytest --pyargs myosuite.tests...` or
   importing `myosuite.tests.*` (e.g. `TestEnvs`) now requires a source checkout rather than a wheel install; PyPI
   pre- and post-release wheel verification (`.github/smoke_wheel.py`) steps every installable single-agent environment across all suites for 3 seeded steps and checks `pickle` round-trip step parity directly via `make_env`.
 * **Python 3.11 default across CI, docs and install guides ([#808]).** Workflows (`python-app.yml`, `docs.yml`,
