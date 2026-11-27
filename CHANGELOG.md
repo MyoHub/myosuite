@@ -38,6 +38,16 @@ Changes since **v3.1.0** (2026-11-11).
   and silently cut to its first half; other mismatches failed at the first step. It now raises at load.
 * `scripts/eval_mjlab_policy.py --stochastic` on the CPU backend draws the action noise from a generator seeded with
   `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
+* The arm-reach model edit (`myoArmReach*`) builds with myo_sim hands whose finger joints are used by tendons
+  and equalities, such as the lumbrical junction nodes of the revised hand. Finger joints are now deleted
+  together with everything that references them (`spec_processing.delete_joint`). The edited model is
+  unchanged on myo_sim 0.2.5 ([#748]).
+* The table-tennis body (`myoChallengeTableTennisP*`) builds with the revised hand: stripping the left arm
+  also removes the equalities and fixed tendons on its tendon-tied nodes ([#748]).
+* Finger removal of the myo_sim-native MuscleMimic bodies (`myoMimic-v0`, `myoChallengeChaseTagFB*`) resolves
+  the finger joints and muscles against the model: `_r`-suffixed right-side names, the extra joints on the
+  digit chains, and intrinsic hand muscles under any name. Reafferentation finds EIP/EPL with or without `_r`.
+  All models are unchanged on myo_sim 0.2.5 ([#748]).
 
 ### Changed
 
@@ -417,6 +427,7 @@ Changes since **v3.1.0** (2026-11-11).
 [#644]: https://github.com/MyoHub/myosuite/pull/644
 [#649]: https://github.com/MyoHub/myosuite/pull/649
 [#672]: https://github.com/MyoHub/myosuite/pull/672
+[#748]: https://github.com/MyoHub/myosuite/pull/748
 [#749]: https://github.com/MyoHub/myosuite/pull/749
 [#803]: https://github.com/MyoHub/myosuite/pull/803
 [#805]: https://github.com/MyoHub/myosuite/pull/805

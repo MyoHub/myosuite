@@ -39,9 +39,9 @@ from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
     _apply_mimic_solver_options,
-    _translate_finger_token,
     apply_mimic_bimanual_spec_edits,
     default_mimic_config,
+    native_finger_names,
 )
 from myosuite.integrations.musclemimic.model_versions import (
     apply_models_version,
@@ -373,21 +373,7 @@ def build_native_myotorso_bimanual_mimic_spec(
         from myosuite.core.model_builder import suppress_empty_prefix_attach_warning
 
         with suppress_empty_prefix_attach_warning():
-            model = spec.compile()
-        joint_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or ""
-            for i in range(model.njnt)
-        )
-        actuator_pool = frozenset(
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or ""
-            for i in range(model.nu)
-        )
-        joint_tokens = tuple(
-            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
-        )
-        muscle_tokens = tuple(
-            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
-        )
+            joint_tokens, muscle_tokens = native_finger_names(spec)
     else:
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS
