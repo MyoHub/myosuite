@@ -242,4 +242,4 @@ pytest myosuite/tests/test_registry.py -v
 
 ## Ownership and reuse gate
 
-Follow the ownership and minimum-change rules in [REVIEW.md](../../REVIEW.md). Search both MyoHub repositories, name the reused primitives and justify each new abstraction. Review the actual diff for duplicated transformations and code that can be removed; lint success alone does not clear this gate.
+Follow the ownership and minimum-change rules in [REVIEW.md](https://github.com/MyoHub/myosuite/blob/dev/REVIEW.md). Search both MyoHub repositories, name the reused primitives and justify each new abstraction. Review the actual diff for duplicated transformations and code that can be removed; lint success alone does not clear this gate.

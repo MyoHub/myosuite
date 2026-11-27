@@ -29,7 +29,7 @@ Use separate virtual environments when dependency stacks conflict.
 
 ## Existing training entry points and extras
 
-Reference PPO trainers live in [`training/ppo/`](../../training/ppo) (`myosuite_ppo`, CLI `myosuite-ppo`). Top-level `scripts/train_mjlab.py` and `scripts/train_sb3.py` remain as backward-compatible CLI entry points forwarding to `training/ppo/` (working out of the box from a source checkout), and the root `rl` and `mjlab` extras are preserved; any future changes must continue to preserve supported training commands and dependency installation paths. New method-specific trainers and dependencies follow the `training/<method>/` layout above.
+Reference PPO trainers live in [`training/ppo/`](https://github.com/MyoHub/myosuite/blob/dev/training/ppo) (`myosuite_ppo`, CLI `myosuite-ppo`). Top-level `scripts/train_mjlab.py` and `scripts/train_sb3.py` remain as backward-compatible CLI entry points forwarding to `training/ppo/` (working out of the box from a source checkout), and the root `rl` and `mjlab` extras are preserved; any future changes must continue to preserve supported training commands and dependency installation paths. New method-specific trainers and dependencies follow the `training/<method>/` layout above.
 
 ## Attribution and licensing
 
