@@ -27,4 +27,4 @@ Walk-through: ``tutorials/2.2_Train_MjLab_Policy.ipynb``.
 
 New CPU tasks subclass :class:`~myosuite.envs.gymnasium_env.MyoGymnasiumEnv`
 and register with ``registry.register_env`` — see
-``docs/wiki/adding-a-new-task.md`` and :doc:`architecture`.
+``docs/source/developer/adding-a-new-task.md`` and :doc:`architecture`.

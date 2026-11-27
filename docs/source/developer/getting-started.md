@@ -3,7 +3,7 @@
 New to the MyoSuite codebase? This page takes you from a fresh clone to making
 your first change with confidence. It assumes you can write Python but know
 nothing about this repository. If you only want to *use* MyoSuite (run
-environments, train policies), read the top-level [README.md](../../README.md) instead — this
+environments, train policies), read the top-level [README.md](https://github.com/MyoHub/myosuite/blob/dev/README.md) instead — this
 page is about *changing* the code.
 
 ---
@@ -138,7 +138,7 @@ pytest myosuite/tests/test_parity.py -v
 ```
 
 Branch from `dev` and open the pull request against `dev`. CI runs for non-draft pull requests into `main` and `dev`, on Python 3.11 (macOS, Ubuntu, Windows) plus 3.13 and 3.15 (Ubuntu). A draft pull request does not run CI until it is marked ready.
-See [AGENTS.md](../../AGENTS.md) for the full gate list. A pre-commit hook blocks imports of the
+See [AGENTS.md](https://github.com/MyoHub/myosuite/blob/dev/AGENTS.md) for the full gate list. A pre-commit hook blocks imports of the
 deleted `BaseV0`/`env_base.MujocoEnv` classes — if it fires, you copied from an
 old example; use `MyoGymnasiumEnv` instead.
 
