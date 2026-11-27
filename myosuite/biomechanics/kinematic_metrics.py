@@ -13,6 +13,7 @@ speed profiles ``(T,)``, complementing the muscle-effort metrics in
 - :func:`velocity_bell_symmetry`: time-to-peak-speed fraction over the active window.
 - :func:`two_thirds_power_law_r2`: curvature-velocity two-thirds power-law fit (Lacquaniti et al., 1983).
 - :func:`fitts_index_of_difficulty` and :func:`fitts_throughput`: speed-accuracy index and throughput.
+- :func:`dtw_alignment` and :func:`dtw_distance`: multidimensional Dynamic Time Warping with Sakoe-Chiba band (Sakoe & Chiba, 1978; Berndt & Clifford, 1994).
 - :func:`energy_distance` and :func:`compare_against_reference_cohorts`: multivariate Energy Distance
   (Székely & Rizzo, 2013), 1D Wasserstein distances, and split-half inter-subject reference ceiling.
 """
@@ -527,11 +528,129 @@ def compare_against_reference_cohorts(
     )
 
 
+@dataclass(frozen=True)
+class DTWAlignment:
+    """Dynamic Time Warping alignment between two trajectories.
+
+    Attributes:
+        total_cost: Accumulated Euclidean cost along the optimal warping path.
+        normalized_distance: Mean per-step Euclidean distance ``total_cost / len(path)``.
+        path: Integer index pairs ``(K, 2)`` monotonically mapping ``seq_x`` to ``seq_y``.
+    """
+
+    total_cost: float
+    normalized_distance: float
+    path: np.ndarray
+
+
+def dtw_alignment(
+    seq_x: np.ndarray,
+    seq_y: np.ndarray,
+    *,
+    window: int | None = None,
+    zero_start: bool = False,
+) -> DTWAlignment:
+    """Align two 1D or 2D trajectories via Dynamic Time Warping (Sakoe & Chiba, 1978).
+
+    Args:
+        seq_x: First trajectory of shape ``(T1, D)`` or ``(T1,)``.
+        seq_y: Second trajectory of shape ``(T2, D)`` or ``(T2,)``.
+        window: Optional non-negative Sakoe-Chiba band half-width in steps
+            (widened to ``abs(T1 - T2)`` if smaller so endpoints remain reachable).
+        zero_start: Translate each trajectory by its initial sample before comparison.
+
+    Returns:
+        :class:`DTWAlignment` with total cost, path-length-normalized distance, and path.
+    """
+    x = _as_trajectory_2d(seq_x)
+    y = _as_trajectory_2d(seq_y)
+    if x.shape[0] == 0 or y.shape[0] == 0:
+        raise ValueError("DTW trajectories must be non-empty.")
+    if x.shape[1] != y.shape[1]:
+        raise ValueError(f"Trajectory dimension mismatch: {x.shape[1]} vs {y.shape[1]}")
+    if not (np.all(np.isfinite(x)) and np.all(np.isfinite(y))):
+        raise ValueError("DTW trajectories must contain finite values.")
+
+    if zero_start:
+        x = x - x[:1]
+        y = y - y[:1]
+
+    n, m = x.shape[0], y.shape[0]
+    if window is None:
+        band = max(n, m)
+    else:
+        if int(window) < 0:
+            raise ValueError(f"window must be non-negative or None, got {window}")
+        band = max(int(window), abs(n - m))
+
+    local_cost = np.linalg.norm(x[:, None, :] - y[None, :, :], axis=-1)
+    dp = np.full((n + 1, m + 1), np.inf, dtype=np.float64)
+    dp[0, 0] = 0.0
+
+    for i in range(1, n + 1):
+        j_lo = max(1, i - band)
+        j_hi = min(m, i + band)
+        row_c = local_cost[i - 1]
+        prev_row = dp[i - 1]
+        cur_row = dp[i]
+        for j in range(j_lo, j_hi + 1):
+            best_prev = prev_row[j - 1]
+            if prev_row[j] < best_prev:
+                best_prev = prev_row[j]
+            if cur_row[j - 1] < best_prev:
+                best_prev = cur_row[j - 1]
+            cur_row[j] = row_c[j - 1] + best_prev
+
+    i, j = n, m
+    rev_path: list[tuple[int, int]] = [(i - 1, j - 1)]
+    while i > 1 or j > 1:
+        if i == 1:
+            j -= 1
+        elif j == 1:
+            i -= 1
+        else:
+            c_diag = dp[i - 1, j - 1]
+            c_up = dp[i - 1, j]
+            c_left = dp[i, j - 1]
+            if c_diag <= c_up and c_diag <= c_left:
+                i -= 1
+                j -= 1
+            elif c_up <= c_left:
+                i -= 1
+            else:
+                j -= 1
+        rev_path.append((i - 1, j - 1))
+
+    path_arr = np.asarray(rev_path[::-1], dtype=np.int64)
+    total = float(dp[n, m])
+    return DTWAlignment(
+        total_cost=total,
+        normalized_distance=total / float(len(path_arr)),
+        path=path_arr,
+    )
+
+
+def dtw_distance(
+    seq_x: np.ndarray,
+    seq_y: np.ndarray,
+    *,
+    window: int | None = None,
+    normalize: bool = True,
+    zero_start: bool = False,
+) -> float:
+    """Compute scalar Dynamic Time Warping distance between two trajectories."""
+    res = dtw_alignment(seq_x, seq_y, window=window, zero_start=zero_start)
+    return res.normalized_distance if normalize else res.total_cost
+
+
 __all__ = [
     "CohortComparison",
+    "DTWAlignment",
     "KinematicTrialSummary",
     "compare_against_reference_cohorts",
     "dimensionless_squared_jerk",
+    "dtw_alignment",
+    "dtw_distance",
     "endpoint_error",
     "energy_distance",
     "fitts_index_of_difficulty",
