@@ -66,10 +66,21 @@ def kit_split(split: str) -> Path:
 
 
 def download_retargeted_clips(
-    repo_id: str, model: str, version: str, local_dir: str | None = None
+    repo_id: str,
+    model: str,
+    version: str,
+    local_dir: str | None = None,
+    fingerprint: str | None = None,
+    probe: str | None = None,
 ) -> Path:
     """Download the KIT clips retargeted onto *model* at *version* from a Hugging Face
     dataset. Downloaded files are reused.
+
+    With *fingerprint* and *probe*, a dataset whose ``<model>/<version>`` folder lacks
+    *probe* falls back as the local cache does
+    (:func:`~myosuite.biomechanics.retarget.find_cache_root`): the other ``<model>/*``
+    folders are tried (sorted) and the first whose *probe* clip carries *fingerprint* is
+    downloaded.
 
     Args:
         repo_id: The dataset, ``owner/name[@revision]`` (default revision:
@@ -77,20 +88,60 @@ def download_retargeted_clips(
         model: Task model name (e.g. ``"myofullbody"``).
         version: Its version (the myo_sim version).
         local_dir: Download into this directory instead of the Hugging Face cache.
+        fingerprint: The installed body's :func:`~.models.kinematic_fingerprint`.
+        probe: A clip path relative to the version folder (e.g. the first listed clip).
 
     Returns:
-        The ``<model>/<version>`` folder (the root of the packaged lists).
-    """
-    from huggingface_hub import snapshot_download  # noqa: PLC0415
+        The ``<model>/<version>`` folder, or the fallback folder that fits (the root of
+        the packaged lists).
 
+    Raises:
+        MissingMotionData: If a fallback was asked for and no folder fits.
+    """
+    from huggingface_hub import HfApi, hf_hub_download, snapshot_download  # noqa: PLC0415
+    from huggingface_hub.hf_api import RepoFolder  # noqa: PLC0415
+
+    from myosuite.biomechanics.retarget import clip_fits  # noqa: PLC0415
     from myosuite.core.hf_io import pinned_revision  # noqa: PLC0415
 
     repo_id, _, revision = repo_id.partition("@")
-    base = snapshot_download(
-        repo_id, repo_type="dataset", revision=pinned_revision(repo_id, revision),
-        allow_patterns=f"{model}/{version}/*", local_dir=local_dir,
-    )  # fmt: skip
-    return Path(base) / model / version
+    rev, kind = pinned_revision(repo_id, revision), "dataset"
+
+    def fetch(v: str) -> Path:
+        base = snapshot_download(
+            repo_id, repo_type=kind, revision=rev,
+            allow_patterns=f"{model}/{v}/*", local_dir=local_dir,
+        )  # fmt: skip
+        return Path(base) / model / v
+
+    root = fetch(version)
+    if fingerprint is None or probe is None or (root / probe).is_file():
+        return root
+    # Only reached without the current version's clips, so cached downloads stay offline.
+    api, tried = HfApi(), [version]
+    folders = api.list_repo_tree(
+        repo_id, path_in_repo=model, repo_type=kind, revision=rev
+    )
+    for v in sorted(
+        f.path.rsplit("/", 1)[-1] for f in folders if isinstance(f, RepoFolder)
+    ):
+        if v == version:
+            continue
+        tried.append(v)
+        path = f"{model}/{v}/{probe}"
+        if not api.file_exists(repo_id, path, repo_type=kind, revision=rev):
+            continue
+        clip = hf_hub_download(
+            repo_id, path, repo_type=kind, revision=rev, local_dir=local_dir
+        )
+        if clip_fits(clip, model, fingerprint):
+            return fetch(v)
+    raise MissingMotionData(
+        f"no {model} clips with kinematic fingerprint {fingerprint} in the dataset "
+        f"{repo_id} (folders {', '.join(f'{model}/{v}' for v in tried)}): add a "
+        f"{model}/{version} folder, or stamp a folder whose body is unchanged "
+        "(scripts/mimic/retarget_amass.py --stamp-fingerprint)"
+    )
 
 
 def kit_root(model: str = "myofullbody") -> Path:
@@ -103,6 +154,7 @@ def kit_root(model: str = "myofullbody") -> Path:
     first listed clip carries the installed body's kinematic fingerprint
     (:func:`~.models.kinematic_fingerprint`): a myo_sim release that leaves the body's
     kinematics alone keeps its clips (:func:`~myosuite.biomechanics.retarget.find_cache_root`).
+    The dataset falls back the same way (:func:`download_retargeted_clips`).
 
     Raises:
         MissingMotionData: If none of them holds the clips (naming the folders tried).
@@ -120,7 +172,10 @@ def kit_root(model: str = "myofullbody") -> Path:
     if cache is not None:
         return cache
     if os.environ.get(DATASET_ENV):
-        return download_retargeted_clips(os.environ[DATASET_ENV], model, version)
+        return download_retargeted_clips(
+            os.environ[DATASET_ENV], model, version,
+            fingerprint=kinematic_fingerprint(model), probe=rel,
+        )  # fmt: skip
     raise MissingMotionData(
         f"no KIT clips for {model} (myo_sim {version}, kinematic fingerprint "
         f"{kinematic_fingerprint(model)}) in {', '.join(map(str, tried))}: run "

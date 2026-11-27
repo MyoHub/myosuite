@@ -103,6 +103,10 @@ def write_cpu_state(
 ) -> None:
     """Write CPU-layout ``qpos`` / ``qvel`` (free root first) of one entity.
 
+    Goes through the Entity write API. A free joint's ``qvel[3:6]`` is a
+    body-frame angular velocity, while ``write_root_state_to_sim`` takes it in
+    the world frame, so it is rotated first.
+
     Args:
         env: The environment.
         entity_name: Scene entity key.
@@ -112,20 +116,23 @@ def write_cpu_state(
         qvel: CPU-layout velocities, shape ``(k, nv)``.
     """
     entity = env.scene[entity_name]
-    if entity.is_fixed_base:
-        entity.write_joint_state_to_sim(qpos, qvel, env_ids=env_ids)
+    idx = entity.indexing
+    q_adr = torch.cat([idx.free_joint_q_adr, idx.joint_q_adr]).long()
+    if not len(q_adr):  # a fixed entity without joints
         return
-    root = torch.cat(
-        [
-            qpos[:, :3] + env.scene.env_origins[env_ids],
-            qpos[:, 3:7],
-            qvel[:, :3],
-            quat_apply(qpos[:, 3:7], qvel[:, 3:6]),
-        ],
-        dim=-1,
-    )
-    entity.write_root_state_to_sim(root, env_ids=env_ids)
-    entity.write_joint_state_to_sim(qpos[:, 7:], qvel[:, 6:], env_ids=env_ids)
+    v_adr = torch.cat([idx.free_joint_v_adr, idx.joint_v_adr]).long()
+    q_base, v_base = q_adr.min(), v_adr.min()
+    if len(idx.free_joint_q_adr):
+        root = torch.cat((qpos[:, :7], qvel[:, :6]), dim=-1)
+        root[:, :3] += env.scene.env_origins[env_ids]
+        root[:, 10:13] = quat_apply(root[:, 3:7], qvel[:, 3:6])
+        entity.write_root_state_to_sim(root, env_ids=env_ids)
+    if len(idx.joint_q_adr):
+        entity.write_joint_state_to_sim(
+            qpos[:, idx.joint_q_adr.long() - q_base],
+            qvel[:, idx.joint_v_adr.long() - v_base],
+            env_ids=env_ids,
+        )
 
 
 class reset_to_cpu_state(ManagerTermBase):  # noqa: N801  (mjlab term style)

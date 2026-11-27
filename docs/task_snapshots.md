@@ -252,6 +252,11 @@ here, also has one.)
   (role sampled per episode); the chaser is rewarded for closing pelvis-to-pelvis
   distance and landing a tag (`ko_health_threshold` damage), the runner for
   evading (`myosuite/terms/multiplayer/chase_tag_vs_reward.py`).
+- **Scoring & divergence**: `info["score"]` reports `1 - t/maxTime` on a chase win
+  and `t/maxTime` on an evade win (`0.0` otherwise). If MuJoCo diverges on a step,
+  `info["mj_unstable"]` is `True`, both agents terminate with `info["score"] == 0.0`
+  (`tagged == False`, `chaser_fell == False`), and evaluators should record the
+  bout as void (draw, score 0 for both players).
 - **Baseline**: `onnx/chasetag_fbvs_baseline.onnx` in the `myohub/myosuite-3-baselines` Hugging Face repo (`myosuite.core.hf_io.download_baseline_file`) (`docs/baseline_checkpoints.md`).
 - **Dims** (per agent, `Dict` obs/action space): obs `(546,)`, action `(354,)`.
 - **Backends**: CPU only (no mjlab twin).

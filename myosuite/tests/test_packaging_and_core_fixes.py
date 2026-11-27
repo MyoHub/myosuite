@@ -141,3 +141,24 @@ def test_trajectory_io_closes_npz_and_differentiates_in_float64(tmp_path: Path) 
     loaded = load_motion_clip(npz_path, expected_nq=1, expected_nv=1)
     assert loaded.qpos.shape == (5, 1)
     npz_path.unlink()
+
+
+def test_pyproject_supports_gymnasium_1_4_and_numpy_2_5() -> None:
+    from packaging.requirements import Requirement
+
+    root = Path(__file__).resolve().parents[2]
+    cfg = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    deps = {
+        Requirement(d).name.lower(): Requirement(d).specifier
+        for d in cfg["project"]["dependencies"]
+    }
+
+    assert "gymnasium" in deps
+    assert deps["gymnasium"].contains("1.2.3")
+    assert deps["gymnasium"].contains("1.4.0")
+    assert not deps["gymnasium"].contains("2.0.0")
+
+    assert "numpy" in deps
+    assert deps["numpy"].contains("2.2.6")
+    assert deps["numpy"].contains("2.4.6")
+    assert deps["numpy"].contains("2.5.5")
