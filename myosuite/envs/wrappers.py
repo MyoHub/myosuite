@@ -68,7 +68,7 @@ from gymnasium.utils import RecordConstructorArgs
 from myosuite.envs import muscle_stages
 
 
-class _ForwardPublicAttributes:
+class ForwardPublicAttributes:
     """Forward public attributes the wrapper lacks to the wrapped env.
 
     Gymnasium 1.0 dropped this from ``Wrapper``, so ``env.mj_render()`` on the env
@@ -83,8 +83,11 @@ class _ForwardPublicAttributes:
         return self.env.get_wrapper_attr(name)
 
 
+_ForwardPublicAttributes = ForwardPublicAttributes
+
+
 class AttributeForwardingWrapper(
-    _ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
+    ForwardPublicAttributes, RecordConstructorArgs, gym.Wrapper
 ):
     """Outermost wrapper of envs registered without an instability wrapper."""
 
