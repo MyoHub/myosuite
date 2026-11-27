@@ -28,6 +28,7 @@ import mujoco
 import numpy as np
 
 from myosuite.core.multi_agent_config import MultiAgentTaskConfig
+from myosuite.envs.gymnasium_env import mj_diverged
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,8 @@ class ModularMultiAgentTaskEnv(gym.Env):
 
     Both agents act each step; the episode ends when
     :meth:`~myosuite.core.multi_agent_config.MultiAgentTaskConfig.episode_is_over`
-    is true (default: any fall or KO) or the step limit is reached. The env
+    is true (default: any fall or KO), when the simulation diverges, or when the step
+    limit is reached. The env
     truncates itself at
     :attr:`max_episode_steps`, so ``register_task`` registers it without
     gymnasium's ``TimeLimit`` (which would replace the per-agent ``truncated``
@@ -116,6 +118,8 @@ class ModularMultiAgentTaskEnv(gym.Env):
 
         self._viewer: Any = None
         self._renderer: Any = None
+        # Read by step() and by MjInstabilityTerminationWrapper.
+        self.mj_instability_termination: bool = True
 
     @property
     def max_episode_steps(self) -> int:
@@ -196,7 +200,11 @@ class ModularMultiAgentTaskEnv(gym.Env):
 
         Returns:
             5-tuple ``(obs, rewards, terminated, truncated, info)`` — all dicts
-            keyed by agent id except *info* which is a flat dict.
+            keyed by agent id except *info* which is a flat dict. Once the
+            simulation diverged (MuJoCo reset the data to ``qpos0``), the step
+            deals no damage, sees no falls, pays no positive reward or score,
+            and ends the episode for every agent; ``info["mj_unstable"]`` flags
+            it as a void bout.
         """
         # Apply all actions simultaneously before any physics.
         for agent_id in self._agents:
@@ -209,10 +217,15 @@ class ModularMultiAgentTaskEnv(gym.Env):
         mujoco.mj_forward(self.model, self.data)
 
         self._step_count += 1
+        unstable = bool(
+            self.mj_instability_termination and self._check_mj_instability_termination()
+        )
 
         # Damage: each agent deals damage to its opponent.
-        damage_delivered = self._config.compute_damage(
-            self.model, self.data, self._meta
+        damage_delivered = (
+            dict.fromkeys(self._agents, 0.0)
+            if unstable
+            else self._config.compute_damage(self.model, self.data, self._meta)
         )
 
         scale = self._config.health_update_scale
@@ -225,10 +238,11 @@ class ModularMultiAgentTaskEnv(gym.Env):
             )
 
         fell = {
-            a: self._config.check_fell(self.data, self._meta, a) for a in self._agents
+            a: not unstable and self._config.check_fell(self.data, self._meta, a)
+            for a in self._agents
         }
         ko = {a: self._health[a] >= ko_thresh for a in self._agents}
-        episode_over = self._config.episode_is_over(fell, ko)
+        episode_over = unstable or self._config.episode_is_over(fell, ko)
 
         terminated = {a: episode_over for a in self._agents}
         truncated = {
@@ -249,6 +263,8 @@ class ModularMultiAgentTaskEnv(gym.Env):
             )
             for a in self._agents
         }
+        if unstable:
+            rewards = {a: min(r, 0.0) for a, r in rewards.items()}
 
         obs = self._get_obs()
         info = self._config.get_info(
@@ -260,6 +276,12 @@ class ModularMultiAgentTaskEnv(gym.Env):
             ko,
             self._step_count,
         )
+        if unstable:
+            if "score" in info:
+                info["score"] = min(float(info["score"]), 0.0)
+            if "solved" in info:
+                info["solved"] = False
+        info["mj_unstable"] = unstable
 
         if self.render_mode == "human":
             self.render()
@@ -330,6 +352,10 @@ class ModularMultiAgentTaskEnv(gym.Env):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _check_mj_instability_termination(self) -> bool:
+        """Return True if the simulation diverged since the last reset."""
+        return mj_diverged(self.data)
 
     def _get_obs(self) -> dict[str, np.ndarray]:
         return {

@@ -33,10 +33,11 @@ on:
 
 # github.ref is refs/pull/<number>/merge on a pull request, so two PRs that
 # share a branch name do not cancel each other. On a push it is the branch ref.
-# Only PR runs cancel superseded ones; every push to main/dev and nightly run completes.
+# PR runs and pushes to dev cancel superseded ones (the newer dev push records
+# the testmon baseline). Pushes to main and nightly runs always complete.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
 
 permissions:
   contents: read
@@ -52,22 +53,25 @@ jobs:
         shell: bash -el -o pipefail {0}
 
     runs-on: ${{ matrix.os }}
+    # A healthy job takes 6-17 min. Without a limit, a runner that dies (e.g. out of
+    # memory) is only failed by GitHub after ~55 min (run 45377018327).
+    timeout-minutes: 30
     # Tests and sourced tutorial scripts must keep the fresh pip resolution.
     env:
       UV_NO_SYNC: "true"
     strategy:
       fail-fast: false
-      # PRs into dev run Ubuntu 3.11 only; macOS, Windows and Python 3.10 / 3.13 /
-      # 3.14 / 3.15 run after the merge (push to dev), on release PRs into main and
-      # nightly. 3.11 is the recommended default; 3.10 stays tested while
-      # requires-python >=3.10 holds (until MuJoCo 4); 3.13 tests the NumPy 2.5+
-      # (>=3.12) wheel line together with mjlab (<3.14); 3.14 and 3.15 (ONNX-free
-      # native CPU path) run on Linux only, since dependency resolution and
-      # Python-level incompatibilities are OS-independent.
+      # PRs into dev run Ubuntu 3.11 only; macOS, Windows and Python 3.13 / 3.15 run
+      # after the merge (push to dev), on release PRs into main and nightly. CI
+      # starts at 3.11, the recommended default (3.10 stays installable but is not
+      # tested); 3.13 tests the NumPy 2.5+ (>=3.12) wheel line together with mjlab
+      # (<3.14); 3.15 (ONNX-free native CPU path) covers the newest Python. Both run
+      # on Linux only, since dependency resolution and Python-level
+      # incompatibilities are OS-independent.
       matrix:
-        # On Linux 3.11 the suite runs as two parallel jobs: `mjlab` (tests marked
+        # On Linux 3.11 and 3.13 (the mjlab lines) the suite runs as two parallel jobs: `mjlab` (tests marked
         # by conftest.py as using mjlab / MuJoCo Warp) and `cpu` (everything else).
-        include: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref == 'dev' && '[{"os":"ubuntu-latest","python-version":"3.11","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.11","group":"mjlab"}]' || '[{"os":"ubuntu-latest","python-version":"3.11","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.11","group":"mjlab"},{"os":"macos-latest","python-version":"3.11","group":"all"},{"os":"windows-latest","python-version":"3.11","group":"all"},{"os":"ubuntu-latest","python-version":"3.10","group":"all"},{"os":"ubuntu-latest","python-version":"3.13","group":"all"},{"os":"ubuntu-latest","python-version":"3.14","group":"all"},{"os":"ubuntu-latest","python-version":"3.15","group":"all"}]') }}
+        include: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref == 'dev' && '[{"os":"ubuntu-latest","python-version":"3.11","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.11","group":"mjlab"}]' || '[{"os":"ubuntu-latest","python-version":"3.11","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.11","group":"mjlab"},{"os":"macos-latest","python-version":"3.11","group":"all"},{"os":"windows-latest","python-version":"3.11","group":"all"},{"os":"ubuntu-latest","python-version":"3.13","group":"cpu"},{"os":"ubuntu-latest","python-version":"3.13","group":"mjlab"},{"os":"ubuntu-latest","python-version":"3.15","group":"all"}]') }}
 
     steps:
       - name: Set environment variable for macOS
@@ -184,7 +188,7 @@ jobs:
       # and runs only the tests whose code it changed.
       - name: Restore testmon data
         id: testmon
-        if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.base_ref == 'dev' }}
+        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.11' && matrix.group != 'all' && github.base_ref == 'dev' }}
         uses: actions/cache/restore@v4
         with:
           path: .testmondata
@@ -193,22 +197,32 @@ jobs:
 
       - name: Pytest — full suite (tier 1–3, all backends; excludes @slow)
         if: ${{ runner.os == 'Linux' }}
+        timeout-minutes: 25
         env:
           SELECT: ${{ matrix.group == 'cpu' && 'not slow and not mjlab' || matrix.group == 'mjlab' && 'not slow and mjlab' || 'not slow' }}
           # select: PR into dev with Python-only changes and a recorded baseline.
           # record: push to dev (the baseline for later PRs). Otherwise run everything.
-          TESTMON: ${{ (github.base_ref == 'dev' && steps.changes.outputs.only_python == 'true' && steps.testmon.outputs.cache-matched-key != '') && 'select' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && matrix.group != 'all') && 'record' || 'off' }}
+          TESTMON: ${{ (github.base_ref == 'dev' && steps.changes.outputs.only_python == 'true' && steps.testmon.outputs.cache-matched-key != '') && 'select' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && matrix.python-version == '3.11' && matrix.group != 'all') && 'record' || 'off' }}
           NO_SYNC: ${{ matrix.python-version == '3.15' && '--no-sync' || '' }}
         run: |
           set -euo pipefail
           echo "testmon: $TESTMON"
+          # Log runner memory every 30 s, so an out-of-memory runner loss shows its trend.
+          # Stopped on exit (with its sleep), so it never holds the step's output open.
+          # Needs free and pkill, so it is skipped where either is missing (e.g. Git Bash on Windows).
+          if command -v free > /dev/null && command -v pkill > /dev/null; then
+            (while sleep 30; do free -m | awk 'NR==2 {print "[mem] used " $3 " MB / " $2 " MB"}'; done) &
+            mem_logger=$!
+            trap 'pkill -P "$mem_logger" 2>/dev/null; kill "$mem_logger" 2>/dev/null || true' EXIT
+          fi
           case "$TESTMON" in
             select)
               # These guards include import-time and subprocess behaviour testmon
               # cannot observe. Keep them independent of its affected-test record.
-              uv run ${NO_SYNC:-} python -m pytest -o addopts= -p no:pytest-testmon -v -m "$SELECT" \
+              uv run ${NO_SYNC:-} python -m pytest -o addopts= -p no:pytest-testmon -v --durations=30 -m "$SELECT" \
                 myosuite/tests/test_model_builder.py \
                 myosuite/tests/test_terms_cpu.py \
+                myosuite/tests/test_term_catalog.py \
                 myosuite/tests/test_fragment_compat.py \
                 myosuite/tests/test_parity.py \
                 myosuite/tests/test_registry.py \
@@ -217,16 +231,16 @@ jobs:
                 myosuite/tests/test_train_mjlab.py
               # Exit code 5: no test is affected by the change.
               status=0
-              uv run ${NO_SYNC:-} python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" --testmon-forceselect || status=$?
+              uv run ${NO_SYNC:-} python -m pytest -o addopts= myosuite/tests -v --durations=30 -m "$SELECT" --testmon-forceselect || status=$?
               if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then exit "$status"; fi ;;
             record)
-              uv run ${NO_SYNC:-} python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" --testmon ;;
+              uv run ${NO_SYNC:-} python -m pytest -o addopts= myosuite/tests -v --durations=30 -m "$SELECT" --testmon ;;
             *)
-              uv run ${NO_SYNC:-} python -m pytest -o addopts= myosuite/tests -v -m "$SELECT" ;;
+              uv run ${NO_SYNC:-} python -m pytest -o addopts= myosuite/tests -v --durations=30 -m "$SELECT" ;;
           esac
 
       - name: Checkpoint testmon data
-        if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.11' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
         run: |
           uv run python - <<'PY'
           import sqlite3
@@ -238,7 +252,7 @@ jobs:
           PY
 
       - name: Save testmon data
-        if: ${{ runner.os == 'Linux' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.11' && matrix.group != 'all' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
         uses: actions/cache/save@v4
         with:
           path: .testmondata

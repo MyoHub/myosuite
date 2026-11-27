@@ -52,7 +52,7 @@ def test_python_310_remains_installable_until_mujoco_4() -> None:
     assert "Programming Language :: Python :: 3.11" in project["classifiers"]
 
 
-def test_ci_and_docs_default_to_python_311_and_test_310_to_315() -> None:
+def test_ci_and_docs_default_to_python_311_and_test_311_to_315() -> None:
     workflow = _REPO / ".github" / "workflows" / "python-app.yml"
     docs_wf = _REPO / ".github" / "workflows" / "docs.yml"
     rtd = _REPO / ".readthedocs.yaml"
@@ -63,8 +63,11 @@ def test_ci_and_docs_default_to_python_311_and_test_310_to_315() -> None:
     pr_matrix, full_matrix = include_line.split("||", maxsplit=1)
     assert '"python-version":"3.11"' in pr_matrix
     assert '"python-version":"3.10"' not in pr_matrix
-    for ver in ("3.10", "3.11", "3.13", "3.14", "3.15"):
+    # CI starts at 3.11; 3.13 is the newest mjlab line and 3.15 the newest Python.
+    for ver in ("3.11", "3.13", "3.15"):
         assert f'"python-version":"{ver}"' in full_matrix
+    for ver in ("3.10", "3.14"):
+        assert f'"python-version":"{ver}"' not in full_matrix
     assert "matrix.python-version == '3.11'" in text
     assert 'python-version: "3.11"' in docs_wf.read_text(encoding="utf-8")
     assert 'python: "3.11"' in rtd.read_text(encoding="utf-8")

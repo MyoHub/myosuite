@@ -23,6 +23,14 @@ directly::
 (pass `--checkpoint <run directory>` instead to use a checkpoint you trained yourself). Resume a
 run with `python scripts/train_mjlab.py <env_id> --agent.resume True --agent.load-run <run> --env.scene.num-envs 4096`.
 
+A body scaled to a subject (`make_env(env_id, scales=..., total_mass=...)`) changes the
+dynamics even though the observation and action shapes stay the same. The published
+checkpoints are trained on the nominal body. A policy trained on a subject should record it
+with `write_manifest(..., scales=..., total_mass=...)` and be checked with
+`check_contract(..., scales=..., total_mass=..., strict=True)` before loading. A different
+or unrecorded body is then rejected. Nominal checkpoints are checked as before. See the
+body-scaling guide.
+
 | Env                          | Checkpoint         | Deterministic success (mjlab) |
 | ---------------------------- | ------------------ | ----------------------------- |
 | motorFingerPoseFixed-v0      | `model_83.pt`      | 100.0%                        |
@@ -85,6 +93,8 @@ CPU evaluations that pass a NumPy array as `FatigueWrapper.fatigue_reset_vec` no
 `myoChallengeChaseTagP2-v0`, `myoChallengeChaseTagP2eval-v0` and their `myoSarc` / `myoFati` variants pay the EVADE win again: the last step of an EVADE episode that reaches the time limit has `solved = 1` (+1000) and score 1.0. In 3.1.0 that win could not fire, so EVADE returns and `get_metrics` scores measured on 3.1.0 are too low for policies that survive; reevaluate them. Observations, actions and dynamics are unchanged, and no checkpoint of these ids is published here.
 
 On every CPU env, a step on which MuJoCo reset a diverged simulation no longer pays a positive reward or counts as `solved`, and `info["mj_unstable"]` marks it. Observations, actions, dynamics and the rewards of regular steps are unchanged, so checkpoints load and score as before; only evaluations that contained a diverged episode change (the ChaseTag envs counted such an episode as a win).
+
+The two-agent `myoChallengeChaseTagFBVs-v0` now ends such an episode for both players with `info["score"] == 0.0` (it continued from the reset state and could count it as a tag or an evade timeout win); evaluators should treat `info["mj_unstable"] == True` as a void bout (draw, score 0). Its baseline `onnx/chasetag_fbvs_baseline.onnx` is unaffected outside diverged episodes.
 
 `myoMimic-v0` uniform and return resets now exclude terminal-only reference bins on CPU and mjlab, so every reset has at least one reference transition. This corrects the random-start distribution for clips whose last frame starts a bin (for example, a one-second clip at 10 ms). The stored terminal frame remains the final scoring target. Reevaluate policies with the corrected distribution; adaptive per-bin training statistics from a library containing those empty bins must be rebuilt. Policy input/action layouts and clip-start evaluation are unchanged.
 CPU clip-following evaluations through `MuscleMimicClipEnvV0` now score sites after the final physics substep. Earlier site-based rewards and early termination used geometry from one substep earlier than qpos/qvel. Reevaluate checkpoints measured through this class: policy inputs, action layout, control step and integration trajectories are preserved, while rewards and termination can differ.
@@ -156,6 +166,12 @@ re-evaluated: they can only stay or drop. Rates from `evaluate_success`, or from
 one solved step, are not comparable with earlier versions. Observations, actions, rewards and dynamics are unchanged,
 so no checkpoint needs retraining. The per-step flag is still reported as `on_target` (CPU `info`) and
 `Episode_Metrics/on_target` (mjlab, share of an episode's steps).
+
+The directional walks (`myoLegDirectionalForward-v0`, `myoLegDirectionalBackward-v0`, `myoLegDirectionalRandom-v0`)
+use the same rule (one second is 200 of their 0.005 s control steps, of 500 per episode). Random actions that fall
+after about 1 s had 15 to 69 solved steps and scored 100 % with `evaluate_success`; they now score 0 %. Their rows
+(96.9 %, 100 % and 53.8 %) were measured on the last step with the per-step flag and not re-evaluated: they can only
+stay or drop.
 
 **Terrain and CPU evaluation.** A deterministic CPU evaluation is a single trajectory. The mjlab twins of the
 rough, hilly and stairs walk tasks bake one terrain into the height field (Warp shares one `hfield_data` between
@@ -257,9 +273,11 @@ env contract hash does not warn. No checkpoint of these ids is published in `myo
 above has none for `myoChallengeChaseTagFBP2-v0`), so none was re-evaluated. Policies trained on these ids with
 MyoSuite 3.1.0 or earlier, or with the PyPI 2.x MyoChallenge envs, were trained from the old starts: re-evaluate them
 before comparing, in particular ChaseTag P1/P2 policies, which share the keyframe from whose projected start the
-`myoLegWalk-v0` checkpoint falls. `myoChallengeTableTennisP{0,1,2}-v0` and `myoChallengeChaseTagFBVs-v0` are
-unchanged: the table-tennis keyframe holds the paddle with the shoulder rhythm 0.59 rad off its couplings and needs a
-keyframe on them first, and the tutorial files below were measured on the unchanged two-agent reset.
+`myoLegWalk-v0` checkpoint falls. `myoChallengeTableTennisP{0,1,2}-v0` (and their mjlab twins) start from a
+re-solved right-arm pose on the couplings: the seven arm joints move by up to 0.42 rad and the shoulder rhythm by up to
+0.59 rad, while the hand keeps its grasp on the paddle (grasp site within 5e-6 m and 2e-4 rad, same contacts); no
+table-tennis checkpoint is published, but policies trained on the old keyframe start from a different arm pose.
+`myoChallengeChaseTagFBVs-v0` is unchanged, and the tutorial files below were measured on its two-agent reset.
 
 **Centre-of-mass velocity of the walk tasks (after 3.1.0).** `myoLegWalk-v0`, the rough, hilly and stairs walks and
 their `myoSarc`/`myoFati` variants now observe and reward the velocity of the whole-body centre of mass, on both
