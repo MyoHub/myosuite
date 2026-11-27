@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,11 @@ from myosuite.biomechanics.emg_validation import (
     summarize_emg_validation,
     validate_trial,
 )
-from myosuite.biomechanics.static_optimization import StaticOptimizationConfig
+from myosuite.biomechanics.grip import GripHandle
+from myosuite.biomechanics.static_optimization import (
+    GripContactConfig,
+    StaticOptimizationConfig,
+)
 from myosuite.biomechanics.uncertainty import UncertaintyConfig
 from myosuite.integrations.emg.trial_io import NpzDirectoryEMGSource, save_emg_trial
 from myosuite.integrations.mm_evalkit.rollout_export import (
@@ -94,12 +99,22 @@ MANIFEST_TEMPLATE: dict[str, Any] = {
 }
 
 _WORKTREE_COMPILE_SNIPPET = """
+import json
 import sys
 import mujoco
-wt_dir, model_name, out_mjb = sys.argv[1], sys.argv[2], sys.argv[3]
+wt_dir, model_name, out_mjb, handle = sys.argv[1:5]
 sys.path.insert(0, wt_dir)
 import myo_sim
-model = myo_sim.load_model(model_name)
+if handle:
+    from myosuite.biomechanics.grip import GripHandle
+    postures = getattr(myo_sim, "list_postures", lambda _: None)(model_name)
+    spec = myo_sim.load_spec(
+        model_name, build_kwargs={"postures": True} if postures else None
+    )
+    GripHandle(**json.loads(handle)).add_to(spec)
+    model = spec.compile()
+else:
+    model = myo_sim.load_model(model_name)
 mujoco.mj_saveModel(model, out_mjb, None)
 """
 
@@ -249,6 +264,7 @@ def _build_diaz2026(args: argparse.Namespace) -> EMGSource:
         pattern=args.filter,
         max_window_s=args.window_s if args.window_s is not None else 10.0,
         kinematics_rate_hz=args.kinematics_rate,
+        grip_handle=None if getattr(args, "no_grip", False) else GripHandle(),
     )
 
 
@@ -278,7 +294,19 @@ def registered_dataset_choices() -> tuple[str, ...]:
     return tuple(_SOURCE_BUILDERS.keys())
 
 
-def _compile_worktree_model(worktree_dir: Path, model_name: str) -> mujoco.MjModel:
+def _with_handle(myo_sim: Any, model_name: str, handle: GripHandle) -> mujoco.MjModel:
+    """``myo_sim.load_model(model_name)`` with *handle* added to its spec."""
+    postures = getattr(myo_sim, "list_postures", lambda _: None)(model_name)
+    spec = myo_sim.load_spec(
+        model_name, build_kwargs={"postures": True} if postures else None
+    )
+    handle.add_to(spec)
+    return spec.compile()
+
+
+def _compile_worktree_model(
+    worktree_dir: Path, model_name: str, handle: GripHandle | None = None
+) -> mujoco.MjModel:
     if not (worktree_dir / "myo_sim").is_dir():
         raise CheckoutCapabilityError(
             f"Worktree model spec '{worktree_dir}:{model_name}' requires a myo_sim source "
@@ -295,6 +323,7 @@ def _compile_worktree_model(worktree_dir: Path, model_name: str) -> mujoco.MjMod
                 str(worktree_dir.resolve()),
                 model_name,
                 str(mjb_path),
+                json.dumps(asdict(handle)) if handle is not None else "",
             ],
             check=True,
             capture_output=True,
@@ -303,12 +332,23 @@ def _compile_worktree_model(worktree_dir: Path, model_name: str) -> mujoco.MjMod
         return mujoco.MjModel.from_binary_path(str(mjb_path))
 
 
-def load_target_model(spec: str) -> tuple[mujoco.MjModel, str]:
-    """Resolve a worktree ``dir:model``, XML/MJB file, ``myo_sim`` model, mimic body or ``env_id``."""
+def load_target_model(
+    spec: str, handle: GripHandle | None = None
+) -> tuple[mujoco.MjModel, str]:
+    """Resolve a worktree ``dir:model``, XML/MJB file, ``myo_sim`` model, mimic body or ``env_id``.
+
+    With *handle* (a source's ``grip_handle``) the handle is added to the spec of
+    XML files and ``myo_sim`` models (worktree ones included); other models are
+    loaded without it, and their trials then run without the grip.
+    """
     direct = Path(spec)
     if direct.is_file():
         if direct.suffix.lower() == ".mjb":
             return mujoco.MjModel.from_binary_path(str(direct)), direct.name
+        if handle is not None:
+            mj_spec = mujoco.MjSpec.from_file(str(direct))
+            handle.add_to(mj_spec)
+            return mj_spec.compile(), direct.name
         return mujoco.MjModel.from_xml_path(str(direct)), direct.name
 
     sep = spec.rfind(":")
@@ -317,11 +357,16 @@ def load_target_model(spec: str) -> tuple[mujoco.MjModel, str]:
         if wt_part == "myo_sim":
             import myo_sim
 
-            return myo_sim.load_model(model_name), f"myo_sim:{model_name}"
+            model = (
+                myo_sim.load_model(model_name)
+                if handle is None
+                else _with_handle(myo_sim, model_name, handle)
+            )
+            return model, f"myo_sim:{model_name}"
         wt_dir = Path(wt_part)
         if wt_dir.exists():
             return _compile_worktree_model(
-                wt_dir, model_name
+                wt_dir, model_name, handle
             ), f"{wt_dir.name}:{model_name}"
         if "/" in wt_part or "\\" in wt_part:
             raise CheckoutCapabilityError(
@@ -337,6 +382,8 @@ def load_target_model(spec: str) -> tuple[mujoco.MjModel, str]:
     import myo_sim
 
     if hasattr(myo_sim, "ALL_MODELS") and spec in myo_sim.ALL_MODELS:
+        if handle is not None:
+            return _with_handle(myo_sim, spec, handle), spec
         return myo_sim.load_model(spec), spec
     sim_candidate = Path(myo_sim.__file__).resolve().parent / spec
     if sim_candidate.is_file():
@@ -363,6 +410,33 @@ def build_source(args: argparse.Namespace) -> EMGSource:
     if builder is None:
         raise ValueError(f"unsupported dataset {args.dataset!r}")
     return builder(args)
+
+
+def trial_optimization_config(
+    trial: EMGTrial, *, contact_fallback: bool = True
+) -> StaticOptimizationConfig:
+    """Static-optimization settings a trial asks for in its ``meta``.
+
+    ``contact_forces_fallback`` estimates ground contacts, ``supported_dofs``
+    leaves strapped dofs to their support, and ``grip`` (the fields of
+    :class:`GripContactConfig`) adds the hand-handle contacts.
+    """
+    use_contacts = contact_fallback and bool(trial.meta.get("contact_forces_fallback"))
+    grip = trial.meta.get("grip")
+    return StaticOptimizationConfig(
+        # Grip contacts make the QP degenerate (many edge forces balance alike):
+        # OSQP needs ~20x fewer iterations at 1e-6, with activations within 1e-3.
+        tolerance=1e-7 if grip is None else 1e-6,
+        contact_forces=use_contacts,
+        contact_distance=0.03 if use_contacts else 0.01,
+        supported_dofs=getattr(trial, "supported_dofs", ())
+        or tuple(int(d) for d in trial.meta.get("supported_dofs", ())),
+        grip=None
+        if grip is None
+        else GripContactConfig(
+            **{k: tuple(v) if isinstance(v, list) else v for k, v in dict(grip).items()}
+        ),
+    )
 
 
 def evaluate_model_on_source(
@@ -407,17 +481,7 @@ def evaluate_model_on_source(
             safe_name = tid.replace("/", "__").replace("\\", "__") + ".npz"
             save_emg_trial(export_npz_dir / safe_name, trial)
 
-        use_contacts = contact_fallback and bool(
-            trial.meta.get("contact_forces_fallback")
-        )
-        supported = getattr(trial, "supported_dofs", ()) or tuple(
-            int(d) for d in trial.meta.get("supported_dofs", ())
-        )
-        opt_cfg = StaticOptimizationConfig(
-            contact_forces=use_contacts,
-            contact_distance=0.03 if use_contacts else 0.01,
-            supported_dofs=supported,
-        )
+        opt_cfg = trial_optimization_config(trial, contact_fallback=contact_fallback)
         ctrl_qadr = trial.meta.get("controlled_qpos_adr")
         rep = validate_trial(
             model,
@@ -637,6 +701,11 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         help="Disable contact estimation when force plates are absent.",
     )
     ap.add_argument(
+        "--no-grip",
+        action="store_true",
+        help="diaz2026: leave the Biodex handle out (fingers at qpos0, no grip contacts).",
+    )
+    ap.add_argument(
         "--uncertainty-samples",
         type=int,
         default=0,
@@ -699,7 +768,8 @@ def run_emg_validation(
     )
     export_dir = Path(args.export_npz) if args.export_npz else None
 
-    model_a, label_a = load_target_model(args.model)
+    handle = getattr(source, "grip_handle", None)
+    model_a, label_a = load_target_model(args.model, handle)
     rollout_audit = bool(
         args.rollout_audit or args.dataset in ("emg2pose", "ninapro_db5", "grabmyo")
     )
@@ -724,7 +794,7 @@ def run_emg_validation(
     model_b: mujoco.MjModel | None = None
     comparison: dict[str, Any] | None = None
     if args.model_b:
-        model_b, label_b = load_target_model(args.model_b)
+        model_b, label_b = load_target_model(args.model_b, handle)
         reports_b, summary_b, trials_b = evaluate_model_on_source(
             model_b,
             label_b,
@@ -839,4 +909,5 @@ __all__ = [
     "registered_dataset_choices",
     "render_markdown_report",
     "run_emg_validation",
+    "trial_optimization_config",
 ]
