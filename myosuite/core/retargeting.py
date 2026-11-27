@@ -40,6 +40,7 @@ def retarget(
     qpos: ArrayLike | None = None,
     rotation: ArrayLike | None = None,
     translation: ArrayLike | None = None,
+    ground_each_frame: bool = False,
 ) -> MotionClip:
     """Fit a model to marker trajectories, one frame at a time.
 
@@ -51,9 +52,10 @@ def retarget(
 
     The marker error and the sole height are recorded for every frame. With a
     free root joint, the whole clip is then shifted vertically by one offset so
-    that its lowest sole point touches ``z = 0``. The sole is the collision
-    geometry of the root's tree (the feet of a standing model) or, if given,
-    *ground_sites*. A fixed-base model is not shifted.
+    that its lowest sole point touches ``z = 0``, or each frame by its own with
+    *ground_each_frame*. The sole is the collision geometry of the root's tree
+    (the feet of a standing model) or, if given, *ground_sites*. A fixed-base
+    model is not shifted.
 
     Example::
 
@@ -79,6 +81,9 @@ def retarget(
             world frame, e.g. ``[[1, 0, 0], [0, 0, -1], [0, 1, 0]]`` for the
             Y-up frame of OpenSim files. Identity by default.
         translation: Offset ``(3,)`` in metres added after *rotation*.
+        ground_each_frame: Put every frame's lowest sole point on the ground,
+            for markers without a usable height, such as root-relative poses
+            from a single camera. This assumes a foot is down in every frame.
 
     Returns:
         A :class:`~myosuite.core.trajectory_io.MotionClip` with ``qpos``,
@@ -88,7 +93,8 @@ def retarget(
         ``marker_xpos`` ``(T, M, 3)`` (measured, in the model frame),
         ``marker_error`` ``(T, M)`` (metres, NaN where missing),
         ``sole_height`` ``(T,)`` (metres, ``None`` without a free root),
-        ``ground_offset`` (metres added to the root height), ``solved``
+        ``ground_offset`` (metres added to the root height; ``(T,)`` with
+        *ground_each_frame*), ``solved``
         ``(T,)`` (frames with markers) and ``source``.
 
     Raises:
@@ -135,13 +141,13 @@ def retarget(
     qpos_out[:first] = qpos_out[first]
     site_xpos[:first] = site_xpos[first]
     heights[:first] = heights[first]
-    offset = 0.0
+    offset: float | np.ndarray = 0.0
     if sole.place:
-        offset = -float(np.min(heights))
+        offset = -heights if ground_each_frame else -float(np.min(heights))
         for joint in roots:
             qpos_out[:, model.jnt_qposadr[joint] + 2] += offset
-        site_xpos[:, sole.in_roots(site_ids), 2] += offset
-        heights += offset
+        site_xpos[:, sole.in_roots(site_ids), 2] += np.reshape(offset, (-1, 1))
+        heights = heights + offset
     measured = positions[:, columns]
     metadata: dict[str, Any] = {
         "markers": list(mapping),
