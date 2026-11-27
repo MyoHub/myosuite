@@ -8,6 +8,9 @@ The CPU counterpart of ``scripts/train_mjlab.py``::
 Saves ``<out>.zip`` (default ``logs/sb3/<env_id>/model``) and, with ``--normalize``,
 ``<out>_vecnormalize.pkl``. Afterwards it scores the deterministic policy: mean return
 and the share of episodes that are solved on their final step.
+
+``--snapshot-freq N`` also saves the policy every N steps to ``<out>_snapshots/``, for a
+mixture of snapshots (``myosuite.utils.policy_mixture``).
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from typing import Literal
 
 import numpy as np
 from stable_baselines3 import PPO, SAC, TD3
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import (
@@ -76,6 +80,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--eval-episodes", type=int, default=20, help="0 skips the evaluation."
+    )
+    p.add_argument(
+        "--snapshot-freq",
+        type=int,
+        default=0,
+        help="Save a snapshot every this many steps to <out>_snapshots/ (0: off).",
     )
     args = p.parse_args(argv)
     if args.n_envs < 1:
@@ -147,7 +157,17 @@ def main(argv: list[str] | None = None) -> Path:
             verbose=1,
             tensorboard_log=str(args.tensorboard) if args.tensorboard else None,
         )
-        model.learn(total_timesteps=args.timesteps)
+        snapshots = (
+            CheckpointCallback(
+                save_freq=max(args.snapshot_freq // args.n_envs, 1),
+                save_path=f"{out}_snapshots",
+                name_prefix=out.name,
+                save_vecnormalize=True,
+            )
+            if args.snapshot_freq > 0
+            else None
+        )
+        model.learn(total_timesteps=args.timesteps, callback=snapshots)
         model.save(out)
         if args.normalize:
             env.save(str(out) + "_vecnormalize.pkl")
