@@ -780,3 +780,18 @@ _reg(
 )
 
 # Arm reaching (myoArmReach*) is registered in myosuite.envs.myo.myoedits.
+
+
+def _lazy_mjlab_experiment(env_id: str) -> str | None:
+    from mjlab.tasks.registry import load_rl_cfg
+
+    import myosuite.envs.myo.backends.mjlab  # noqa: F401
+
+    return load_rl_cfg(env_id).experiment_name
+
+
+from myosuite.policies.checkpoint_utils import (  # noqa: E402
+    register_mjlab_experiment_provider as _register_mjlab_experiment_provider,
+)
+
+_register_mjlab_experiment_provider(_lazy_mjlab_experiment)

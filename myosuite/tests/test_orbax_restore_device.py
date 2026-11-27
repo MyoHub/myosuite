@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from myosuite.integrations.musclemimic.fullbody_local_policy import _restore_on_cpu
+from myosuite.policies.orbax_checkpoint import _restore_on_cpu
 
 pytestmark = pytest.mark.tier2
 

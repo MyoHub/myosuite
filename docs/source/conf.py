@@ -70,6 +70,7 @@ if "autoapi.extension" in extensions:
         "*myosuite/terms/base_*.py",
         "*myosuite/terms/mimic_*.py",
         "*myosuite/terms/opponent_relative_obs.py",
+        "*myosuite/terms/catalog.py",
         "*myosuite/terms/waypoint.py",
         "*myosuite/terms/multiplayer/common.py",
         "*myosuite/terms/multiplayer/heading.py",
@@ -77,6 +78,7 @@ if "autoapi.extension" in extensions:
         "*myosuite/core/playback_contract.py",
         "*myosuite/core/retargeting.py",
         "*myosuite/core/trajectory_io.py",
+        "*myosuite/core/tensor_utils.py",
         "*myosuite/core/trajectory_yaw.py",
     ]
     autoapi_type = "python"

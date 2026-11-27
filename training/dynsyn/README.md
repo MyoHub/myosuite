@@ -20,7 +20,7 @@ none of its code is included here.
 | What | Source |
 |---|---|
 | Grouping: muscle lengths under random joint velocities, segment similarity, k-medoids (`groups.py`) | The paper (Eq. 2). Centring each segment is a choice of this implementation, and so is the segment length (the paper gives none). The defaults of `synergy_groups` (500k steps, velocity bound 10) follow the reference implementation. |
-| Correction form `1 + clip(kappa tanh(w), -c, c)` and `kappa = 0.1` (`myosuite.utils.action_map`) | The paper's Eq. 5-7, with the correction taken relative to the group's action as in the reference implementation. |
+| Correction form `1 + clip(kappa tanh(w), -c, c)` and `kappa = 0.1` (`myosuite.policies.action_map`) | The paper's Eq. 5-7, with the correction taken relative to the group's action as in the reference implementation. |
 | Schedule of the bound, `min(max(k (t - a), 0), kappa)` | The paper's Eq. 6, read as `k (t - a)` (the paper prints `k t + a`; see the docstring of `weight_amplitude`). |
 | k-medoids implementation, trainer (`train.py`), checkpoint record, mjlab action term, CPU wrapper | New MyoSuite code. |
 
@@ -33,7 +33,7 @@ there.
 - `myosuite_dynsyn/train.py` is the trainer. It takes the task's env and runner configs from
   mjlab's task registry (where MyoSuite registers its twins). DynSyn adds one action term in front
   of the task's muscle term; the rest of the task is unchanged.
-- MyoSuite holds the playback side: `myosuite.utils.action_map` (the `DynSyn` map, the CPU
+- MyoSuite holds the playback side: `myosuite.policies.action_map` (the `DynSyn` map, the CPU
   wrapper, checkpoint reading) and the mjlab action term
   `myosuite/envs/myo/backends/mjlab/tasks/mdp/action_map.py`. A DynSyn checkpoint plays with
   `scripts/eval_mjlab_policy.py` without this package.
@@ -45,7 +45,7 @@ pip install "myosuite[mjlab]"   # or, from a checkout: pip install -e ".[mjlab]"
 pip install "git+https://github.com/MyoHub/myosuite.git@v3.1.0#subdirectory=training/dynsyn"
 ```
 
-The project needs a MyoSuite that has `myosuite.utils.action_map`, so install MyoSuite from the
+The project needs a MyoSuite that has `myosuite.policies.action_map`, so install MyoSuite from the
 same branch first.
 
 ## Use

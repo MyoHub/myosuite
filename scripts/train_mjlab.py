@@ -7,7 +7,7 @@ Muscle-command features (the ``EnvConfig.features`` of ``make_env``) are added w
         --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
 
 Names: ``motor-noise``, ``fatigue``, ``sarcopenia``, ``reafferentation`` (see
-``myosuite.utils.feature_cli``). Evaluate the checkpoint with the same ``--feature`` flags.
+``myosuite.envs.feature_cli``). Evaluate the checkpoint with the same ``--feature`` flags.
 """
 
 import copy
@@ -34,8 +34,8 @@ from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wandb import add_wandb_tags
 from mjlab.utils.wrappers import VideoRecorder
 
-from myosuite.utils.checkpoint_utils import resume_checkpoint
-from myosuite.utils.feature_cli import parse_feature_args
+from myosuite.policies.checkpoint_utils import resume_checkpoint
+from myosuite.envs.feature_cli import parse_feature_args
 
 
 @dataclass(frozen=True)
@@ -447,7 +447,7 @@ def main():
     )
 
     # ``--feature NAME[=JSON]`` (repeatable): the muscle-command features of
-    # ``EnvConfig.features``; see ``myosuite.utils.feature_cli``.
+    # ``EnvConfig.features``; see ``myosuite.envs.feature_cli``.
     features, remaining_args = parse_feature_args(remaining_args)
     args = tyro.cli(
         TrainConfig,

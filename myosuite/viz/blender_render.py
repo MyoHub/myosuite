@@ -177,7 +177,7 @@ def export_rollout(
     from pxr import Tf, Usd, UsdGeom
 
     from myosuite import make_env
-    from myosuite.utils.checkpoint_utils import load_policy
+    from myosuite.policies.checkpoint_utils import load_policy
     from myosuite.viz.muscle_tubes import muscle_actuators, split_branches
     from myosuite.viz.skin import SkinPose, load_skin
 
@@ -1589,7 +1589,7 @@ def render_rollout(
     if not config.preview:
         import imageio.v3 as iio
 
-        from myosuite.utils.video_io import write_video
+        from myosuite.viz.video_io import write_video
 
         frames = sorted(
             (config.output / "frames").glob("frame_*.png"),
@@ -1701,7 +1701,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     checkpoint = args.checkpoint
     if checkpoint is None and not args.random and args.motion is None:
-        from myosuite.utils.checkpoint_utils import find_checkpoint  # noqa: PLC0415
+        from myosuite.policies.checkpoint_utils import find_checkpoint  # noqa: PLC0415
 
         checkpoint = find_checkpoint(args.env)
         if checkpoint is None:

@@ -25,7 +25,7 @@ Default policies
 
 Default mjlab (RSL-RL) checkpoints are hosted on `myohub/myosuite-3-baselines <https://huggingface.co/myohub/myosuite-3-baselines>`_
 on Hugging Face, and are downloaded automatically (cached by ``huggingface_hub``) the first time
-they're needed — by the tutorials, and by ``myosuite.utils.checkpoint_utils.find_checkpoint``.
+they're needed — by the tutorials, and by ``myosuite.policies.checkpoint_utils.find_checkpoint``.
 They run on both the CPU and the mjlab backend::
 
    python scripts/eval_mjlab_policy.py myoFingerPoseRandom-v0 --backend cpu

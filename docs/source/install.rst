@@ -78,7 +78,7 @@ Verify
 .. code-block:: bash
 
    python -c "import myosuite; print(len(myosuite.myosuite_env_suite), 'envs')"
-   python -m myosuite.utils.examine_env --env_name myoElbowPose1D6MRandom-v0
+   python -m myosuite.benchmarks.examine_env --env_name myoElbowPose1D6MRandom-v0
 
 On macOS the viewer needs ``mjpython`` instead of ``python``.
 

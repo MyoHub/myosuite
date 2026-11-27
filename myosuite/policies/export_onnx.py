@@ -1,0 +1,1158 @@
+#!/usr/bin/env python3
+# Copyright (c) MyoSuite Authors. All rights reserved.
+#
+# This source code is licensed under the Apache 2 license found in the
+# LICENSE file in the root directory of this source tree.
+"""
+Export a trained policy to ONNX for cross-backend playback.
+
+ONNX is the common interchange format: a policy trained on any backend
+(CPU/SB3, MJX/Brax, mjlab/RSL-RL) can be exported once and played back
+on all three, enabling:
+
+  - Reward verification: same ONNX policy → same (obs, action) pairs on
+    CPU, MJX, and mjlab (up to float32/float64 rounding).
+  - Deployment: load the ONNX model in C++, PyTorch, or TensorFlow without
+    the training framework installed.
+  - Regression testing: store a reference ONNX checkpoint and assert that
+    future training runs match it within a reward threshold.
+
+Supported source frameworks
+---------------------------
+  - **SB3 (SAC / TD3 / PPO)** — saved as a ``.zip`` file via
+    ``model.save("path")``.  The actor (deterministic mean) is exported.
+  - **RSL-RL (PPO)** — saved via ``runner.save("path.pt")`` as a state-dict.
+    Requires reconstructing the ActorCritic network with the same config.
+  - **JAX/Flax (Brax PPO)** — parameters saved as a ``.pkl`` checkpoint.
+    Converted via ``jax.experimental.jax2tf`` → TensorFlow → ONNX, or via
+    an intermediate PyTorch wrapper.
+
+Usage
+-----
+    # Run via ``python -m myosuite.policies.export_onnx`` (or ``myosuite-export-onnx``):
+    # Export an SB3 policy (with the VecNormalize stats it was trained behind):
+    python -m myosuite.policies.export_onnx export --framework sb3 --checkpoint walk_sac.zip \
+        --vecnormalize vecnormalize.pkl --obs-dim 243 --act-dim 80 \
+        --output walk_policy.onnx
+
+    # Export an RSL-RL (mjlab) policy (architecture read from the checkpoint):
+    python -m myosuite.policies.export_onnx export --framework rslrl --checkpoint walk_ppo.pt \
+        --obs-dim 243 --act-dim 80 --output walk_policy.onnx
+
+    # Verify an exported ONNX policy on the CPU env:
+    python -m myosuite.policies.export_onnx verify --onnx walk_policy.onnx --steps 200
+
+ONNX model interface
+--------------------
+  Input:  ``obs``    float32  (1, obs_dim)   — raw observation vector of the env
+  Output: ``action`` float32  (1, act_dim)   — deterministic action
+
+The observation normalization of training is folded into the graph: SB3
+``VecNormalize`` statistics (when given), the RSL-RL observation normalizer and
+the MuscleMimic running statistics.
+
+SB3 exports apply the post-processing of ``model.predict(deterministic=True)``:
+the action is clipped to the model's action space (``[-1, 1]`` for MyoSuite
+muscle envs), or rescaled to it for tanh-squashed SAC/TD3 actors. RSL-RL (mjlab)
+exports return the raw policy action that the CPU env's ``step()`` expects
+(``[-1, 1]``, mapped to muscle excitation by the env).
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import logging
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+
+from myosuite.core.registry import make_env
+from myosuite.policies.actor_tree import (
+    residual_block_indices as _residual_block_indices,
+)
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - optional on CPU-only playback installs
+    torch = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:
+    import torch
+    from stable_baselines3.common.vec_env import VecNormalize
+
+_ModuleBase: type = torch.nn.Module if torch is not None else object
+
+log = logging.getLogger(__name__)
+
+
+def _require_torch() -> Any:
+    if torch is None:
+        raise ImportError("ONNX policy export requires PyTorch (`pip install torch`).")
+    return torch
+
+
+VERIFY_ATOL = 1e-4
+VERIFY_RTOL = 1e-4
+
+
+def verify_onnx_parity(
+    policy: torch.nn.Module,
+    onnx_path: str | Path,
+    obs_dim: int,
+    *,
+    atol: float = VERIFY_ATOL,
+    rtol: float = VERIFY_RTOL,
+    seed: int = 0,
+) -> float:
+    """Verify ONNX graph parity against ``policy`` across single and batched inputs.
+
+    Args:
+        policy: Reference PyTorch module in eval mode.
+        onnx_path: Exported ``.onnx`` file to check.
+        obs_dim: Input observation dimension.
+        atol: Absolute tolerance.
+        rtol: Relative tolerance.
+        seed: Deterministic RNG seed for test observations.
+
+    Returns:
+        Maximum absolute difference observed across checked batches.
+
+    Raises:
+        ImportError: When ``onnxruntime`` is not installed.
+        RuntimeError: When ONNX output deviates from PyTorch beyond ``(atol, rtol)``.
+    """
+    _torch = _require_torch()
+    from myosuite.policies.onnxruntime_utils import require_onnxruntime
+
+    try:
+        ort = require_onnxruntime()
+    except ImportError as exc:
+        raise ImportError(
+            f"{exc} Pass verify=False (or --no-verify on the CLI) to export "
+            "without parity verification."
+        ) from exc
+
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    gen = _torch.Generator().manual_seed(int(seed))
+    policy_cpu = policy.cpu().eval()
+    max_diff = 0.0
+
+    with _torch.inference_mode():
+        for batch in (1, 4):
+            obs_t = _torch.randn(batch, obs_dim, generator=gen, dtype=_torch.float32)
+            want = policy_cpu(obs_t).detach().cpu().numpy()
+            (got,) = sess.run(["action"], {"obs": obs_t.numpy()})
+            if got.shape != want.shape or not np.allclose(
+                got, want, atol=atol, rtol=rtol
+            ):
+                diff = (
+                    float(np.max(np.abs(got - want)))
+                    if got.shape == want.shape
+                    else float("inf")
+                )
+                raise RuntimeError(
+                    f"Exported ONNX graph ({Path(onnx_path).name}) failed parity check "
+                    f"at batch={batch}: max_abs_diff={diff:.3e} (atol={atol}, rtol={rtol})."
+                )
+            max_diff = max(max_diff, float(np.max(np.abs(got - want))))
+    return max_diff
+
+
+def _replace_file(src: Path, dst: Path) -> None:
+    src.replace(dst)
+
+
+def _commit_staged_artifacts(
+    staging: Path,
+    replacements: list[tuple[Path, Path]],
+    stale: tuple[Path, ...] = (),
+) -> None:
+    """Move staged files into place, rolling back all targets if any move fails."""
+    backups: list[tuple[Path, Path]] = []
+    placed: list[Path] = []
+    all_targets = [dst for _, dst in replacements] + list(stale)
+    try:
+        for idx, dst in enumerate(all_targets):
+            if dst.exists():
+                bak = staging / f".backup-{idx}"
+                _replace_file(dst, bak)
+                backups.append((bak, dst))
+        for src, dst in replacements:
+            _replace_file(src, dst)
+            placed.append(dst)
+    except BaseException:
+        for dst in reversed(placed):
+            dst.unlink(missing_ok=True)
+        for bak, dst in reversed(backups):
+            if bak.exists():
+                bak.replace(dst)
+        raise
+
+
+def _write_policy_spec(
+    onnx_path: Path,
+    obs_dim: int,
+    act_dim: int,
+    *,
+    checkpoint: str | Path | None = None,
+    framework: str = "pytorch",
+    dest: Path | None = None,
+) -> Path:
+    """Write ``<stem>.policy_spec.json`` describing graph inputs, outputs, and provenance."""
+    inputs: list[dict[str, Any]] = [{"name": "obs", "shape": ["batch", obs_dim]}]
+    outputs: list[dict[str, Any]] = [{"name": "action", "shape": ["batch", act_dim]}]
+    onnx_meta: dict[str, Any] = {
+        "file": onnx_path.name,
+        "inputs": inputs,
+        "outputs": outputs,
+    }
+    if onnx_path.is_file():
+        onnx_meta["sha256"] = hashlib.sha256(onnx_path.read_bytes()).hexdigest()
+    prov: dict[str, Any] = {"framework": framework}
+    if checkpoint is not None and Path(checkpoint).is_file():
+        digest = hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest()
+        prov["checkpoint"] = {"file": Path(checkpoint).name, "sha256": digest}
+
+    spec = {
+        "schema_version": 1,
+        "model": {"onnx": onnx_meta},
+        "observations": {"dim": obs_dim},
+        "actions": {"dim": act_dim},
+        "provenance": prov,
+    }
+    spec_path = dest if dest is not None else onnx_path.with_suffix(".policy_spec.json")
+    spec_path.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
+    return spec_path
+
+
+def _export_policy(
+    policy: torch.nn.Module,
+    obs_dim: int,
+    output: Path,
+    opset: int,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
+    checkpoint: str | Path | None = None,
+    framework: str = "pytorch",
+) -> None:
+    """Atomically stage, parity-check, and write ``policy(obs) -> action`` to ``output``.
+
+    Uses the TorchScript exporter (``dynamo=False``): torch's default dynamo exporter
+    writes the weights to a separate ``.onnx.data`` file, so the ``.onnx`` alone does
+    not load, and prints progress that a non-UTF-8 stdout cannot encode.
+    """
+    _torch = _require_torch()
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    spec_dest = output.with_suffix(".policy_spec.json")
+    staging = Path(tempfile.mkdtemp(prefix=".onnx-export-", dir=str(output.parent)))
+    try:
+        staged_onnx = staging / output.name
+        dummy = _torch.zeros(1, obs_dim, dtype=_torch.float32)
+        policy_eval = policy.cpu().eval()
+        with _torch.no_grad():
+            act_dim = int(policy_eval(dummy).shape[-1])
+        _torch.onnx.export(
+            policy_eval,
+            dummy,
+            str(staged_onnx),
+            opset_version=opset,
+            input_names=["obs"],
+            output_names=["action"],
+            dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
+            do_constant_folding=True,
+            dynamo=False,
+        )
+        if verify:
+            verify_onnx_parity(policy_eval, staged_onnx, obs_dim)
+        replacements: list[tuple[Path, Path]] = [(staged_onnx, output)]
+        stale: tuple[Path, ...] = ()
+        if write_spec:
+            staged_spec = _write_policy_spec(
+                staged_onnx,
+                obs_dim,
+                act_dim,
+                checkpoint=checkpoint,
+                framework=framework,
+                dest=staging / spec_dest.name,
+            )
+            replacements.append((staged_spec, spec_dest))
+        else:
+            stale = (spec_dest,)
+        _commit_staged_artifacts(staging, replacements, stale=stale)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# SB3 export
+# ---------------------------------------------------------------------------
+
+
+def _vec_normalize_obs_stats(
+    vec_normalize: VecNormalize | None, obs_dim: int
+) -> tuple[np.ndarray, np.ndarray, float] | None:
+    """``(mean, sqrt(var + epsilon), clip_obs)`` of a VecNormalize, in float64.
+
+    Returns ``None`` when there is no VecNormalize or it does not normalize
+    observations.
+    """
+    if vec_normalize is None or not vec_normalize.norm_obs:
+        return None
+    obs_rms = vec_normalize.obs_rms
+    if isinstance(obs_rms, dict):
+        raise ValueError("VecNormalize of a Dict observation space cannot be folded.")
+    mean = np.asarray(obs_rms.mean, dtype=np.float64)
+    if mean.shape != (obs_dim,):
+        raise ValueError(
+            f"VecNormalize statistics have shape {mean.shape}, expected ({obs_dim},)."
+        )
+    std = np.sqrt(np.asarray(obs_rms.var, dtype=np.float64) + vec_normalize.epsilon)
+    return mean, std, float(vec_normalize.clip_obs)
+
+
+def export_sb3_to_onnx(
+    checkpoint: str | Path,
+    output: str | Path,
+    obs_dim: int,
+    act_dim: int,
+    opset: int = 17,
+    vec_normalize: VecNormalize | str | Path | None = None,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
+) -> None:
+    """Export a Stable-Baselines3 policy (SAC/TD3/PPO) to ONNX.
+
+    The exported model runs the deterministic actor (mean action, no
+    exploration noise).  For SAC/TD3, this is ``model.policy.actor``;
+    for PPO, it is ``model.policy.mlp_extractor`` + ``model.policy.action_net``.
+
+    Args:
+        checkpoint: Path to the ``.zip`` file saved by ``model.save()``.
+        output: Destination ``.onnx`` file path.
+        obs_dim: Observation vector dimension (must match the trained env).
+        act_dim: Action vector dimension (number of muscles).
+        opset: ONNX opset version (17 recommended for PyTorch >= 2.0).
+        vec_normalize: The ``VecNormalize`` the policy was trained behind, or the
+            file written by its ``save()``. Its observation normalization
+            ``clip((obs - mean) / sqrt(var + epsilon), -clip_obs, clip_obs)`` is
+            folded into the graph, so the ONNX model takes raw observations.
+    """
+    _require_torch()
+    from myosuite.policies.checkpoint_utils import (  # noqa: PLC0415
+        load_sb3_model,
+        load_vec_normalize,
+    )
+
+    checkpoint = Path(checkpoint)
+    output = Path(output)
+    if isinstance(vec_normalize, (str, Path)):
+        log.info("VecNormalize statistics: %s", vec_normalize)
+        vec_normalize = load_vec_normalize(vec_normalize)
+    obs_stats = _vec_normalize_obs_stats(vec_normalize, obs_dim)
+
+    model = load_sb3_model(checkpoint)
+    algo_name = type(model).__name__
+    log.info("Loaded %s checkpoint from %s", algo_name, checkpoint)
+
+    class _DeterministicWrapper(torch.nn.Module):
+        """Wrap SB3 actor to return the action ``model.predict`` returns."""
+
+        def __init__(
+            self,
+            policy: Any,
+            algorithm_name: str,
+            obs_stats: tuple[np.ndarray, np.ndarray, float] | None,
+        ) -> None:
+            super().__init__()
+            self.policy = policy
+            self.algorithm_name = algorithm_name
+            low, high = policy.action_space.low, policy.action_space.high
+            self.register_buffer("low", torch.as_tensor(low, dtype=torch.float32))
+            self.register_buffer("high", torch.as_tensor(high, dtype=torch.float32))
+            self.normalize_obs = obs_stats is not None
+            if obs_stats is not None:
+                mean, std, clip_obs = obs_stats
+                self.clip_obs = clip_obs
+                self.register_buffer("obs_mean", torch.as_tensor(mean))
+                self.register_buffer("obs_std", torch.as_tensor(std))
+
+        def forward(self, obs: torch.Tensor) -> torch.Tensor:
+            if self.normalize_obs:
+                # VecNormalize.normalize_obs: float64 statistics, float32 result.
+                obs = torch.clamp(
+                    (obs.double() - self.obs_mean) / self.obs_std,
+                    -self.clip_obs,
+                    self.clip_obs,
+                ).float()
+            with torch.no_grad():
+                if self.algorithm_name == "PPO":
+                    action, _, _ = self.policy(obs, deterministic=True)
+                else:
+                    actor = self.policy.actor
+                    try:
+                        actor_out = actor(obs, deterministic=True)
+                    except TypeError:
+                        actor_out = actor(obs)
+                    action = actor_out[0] if isinstance(actor_out, tuple) else actor_out
+            # As in SB3 predict(): rescale a squashed action from [-1, 1] to the
+            # action space, otherwise clip to it.
+            if self.policy.squash_output:
+                return self.low + 0.5 * (action + 1.0) * (self.high - self.low)
+            return torch.clamp(action, self.low, self.high)
+
+    wrapper = _DeterministicWrapper(model.policy, algo_name, obs_stats)
+    wrapper.eval()
+    _export_policy(
+        wrapper,
+        obs_dim,
+        output,
+        opset,
+        verify=verify,
+        write_spec=write_spec,
+        checkpoint=checkpoint,
+        framework="sb3",
+    )
+    log.info(
+        "Exported SB3 policy → %s  (obs_dim=%d, act_dim=%d, VecNormalize folded: %s)",
+        output,
+        obs_dim,
+        act_dim,
+        obs_stats is not None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# RSL-RL export
+# ---------------------------------------------------------------------------
+
+
+def export_rslrl_to_onnx(
+    checkpoint: str | Path,
+    output: str | Path,
+    obs_dim: int,
+    act_dim: int,
+    opset: int = 17,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
+) -> None:
+    """Export the deterministic actor of an RSL-RL (mjlab) checkpoint to ONNX.
+
+    The actor is rebuilt from the checkpoint itself (layer sizes from the
+    weights, activation from the run's ``params/agent.yaml``), including the
+    observation normalizer when training used one. The ONNX output is the
+    action fed to the env's action term (``[-1, 1]`` pre-sigmoid for muscles),
+    i.e. what the CPU env's ``step()`` expects.
+
+    Args:
+        checkpoint: Path to ``model_*.pt`` saved by ``scripts/train_mjlab.py``.
+        output: Destination ``.onnx`` file path.
+        obs_dim: Observation vector dimension (checked against the weights).
+        act_dim: Action dimension.
+        opset: ONNX opset version.
+    """
+    from myosuite.policies.rslrl_policy import load_rslrl_policy  # noqa: PLC0415
+
+    output = Path(output)
+    policy = load_rslrl_policy(checkpoint, act_dim)
+    expected = policy.obs_dim
+    if expected != obs_dim:
+        raise ValueError(f"--obs-dim {obs_dim} != checkpoint input size {expected}")
+
+    _export_policy(
+        policy,
+        obs_dim,
+        output,
+        opset,
+        verify=verify,
+        write_spec=write_spec,
+        checkpoint=checkpoint,
+        framework="rslrl",
+    )
+    log.info(
+        "Exported RSL-RL policy → %s  (obs_dim=%d, act_dim=%d)",
+        output,
+        obs_dim,
+        act_dim,
+    )
+
+
+# ---------------------------------------------------------------------------
+# JAX/Flax export
+# ---------------------------------------------------------------------------
+
+
+def export_jax_to_onnx(
+    checkpoint: str | Path,
+    output: str | Path,
+    obs_dim: int,
+    act_dim: int,
+    opset: int = 17,
+) -> None:
+    """Export a JAX/Flax Brax PPO policy to ONNX via jax2tf + tf2onnx.
+
+    Requires:  ``pip install tf2onnx tensorflow``
+
+    The conversion pipeline:
+        JAX params → jax.experimental.jax2tf → TensorFlow SavedModel → ONNX
+
+    Args:
+        checkpoint: Path to a ``.pkl`` or ``.msgpack`` checkpoint file
+                    containing ``{"params": flax_param_tree}``.
+        output: Destination ``.onnx`` file path.
+        obs_dim: Observation vector dimension.
+        act_dim: Action dimension.
+        opset: ONNX opset version.
+    """
+    raise NotImplementedError(
+        "Generic JAX/Flax export is not implemented. "
+        "For MuscleMimic full-body (Orbax/HF checkpoints), use --framework orbax."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Orbax/Flax export (MuscleMimic full-body residual actor)
+# ---------------------------------------------------------------------------
+
+
+class _OrbaxResBlock(_ModuleBase):
+    """PyTorch mirror of one residual block in the Orbax/Flax actor."""
+
+    def __init__(
+        self,
+        in_dim: int,
+        mid_dim: int,
+        out_dim: int,
+        has_proj: bool,
+    ) -> None:
+        _require_torch()
+        super().__init__()
+        self.dense0 = torch.nn.Linear(in_dim, mid_dim)
+        self.ln0 = torch.nn.LayerNorm(mid_dim, eps=1e-5)
+        self.dense1 = torch.nn.Linear(mid_dim, out_dim)
+        self.ln1 = torch.nn.LayerNorm(out_dim, eps=1e-5)
+        self.proj = torch.nn.Linear(in_dim, out_dim, bias=True) if has_proj else None
+        self.gate = torch.nn.Parameter(torch.zeros(1))
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        y = self.dense0(h)
+        y = torch.nn.functional.silu(self.ln0(y))
+        y = self.dense1(y)
+        y = self.ln1(y)
+        shortcut = self.proj(h) if self.proj is not None else h
+        gate = torch.sigmoid(self.gate)
+        return torch.nn.functional.silu(shortcut + gate * y)
+
+
+class _OrbaxActorNet(_ModuleBase):
+    """PyTorch mirror of the Orbax/Flax residual actor network."""
+
+    def __init__(self, params: dict) -> None:
+        _require_torch()
+        super().__init__()
+        actor = params["actor"]
+        block_indices = _residual_block_indices(actor)
+        if not block_indices:
+            raise ValueError("Unsupported actor params: no residual blocks found.")
+        self._block_indices = tuple(block_indices)
+        self.blocks = torch.nn.ModuleList()
+        for idx in block_indices:
+            kernel0 = np.asarray(actor[f"block{idx}_layer0_dense"]["kernel"])
+            kernel1 = np.asarray(actor[f"block{idx}_layer1_dense"]["kernel"])
+            self.blocks.append(
+                _OrbaxResBlock(
+                    in_dim=int(kernel0.shape[0]),
+                    mid_dim=int(kernel0.shape[1]),
+                    out_dim=int(kernel1.shape[1]),
+                    has_proj=f"block{idx}_proj" in actor,
+                )
+            )
+
+        self.tail_dense: torch.nn.Linear | None = None
+        self.tail_ln: torch.nn.LayerNorm | None = None
+        tail = actor.get("tail_dense")
+        if tail is not None:
+            if "tail_ln" not in actor:
+                raise ValueError(
+                    "Unsupported actor params: tail_dense without tail_ln."
+                )
+            tail_out = int(np.asarray(tail["kernel"]).shape[1])
+            tail_in = int(np.asarray(tail["kernel"]).shape[0])
+            self.tail_dense = torch.nn.Linear(tail_in, tail_out)
+            self.tail_ln = torch.nn.LayerNorm(tail_out, eps=1e-5)
+            output_in = tail_out
+        else:
+            output_in = int(
+                np.asarray(
+                    actor[f"block{block_indices[-1]}_layer1_dense"]["kernel"]
+                ).shape[1]
+            )
+        act_dim: int = int(np.asarray(actor["output"]["bias"]).shape[0])
+        self.output_dense = torch.nn.Linear(output_in, act_dim)
+
+        self._load_weights(params)
+
+    def _load_weights(self, params: dict) -> None:
+        actor = params["actor"]
+
+        def _set_linear(mod: torch.nn.Linear, dense_p: dict) -> None:
+            mod.weight.data.copy_(
+                torch.as_tensor(
+                    np.array(dense_p["kernel"], dtype=np.float32, copy=True).T
+                )
+            )
+            mod.bias.data.copy_(
+                torch.as_tensor(np.array(dense_p["bias"], dtype=np.float32, copy=True))
+            )
+
+        def _set_ln(mod: torch.nn.LayerNorm, ln_p: dict) -> None:
+            mod.weight.data.copy_(
+                torch.as_tensor(np.array(ln_p["scale"], dtype=np.float32, copy=True))
+            )
+            mod.bias.data.copy_(
+                torch.as_tensor(np.array(ln_p["bias"], dtype=np.float32, copy=True))
+            )
+
+        for i, blk in zip(self._block_indices, self.blocks, strict=True):
+            _set_linear(blk.dense0, actor[f"block{i}_layer0_dense"])
+            _set_ln(blk.ln0, actor[f"block{i}_layer0_ln"])
+            _set_linear(blk.dense1, actor[f"block{i}_layer1_dense"])
+            _set_ln(blk.ln1, actor[f"block{i}_layer1_ln"])
+            if blk.proj is not None:
+                _set_linear(blk.proj, actor[f"block{i}_proj"])
+            gate_raw = float(np.asarray(actor[f"res_gate_{i}"]).reshape(()))
+            blk.gate.data.fill_(gate_raw)
+
+        if self.tail_dense is not None:
+            assert self.tail_ln is not None
+            _set_linear(self.tail_dense, actor["tail_dense"])
+            _set_ln(self.tail_ln, actor["tail_ln"])
+        _set_linear(self.output_dense, actor["output"])
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        h = obs
+        for block in self.blocks:
+            h = block(h)
+        if self.tail_dense is not None:
+            assert self.tail_ln is not None
+            h = torch.nn.functional.silu(self.tail_ln(self.tail_dense(h)))
+        return self.output_dense(h)
+
+
+class _OrbaxPolicyWrapper(_ModuleBase):
+    """Actor with baked-in obs normalization stats from the checkpoint."""
+
+    def __init__(
+        self,
+        actor_net: _OrbaxActorNet,
+        obs_mean: np.ndarray,
+        obs_var: np.ndarray,
+    ) -> None:
+        _require_torch()
+        super().__init__()
+        self.actor = actor_net
+        self.register_buffer(
+            "obs_mean",
+            torch.as_tensor(np.array(obs_mean, dtype=np.float32, copy=True)),
+        )
+        self.register_buffer(
+            "obs_std",
+            torch.as_tensor(
+                np.sqrt(np.array(obs_var, dtype=np.float32, copy=True) + 1e-8)
+            ),
+        )
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        norm_obs = (obs - self.obs_mean) / self.obs_std
+        action = self.actor(norm_obs)
+        return torch.clamp(action, -1.0, 1.0)
+
+
+def export_orbax_to_onnx(
+    checkpoint: str | Path,
+    output: str | Path,
+    opset: int = 17,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
+) -> None:
+    """Export a MuscleMimic full-body Orbax/Flax policy to ONNX."""
+    output = Path(output)
+
+    checkpoint_str = str(checkpoint)
+    if checkpoint_str.startswith("hf://"):
+        from myosuite.policies.checkpoint_ref import (
+            resolve_checkpoint_ref,
+        )
+
+        ckpt_ref = resolve_checkpoint_ref(checkpoint_str)
+        local_path = ckpt_ref.local_path
+        log.info("Resolved %s → %s", checkpoint_str, local_path)
+    else:
+        local_path = Path(checkpoint_str)
+
+    from myosuite.policies.orbax_checkpoint import (
+        has_local_policy_artifacts,
+        load_local_policy_artifacts,
+    )
+
+    if not has_local_policy_artifacts(local_path):
+        raise FileNotFoundError(
+            f"Checkpoint at {local_path} is missing train_state/ or config/metadata. "
+            "Ensure the checkpoint was downloaded with setup-demo-cache or hf auth login."
+        )
+
+    artifacts = load_local_policy_artifacts(local_path)
+    actor_net = _OrbaxActorNet(artifacts.params)
+    wrapper = _OrbaxPolicyWrapper(actor_net, artifacts.obs_mean, artifacts.obs_var)
+    wrapper.eval()
+    _export_policy(
+        wrapper,
+        artifacts.obs_dim,
+        output,
+        opset,
+        verify=verify,
+        write_spec=write_spec,
+        checkpoint=local_path,
+        framework="orbax",
+    )
+
+
+# ---------------------------------------------------------------------------
+# ONNX playback verifier
+# ---------------------------------------------------------------------------
+
+
+def _onnx_obs(obs: Any) -> np.ndarray:
+    """The raw env observation as the ``(1, obs_dim)`` float32 ONNX input.
+
+    Exports carry the observation normalization of training in the graph, so
+    playback feeds the observation unnormalized.
+    """
+    return np.asarray(obs, dtype=np.float32).reshape(1, -1)
+
+
+def verify_onnx_on_cpu(
+    onnx_path: str | Path,
+    n_steps: int = 200,
+    seed: int = 0,
+    env_id: str = "myoLegWalk-v0",
+    min_mean_reward: float = -np.inf,
+    *,
+    allow_provenance_mismatch: bool = False,
+    current_deployment: dict[str, Any] | None = None,
+) -> dict[str, float]:
+    """Run an ONNX policy on the CPU Gymnasium env and return episode metrics.
+
+    Args:
+        onnx_path: Path to the exported ``.onnx`` file.
+        n_steps: Maximum steps per episode.
+        seed: Environment reset seed.
+        env_id: Gymnasium environment ID to run.
+        min_mean_reward: If set, assert that mean per-step reward >= this value.
+        allow_provenance_mismatch: Explicit override for reviewed deployment differences.
+        current_deployment: Actual configured I/O/reference provenance, when customized.
+
+    Returns:
+        Dict with ``total_reward``, ``mean_reward``, ``n_steps``, ``terminated``.
+    """
+    from myosuite.policies.onnxruntime_utils import require_onnxruntime
+
+    ort = require_onnxruntime()
+
+    onnx_path = Path(onnx_path)
+    env = make_env(env_id)
+    try:
+        from myosuite.policies.deployment_manifest import validate_policy_manifest
+
+        validate_policy_manifest(
+            onnx_path,
+            env,
+            current=current_deployment,
+            allow_mismatch=allow_provenance_mismatch,
+        )
+        sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        obs, _ = env.reset(seed=seed)
+
+        total_reward = 0.0
+        steps = 0
+        term = False
+        for _ in range(n_steps):
+            action = sess.run([output_name], {input_name: _onnx_obs(obs)})[0].squeeze(0)
+            obs, rew, term, trunc, _ = env.step(action)
+            total_reward += float(rew)
+            steps += 1
+            if term or trunc:
+                break
+    finally:
+        env.close()
+
+    mean_reward = total_reward / max(steps, 1)
+    if mean_reward < min_mean_reward:
+        raise AssertionError(
+            f"ONNX policy mean_reward={mean_reward:.3f} < threshold {min_mean_reward:.3f}"
+        )
+
+    return {
+        "total_reward": total_reward,
+        "mean_reward": mean_reward,
+        "n_steps": steps,
+        "terminated": bool(term),
+    }
+
+
+def compare_onnx_across_backends(
+    onnx_path: str | Path,
+    n_steps: int = 50,
+    seed: int = 0,
+    atol: float = 0.1,
+) -> dict[str, Any]:
+    """Run an ONNX policy on CPU and MJX backends and compare observations.
+
+    This is the core cross-backend playback validation:
+    the same ONNX model running the same sequence of actions must produce
+    observations and rewards within ``atol`` of each other on all backends.
+
+    Args:
+        onnx_path: Path to the exported ``.onnx`` file.
+        n_steps: Steps to compare (keep short to avoid termination divergence).
+        seed: Reset seed (must be the same on all backends).
+        atol: Absolute tolerance for obs/reward comparison.
+
+    Returns:
+        Dict with ``max_obs_diff_cpu_mjx``, ``max_rew_diff_cpu_mjx``, and
+        ``passed`` (bool). ``passed`` is ``False`` when a backend cannot run
+        (``mjx_error`` then says why) or a difference exceeds ``atol``.
+    """
+    from myosuite.policies.onnxruntime_utils import require_onnxruntime
+
+    ort = require_onnxruntime()
+
+    onnx_path = Path(onnx_path)
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    input_name = sess.get_inputs()[0].name
+    output_name = sess.get_outputs()[0].name
+
+    def _rollout(env_id: str, env_kwargs: dict) -> tuple[np.ndarray, np.ndarray]:
+        env = make_env(env_id, **env_kwargs)
+        try:
+            obs, _ = env.reset(seed=seed)
+            obs_seq, rew_seq = [obs.copy()], []
+            for _ in range(n_steps):
+                action = sess.run([output_name], {input_name: _onnx_obs(obs)})[
+                    0
+                ].squeeze(0)
+                obs, rew, term, trunc, _ = env.step(action)
+                obs_seq.append(np.asarray(obs).ravel().copy())
+                rew_seq.append(float(rew))
+                if term or trunc:
+                    break
+        finally:
+            env.close()
+        return np.array(obs_seq), np.array(rew_seq)
+
+    cpu_obs, cpu_rew = _rollout("myoLegWalk-v0", {})
+
+    results: dict[str, Any] = {"passed": True}
+
+    try:
+        mjx_obs, mjx_rew = _rollout("MjxLegWalk-v0", {"num_envs": 1})
+        n = min(cpu_obs.shape[0], mjx_obs.shape[0])
+        max_obs = float(np.max(np.abs(cpu_obs[:n] - mjx_obs[:n])))
+        max_rew = float(
+            np.max(
+                np.abs(
+                    cpu_rew[: min(len(cpu_rew), len(mjx_rew))]
+                    - mjx_rew[: min(len(cpu_rew), len(mjx_rew))]
+                )
+            )
+        )
+        results["max_obs_diff_cpu_mjx"] = max_obs
+        results["max_rew_diff_cpu_mjx"] = max_rew
+        if max_obs > atol or max_rew > atol:
+            results["passed"] = False
+            log.warning(
+                "CPU vs MJX max obs diff %.4f, reward diff %.4f (atol %.4f)",
+                max_obs,
+                max_rew,
+                atol,
+            )
+    except Exception as exc:
+        log.warning("MJX backend unavailable for comparison: %s", exc)
+        results["mjx_error"] = str(exc)
+        results["passed"] = False
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Export a trained myoSuite policy to ONNX and optionally verify it."
+    )
+    sub = p.add_subparsers(dest="command", required=True)
+
+    # --- export ---
+    ex = sub.add_parser("export", help="Export a policy to ONNX")
+    ex.add_argument(
+        "--framework",
+        choices=["sb3", "rslrl", "jax", "orbax"],
+        required=True,
+    )
+    ex.add_argument(
+        "--checkpoint",
+        required=True,
+        help="Path to the checkpoint file/directory (or hf://... for orbax)",
+    )
+    ex.add_argument("--output", required=True, help="Output .onnx path")
+    ex.add_argument("--obs-dim", type=int, default=None)
+    ex.add_argument("--act-dim", type=int, default=None)
+    ex.add_argument("--opset", type=int, default=17)
+    ex.add_argument("--env", help="CPU env for a physical deployment manifest sidecar")
+    ex.add_argument(
+        "--deployment-metadata",
+        type=Path,
+        help="JSON containing explicit interface, normalization, references and checkpoint_source",
+    )
+    ex.add_argument(
+        "--vecnormalize",
+        type=Path,
+        default=None,
+        help=(
+            "sb3 only: VecNormalize.save() file to fold into the exported graph "
+            "(default: the stats saved next to the checkpoint, if any)"
+        ),
+    )
+    ex.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Skip onnxruntime parity check before moving the staged .onnx into place.",
+    )
+    ex.add_argument(
+        "--policy-spec",
+        action="store_true",
+        help="Write a <stem>.policy_spec.json sidecar describing ONNX I/O and provenance.",
+    )
+
+    # --- verify ---
+    vr = sub.add_parser("verify", help="Run an ONNX policy on the CPU env")
+    vr.add_argument("--onnx", required=True)
+    vr.add_argument("--steps", type=int, default=200)
+    vr.add_argument("--env", default="myoLegWalk-v0")
+    vr.add_argument("--min-reward", type=float, default=-float("inf"))
+    vr.add_argument("--allow-provenance-mismatch", action="store_true")
+
+    # --- compare ---
+    cm = sub.add_parser(
+        "compare", help="Compare ONNX policy across CPU and MJX backends"
+    )
+    cm.add_argument("--onnx", required=True)
+    cm.add_argument("--steps", type=int, default=50)
+    cm.add_argument("--atol", type=float, default=0.1)
+
+    return p
+
+
+def _write_export_manifest(
+    args: argparse.Namespace, *, output_override: Path | None = None
+) -> Path:
+    """Write provenance for an exported CPU policy without loading weights again."""
+    import hashlib
+    import json
+
+    from myosuite.policies.deployment_manifest import (
+        artifact_record,
+        env_deployment_manifest,
+        write_deployment_manifest,
+    )
+
+    metadata = (
+        json.loads(args.deployment_metadata.read_text(encoding="utf-8"))
+        if args.deployment_metadata
+        else {}
+    )
+    allowed = {
+        "interface",
+        "normalization",
+        "references",
+        "checkpoint_source",
+        "runtime",
+    }
+    if set(metadata) - allowed:
+        raise ValueError(
+            f"Unknown deployment metadata fields: {set(metadata) - allowed}"
+        )
+    checkpoint = Path(args.checkpoint)
+    checkpoint_source = metadata.pop("checkpoint_source", None)
+    if checkpoint.is_dir():
+        files = {
+            p.relative_to(checkpoint).as_posix(): artifact_record(p)
+            for p in sorted(checkpoint.rglob("*"))
+            if p.is_file()
+        }
+        record = {
+            "algorithm": "sha256-sorted-file-records-v1",
+            "files": files,
+            "sha256": hashlib.sha256(
+                json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
+        if checkpoint_source:
+            raise ValueError(
+                "Directory checkpoint sources must be recorded per file in reference metadata"
+            )
+    else:
+        record = artifact_record(checkpoint, source=checkpoint_source)
+    stats = args.vecnormalize
+    if args.framework == "sb3" and stats is None:
+        from myosuite.policies.checkpoint_utils import find_vec_normalize
+
+        stats = find_vec_normalize(checkpoint)
+    if stats is not None:
+        record["vecnormalize"] = artifact_record(stats)
+    metadata.setdefault(
+        "normalization",
+        {"kind": "embedded-or-identity", "input": "raw", "framework": args.framework},
+    )
+    with make_env(args.env) as env:
+        if args.obs_dim is not None and args.obs_dim != int(
+            np.prod(env.observation_space.shape)
+        ):
+            raise ValueError("--obs-dim does not match the deployment env")
+        if args.act_dim is not None and args.act_dim != int(
+            np.prod(env.action_space.shape)
+        ):
+            raise ValueError("--act-dim does not match the deployment env")
+        output = output_override if output_override is not None else Path(args.output)
+        manifest = env_deployment_manifest(
+            env, artifacts={output.name: output}, checkpoint=record, **metadata
+        )
+    return write_deployment_manifest(output, manifest)
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    args = _build_parser().parse_args()
+
+    if args.command == "export":
+        verify = not args.no_verify
+        write_spec = bool(args.policy_spec)
+        if args.env and str(args.checkpoint).startswith("hf://"):
+            _build_parser().error(
+                "For a provenance export, download the checkpoint at a pinned HF revision first and pass its local path plus checkpoint_source metadata."
+            )
+        if args.deployment_metadata and not args.env:
+            _build_parser().error("--deployment-metadata requires --env")
+        if args.framework != "orbax" and (args.obs_dim is None or args.act_dim is None):
+            _build_parser().error(
+                f"--framework {args.framework} requires --obs-dim and --act-dim"
+            )
+
+        final_out = Path(args.output)
+        final_out.parent.mkdir(parents=True, exist_ok=True)
+        final_spec = final_out.with_suffix(".policy_spec.json")
+        final_manifest = Path(f"{final_out}.manifest.json")
+        cli_staging = Path(
+            tempfile.mkdtemp(prefix=".onnx-cli-", dir=str(final_out.parent))
+        )
+        try:
+            staged_out = cli_staging / final_out.name
+            if args.framework == "orbax":
+                export_orbax_to_onnx(
+                    args.checkpoint,
+                    staged_out,
+                    args.opset,
+                    verify=verify,
+                    write_spec=write_spec,
+                )
+            elif args.framework == "sb3":
+                from myosuite.policies.checkpoint_utils import find_vec_normalize
+
+                export_sb3_to_onnx(
+                    args.checkpoint,
+                    staged_out,
+                    args.obs_dim,
+                    args.act_dim,
+                    args.opset,
+                    vec_normalize=(
+                        args.vecnormalize or find_vec_normalize(args.checkpoint)
+                    ),
+                    verify=verify,
+                    write_spec=write_spec,
+                )
+            elif args.framework == "rslrl":
+                export_rslrl_to_onnx(
+                    args.checkpoint,
+                    staged_out,
+                    args.obs_dim,
+                    args.act_dim,
+                    args.opset,
+                    verify=verify,
+                    write_spec=write_spec,
+                )
+            elif args.framework == "jax":
+                export_jax_to_onnx(
+                    args.checkpoint,
+                    staged_out,
+                    args.obs_dim,
+                    args.act_dim,
+                    args.opset,
+                )
+
+            replacements: list[tuple[Path, Path]] = [(staged_out, final_out)]
+            stale: list[Path] = []
+            if write_spec:
+                replacements.append(
+                    (staged_out.with_suffix(".policy_spec.json"), final_spec)
+                )
+            else:
+                stale.append(final_spec)
+            if args.env:
+                staged_manifest = _write_export_manifest(
+                    args, output_override=staged_out
+                )
+                replacements.append((staged_manifest, final_manifest))
+            else:
+                stale.append(final_manifest)
+            _commit_staged_artifacts(cli_staging, replacements, stale=tuple(stale))
+        finally:
+            shutil.rmtree(cli_staging, ignore_errors=True)
+
+    elif args.command == "verify":
+        metrics = verify_onnx_on_cpu(
+            args.onnx,
+            args.steps,
+            env_id=args.env,
+            min_mean_reward=args.min_reward,
+            allow_provenance_mismatch=args.allow_provenance_mismatch,
+        )
+        print(
+            f"total_reward={metrics['total_reward']:.3f}  "
+            f"mean_reward={metrics['mean_reward']:.3f}  "
+            f"steps={metrics['n_steps']}"
+        )
+
+    elif args.command == "compare":
+        results = compare_onnx_across_backends(args.onnx, args.steps, atol=args.atol)
+        for k, v in results.items():
+            print(f"  {k}: {v}")
+        sys.exit(0 if results["passed"] else 1)
+
+
+if __name__ == "__main__":
+    main()

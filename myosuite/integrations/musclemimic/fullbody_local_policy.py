@@ -27,10 +27,10 @@ from myosuite.motion.io import (
     expand_motion_clip_to_model,
     read_npz_names,
 )
-from myosuite.integrations.musclemimic.actor_tree import (
+from myosuite.policies.actor_tree import (
     residual_block_indices as _residual_block_indices,
 )
-from myosuite.integrations.musclemimic.actor_tree import (
+from myosuite.policies.actor_tree import (
     sorted_prefix_indices as _sorted_prefix_indices,
 )
 from myosuite.integrations.musclemimic.running_stats import (
@@ -38,10 +38,11 @@ from myosuite.integrations.musclemimic.running_stats import (
 )
 
 
-def _to_numpy_tree(tree: Any) -> Any:
-    if isinstance(tree, dict):
-        return {k: _to_numpy_tree(v) for k, v in tree.items()}
-    return np.asarray(tree, dtype=np.float32)
+from myosuite.policies.orbax_checkpoint import (
+    LocalPolicyArtifacts,
+    has_local_policy_artifacts,
+    load_local_policy_artifacts,
+)
 
 
 def _layer_norm(x: np.ndarray, scale: np.ndarray, bias: np.ndarray) -> np.ndarray:
@@ -58,18 +59,6 @@ def _silu(x: np.ndarray) -> np.ndarray:
 
 def _dense(x: np.ndarray, kernel: np.ndarray, bias: np.ndarray) -> np.ndarray:
     return np.matmul(x, kernel) + bias
-
-
-@dataclass(frozen=True)
-class LocalPolicyArtifacts:
-    """Local policy artifacts parsed from a checkpoint."""
-
-    params: dict[str, Any]
-    obs_mean: np.ndarray
-    obs_var: np.ndarray
-    obs_count: np.ndarray
-    obs_dim: int
-    action_dim: int
 
 
 @dataclass(frozen=True)
@@ -215,96 +204,6 @@ class ObservationHistoryBuffer:
     def clear(self) -> None:
         """Clear buffered state so the next observation is treated as reset."""
         self._buffer = None
-
-
-def has_local_policy_artifacts(checkpoint_root: Path) -> bool:
-    """Return ``True`` if checkpoint root looks loadable for local policy."""
-    p = Path(checkpoint_root)
-    return (p / "train_state").is_dir() and (p / "config" / "metadata").exists()
-
-
-def _restore_on_cpu(checkpointer: Any, path: str) -> Any:
-    """Restore an Orbax checkpoint onto this process's CPU device.
-
-    Without a target tree Orbax rebuilds each array's sharding from the device
-    name saved in the checkpoint (``TFRT_CPU_0`` for ``mm-10m-2``), which JAX
-    >= 0.10 no longer reports. A target on ``jax.devices("cpu")[0]`` restores
-    on any JAX version. The target also turns scalar leaves into JAX arrays and,
-    with x64 disabled, narrows 64-bit leaves to 32-bit; callers here cast to
-    float32 anyway.
-    """
-    if not hasattr(checkpointer, "metadata"):
-        return checkpointer.restore(path)
-    import jax
-
-    meta = checkpointer.metadata(path)
-    tree = getattr(meta, "item_metadata", meta)
-    tree = getattr(tree, "tree", tree)
-    if not isinstance(tree, dict):
-        return checkpointer.restore(path)
-    cpu = jax.sharding.SingleDeviceSharding(jax.devices("cpu")[0])
-
-    def abstract(leaf: Any) -> Any:
-        if hasattr(leaf, "shape") and hasattr(leaf, "dtype"):
-            return jax.ShapeDtypeStruct(leaf.shape, leaf.dtype, sharding=cpu)
-        return leaf
-
-    return checkpointer.restore(path, jax.tree_util.tree_map(abstract, tree))
-
-
-def load_local_policy_artifacts(
-    checkpoint_root: Path, seed: int = 0
-) -> LocalPolicyArtifacts:
-    """Load policy parameters and normalization stats from Orbax artifacts."""
-    p = Path(checkpoint_root).absolute()
-    train_state_dir = p / "train_state"
-    if not train_state_dir.is_dir():
-        raise FileNotFoundError(f"train_state directory missing: {train_state_dir}")
-    try:
-        import orbax.checkpoint as ocp
-    except ImportError as err:
-        raise ImportError(
-            "orbax.checkpoint is required for local policy inference."
-        ) from err
-
-    restored = _restore_on_cpu(ocp.StandardCheckpointer(), str(train_state_dir))
-    params_raw = restored["params"]
-    run_stats = restored["run_stats"]["RunningMeanStd_0"]
-    params = _to_numpy_tree(params_raw)
-    obs_mean = np.asarray(run_stats["mean"], dtype=np.float32)
-    obs_var = np.asarray(run_stats["var"], dtype=np.float32)
-    obs_count = np.asarray(run_stats.get("count", 1e-6), dtype=np.float32)
-    if obs_mean.ndim == 2:
-
-        def select(tree: Any) -> Any:
-            if isinstance(tree, dict):
-                return {key: select(value) for key, value in tree.items()}
-            return tree[seed]
-
-        params = select(params)
-        obs_mean, obs_var = obs_mean[seed], obs_var[seed]
-        if obs_count.ndim:
-            obs_count = obs_count[seed]
-    actor = params["actor"]
-    if "output" in actor:
-        action_dim = int(np.asarray(actor["output"]["bias"]).shape[0])
-        obs_dim = int(np.asarray(actor["block0_layer0_dense"]["kernel"]).shape[0])
-    else:
-        dense_indices = _sorted_prefix_indices(actor, "Dense_")
-        if not dense_indices:
-            raise ValueError("Unsupported actor params: no Dense_* layers found.")
-        first_dense = actor[f"Dense_{dense_indices[0]}"]
-        last_dense = actor[f"Dense_{dense_indices[-1]}"]
-        obs_dim = int(np.asarray(first_dense["kernel"]).shape[0])
-        action_dim = int(np.asarray(last_dense["bias"]).shape[0])
-    return LocalPolicyArtifacts(
-        params=params,
-        obs_mean=obs_mean,
-        obs_var=obs_var,
-        obs_count=obs_count,
-        obs_dim=obs_dim,
-        action_dim=action_dim,
-    )
 
 
 def _actor_forward(params: dict[str, Any], obs: np.ndarray) -> np.ndarray:
@@ -1117,7 +1016,7 @@ class OnnxPolicyRunner:
     update_normalizer: bool = True
 
     def __post_init__(self) -> None:
-        from myosuite.utils.onnxruntime_utils import require_onnxruntime
+        from myosuite.policies.onnxruntime_utils import require_onnxruntime
 
         ort = require_onnxruntime()
         self._session = ort.InferenceSession(

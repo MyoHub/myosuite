@@ -2,29 +2,14 @@
 #
 # This source code is licensed under the Apache 2 license found in the
 # LICENSE file in the root directory of this source tree.
-"""Load the optional ONNX inference runtime when a feature needs it."""
+"""Backward-compatible alias for :mod:`myosuite.policies.onnxruntime_utils`."""
 
-from __future__ import annotations
+import sys as _sys
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-import importlib
-from types import ModuleType
+from myosuite.policies import onnxruntime_utils as _target
 
+if _TYPE_CHECKING:
+    from myosuite.policies.onnxruntime_utils import *  # noqa: F403
 
-def require_onnxruntime() -> ModuleType:
-    """Return ONNX Runtime or explain how to install the optional dependency.
-
-    Raises:
-        ImportError: If ONNX Runtime is not installed.
-    """
-    try:
-        return importlib.import_module("onnxruntime")
-    except ModuleNotFoundError as exc:
-        if exc.name != "onnxruntime":
-            raise
-        raise ImportError(
-            "ONNX inference requires onnxruntime. Install it with "
-            "pip install 'myosuite[onnx]' (CPU), or install onnxruntime-gpu. "
-            "If no wheel is available for your Python version, use an "
-            "interpreter supported by ONNX Runtime or build it from source. "
-            "Native MyoSuite CPU environments do not require ONNX Runtime."
-        ) from exc
+_sys.modules[__name__] = _target

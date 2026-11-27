@@ -120,7 +120,7 @@ Muscle-command features (motor noise, fatigue, sarcopenia, reafferentation; the 
        --feature fatigue --feature 'motor-noise={"constant_std": 0.05}'
 
 Evaluate with the features the policy was trained with. ``motor-noise`` alone uses the van Beers (2004)
-levels; the JSON after ``=`` sets the options of the wrapper (see ``myosuite.utils.feature_cli``). The
+levels; the JSON after ``=`` sets the options of the wrapper (see ``myosuite.envs.feature_cli``). The
 ``myoFati…`` / ``myoSarc…`` / ``myoReaf…`` ids give the same conditions without a flag.
 
 From Python, for evaluation or your own training loop, ``make_env`` builds the same task on the GPU:

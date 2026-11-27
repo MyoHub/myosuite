@@ -130,6 +130,7 @@ def test_orbax_onnx_export_is_self_contained_and_matches_the_policy(
     pytest.importorskip("onnx")  # torch.onnx.export needs it (not installed on py3.14)
     ort = pytest.importorskip("onnxruntime")
     from myosuite.integrations.musclemimic import fullbody_local_policy as local
+    from myosuite.policies import orbax_checkpoint
     from myosuite.utils.export_onnx import export_orbax_to_onnx
 
     obs_dim, act_dim = 19, 7
@@ -142,8 +143,12 @@ def test_orbax_onnx_export_is_self_contained_and_matches_the_policy(
         obs_dim=obs_dim,
         action_dim=act_dim,
     )
-    monkeypatch.setattr(local, "has_local_policy_artifacts", lambda _root: True)
-    monkeypatch.setattr(local, "load_local_policy_artifacts", lambda _root: artifacts)
+    monkeypatch.setattr(
+        orbax_checkpoint, "has_local_policy_artifacts", lambda _root: True
+    )
+    monkeypatch.setattr(
+        orbax_checkpoint, "load_local_policy_artifacts", lambda _root: artifacts
+    )
 
     onnx_path = tmp_path / "export" / "policy.onnx"
     _cp1252_stdout(monkeypatch)

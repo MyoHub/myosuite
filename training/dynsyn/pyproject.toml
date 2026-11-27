@@ -7,7 +7,7 @@ name = "myosuite-dynsyn"
 version = "0.1.0"
 description = "DynSyn muscle synergies (He et al., ICML 2024) for PPO on MyoSuite tasks"
 requires-python = ">=3.10"
-# Imports myosuite.utils.action_map; install MyoSuite from the same checkout (or dev) first.
+# Imports myosuite.policies.action_map; install MyoSuite from the same checkout (or dev) first.
 dependencies = ["myosuite[mjlab]", "mujoco", "numpy", "torch", "tyro"]
 
 [project.optional-dependencies]

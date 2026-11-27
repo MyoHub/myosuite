@@ -9,13 +9,13 @@ import numpy as np
 import pytest
 
 from myosuite import make_env
-from myosuite.core.hf_io import is_gated_or_transient_hf_error
-from myosuite.utils import gym
-from myosuite.utils.env_check import (
+from myosuite.benchmarks.env_check import (
     check_reset_tuple,
     check_single_env,
     is_multi_agent_env_spec,
 )
+from myosuite.core.hf_io import is_gated_or_transient_hf_error
+from myosuite.utils import gym
 
 
 pytestmark = pytest.mark.tier2

@@ -23,8 +23,7 @@ import gymnasium as gym
 import numpy as np
 
 from myosuite.envs.muscle_stages import reject_removed_kwargs
-from myosuite.utils.path_utils import evaluate_success as _evaluate_success
-from myosuite.utils.policy_utils import examine_policy as _examine_policy
+from myosuite.core.path_utils import evaluate_success as _evaluate_success
 
 if TYPE_CHECKING:  # pragma: no cover
     from myosuite.viz.mj_renderer import MJRenderer
@@ -877,7 +876,7 @@ class MyoGymnasiumEnv(gym.Env):
         """Evaluate rollout success using the legacy helper.
 
         This compatibility shim preserves the API expected by
-        ``myosuite.utils.examine_env`` for Gymnasium-native environments.
+        ``myosuite.benchmarks.examine_env`` for Gymnasium-native environments.
         """
         return _evaluate_success(
             self,
@@ -899,7 +898,7 @@ class MyoGymnasiumEnv(gym.Env):
         filename: str = "newvid",
         device_id: int = 0,
     ) -> Any:
-        """Roll out a policy and return a :class:`~myosuite.logger.grouped_datasets.Trace`.
+        """Roll out a policy and return a :class:`~myosuite.viz.grouped_datasets.Trace`.
 
         Args:
             policy: Policy object exposing ``get_action(obs)``.
@@ -914,9 +913,11 @@ class MyoGymnasiumEnv(gym.Env):
             device_id: Unused; kept for signature compatibility.
 
         Returns:
-            A :class:`~myosuite.logger.grouped_datasets.Trace` with rollout data
+            A :class:`~myosuite.viz.grouped_datasets.Trace` with rollout data
             grouped by episode (``Trial0``, ``Trial1``, …).
         """
+        from myosuite.viz.policy_playback import examine_policy as _examine_policy
+
         return _examine_policy(
             self,
             policy,
@@ -1008,7 +1009,7 @@ class MyoGymnasiumEnv(gym.Env):
     def id(self) -> str:
         """Backward-compatible environment id string.
 
-        Used by :func:`~myosuite.utils.policy_utils.examine_policy` to name the
+        Used by :func:`~myosuite.viz.policy_playback.examine_policy` to name the
         returned Trace.  For Gymnasium environments this can be obtained from
         ``env.spec.id`` when available.
         """

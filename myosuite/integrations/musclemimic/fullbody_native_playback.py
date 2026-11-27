@@ -26,7 +26,7 @@ from myosuite.motion.playback import (
     PlaybackResult,
     PlaybackRunner,
 )
-from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
+from myosuite.policies.checkpoint_ref import (
     describe_checkpoint_dir,
     resolve_checkpoint_ref,
 )
@@ -56,7 +56,7 @@ from myosuite.viz.site_marker_viz import make_site_marker_viz_fn
 from myosuite.integrations.musclemimic.playback_runners import (
     run_passive_viewer_loop,
 )
-from myosuite.utils.video_io import write_video
+from myosuite.viz.video_io import write_video
 
 logger = logging.getLogger(__name__)
 

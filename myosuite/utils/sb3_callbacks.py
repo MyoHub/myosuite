@@ -12,8 +12,8 @@ from typing import Any
 
 from stable_baselines3.common.callbacks import BaseCallback
 
-from myosuite.utils.export_onnx import export_sb3_to_onnx
-from myosuite.utils.onnx_checkpoint import (
+from myosuite.policies.export_onnx import export_sb3_to_onnx
+from myosuite.policies.onnx_checkpoint import (
     _FATIGUE_STATE_KEY,
     _VEC_NORMALIZE_KEY,
     bundle_onnx_with_checkpoint,
@@ -28,7 +28,7 @@ class OnnxCheckpointCallback(BaseCallback):
     When the model trains behind a ``VecNormalize``, its observation normalization
     is folded into the ONNX graph (which then takes raw observations) and its
     statistics are stored in the bundle metadata under ``"vec_normalize"``; restore
-    them for resuming with :func:`~myosuite.utils.onnx_checkpoint.vec_normalize_from_state`.
+    them for resuming with :func:`~myosuite.policies.onnx_checkpoint.vec_normalize_from_state`.
 
     Args:
         checkpoint_dir: Directory to write ``.onnx`` bundle files into.

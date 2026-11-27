@@ -26,7 +26,7 @@ from myosuite.envs.gymnasium_env import check_obs_keys
 from myosuite.envs.myo.backends.mjlab.tasks import cpu_reference as ref
 from myosuite.envs.myo.backends.mjlab.tasks.reach import mdp
 from myosuite.envs.myo.tasks.basic.leg.reach import LegReachEnvV0
-from myosuite.utils.step_timing import first_step_after
+from myosuite.core.step_timing import first_step_after
 
 ENTITY = "robot"
 COMMAND = "reach"

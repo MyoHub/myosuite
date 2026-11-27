@@ -88,7 +88,7 @@ Keep in `training/`:
 
 When in doubt, keep the training implementation under `training/` and move only clearly reusable runtime functionality into `myosuite/`.
 
-A loader for one method's checkpoints is not a reason to copy that method's network into `myosuite/`. Have the method export a format MyoSuite already loads (ONNX through `myosuite.utils.export_onnx`, or a plain `nn.Module` / TorchScript artifact). If a custom architecture must be rebuilt, the training package registers it; the architecture code stays in `training/<method>/`.
+A loader for one method's checkpoints is not a reason to copy that method's network into `myosuite/`. Have the method export a format MyoSuite already loads (ONNX through `myosuite.policies.export_onnx`, or a plain `nn.Module` / TorchScript artifact). If a custom architecture must be rebuilt, the training package registers it; the architecture code stays in `training/<method>/`.
 
 Reviewers check this boundary on every PR that touches `myosuite/`: architectures, trainers, optimizer settings beyond registered defaults, replay buffers and self-play pools in the installable package are a placement violation, even when the PR's tests pass.
 

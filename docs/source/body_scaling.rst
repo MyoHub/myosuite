@@ -163,7 +163,7 @@ loading the policy on another body:
 
 .. code-block:: python
 
-    from myosuite.utils.checkpoint_manifest import check_contract, write_manifest
+    from myosuite.policies.checkpoint_manifest import check_contract, write_manifest
 
     write_manifest(run_dir, "myoLegWalk-v0", scales=scales, total_mass=72.0)
     check_contract("myoLegWalk-v0", run_dir, scales=scales, total_mass=72.0, strict=True)

@@ -33,7 +33,7 @@ from myosuite.envs.myo.backends.mjx.mjx_env_base import MjxEnvAccessor, MyoMjxEn
 from myosuite.envs.myo.backends.mjx.mjx_spec_preprocess import preprocess_mjx_spec
 from myosuite.core.terms.base_obs import pose_error_obs
 from myosuite.core.terms.base_reward import pose_reward
-from myosuite.utils.target_ranges import resolve_joint_target_ranges
+from myosuite.core.target_ranges import resolve_joint_target_ranges
 
 
 class MjxPoseEnv(MyoMjxEnvBase):

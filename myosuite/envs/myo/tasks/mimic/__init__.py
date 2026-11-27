@@ -100,3 +100,20 @@ _registry.register_env(
     models=("myofullbody",),
     kwargs={"frame_skip": 10, "preset": "supermimic", "model": "myofullbody"},
 )
+
+
+def _lazy_musclemimic_manifest_fields(env_id: str) -> dict[str, object]:
+    from myosuite.integrations.musclemimic.model_versions import (
+        MANIFEST_FIELD,
+        env_models_version,
+    )
+
+    models_version = env_models_version(env_id)
+    return {MANIFEST_FIELD: models_version} if models_version is not None else {}
+
+
+from myosuite.policies.checkpoint_manifest import (  # noqa: E402
+    register_manifest_provider as _register_manifest_provider,
+)
+
+_register_manifest_provider(_lazy_musclemimic_manifest_fields)

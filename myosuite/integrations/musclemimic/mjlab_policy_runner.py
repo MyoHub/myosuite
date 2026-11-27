@@ -239,13 +239,13 @@ try:
     from myosuite.integrations.musclemimic.actor_torch import (
         _load_dense_checkpoint_into_model,
     )
-    from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
+    from myosuite.policies.checkpoint_ref import (
         resolve_checkpoint_ref,
     )
     from myosuite.integrations.musclemimic.fullbody_local_policy import (
         load_local_policy_artifacts,
     )
-    from myosuite.utils.onnx_checkpoint import (
+    from myosuite.policies.onnx_checkpoint import (
         _FATIGUE_STATE_KEY,
         bundle_onnx_with_checkpoint,
         extract_checkpoint_from_onnx,

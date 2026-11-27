@@ -38,7 +38,7 @@ from myosuite.core.terms.mimic_reward import (
     mimic_root_vel_reward,
     mimic_site_tracking_reward,
 )
-from myosuite.utils.reach_workspace import reachable_postures
+from myosuite.core.reach_workspace import reachable_postures
 
 
 class _MuscleMimicCpuBase(MyoGymnasiumEnv, EzPickle):
@@ -73,7 +73,7 @@ class _MuscleMimicTrackingEnv(_MuscleMimicCpuBase):
     - muscle ctrl ``sigmoid(5 (a - 0.5))`` (mjlab ``sigmoid`` action mode) of the
       action (unclipped, as on mjlab);
     - each episode's targets are the tracked sites of one random posture on the
-      joint couplings (:func:`~myosuite.utils.reach_workspace.reachable_postures`),
+      joint couplings (:func:`~myosuite.core.reach_workspace.reachable_postures`),
       so the model can match them exactly.
 
     Args:

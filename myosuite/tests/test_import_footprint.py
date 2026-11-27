@@ -69,14 +69,14 @@ def test_import_myosuite_skips_heavy_modules() -> None:
 
 
 def test_import_action_map_skips_torch() -> None:
-    """``myosuite.utils.action_map`` (maps, CPU wrapper) loads neither torch nor mjlab."""
-    heavy = ("torch", "mjlab", "myosuite.utils.rslrl_policy")
-    assert _loaded_after("import myosuite.utils.action_map", heavy) == []
+    """``myosuite.policies.action_map`` (maps, CPU wrapper) loads neither torch nor mjlab."""
+    heavy = ("torch", "mjlab", "myosuite.policies.rslrl_policy")
+    assert _loaded_after("import myosuite.policies.action_map", heavy) == []
 
 
 def test_import_performance_card_skips_training_frameworks() -> None:
     heavy = ("torch", "mjlab", "stable_baselines3", "rsl_rl")
-    assert _loaded_after("import myosuite.utils.performance_card", heavy) == []
+    assert _loaded_after("import myosuite.benchmarks.performance_card", heavy) == []
 
 
 @pytest.mark.parametrize(

@@ -23,11 +23,13 @@ Before any new class, function, or wrapper:
 | `MotionClip`, trajectory I/O, yaw transforms, composable `KinematicTrial` / `EMGTrial` | `myosuite/motion/` |
 | Numerical biomechanics solvers (IK, ID, SO, CMC, EMG, external-load wrenches, effort) | `myosuite/biomechanics/` |
 | Lightweight format/dataset readers & `musclemimic` runtime adapters | `myosuite/integrations/` (heavy CV inference → `tools/`) |
-| Muscle noise / fatigue / reafferentation / sarcopenia (wrappers and stages) | `myosuite/envs/wrappers.py`, `myosuite/envs/muscle_stages.py` |
+| Runtime policy loading (`onnx_checkpoint`, `rslrl_policy`), `export_onnx`, `action_map`, manifests | `myosuite/policies/` |
+| Muscle noise / fatigue / reafferentation / sarcopenia (wrappers, stages, `feature_cli`) | `myosuite/envs/wrappers.py`, `myosuite/envs/muscle_stages.py`, `myosuite/envs/feature_cli.py` |
 | Building an env (`make_env`, `EnvConfig`), `ModelBuilder`, scene/spec assembly | `myosuite/core/registry.py`, `myosuite/core/config.py`, `myosuite/core/model_builder.py`, `myosuite/core/builder/` |
-| Rendering, rollout video, muscle meshes, skinning, Blender/USD | `myosuite/viz/` |
+| Rendering, rollout logging/plotting, muscle meshes, skinning, Blender/USD | `myosuite/viz/` |
+| Evaluation suites (`paired_replay`, `push_*`, `performance_card`, `examine_env`) | `myosuite/benchmarks/` |
 | mjlab action/obs/event wiring | `myosuite/envs/myo/backends/mjlab/` |
-| RL trainers, replay buffers, world models | `training/<method>/` (**never** inside `myosuite/`) |
+| RL trainers, replay buffers, world models | `training/<method>/` (**never** inside `myosuite/`, and **no new helpers in `myosuite/utils/`**) |
 
 ## Python Standards
 

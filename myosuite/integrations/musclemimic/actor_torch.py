@@ -49,10 +49,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from myosuite.integrations.musclemimic.actor_tree import (
+from myosuite.policies.actor_tree import (
     residual_block_indices as _residual_block_indices,
 )
-from myosuite.integrations.musclemimic.actor_tree import (
+from myosuite.policies.actor_tree import (
     sorted_prefix_indices as _sorted_prefix_indices,
 )
 
@@ -666,7 +666,7 @@ def load_mimic_checkpoint_policy(
     :func:`~myosuite.integrations.musclemimic.model_bridge.make_fullbody_checkpoint_bridged_policy`
     to run it on a native mjlab environment.
     """
-    from myosuite.integrations.musclemimic.fullbody_checkpoint_io import (
+    from myosuite.policies.checkpoint_ref import (
         resolve_checkpoint_ref,
     )
     from myosuite.integrations.musclemimic.fullbody_local_policy import (
