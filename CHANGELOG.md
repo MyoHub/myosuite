@@ -40,8 +40,9 @@ Changes since **v3.1.0** (2026-11-11).
   `--seed` (`RslRlPolicy.seed`), so the run is reproducible; torch's global RNG is left alone.
 * The arm-reach model edit (`myoArmReach*`) builds with myo_sim hands whose finger joints are used by tendons
   and equalities, such as the lumbrical junction nodes of the revised hand. Finger joints are now deleted
-  together with everything that references them (`spec_processing.delete_joint`). The edited model is
-  unchanged on myo_sim 0.2.5 ([#748]).
+  together with everything that references them (`spec_processing.delete_joint`, which delegates to
+  `myo_sim.build.spec_edit` from MyoHub/myo_sim#209; myo-sim 0.2.5 lacks it, so this needs a myo-sim
+  build containing it). The edited model is unchanged ([#748]).
 * The table-tennis body (`myoChallengeTableTennisP*`) builds with the revised hand: stripping the left arm
   also removes the equalities and fixed tendons on its tendon-tied nodes ([#748]).
 * Finger removal of the myo_sim-native MuscleMimic bodies (`myoMimic-v0`, `myoChallengeChaseTagFB*`) resolves
