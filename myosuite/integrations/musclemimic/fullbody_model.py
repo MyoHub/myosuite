@@ -18,12 +18,11 @@ Finger joint/muscle name lists are shared with
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from pathlib import Path
 import tempfile
 import warnings
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
+from pathlib import Path
 
 import mujoco
 from ml_collections import config_dict
@@ -32,6 +31,7 @@ from myosuite.core.model_builder import cached_spec
 from myosuite.integrations.musclemimic.bimanual_model import (
     FINGER_JOINT_TOKENS,
     FINGER_MUSCLE_TOKENS,
+    _resolve_musclemimic_xml,
     _translate_finger_token,
 )
 from myosuite.integrations.musclemimic.model_versions import (
@@ -100,20 +100,9 @@ def resolve_mimic_fullbody_xml(config: config_dict.ConfigDict) -> str:
         ImportError: If the default asset is requested but
             ``musclemimic_models`` is not installed.
     """
-    mp = getattr(config, "model_path", None)
-    if mp is not None:
-        return mp.as_posix() if hasattr(mp, "as_posix") else str(mp)
-    try:
-        from musclemimic_models import get_xml_path
-    except ImportError as err:
-        raise ImportError(
-            "MyoFullBody parity requires the same MJCF as "
-            "https://github.com/amathislab/musclemimic (package "
-            "`musclemimic_models`). Install with: pip install "
-            "'musclemimic_models==1.0.6' or pip install "
-            "'myosuite[musclemimic]'."
-        ) from err
-    return get_xml_path("myofullbody").as_posix()
+    return _resolve_musclemimic_xml(
+        config, "myofullbody", "MyoFullBody parity requires the same MJCF as"
+    )
 
 
 def _prepare_scene_xml_keep_only_floor(scene_xml: Path) -> Path:

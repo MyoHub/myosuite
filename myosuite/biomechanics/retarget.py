@@ -42,6 +42,7 @@ from typing import Any, Protocol
 import mujoco
 import numpy as np
 
+from myosuite.core.retargeting import _geom_bottom as _geom_lowest_z
 from myosuite.physics.joint_coupling import JointCouplings, project_joint_couplings
 
 REFIT_META_KEY = "refit_meta"
@@ -536,27 +537,6 @@ def _orientation_errors(
             mujoco.mju_mulQuat(qerr, d.xquat[b], neg)
             out[t, k] = np.linalg.norm(_so3_log_quat(qerr))
     return out
-
-
-def _geom_lowest_z(m: mujoco.MjModel, d: mujoco.MjData, g: int) -> float:
-    """Lowest world z of a collision geom (sphere, capsule, cylinder, ellipsoid, box, mesh)."""
-    t, s = m.geom_type[g], m.geom_size[g]
-    R, z = d.geom_xmat[g].reshape(3, 3), d.geom_xpos[g, 2]
-    G = mujoco.mjtGeom
-    if t == G.mjGEOM_SPHERE:
-        return z - s[0]
-    if t == G.mjGEOM_CAPSULE:
-        return z - abs(R[2, 2]) * s[1] - s[0]
-    if t == G.mjGEOM_CYLINDER:
-        return z - abs(R[2, 2]) * s[1] - s[0] * np.sqrt(max(0.0, 1 - R[2, 2] ** 2))
-    if t == G.mjGEOM_ELLIPSOID:
-        return z - np.sqrt(((R[2] * s) ** 2).sum())
-    if t == G.mjGEOM_BOX:
-        return z - (np.abs(R[2]) * s).sum()
-    if t == G.mjGEOM_MESH:
-        a, n = m.mesh_vertadr[m.geom_dataid[g]], m.mesh_vertnum[m.geom_dataid[g]]
-        return z + (m.mesh_vert[a : a + n] @ R[2]).min()
-    return z
 
 
 def _foot_kinematics(

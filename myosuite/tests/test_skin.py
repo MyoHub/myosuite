@@ -223,3 +223,12 @@ def test_command_line_exports_and_imports_the_bundled_skin(tmp_path: Path) -> No
         atol=1e-4,
     )
     env.close()
+
+
+def test_read_skin_glb_rejects_a_truncated_file(tmp_path: Path) -> None:
+    """A file shorter than the glTF header is reported as not a glTF binary."""
+    model = mujoco.MjModel.from_xml_string("<mujoco><worldbody/></mujoco>")
+    bad = tmp_path / "short.glb"
+    bad.write_bytes(b"glTF\x02")
+    with pytest.raises(ValueError, match="Not a glTF binary"):
+        read_skin_glb(bad, model)

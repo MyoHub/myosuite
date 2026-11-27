@@ -16,25 +16,10 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from myosuite.terms._array import xp_asarray as _xp_asarray
+
 if TYPE_CHECKING:
     from myosuite.core.protocols import EnvAccessor
-
-
-def _xp_asarray(
-    xp: Any,
-    value: Any,
-    *,
-    dtype: Any | None = None,
-    device: Any | None = None,
-) -> Any:
-    if getattr(xp, "__name__", "") == "torch":
-        tensor = (
-            xp.as_tensor(value, device=device)
-            if device is not None
-            else xp.as_tensor(value)
-        )
-        return tensor.to(dtype=dtype) if dtype is not None else tensor
-    return xp.asarray(value, dtype=dtype) if dtype is not None else xp.asarray(value)
 
 
 def _maybe_item(value: Any) -> Any:

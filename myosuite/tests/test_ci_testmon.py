@@ -23,6 +23,7 @@ _SUITE = "Pytest — full suite (tier 1–3, all backends; excludes @slow)"
 _REQUIRED = {
     "test_model_builder.py",
     "test_terms_cpu.py",
+    "test_term_catalog.py",
     "test_fragment_compat.py",
     "test_parity.py",
     "test_registry.py",

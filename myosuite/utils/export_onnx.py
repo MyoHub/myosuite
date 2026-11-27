@@ -62,13 +62,21 @@ exports return the raw policy action that the CPU env's ``step()`` expects
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
 from myosuite.core.registry import make_env
+from myosuite.integrations.musclemimic.actor_tree import (
+    residual_block_indices as _residual_block_indices,
+)
 
 try:
     import torch
@@ -90,28 +98,198 @@ def _require_torch() -> Any:
     return torch
 
 
-def _export_policy(
-    policy: torch.nn.Module, obs_dim: int, output: Path, opset: int
+VERIFY_ATOL = 1e-4
+VERIFY_RTOL = 1e-4
+
+
+def verify_onnx_parity(
+    policy: torch.nn.Module,
+    onnx_path: str | Path,
+    obs_dim: int,
+    *,
+    atol: float = VERIFY_ATOL,
+    rtol: float = VERIFY_RTOL,
+    seed: int = 0,
+) -> float:
+    """Verify ONNX graph parity against ``policy`` across single and batched inputs.
+
+    Args:
+        policy: Reference PyTorch module in eval mode.
+        onnx_path: Exported ``.onnx`` file to check.
+        obs_dim: Input observation dimension.
+        atol: Absolute tolerance.
+        rtol: Relative tolerance.
+        seed: Deterministic RNG seed for test observations.
+
+    Returns:
+        Maximum absolute difference observed across checked batches.
+
+    Raises:
+        ImportError: When ``onnxruntime`` is not installed.
+        RuntimeError: When ONNX output deviates from PyTorch beyond ``(atol, rtol)``.
+    """
+    _torch = _require_torch()
+    from myosuite.utils.onnxruntime_utils import require_onnxruntime
+
+    try:
+        ort = require_onnxruntime()
+    except ImportError as exc:
+        raise ImportError(
+            f"{exc} Pass verify=False (or --no-verify on the CLI) to export "
+            "without parity verification."
+        ) from exc
+
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    gen = _torch.Generator().manual_seed(int(seed))
+    policy_cpu = policy.cpu().eval()
+    max_diff = 0.0
+
+    with _torch.inference_mode():
+        for batch in (1, 4):
+            obs_t = _torch.randn(batch, obs_dim, generator=gen, dtype=_torch.float32)
+            want = policy_cpu(obs_t).detach().cpu().numpy()
+            (got,) = sess.run(["action"], {"obs": obs_t.numpy()})
+            if got.shape != want.shape or not np.allclose(
+                got, want, atol=atol, rtol=rtol
+            ):
+                diff = (
+                    float(np.max(np.abs(got - want)))
+                    if got.shape == want.shape
+                    else float("inf")
+                )
+                raise RuntimeError(
+                    f"Exported ONNX graph ({Path(onnx_path).name}) failed parity check "
+                    f"at batch={batch}: max_abs_diff={diff:.3e} (atol={atol}, rtol={rtol})."
+                )
+            max_diff = max(max_diff, float(np.max(np.abs(got - want))))
+    return max_diff
+
+
+def _replace_file(src: Path, dst: Path) -> None:
+    src.replace(dst)
+
+
+def _commit_staged_artifacts(
+    staging: Path,
+    replacements: list[tuple[Path, Path]],
+    stale: tuple[Path, ...] = (),
 ) -> None:
-    """Export ``policy(obs) -> action`` with a dynamic batch axis to one ``.onnx`` file.
+    """Move staged files into place, rolling back all targets if any move fails."""
+    backups: list[tuple[Path, Path]] = []
+    placed: list[Path] = []
+    all_targets = [dst for _, dst in replacements] + list(stale)
+    try:
+        for idx, dst in enumerate(all_targets):
+            if dst.exists():
+                bak = staging / f".backup-{idx}"
+                _replace_file(dst, bak)
+                backups.append((bak, dst))
+        for src, dst in replacements:
+            _replace_file(src, dst)
+            placed.append(dst)
+    except BaseException:
+        for dst in reversed(placed):
+            dst.unlink(missing_ok=True)
+        for bak, dst in reversed(backups):
+            if bak.exists():
+                bak.replace(dst)
+        raise
+
+
+def _write_policy_spec(
+    onnx_path: Path,
+    obs_dim: int,
+    act_dim: int,
+    *,
+    checkpoint: str | Path | None = None,
+    framework: str = "pytorch",
+    dest: Path | None = None,
+) -> Path:
+    """Write ``<stem>.policy_spec.json`` describing graph inputs, outputs, and provenance."""
+    inputs: list[dict[str, Any]] = [{"name": "obs", "shape": ["batch", obs_dim]}]
+    outputs: list[dict[str, Any]] = [{"name": "action", "shape": ["batch", act_dim]}]
+    onnx_meta: dict[str, Any] = {
+        "file": onnx_path.name,
+        "inputs": inputs,
+        "outputs": outputs,
+    }
+    if onnx_path.is_file():
+        onnx_meta["sha256"] = hashlib.sha256(onnx_path.read_bytes()).hexdigest()
+    prov: dict[str, Any] = {"framework": framework}
+    if checkpoint is not None and Path(checkpoint).is_file():
+        digest = hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest()
+        prov["checkpoint"] = {"file": Path(checkpoint).name, "sha256": digest}
+
+    spec = {
+        "schema_version": 1,
+        "model": {"onnx": onnx_meta},
+        "observations": {"dim": obs_dim},
+        "actions": {"dim": act_dim},
+        "provenance": prov,
+    }
+    spec_path = dest if dest is not None else onnx_path.with_suffix(".policy_spec.json")
+    spec_path.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
+    return spec_path
+
+
+def _export_policy(
+    policy: torch.nn.Module,
+    obs_dim: int,
+    output: Path,
+    opset: int,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
+    checkpoint: str | Path | None = None,
+    framework: str = "pytorch",
+) -> None:
+    """Atomically stage, parity-check, and write ``policy(obs) -> action`` to ``output``.
 
     Uses the TorchScript exporter (``dynamo=False``): torch's default dynamo exporter
     writes the weights to a separate ``.onnx.data`` file, so the ``.onnx`` alone does
     not load, and prints progress that a non-UTF-8 stdout cannot encode.
     """
     _torch = _require_torch()
+    output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    _torch.onnx.export(
-        policy,
-        _torch.zeros(1, obs_dim, dtype=_torch.float32),
-        str(output),
-        opset_version=opset,
-        input_names=["obs"],
-        output_names=["action"],
-        dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
-        do_constant_folding=True,
-        dynamo=False,
-    )
+    spec_dest = output.with_suffix(".policy_spec.json")
+    staging = Path(tempfile.mkdtemp(prefix=".onnx-export-", dir=str(output.parent)))
+    try:
+        staged_onnx = staging / output.name
+        dummy = _torch.zeros(1, obs_dim, dtype=_torch.float32)
+        policy_eval = policy.cpu().eval()
+        with _torch.no_grad():
+            act_dim = int(policy_eval(dummy).shape[-1])
+        _torch.onnx.export(
+            policy_eval,
+            dummy,
+            str(staged_onnx),
+            opset_version=opset,
+            input_names=["obs"],
+            output_names=["action"],
+            dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
+            do_constant_folding=True,
+            dynamo=False,
+        )
+        if verify:
+            verify_onnx_parity(policy_eval, staged_onnx, obs_dim)
+        replacements: list[tuple[Path, Path]] = [(staged_onnx, output)]
+        stale: tuple[Path, ...] = ()
+        if write_spec:
+            staged_spec = _write_policy_spec(
+                staged_onnx,
+                obs_dim,
+                act_dim,
+                checkpoint=checkpoint,
+                framework=framework,
+                dest=staging / spec_dest.name,
+            )
+            replacements.append((staged_spec, spec_dest))
+        else:
+            stale = (spec_dest,)
+        _commit_staged_artifacts(staging, replacements, stale=stale)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +326,9 @@ def export_sb3_to_onnx(
     act_dim: int,
     opset: int = 17,
     vec_normalize: VecNormalize | str | Path | None = None,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
 ) -> None:
     """Export a Stable-Baselines3 policy (SAC/TD3/PPO) to ONNX.
 
@@ -231,7 +412,16 @@ def export_sb3_to_onnx(
 
     wrapper = _DeterministicWrapper(model.policy, algo_name, obs_stats)
     wrapper.eval()
-    _export_policy(wrapper, obs_dim, output, opset)
+    _export_policy(
+        wrapper,
+        obs_dim,
+        output,
+        opset,
+        verify=verify,
+        write_spec=write_spec,
+        checkpoint=checkpoint,
+        framework="sb3",
+    )
     log.info(
         "Exported SB3 policy → %s  (obs_dim=%d, act_dim=%d, VecNormalize folded: %s)",
         output,
@@ -252,6 +442,9 @@ def export_rslrl_to_onnx(
     obs_dim: int,
     act_dim: int,
     opset: int = 17,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
 ) -> None:
     """Export the deterministic actor of an RSL-RL (mjlab) checkpoint to ONNX.
 
@@ -276,7 +469,16 @@ def export_rslrl_to_onnx(
     if expected != obs_dim:
         raise ValueError(f"--obs-dim {obs_dim} != checkpoint input size {expected}")
 
-    _export_policy(policy, obs_dim, output, opset)
+    _export_policy(
+        policy,
+        obs_dim,
+        output,
+        opset,
+        verify=verify,
+        write_spec=write_spec,
+        checkpoint=checkpoint,
+        framework="rslrl",
+    )
     log.info(
         "Exported RSL-RL policy → %s  (obs_dim=%d, act_dim=%d)",
         output,
@@ -321,19 +523,6 @@ def export_jax_to_onnx(
 # ---------------------------------------------------------------------------
 # Orbax/Flax export (MuscleMimic full-body residual actor)
 # ---------------------------------------------------------------------------
-
-
-def _residual_block_indices(actor: dict[str, Any]) -> list[int]:
-    """Return sorted residual block indices present in an actor tree."""
-    indices: list[int] = []
-    suffix = "_layer0_dense"
-    for key in actor:
-        if not key.startswith("block") or not key.endswith(suffix):
-            continue
-        idx = key[len("block") : -len(suffix)]
-        if idx.isdigit():
-            indices.append(int(idx))
-    return sorted(indices)
 
 
 class _OrbaxResBlock(_ModuleBase):
@@ -493,6 +682,9 @@ def export_orbax_to_onnx(
     checkpoint: str | Path,
     output: str | Path,
     opset: int = 17,
+    *,
+    verify: bool = True,
+    write_spec: bool = False,
 ) -> None:
     """Export a MuscleMimic full-body Orbax/Flax policy to ONNX."""
     output = Path(output)
@@ -524,7 +716,16 @@ def export_orbax_to_onnx(
     actor_net = _OrbaxActorNet(artifacts.params)
     wrapper = _OrbaxPolicyWrapper(actor_net, artifacts.obs_mean, artifacts.obs_var)
     wrapper.eval()
-    _export_policy(wrapper, artifacts.obs_dim, output, opset)
+    _export_policy(
+        wrapper,
+        artifacts.obs_dim,
+        output,
+        opset,
+        verify=verify,
+        write_spec=write_spec,
+        checkpoint=local_path,
+        framework="orbax",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -738,6 +939,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "(default: the stats saved next to the checkpoint, if any)"
         ),
     )
+    ex.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Skip onnxruntime parity check before moving the staged .onnx into place.",
+    )
+    ex.add_argument(
+        "--policy-spec",
+        action="store_true",
+        help="Write a <stem>.policy_spec.json sidecar describing ONNX I/O and provenance.",
+    )
 
     # --- verify ---
     vr = sub.add_parser("verify", help="Run an ONNX policy on the CPU env")
@@ -758,7 +969,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _write_export_manifest(args: argparse.Namespace) -> Path:
+def _write_export_manifest(
+    args: argparse.Namespace, *, output_override: Path | None = None
+) -> Path:
     """Write provenance for an exported CPU policy without loading weights again."""
     import hashlib
     import json
@@ -826,7 +1039,7 @@ def _write_export_manifest(args: argparse.Namespace) -> Path:
             np.prod(env.action_space.shape)
         ):
             raise ValueError("--act-dim does not match the deployment env")
-        output = Path(args.output)
+        output = output_override if output_override is not None else Path(args.output)
         manifest = env_deployment_manifest(
             env, artifacts={output.name: output}, checkpoint=record, **metadata
         )
@@ -838,46 +1051,88 @@ def main() -> None:
     args = _build_parser().parse_args()
 
     if args.command == "export":
+        verify = not args.no_verify
+        write_spec = bool(args.policy_spec)
         if args.env and str(args.checkpoint).startswith("hf://"):
             _build_parser().error(
                 "For a provenance export, download the checkpoint at a pinned HF revision first and pass its local path plus checkpoint_source metadata."
             )
         if args.deployment_metadata and not args.env:
             _build_parser().error("--deployment-metadata requires --env")
-        if args.framework == "orbax":
-            export_orbax_to_onnx(args.checkpoint, args.output, args.opset)
-        else:
-            if args.obs_dim is None or args.act_dim is None:
-                _build_parser().error(
-                    f"--framework {args.framework} requires --obs-dim and --act-dim"
+        if args.framework != "orbax" and (args.obs_dim is None or args.act_dim is None):
+            _build_parser().error(
+                f"--framework {args.framework} requires --obs-dim and --act-dim"
+            )
+
+        final_out = Path(args.output)
+        final_out.parent.mkdir(parents=True, exist_ok=True)
+        final_spec = final_out.with_suffix(".policy_spec.json")
+        final_manifest = Path(f"{final_out}.manifest.json")
+        cli_staging = Path(
+            tempfile.mkdtemp(prefix=".onnx-cli-", dir=str(final_out.parent))
+        )
+        try:
+            staged_out = cli_staging / final_out.name
+            if args.framework == "orbax":
+                export_orbax_to_onnx(
+                    args.checkpoint,
+                    staged_out,
+                    args.opset,
+                    verify=verify,
+                    write_spec=write_spec,
                 )
-            if args.framework == "sb3":
+            elif args.framework == "sb3":
                 from myosuite.utils.checkpoint_utils import find_vec_normalize
 
                 export_sb3_to_onnx(
                     args.checkpoint,
-                    args.output,
+                    staged_out,
                     args.obs_dim,
                     args.act_dim,
                     args.opset,
                     vec_normalize=(
                         args.vecnormalize or find_vec_normalize(args.checkpoint)
                     ),
+                    verify=verify,
+                    write_spec=write_spec,
                 )
             elif args.framework == "rslrl":
                 export_rslrl_to_onnx(
                     args.checkpoint,
-                    args.output,
+                    staged_out,
+                    args.obs_dim,
+                    args.act_dim,
+                    args.opset,
+                    verify=verify,
+                    write_spec=write_spec,
+                )
+            elif args.framework == "jax":
+                export_jax_to_onnx(
+                    args.checkpoint,
+                    staged_out,
                     args.obs_dim,
                     args.act_dim,
                     args.opset,
                 )
-            elif args.framework == "jax":
-                export_jax_to_onnx(
-                    args.checkpoint, args.output, args.obs_dim, args.act_dim, args.opset
+
+            replacements: list[tuple[Path, Path]] = [(staged_out, final_out)]
+            stale: list[Path] = []
+            if write_spec:
+                replacements.append(
+                    (staged_out.with_suffix(".policy_spec.json"), final_spec)
                 )
-        if args.env:
-            _write_export_manifest(args)
+            else:
+                stale.append(final_spec)
+            if args.env:
+                staged_manifest = _write_export_manifest(
+                    args, output_override=staged_out
+                )
+                replacements.append((staged_manifest, final_manifest))
+            else:
+                stale.append(final_manifest)
+            _commit_staged_artifacts(cli_staging, replacements, stale=tuple(stale))
+        finally:
+            shutil.rmtree(cli_staging, ignore_errors=True)
 
     elif args.command == "verify":
         metrics = verify_onnx_on_cpu(

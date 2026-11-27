@@ -65,6 +65,7 @@ from myosuite.core.model_builder import (
     build_from_recipe,
     model_recipe,
     register_spec_recipe,
+    suppress_empty_prefix_attach_warning,
 )
 
 # Root of the myosuite package — used to locate asset files.
@@ -114,8 +115,10 @@ def materialize_recipe_xml(
     from myosuite.utils.asset_path_resolver import write_atomic
 
     model, spec = build_from_recipe(name, edit_fn=edit_fn)
+    with suppress_empty_prefix_attach_warning():
+        raw_xml = spec.to_xml()
     data = sanitize_spec_xml(
-        spec.to_xml(), asset_dir=str(myo_sim.MODELS_DIR), model=model
+        raw_xml, asset_dir=str(myo_sim.MODELS_DIR), model=model
     ).encode("utf-8")
 
     out = dest
@@ -1550,8 +1553,15 @@ def _add_tabletennis_furniture(spec: mujoco.MjSpec) -> mujoco.MjSpec:
 # for the episode's initial pose, so this keyframe is load-bearing, not
 # cosmetic (unlike the legacy XML's "dribble" keyframe, which nothing reads
 # and is intentionally not reproduced here).
-# The paddle freejoint (qpos 58:65) is the legacy world spawn verbatim; the
-# legacy arm pose already reaches it, so the handle lands in ``S_grasp``.
+# The paddle freejoint (qpos 58:65) is the legacy world spawn verbatim.
+# Identified via ``test_joint_coupling.joint_equality_residuals(model, key_qpos[0])``:
+# the legacy pose left 11 right-shoulder rhythm followers up to 0.59 rad and
+# lumbar ``L3_L4_FE`` 0.097 rad off their polynomial couplings (projecting raw
+# ``key_qpos[0]`` moved ``S_grasp`` 7.9 cm off the paddle handle). Re-solved the
+# 7 independent right-arm DOFs (``elv_angle_r .. deviation_r``) via bounded
+# nonlinear least-squares with ``project_joint_couplings`` enforced at every
+# step so ``S_grasp`` matches its legacy pose (5e-6 m, 2e-4 rad) and the wrist
+# stays 2 deg inside its flexion limit: the handle still lands in ``S_grasp``.
 _TABLETENNIS_DEFAULT_KEY_QPOS = [
     -0.4205,
     0,
@@ -1564,7 +1574,6 @@ _TABLETENNIS_DEFAULT_KEY_QPOS = [
     0,
     0,
     0,
-    -0.0971634,
     0,
     0,
     0,
@@ -1574,23 +1583,24 @@ _TABLETENNIS_DEFAULT_KEY_QPOS = [
     0,
     0,
     0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0.1368,
-    0.14842,
-    0.70695,
-    -0.7405,
-    -0.343225,
-    0.805495,
-    -0.10284,
-    -0.08288,
-    -0.730422,
+    -0.178146364,
+    0.075454555,
+    -0.075454555,
+    0.178146364,
+    -0.036070958,
+    0.291512232,
+    0.131033276,
+    -0.131033276,
+    -0.291512232,
+    0.036070958,
+    0.370028,
+    0.736142,
+    -0.370028,
+    -0.76636,
+    0.568194,
+    0.020786,
+    0.013715,
+    -0.750491,
     0.7,
     0.0632,
     0.07503,
