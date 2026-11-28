@@ -1846,3 +1846,64 @@ def _make_mm_spec_builder(name: str) -> Callable[[], mujoco.MjSpec]:
 
 for _mm_spec_name in _MUSCLEMIMIC_NAMES:
     register_spec_recipe(_mm_spec_name, _make_mm_spec_builder(_mm_spec_name))
+
+
+def _build_myo_sim_actor_scene_spec(
+    model_name: str,
+    build_kwargs: dict[str, object] | None = None,
+) -> mujoco.MjSpec:
+    """Build a standalone myo_sim actor spec with floor, standing keyframe, and pelvis_mimic site."""
+    import inspect
+    import myo_sim  # type: ignore[import-untyped]
+    from myosuite.physics.compliant_plant import prepare_spec_for_plant
+
+    kw = {"postures": True, **dict(build_kwargs or {})}
+    sig = inspect.signature(myo_sim.load_spec)
+    if "build_kwargs" in sig.parameters:
+        try:
+            spec = myo_sim.load_spec(model_name, build_kwargs=kw)
+        except Exception:
+            spec = myo_sim.load_spec(model_name)
+    else:
+        spec = myo_sim.load_spec(model_name)
+
+    has_plane = any(
+        g.type == mujoco.mjtGeom.mjGEOM_PLANE for g in spec.worldbody.geoms
+    )
+    if not has_plane:
+        spec.worldbody.add_geom(
+            name="floor",
+            type=mujoco.mjtGeom.mjGEOM_PLANE,
+            size=[0.0, 0.0, 0.05],
+        )
+    pelvis = spec.body("pelvis")
+    if pelvis is not None and spec.site("pelvis_mimic") is None:
+        pelvis.add_site(name="pelvis_mimic", group=4, pos=[0.0, 0.0, 0.0])
+    return prepare_spec_for_plant(spec)
+
+
+_V1_ACTOR_RECIPES: dict[str, tuple[str, dict[str, object]]] = {
+    "myolegs_v1": ("myolegs", {}),
+    "myofullbody_v1": ("myofullbody", {}),
+    "myofullbody_simple": ("myofullbody_simple", {}),
+    "myofullbody_simple_locked_st": (
+        "myofullbody_simple",
+        {"keep_scapula_dofs": False},
+    ),
+    "myofullbody_simple_rigid": ("myofullbody_simple_rigid", {}),
+}
+
+for _rname, (_mname, _bkw) in _V1_ACTOR_RECIPES.items():
+
+    def _register_v1_actor(
+        rn: str, mn: str, bk: dict[str, object]
+    ) -> None:
+        @model_recipe(rn)
+        def _placeholder(b: ModelBuilder) -> ModelBuilder:  # noqa: ARG001
+            raise NotImplementedError(f"Use build_from_recipe({rn!r})")
+
+        register_spec_recipe(
+            rn, lambda: _build_myo_sim_actor_scene_spec(mn, bk)
+        )
+
+    _register_v1_actor(_rname, _mname, _bkw)

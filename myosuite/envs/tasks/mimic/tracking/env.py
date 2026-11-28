@@ -39,9 +39,10 @@ def observation_dims(
     task: MimicTaskCfg, info: ModelInfo, num_tracked: int
 ) -> dict[str, int]:
     """Size of every policy term and of the goal."""
-    n_j, n_m, n_s = len(info.joint_ids), info.num_muscles, num_tracked - 1
+    n_q, n_v = len(info.joint_qadr), len(info.joint_dadr)
+    n_m, n_s = info.num_muscles, num_tracked - 1
     sizes = {
-        "root_pos": 5, "joint_pos": n_j, "root_vel": 6, "joint_vel": n_j,
+        "root_pos": 5, "joint_pos": n_q, "root_vel": 6, "joint_vel": n_v,
         "muscle_length": n_m, "muscle_velocity": n_m, "muscle_force": n_m,
         "muscle_excitation": n_m, "muscle_activation": n_m, "touch": 4,
         "site_rpos": 3 * n_s, "site_rangles": 3 * n_s, "site_rvel": 6 * n_s,
@@ -141,6 +142,7 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
                 mc.clips, mc.root, self.model_name, self.task.self_collisions,
                 round(self._ctrl_dt, 9), mc.bin_s,
                 workers=mc.workers, cache_dir=mc.cache_dir,
+                strict_refit_meta=mc.strict_refit_meta,
             )  # fmt: skip
             self._sampler = ResetSampler(
                 self._motion, self.task.reset, self.max_step_reward
@@ -170,7 +172,15 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             body_rot=d.xmat[ids].reshape(-1, 3, 3).copy(),
             body_lin_vel=d.cvel[ids, 3:] + np.cross(w, d.xpos[ids] - com),
             body_ang_vel=w.copy(),
-            act=d.act[info.act_adr].copy(),
+            act=(
+                np.where(
+                    info.act_adr >= 0,
+                    d.act[np.maximum(info.act_adr, 0)],
+                    d.ctrl,
+                )
+                if d.act.size > 0
+                else d.ctrl.copy()
+            ),
             excitation=self._excitation.copy(),
             touch=np.abs(d.sensordata[self._touch_adr]),
             muscle_length=d.actuator_length.copy(),
@@ -269,7 +279,9 @@ class MimicEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             frame, b = self._sampler.sample(np_random)
         self.data.qpos[:] = m.frames["reset_qpos"][frame]
         self.data.qvel[:] = m.frames["reset_qvel"][frame]
-        self.data.act[self.info.act_adr] = self.task.reset.init_activation
+        stateful = self.info.act_adr[self.info.act_adr >= 0]
+        if stateful.size > 0:
+            self.data.act[stateful] = self.task.reset.init_activation
         self._f, self._start_bin = frame, b
         self._steps, self._ret, self._disc_ret, self._failed = 0, 0.0, 0.0, False
         self._excitation = np.zeros(self.model.nu)

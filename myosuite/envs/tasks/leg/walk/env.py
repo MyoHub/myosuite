@@ -76,7 +76,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str | None = None,
         obsd_model_path: str | None = None,
         seed: int | None = None,
         obs_keys: list | None = None,
@@ -92,8 +92,15 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         frame_skip: int = 10,
         scales: Mapping[str, Any] | str | os.PathLike[str] | None = None,
         total_mass: float | None = None,
+        model_recipe: str | None = None,
+        reward_mode: str = "default",
         **kwargs: Any,
     ) -> None:
+        if reward_mode not in ("default", "task_only"):
+            raise ValueError(
+                f"reward_mode must be 'default' or 'task_only', got {reward_mode!r}"
+            )
+        self.reward_mode = reward_mode
         MyoGymnasiumEnv.__init__(
             self, frame_skip=frame_skip, render_mode=kwargs.get("render_mode")
         )
@@ -103,8 +110,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             obsd_model_path,
             seed,
             obs_keys=obs_keys or self.DEFAULT_OBS_KEYS,
-            weighted_reward_keys=weighted_reward_keys
-            or self.DEFAULT_RWD_KEYS_AND_WEIGHTS,
+            weighted_reward_keys=weighted_reward_keys,
             min_height=min_height,
             max_rot=max_rot,
             hip_period=hip_period,
@@ -116,16 +122,39 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             frame_skip=frame_skip,
             scales=scales,
             total_mass=total_mass,
+            model_recipe=model_recipe,
+            reward_mode=reward_mode,
             **kwargs,
         )
 
-        builder = ModelBuilder.from_xml_file(model_path)
-        if scales is None and total_mass is None:
-            self.model, self._mj_spec = builder.build()
+        if model_recipe is not None:
+            from myosuite.core.model_builder import build_from_recipe
+            from myosuite.physics.compliant_plant import prepare_spec_for_plant
+
+            if scales is None and total_mass is None:
+                self.model, self._mj_spec = build_from_recipe(model_recipe)
+            else:
+                _, self._mj_spec = build_from_recipe(model_recipe)
+                self._mj_spec = prepare_spec_for_plant(
+                    scale_spec(self._mj_spec, scales, total_mass=total_mass)
+                )
+                self.model = self._mj_spec.compile()
         else:
-            self._mj_spec = builder.build_spec()
-            self._mj_spec = scale_spec(self._mj_spec, scales, total_mass=total_mass)
-            self.model = self._mj_spec.compile()
+            if model_path is None:
+                from myosuite.envs.assets._resolve import resolve_leg_xml
+
+                model_path = str(resolve_leg_xml("myolegs_with_torso.xml"))
+            builder = ModelBuilder.from_xml_file(model_path)
+            if scales is None and total_mass is None:
+                self.model, self._mj_spec = builder.build()
+            else:
+                from myosuite.physics.compliant_plant import prepare_spec_for_plant
+
+                self._mj_spec = builder.build_spec()
+                self._mj_spec = prepare_spec_for_plant(
+                    scale_spec(self._mj_spec, scales, total_mass=total_mass)
+                )
+                self.model = self._mj_spec.compile()
         self.data = mujoco.MjData(self.model)
         self._ctrl_dt = float(self.model.opt.timestep * frame_skip)
 
@@ -140,10 +169,20 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         self._on_target_steps = 0
         self.normalize_act = normalize_act
 
-        self._init_qpos = self.model.key_qpos[0].copy()
-        self._init_qvel = np.zeros_like(self.model.key_qvel[0]).copy()
+        if self.model.nkey > 0:
+            self._init_qpos = self.model.key_qpos[0].copy()
+            self._init_qvel = np.zeros_like(self.model.key_qvel[0]).copy()
+        else:
+            self._init_qpos = self.model.qpos0.copy()
+            self._init_qvel = np.zeros(self.model.nv, dtype=np.float64)
 
-        self.rwd_keys_wt = weighted_reward_keys or self.DEFAULT_RWD_KEYS_AND_WEIGHTS
+        if weighted_reward_keys is not None:
+            self.rwd_keys_wt = weighted_reward_keys
+        else:
+            from myosuite.core.training_recipes import resolve_training_recipe
+
+            recipe = resolve_training_recipe("walk", self.model)
+            self.rwd_keys_wt = dict(recipe.reward_weights)
         self.obs_keys = list(obs_keys or self.DEFAULT_OBS_KEYS)
         if self.model.na > 0 and "act" not in self.obs_keys:
             self.obs_keys.append("act")
@@ -375,27 +414,42 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
                 ("done", done),
             )
         )
-        rwd_dict["dense"] = float(
-            np.sum(
-                [
-                    self.rwd_keys_wt[k] * rwd_dict[k]
-                    for k in self.rwd_keys_wt
-                    if k in rwd_dict
-                ]
+        if self.reward_mode == "task_only":
+            rwd_dict["dense"] = float(rwd_dict["solved"]) - (
+                1.0 if bool(done) and not bool(rwd_dict["solved"]) else 0.0
             )
-        )
+        else:
+            rwd_dict["dense"] = float(
+                np.sum(
+                    [
+                        self.rwd_keys_wt[k] * rwd_dict[k]
+                        for k in self.rwd_keys_wt
+                        if k in rwd_dict
+                    ]
+                )
+            )
         return rwd_dict
 
     def _get_randomized_initial_state(self) -> tuple[np.ndarray, np.ndarray]:
-        if self.np_random.uniform() < 0.5:
-            qpos = self.model.key_qpos[2].copy()
-            qvel = self.model.key_qvel[2].copy()
+        if self.model.nkey >= 4:
+            k_idx = 2 if self.np_random.uniform() < 0.5 else 3
+            qpos = self.model.key_qpos[k_idx].copy()
+            qvel = self.model.key_qvel[k_idx].copy()
+        elif self.model.nkey > 0:
+            qpos = self.model.key_qpos[0].copy()
+            qvel = self.model.key_qvel[0].copy()
         else:
-            qpos = self.model.key_qpos[3].copy()
-            qvel = self.model.key_qvel[3].copy()
+            qpos = self._init_qpos.copy()
+            qvel = self._init_qvel.copy()
         rot_state = qpos[3:7].copy()
         height = qpos[2]
-        qpos = qpos + self.np_random.normal(0, 0.02, size=qpos.shape)
+        noise = self.np_random.normal(0, 0.02, size=qpos.shape)
+        # Keep any quaternion ball joints unit-length
+        for j in range(self.model.njnt):
+            if self.model.jnt_type[j] == mujoco.mjtJoint.mjJNT_BALL:
+                qa = int(self.model.jnt_qposadr[j])
+                noise[qa : qa + 4] = 0.0
+        qpos = qpos + noise
         qpos[3:7] = rot_state
         qpos[2] = height
         return qpos, qvel
@@ -432,7 +486,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         mujoco.mj_resetData(self.model, self.data)
         if self.reset_type == "random":
             qpos, qvel = self._get_randomized_initial_state()
-        elif self.reset_type == "init":
+        elif self.reset_type == "init" and self.model.nkey >= 3:
             qpos = self.model.key_qpos[2].copy()
             qvel = self.model.key_qvel[2].copy()
         else:
@@ -441,7 +495,7 @@ class LegWalkEnvV0(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
         self._project_joint_couplings()
-        mujoco.mj_forward(self.model, self.data)
+        self._refresh_physics_after_reset()
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))
@@ -578,7 +632,7 @@ class LegTerrainEnvV0(LegWalkEnvV0):
         mujoco.mj_resetData(self.model, self.data)
         if self.reset_type == "random":
             qpos, qvel = self._get_randomized_initial_state()
-        elif self.reset_type == "init":
+        elif self.reset_type == "init" and self.model.nkey >= 3:
             qpos = self.model.key_qpos[2].copy()
             qvel = self.model.key_qvel[2].copy()
         else:
@@ -587,7 +641,7 @@ class LegTerrainEnvV0(LegWalkEnvV0):
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
         self._project_joint_couplings()
-        mujoco.mj_forward(self.model, self.data)
+        self._refresh_physics_after_reset()
         self._task_state = self.reset_task(self.np_random)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs = self._obs_dict_to_vec(self._get_obs_dict(self._accessor))

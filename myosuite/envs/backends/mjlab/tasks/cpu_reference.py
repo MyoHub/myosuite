@@ -488,7 +488,10 @@ def init_state_from_model(
                 "rot": tuple(qpos[adr + 3 : adr + 7]),
             }
         elif jtype == mujoco.mjtJoint.mjJNT_BALL:
-            raise ValueError(f"Ball joint {name!r} is not supported.")
+            # Quaternion ball joints (e.g. v1 acromioclavicular_r/l) have 4 qpos
+            # slots vs 3 dof slots; mjlab InitialStateCfg.joint_pos is scalar-only,
+            # so leave ball joints at qpos0 here and restore full qpos via reset events.
+            continue
         else:
             joint_pos[f"^{name}$"] = qpos[adr]
     return EntityCfg.InitialStateCfg(**root, joint_pos=joint_pos, joint_vel={".*": 0.0})

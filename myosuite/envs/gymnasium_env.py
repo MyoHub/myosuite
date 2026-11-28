@@ -499,11 +499,33 @@ class MyoGymnasiumEnv(gym.Env):
         import mujoco
 
         del update_exteroception
-        mujoco.mj_forward(self.model, self.data)
+        from myosuite.physics.compliant_plant import get_or_attach_cpu_plant
+
+        plant = get_or_attach_cpu_plant(self, self.model)
+        if plant is not None:
+            plant.forward(self.model, self.data)
+        else:
+            mujoco.mj_forward(self.model, self.data)
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         rwd_dict = self.get_reward_dict(obs_dict)
         return self._finalize_step(obs_dict, rwd_dict)
+
+    def _refresh_physics_after_reset(self) -> None:
+        """Equilibrate series-elastic tendons (when active) and run ``mj_forward``.
+
+        Subclasses that override :meth:`reset` should call this instead of bare
+        ``mujoco.mj_forward`` after setting ``qpos``/``qvel``/``act`` so ``myo_sim``
+        v1 compliant fibers initialize at exact static tendon-fiber force equilibrium.
+        """
+        import mujoco
+        from myosuite.physics.compliant_plant import get_or_attach_cpu_plant
+
+        plant = get_or_attach_cpu_plant(self, self.model)
+        if plant is not None:
+            plant.reset_and_forward(self.model, self.data)
+        else:
+            mujoco.mj_forward(self.model, self.data)
 
     def reset(
         self,
@@ -525,7 +547,7 @@ class MyoGymnasiumEnv(gym.Env):
         mujoco.mj_resetData(self.model, self.data)
         self._task_state = self.reset_task(self.np_random)
         self._project_joint_couplings()
-        mujoco.mj_forward(self.model, self.data)
+        self._refresh_physics_after_reset()
         self._accessor = CpuEnvAccessor(self.model, self.data, self._ctrl_dt)
         obs_dict = self._get_obs_dict(self._accessor)
         obs = self._obs_dict_to_vec(obs_dict)
@@ -684,10 +706,15 @@ class MyoGymnasiumEnv(gym.Env):
             nstep: Number of substeps; ``None`` uses ``frame_skip``.
         """
         import mujoco
+        from myosuite.physics.compliant_plant import get_or_attach_cpu_plant
 
         n = self.frame_skip if nstep is None else nstep
-        mujoco.mj_step(self.model, self.data, n)
-        mujoco.mj_forward(self.model, self.data)
+        plant = get_or_attach_cpu_plant(self, self.model)
+        if plant is not None:
+            plant.step(self.model, self.data, n)
+        else:
+            mujoco.mj_step(self.model, self.data, n)
+            mujoco.mj_forward(self.model, self.data)
 
     def _finalize_step(
         self, obs_dict: dict[str, np.ndarray], rwd_dict: dict[str, Any]

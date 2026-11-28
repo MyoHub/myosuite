@@ -44,6 +44,9 @@ def _run_bootstrap() -> None:
         return
     _BOOTSTRAP_RUNNING = True
     try:
+        from myosuite.physics.compliant_plant import install_mjlab_compliant_hook
+
+        install_mjlab_compliant_hook()
         from myosuite.envs.backends.mjlab.register_mjlab_tasks import (
             bootstrap_myosuite_mjlab_registry,
         )

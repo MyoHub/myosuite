@@ -58,7 +58,11 @@ INIT_ROT = (0.7071068, 0.0, 0.0, 0.7071068)
 """+90 deg about z: myofullbody's default pose faces +x."""
 
 
-def _myofullbody_spec(self_collisions: bool = True) -> mujoco.MjSpec:
+def _build_mimic_body_spec(
+    model_name: str = "myofullbody",
+    self_collisions: bool = True,
+    build_kwargs: dict[str, object] | None = None,
+) -> mujoco.MjSpec:
     from ml_collections import config_dict  # noqa: PLC0415
 
     from myosuite.integrations.musclemimic.fullbody_model import (  # noqa: PLC0415
@@ -67,7 +71,11 @@ def _myofullbody_spec(self_collisions: bool = True) -> mujoco.MjSpec:
     )
 
     spec = build_native_mimic_fullbody_spec(
-        config_dict.create(disable_fingers=True, model_name="myofullbody")
+        config_dict.create(
+            disable_fingers=True,
+            model_name=model_name,
+            build_kwargs=dict(build_kwargs or {}),
+        )
     )
     spec.njmax = spec.nconmax = spec.nuser_jnt = -1
     spec.option.timestep = mujoco.MjSpec().option.timestep
@@ -91,31 +99,71 @@ def _myofullbody_spec(self_collisions: bool = True) -> mujoco.MjSpec:
     return spec
 
 
+def _myofullbody_spec(self_collisions: bool = True) -> mujoco.MjSpec:
+    return _build_mimic_body_spec("myofullbody", self_collisions=self_collisions)
+
+
+_TRACKED_FULLBODY: tuple[str, ...] = (
+    "pelvis",
+    "lumbar1",
+    "head",
+    "humerus_l",
+    "ulna_l",
+    "lunate_l",
+    "humerus_r",
+    "ulna_r",
+    "lunate_r",
+    "femur_l",
+    "tibia_l",
+    "talus_l",
+    "toes_l",
+    "femur_r",
+    "tibia_r",
+    "talus_r",
+    "toes_r",
+)
+_FOOT_BODIES: tuple[str, ...] = ("calcn_r", "toes_r", "calcn_l", "toes_l")
+_TENDON_EXPR: tuple[str, ...] = (r".*_tendon(_l|_left)?",)
+
 MODELS: dict[str, MimicModelCfg] = {
     "myofullbody": MimicModelCfg(
         name="myofullbody",
         build_spec=_myofullbody_spec,
-        tracked_bodies=(
-            "pelvis",
-            "lumbar1",
-            "head",
-            "humerus_l",
-            "ulna_l",
-            "lunate_l",
-            "humerus_r",
-            "ulna_r",
-            "lunate_r",
-            "femur_l",
-            "tibia_l",
-            "talus_l",
-            "toes_l",
-            "femur_r",
-            "tibia_r",
-            "talus_r",
-            "toes_r",
-        ),  # fmt: skip
-        foot_bodies=("calcn_r", "toes_r", "calcn_l", "toes_l"),
-        muscle_tendon_expr=(r".*_tendon(_l|_left)?",),
+        tracked_bodies=_TRACKED_FULLBODY,
+        foot_bodies=_FOOT_BODIES,
+        muscle_tendon_expr=_TENDON_EXPR,
+    ),
+    "myofullbody_rigid": MimicModelCfg(
+        name="myofullbody_rigid",
+        build_spec=functools.partial(_build_mimic_body_spec, "myofullbody_rigid"),
+        tracked_bodies=_TRACKED_FULLBODY,
+        foot_bodies=_FOOT_BODIES,
+        muscle_tendon_expr=_TENDON_EXPR,
+    ),
+    "myofullbody_simple": MimicModelCfg(
+        name="myofullbody_simple",
+        build_spec=functools.partial(_build_mimic_body_spec, "myofullbody_simple"),
+        tracked_bodies=_TRACKED_FULLBODY,
+        foot_bodies=_FOOT_BODIES,
+        muscle_tendon_expr=_TENDON_EXPR,
+    ),
+    "myofullbody_simple_locked_st": MimicModelCfg(
+        name="myofullbody_simple_locked_st",
+        build_spec=functools.partial(
+            _build_mimic_body_spec,
+            "myofullbody_simple",
+            build_kwargs={"keep_scapula_dofs": False},
+        ),
+        tracked_bodies=_TRACKED_FULLBODY,
+        foot_bodies=_FOOT_BODIES,
+        muscle_tendon_expr=_TENDON_EXPR,
+    ),
+    "myofullbody_simple_rigid": MimicModelCfg(
+        name="myofullbody_simple_rigid",
+        build_spec=functools.partial(_build_mimic_body_spec, "myofullbody_simple_rigid"),
+        tracked_bodies=_TRACKED_FULLBODY,
+        foot_bodies=_FOOT_BODIES,
+        muscle_tendon_expr=_TENDON_EXPR,
     ),
 }
 DEFAULT_MODEL = "myofullbody"
@@ -152,7 +200,9 @@ def scene_spec(model: MimicModelCfg, self_collisions: bool = True) -> mujoco.MjS
             refname=GROUND_BODY,
             intprm=[1 << _CONTACT_FORCE_BIT, _CONTACT_NETFORCE, 1],
         )
-    return spec
+    from myosuite.physics.compliant_plant import prepare_spec_for_plant  # noqa: PLC0415
+
+    return prepare_spec_for_plant(spec)
 
 
 def model_version(name: str) -> str:
@@ -233,22 +283,84 @@ class ModelInfo:
             j for j in range(m.njnt) if m.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
         ]
         self.joint_names = [m.joint(j).name for j in self.joint_ids]
-        self.joint_qadr = m.jnt_qposadr[self.joint_ids].copy()
-        self.joint_dadr = m.jnt_dofadr[self.joint_ids].copy()
+
+        def _qw(j: int) -> int:
+            return 4 if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_BALL else 1
+
+        def _dw(j: int) -> int:
+            return 3 if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_BALL else 1
+
+        self.joint_qadr = (
+            np.concatenate(
+                [
+                    np.arange(m.jnt_qposadr[j], m.jnt_qposadr[j] + _qw(j), dtype=np.intp)
+                    for j in self.joint_ids
+                ]
+            )
+            if self.joint_ids
+            else np.empty(0, dtype=np.intp)
+        )
+        self.joint_dadr = (
+            np.concatenate(
+                [
+                    np.arange(m.jnt_dofadr[j], m.jnt_dofadr[j] + _dw(j), dtype=np.intp)
+                    for j in self.joint_ids
+                ]
+            )
+            if self.joint_ids
+            else np.empty(0, dtype=np.intp)
+        )
         self.indep_ids = [j for j in self.joint_ids if j not in coupled]
         self.indep_names = [m.joint(j).name for j in self.indep_ids]
         self.indep_cols = [self.joint_ids.index(j) for j in self.indep_ids]
-        self.indep_qadr = m.jnt_qposadr[self.indep_ids].copy()
-        self.indep_dadr = m.jnt_dofadr[self.indep_ids].copy()
-        if not m.jnt_limited[self.indep_ids].all():
-            raise ValueError("every independent joint needs a range")
-        self.q_lo, self.q_hi = m.jnt_range[self.indep_ids].T.copy()
-        if not (m.actuator_trntype == mujoco.mjtTrn.mjTRN_TENDON).all():
-            raise ValueError("every actuator must be a tendon-driven muscle")
+        self.indep_qadr = (
+            np.concatenate(
+                [
+                    np.arange(m.jnt_qposadr[j], m.jnt_qposadr[j] + _qw(j), dtype=np.intp)
+                    for j in self.indep_ids
+                ]
+            )
+            if self.indep_ids
+            else np.empty(0, dtype=np.intp)
+        )
+        self.indep_dadr = (
+            np.concatenate(
+                [
+                    np.arange(m.jnt_dofadr[j], m.jnt_dofadr[j] + _dw(j), dtype=np.intp)
+                    for j in self.indep_ids
+                ]
+            )
+            if self.indep_ids
+            else np.empty(0, dtype=np.intp)
+        )
+        scalar_indep = [
+            j for j in self.indep_ids if m.jnt_type[j] != mujoco.mjtJoint.mjJNT_BALL
+        ]
+        if scalar_indep and not m.jnt_limited[scalar_indep].all():
+            raise ValueError("every scalar independent joint needs a range")
+        lo_parts, hi_parts = [], []
+        for j in self.indep_ids:
+            if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_BALL:
+                lo_parts.append(np.full(4, -1.0))
+                hi_parts.append(np.full(4, 1.0))
+            else:
+                lo_parts.append(np.array([m.jnt_range[j, 0]]))
+                hi_parts.append(np.array([m.jnt_range[j, 1]]))
+        self.q_lo = np.concatenate(lo_parts) if lo_parts else np.empty(0)
+        self.q_hi = np.concatenate(hi_parts) if hi_parts else np.empty(0)
+        allowed_trn = (
+            int(mujoco.mjtTrn.mjTRN_TENDON),
+            int(mujoco.mjtTrn.mjTRN_JOINT),
+        )
+        if not np.isin(m.actuator_trntype, allowed_trn).all():
+            raise ValueError("every actuator must drive a tendon or joint")
         self.num_muscles = m.nu
         self.muscle_names = [m.actuator(a).name for a in range(m.nu)]
         self.muscle_tendon_names = [
-            m.tendon(int(t)).name for t in m.actuator_trnid[:, 0]
+            m.tendon(int(tid)).name
+            if int(trn) == int(mujoco.mjtTrn.mjTRN_TENDON)
+            else m.joint(int(tid)).name
+            for trn, tid in zip(m.actuator_trntype, m.actuator_trnid[:, 0])
         ]
         self.qpos0 = m.qpos0.copy()
         self.act_adr = m.actuator_actadr.copy()

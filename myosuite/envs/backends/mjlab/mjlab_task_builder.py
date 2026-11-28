@@ -188,20 +188,29 @@ class MyoMuscleActivationAction(ActionTerm):
                 and hasattr(indexing, "ctrl_ids")
             ):
                 entity_tendons = indexing.tendon_ids.tolist()
+                entity_joints = (
+                    indexing.joint_ids.tolist()
+                    if hasattr(indexing, "joint_ids")
+                    else []
+                )
                 scene_act_ids = indexing.ctrl_ids[actuator_ids].tolist()
                 target_ids = []
-                for act_id in scene_act_ids:
-                    if (
-                        int(mj_model.actuator_trntype[act_id])
-                        != mujoco.mjtTrn.mjTRN_TENDON
-                    ):
+                for local_act_id, act_id in zip(
+                    actuator_ids, scene_act_ids, strict=True
+                ):
+                    trn_type = int(mj_model.actuator_trntype[act_id])
+                    if trn_type == mujoco.mjtTrn.mjTRN_TENDON:
+                        target_ids.append(
+                            entity_tendons.index(int(mj_model.actuator_trnid[act_id, 0]))
+                        )
+                    elif trn_type == mujoco.mjtTrn.mjTRN_JOINT and entity_joints:
+                        # Support joint-transmission unloaders (e.g. v1 iap_lumbar_r/l)
+                        target_ids.append(int(local_act_id))
+                    else:
                         raise ValueError(
                             f"MyoMuscleActivationAction: actuator "
-                            f"{mj_model.actuator(act_id).name!r} has no tendon transmission"
+                            f"{mj_model.actuator(act_id).name!r} has unsupported trntype={trn_type}"
                         )
-                    target_ids.append(
-                        entity_tendons.index(int(mj_model.actuator_trnid[act_id, 0]))
-                    )
             else:
                 target_ids = list(actuator_ids)
 

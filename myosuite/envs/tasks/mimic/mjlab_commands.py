@@ -66,6 +66,7 @@ class MotionCommand(CommandTerm):
             task.motion.clips, task.motion.root, cfg.model, task.self_collisions,
             round(env.step_dt, 9), task.motion.bin_s,
             workers=task.motion.workers, cache_dir=task.motion.cache_dir,
+            strict_refit_meta=task.motion.strict_refit_meta,
         )  # fmt: skip
         self.motion: MotionLib = lib.map(lambda x: torch.as_tensor(x, device=dev))
         self.touch_sensor = env.scene[cfg.touch_sensor_name]
@@ -75,9 +76,11 @@ class MotionCommand(CommandTerm):
             device=dev,
         )
         idx = self.robot.indexing
-        self._act_adr = torch.tensor(
-            env.sim.mj_model.actuator_actadr[idx.ctrl_ids.cpu().numpy()], device=dev
-        ).long()
+        raw_act_adr = env.sim.mj_model.actuator_actadr[idx.ctrl_ids.cpu().numpy()]
+        self._act_adr = torch.tensor(raw_act_adr, device=dev).long()
+        self._has_act_state = self._act_adr >= 0
+        self._act_adr_clamped = self._act_adr.clamp(min=0)
+        self._stateful_act_adr = self._act_adr[self._has_act_state]
         self._ctrl_ids = idx.ctrl_ids.long()
         self._joint_qadr = torch.as_tensor(self.info.joint_qadr, device=dev)
         self._joint_dadr = torch.as_tensor(self.info.joint_dadr, device=dev)
@@ -152,7 +155,13 @@ class MotionCommand(CommandTerm):
             body_rot=mt.quat_to_mat(torch, quat),
             body_lin_vel=d.body_link_lin_vel_w[:, ids],
             body_ang_vel=d.body_link_ang_vel_w[:, ids],
-            act=sim.act[:, self._act_adr],
+            act=torch.where(
+                self._has_act_state,
+                sim.act[:, self._act_adr_clamped]
+                if sim.act.shape[-1] > 0
+                else self._env.action_manager.action,
+                self._env.action_manager.action,
+            ),
             excitation=self._env.action_manager.action,
             touch=force[..., 2].abs().reshape(self.num_envs, -1),
             muscle_length=sim.actuator_length[:, self._ctrl_ids],
@@ -312,9 +321,10 @@ class MotionCommand(CommandTerm):
             torch.cat((p + origins, quat, v, w), -1), env_ids=env_ids
         )
         self.robot.write_joint_state_to_sim(q, qd, env_ids=env_ids)
-        self._env.sim.data.act[env_ids[:, None], self._act_adr] = (
-            self.task.reset.init_activation
-        )
+        if self._stateful_act_adr.numel() > 0:
+            self._env.sim.data.act[env_ids[:, None], self._stateful_act_adr] = (
+                self.task.reset.init_activation
+            )
         self.f[env_ids] = frames
         self._just_reset[env_ids] = True
         self._cache.clear()

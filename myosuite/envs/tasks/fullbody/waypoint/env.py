@@ -164,7 +164,9 @@ def build_model(
     spec = mujoco.MjSpec.from_file(str(model_path))
     if edit_fn is not None:
         edit_fn(spec)
-    return spec.compile()
+    from myosuite.physics.compliant_plant import prepare_spec_for_plant
+
+    return prepare_spec_for_plant(spec).compile()
 
 
 class WaypointEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
@@ -269,7 +271,7 @@ class WaypointEnv(CtrlStageHost, MyoGymnasiumEnv, EzPickle):
             low.astype(np.float32), high.astype(np.float32)
         )
         self._task_state = self.reset_task(self.np_random)
-        mujoco.mj_forward(model, self.data)
+        self._refresh_physics_after_reset()
         accessor = CpuEnvAccessor(model, self.data, self._ctrl_dt)
         self.observation_space = self._unbounded_obs_space(
             self._obs_dict_to_vec(self._get_obs_dict(accessor)).size

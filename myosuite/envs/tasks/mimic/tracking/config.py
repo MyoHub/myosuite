@@ -47,6 +47,7 @@ class MotionCfg:
     bin_s: float = 1.0
     workers: int = 1
     cache_dir: str = ""
+    strict_refit_meta: bool = True
 
     def __post_init__(self) -> None:
         if (

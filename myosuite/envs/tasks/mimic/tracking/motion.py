@@ -99,12 +99,16 @@ def _model_names(names: Sequence[str], info: ModelInfo) -> list[str]:
 def load_clip(
     path: str, info: ModelInfo, R_off: np.ndarray
 ) -> tuple[float, np.ndarray, np.ndarray, np.ndarray]:
-    """``(fps, root_pos (T,3), root_quat (T,4) of the free-joint body, indep. joints (T,J))``."""
+    """``(fps, root_pos (T,3), root_quat (T,4) of the free-joint body, indep. qpos cols (T,Q_indep))``."""
     data = np.load(path, allow_pickle=False)
     names = _model_names(data["joint_names"], info)
-    missing = [n for n in info.indep_names if n not in names]
-    if missing:
-        raise ValueError(f"{path}: no data for joints {missing}")
+    matched = [n for n in info.indep_names if n in names]
+    if not matched and info.indep_names:
+        raise ValueError(
+            f"{path}: no independent joints matched model joints {info.indep_names}"
+        )
+
+    m = info.m
     if "qpos" not in data.files:
         q = np.asarray(data["joint_pos"], np.float64)
         if q.shape[1] != len(names):
@@ -112,11 +116,19 @@ def load_clip(
                 f"{path}: {q.shape[1]} joint columns for {len(names)} names"
             )
         R = mt.quat_to_mat(np, np.asarray(data["root_quat"], np.float64)) @ R_off.T
+        T_len = len(q)
+        q_indep = np.tile(info.qpos0[info.indep_qadr], (T_len, 1))
+        col = 0
+        for jid, jname in zip(info.indep_ids, info.indep_names, strict=True):
+            w = 4 if m.jnt_type[jid] == mujoco.mjtJoint.mjJNT_BALL else 1
+            if jname in names and w == 1:
+                q_indep[:, col] = q[:, names.index(jname)]
+            col += w
         return (
             float(data["fps"]),
             np.asarray(data["root_pos"], np.float64),
             mt.mat_to_quat(np, R),
-            q[:, [names.index(n) for n in info.indep_names]],
+            q_indep,
         )
     free = int(mujoco.mjtJoint.mjJNT_FREE)
     types = (
@@ -135,11 +147,22 @@ def load_clip(
     if "split_points" in data.files and len(data["split_points"]) != 2:
         raise ValueError(f"{path}: several trajectories in one file")
     quat = qpos[:, 3:7] / np.linalg.norm(qpos[:, 3:7], axis=-1, keepdims=True)
+    T_len = len(qpos)
+    q_indep = np.tile(info.qpos0[info.indep_qadr], (T_len, 1))
+    col = 0
+    for jid, jname in zip(info.indep_ids, info.indep_names, strict=True):
+        w = 4 if m.jnt_type[jid] == mujoco.mjtJoint.mjJNT_BALL else 1
+        if jname in names:
+            idx_c = names.index(jname)
+            w_c = QPOS_WIDTH[int(types[idx_c])]
+            if w_c == w:
+                q_indep[:, col : col + w] = qpos[:, adr[idx_c] : adr[idx_c] + w]
+        col += w
     return (
         float(data["frequency"]),
         qpos[:, :3].copy(),
         np.where(quat[:, :1] < 0, -quat, quat),
-        qpos[:, [adr[names.index(n)] for n in info.indep_names]],
+        q_indep,
     )
 
 
@@ -186,11 +209,34 @@ def _process_clip(
     t = np.arange(n) * dt * fps
     i0 = np.minimum(np.floor(t).astype(np.int64), T_src - 2)
     a = np.clip(t - i0, 0.0, 1.0)[:, None]
+    j_src = j
     p = p[i0] * (1 - a) + p[i0 + 1] * a
-    j = j[i0] * (1 - a) + j[i0 + 1] * a
+    j = j_src[i0] * (1 - a) + j_src[i0 + 1] * a
     quat = _slerp(quat[i0], quat[i0 + 1], a[:, 0])
     R = mt.quat_to_mat(np, quat)
-    v, w, jd = _gradient(p, dt), _angular_velocity(R, dt), _gradient(j, dt)
+    v, w = _gradient(p, dt), _angular_velocity(R, dt)
+    if len(info.indep_qadr) == len(info.indep_dadr):
+        jd = _gradient(j, dt)
+    else:
+        # Mixed scalar + ball joints (e.g. v1 acromioclavicular_r/l)
+        jd_parts = []
+        q_col = 0
+        for jid in info.indep_ids:
+            if m.jnt_type[jid] == mujoco.mjtJoint.mjJNT_BALL:
+                qb = _slerp(
+                    j_src[i0, q_col : q_col + 4],
+                    j_src[i0 + 1, q_col : q_col + 4],
+                    a[:, 0],
+                )
+                j[:, q_col : q_col + 4] = qb
+                Rb_j = mt.quat_to_mat(np, qb)
+                wb_j = _angular_velocity(Rb_j, dt)
+                jd_parts.append((Rb_j.swapaxes(-1, -2) @ wb_j[..., None])[..., 0])
+                q_col += 4
+            else:
+                jd_parts.append(_gradient(j[:, q_col : q_col + 1], dt))
+                q_col += 1
+        jd = np.concatenate(jd_parts, axis=-1) if jd_parts else np.zeros((n, 0))
     w_body = (R.swapaxes(-1, -2) @ w[..., None])[..., 0]
 
     def full_state(q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -612,6 +658,8 @@ def write_synthetic_clip(
     qpos[:, 2] += climb * t
     rng = np.random.default_rng(seed)
     for j in ModelInfo(m).indep_ids:
+        if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_BALL:
+            continue
         adr, (lo, hi) = m.jnt_qposadr[j], m.jnt_range[j]
         wave = amp * 0.5 * (hi - lo) * np.sin(2 * np.pi * t + rng.uniform(0, 2 * np.pi))
         qpos[:, adr] = np.clip(m.qpos0[adr] + wave, lo, hi)
@@ -628,6 +676,7 @@ def write_synthetic_clip(
 def load_motion_lib(
     clips: str, root: str, model: str, self_collisions: bool, dt: float, bin_s: float,
     *, workers: int = 1, cache_dir: str | os.PathLike = "",
+    strict_refit_meta: bool = True,
 ) -> MotionLib:  # fmt: skip
     """The (cached) library of a :class:`~.config.MotionCfg` on a task model.
 
@@ -640,6 +689,8 @@ def load_motion_lib(
         bin_s: Reset bin length.
         workers: Threads preprocessing clips.
         cache_dir: Optional directory for persistent, data-only NumPy archives.
+        strict_refit_meta: Enforce exact model/fingerprint metadata match (disable to
+            load cross-model or legacy joint-subset clips).
 
     Repeated calls whose clip files keep their size, modification time and inode reuse
     the clips' content key without reading them.
@@ -667,7 +718,9 @@ def load_motion_lib(
     stamps = tuple(
         (f, s.st_size, s.st_mtime_ns, s.st_ino) for f, s in zip(files, stats)
     )
-    key = _checked_motion_key(stamps, model, self_collisions, dt, bin_s)
+    key = _checked_motion_key(
+        stamps, model, self_collisions, dt, bin_s, strict_refit_meta
+    )
     scene = compiled_scene(model, self_collisions)
     tracked = model_cfg(model).tracked_bodies
     directory = str(Path(cache_dir).expanduser().resolve()) if cache_dir else ""
@@ -677,7 +730,7 @@ def load_motion_lib(
 @functools.lru_cache(maxsize=8)
 def _checked_motion_key(
     stamps: tuple[tuple[str, int, int, int], ...], model: str, self_collisions: bool,
-    dt: float, bin_s: float,
+    dt: float, bin_s: float, strict_refit_meta: bool = True,
 ) -> str:  # fmt: skip
     """Refit-metadata check and content key of the clips, once per set of file stamps.
 
@@ -696,9 +749,10 @@ def _checked_motion_key(
     )
 
     files = tuple(stamp[0] for stamp in stamps)
-    version, fingerprint = model_version(model), kinematic_fingerprint(model)
-    for f in files:
-        check_refit_meta(f, model, version, fingerprint)
+    if strict_refit_meta:
+        version, fingerprint = model_version(model), kinematic_fingerprint(model)
+        for f in files:
+            check_refit_meta(f, model, version, fingerprint)
     scene = compiled_scene(model, self_collisions)
     return _motion_key(files, scene, model_cfg(model).tracked_bodies, dt, bin_s)
 
