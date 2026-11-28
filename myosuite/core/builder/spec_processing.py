@@ -43,23 +43,45 @@ def recursive_immobilize(
 ) -> list[int]:
     removed_joint_ids: list[int] = []
     if remove_sites:
-        for s in parent.sites:
+        for s in list(parent.sites):
             spec.delete(s)
-    for j in parent.joints:
+    for j in list(parent.joints):
+        jname = j.name
         if temp_model is not None:
-            removed_joint_ids.extend(temp_model.joint(j.name).qposadr)
+            removed_joint_ids.extend(temp_model.joint(jname).qposadr)
         if remove_eqs:
-            for e in spec.equalities:
+            for e in list(spec.equalities):
                 if e.type == mujoco.mjtEq.mjEQ_JOINT and (
-                    e.name1 == j.name or e.name2 == j.name
+                    e.name1 == jname or e.name2 == jname
                 ):
                     spec.delete(e)
+            removed_tendons: set[str] = set()
+            for t in list(spec.tendons):
+                refs_joint = any(
+                    p.type == mujoco.mjtObj.mjOBJ_JOINT and p.name == jname
+                    for p in t.path
+                )
+                if refs_joint:
+                    removed_tendons.add(t.name)
+                    spec.delete(t)
+            if removed_tendons:
+                for e in list(spec.equalities):
+                    if e.type == mujoco.mjtEq.mjEQ_TENDON and (
+                        e.name1 in removed_tendons or e.name2 in removed_tendons
+                    ):
+                        spec.delete(e)
+                for a in list(spec.actuators):
+                    if (
+                        a.trntype == mujoco.mjtTrn.mjTRN_TENDON
+                        and a.target in removed_tendons
+                    ):
+                        spec.delete(a)
         if remove_actuators:
-            for a in spec.actuators:
-                if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == j.name:
+            for a in list(spec.actuators):
+                if a.trntype == mujoco.mjtTrn.mjTRN_JOINT and a.target == jname:
                     spec.delete(a)
         spec.delete(j)
-    for child in parent.bodies:
+    for child in list(parent.bodies):
         removed_joint_ids.extend(
             recursive_immobilize(
                 spec, temp_model, child, remove_eqs, remove_actuators, remove_sites

@@ -20,6 +20,7 @@ import math
 
 import myosuite.core.registry as _registry
 from myosuite.envs.tasks.mimic.tracking import MIMIC_ENV_ID
+from myosuite.envs.tasks.mimic.tracking.models import MODELS
 from myosuite.envs.tasks.fullbody.waypoint.env import WaypointTaskCfg
 from myosuite.core.terms.waypoint import WaypointRouteCfg
 
@@ -97,7 +98,7 @@ _registry.register_env(
     entry_point="myosuite.envs.tasks.mimic.tracking.env:MimicEnv",
     max_episode_steps=150_000,
     mjlab_task_kwargs=True,
-    models=("myofullbody",),
+    models=tuple(MODELS),
     kwargs={"frame_skip": 10, "preset": "supermimic", "model": "myofullbody"},
 )
 

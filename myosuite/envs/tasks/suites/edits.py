@@ -33,25 +33,51 @@ def edit_fn_arm_reaching(
         spec.delete(spec.joint("pro_sup_r"))
 
     for root in root_list:
-        recursive_immobilize(spec, None, spec.body(root), remove_sites=False)
+        recursive_immobilize(
+            spec,
+            None,
+            spec.body(root),
+            remove_eqs=True,
+            remove_actuators=True,
+            remove_sites=False,
+        )
 
-    _m = spec.copy().compile()
+    prepare_fn = None
+    try:
+        from myosuite.physics.compliant_plant import prepare_spec_for_plant
+
+        prepare_fn = prepare_spec_for_plant
+    except ImportError:
+        prepare_fn = None
+
+    _m = (prepare_fn(spec.copy()) if prepare_fn is not None else spec.copy()).compile()
     _d = mujoco.MjData(_m)
     mujoco.mj_step(_m, _d, nstep=100)
 
-    # Now that we immobilized fingers, som muscles have no effect and can be pruned. We check through the tendon
+    # Now that we immobilized fingers, some muscles have no effect and can be pruned. We check through the tendon
     # moment arms to find them.
     J_tendon = np.empty((_m.ntendon, _m.nv))
     mujoco.mju_sparse2dense(
         J_tendon, _d.ten_J, _m.ten_J_rownnz, _m.ten_J_rowadr, _m.ten_J_colind
     )
 
-    for t in spec.tendons:
-        if np.sum(np.abs(J_tendon[_m.tendon(t.name).id, :])) < min_moment:
-            for a in spec.actuators:
-                if a.target == t.name:
+    dead_tendon_names: set[str] = set()
+    for t in list(spec.tendons):
+        tname = t.name
+        tid = mujoco.mj_name2id(_m, mujoco.mjtObj.mjOBJ_TENDON, tname)
+        if tid < 0 or np.sum(np.abs(J_tendon[tid, :])) < min_moment:
+            dead_tendon_names.add(tname)
+            for a in list(spec.actuators):
+                if a.target == tname:
                     spec.delete(a)
+            for eq in list(spec.equalities):
+                if eq.type == mujoco.mjtEq.mjEQ_TENDON and (
+                    eq.name1 in dead_tendon_names or eq.name2 in dead_tendon_names
+                ):
+                    spec.delete(eq)
             spec.delete(t)
+    if prepare_fn is not None:
+        prepare_fn(spec)
 
     # Original site name, we'll duplicate the site to match both this site name and the one without the suffix
     og_site = spec.site("IFtip_r")

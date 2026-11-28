@@ -930,7 +930,9 @@ class ModelBuilder:
                     geom.contype = 0
                     geom.conaffinity = 0
 
-        return spec
+        from myosuite.physics.compliant_plant import prepare_spec_for_plant
+
+        return prepare_spec_for_plant(spec)
 
 
 def list_recipes() -> list[str]:
@@ -1119,7 +1121,9 @@ def _recipe_spec(
         )
         if edit_fn is not None:
             edit_fn(spec)
-    return spec
+    from myosuite.physics.compliant_plant import prepare_spec_for_plant
+
+    return prepare_spec_for_plant(spec)
 
 
 def build_from_recipe(

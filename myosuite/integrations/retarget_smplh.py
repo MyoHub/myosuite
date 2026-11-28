@@ -300,7 +300,13 @@ SMPLH_MYOFULLBODY = SMPLHMap(
 )
 """AMASS SMPL+H (KIT and other subsets) on myo_sim's myofullbody."""
 
-SMPLH_MAPS: dict[str, SMPLHMap] = {"myofullbody": SMPLH_MYOFULLBODY}
+SMPLH_MAPS: dict[str, SMPLHMap] = {
+    "myofullbody": SMPLH_MYOFULLBODY,
+    "myofullbody_rigid": SMPLH_MYOFULLBODY,
+    "myofullbody_simple": SMPLH_MYOFULLBODY,
+    "myofullbody_simple_locked_st": SMPLH_MYOFULLBODY,
+    "myofullbody_simple_rigid": SMPLH_MYOFULLBODY,
+}
 """SMPL+H map per target model name."""
 
 

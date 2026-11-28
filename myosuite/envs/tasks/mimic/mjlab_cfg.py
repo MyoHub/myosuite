@@ -66,6 +66,26 @@ def _entity_cfg(
 ) -> EntityCfg:
     m = compiled_body(model.name)
     root_q = m.qpos0[:7]
+    actuators: list[XmlActuatorCfg] = [
+        XmlActuatorCfg(
+            target_names_expr=model.muscle_tendon_expr,
+            transmission_type=TransmissionType.TENDON,
+            command_field="effort",
+        )
+    ]
+    joint_act_targets = [
+        mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, int(tid))
+        for trn, tid in zip(m.actuator_trntype, m.actuator_trnid[:, 0])
+        if int(trn) == int(mujoco.mjtTrn.mjTRN_JOINT)
+    ]
+    if joint_act_targets:
+        actuators.append(
+            XmlActuatorCfg(
+                target_names_expr=tuple(f"^{n}$" for n in dict.fromkeys(joint_act_targets) if n),
+                transmission_type=TransmissionType.JOINT,
+                command_field="effort",
+            )
+        )
     return EntityCfg(
         init_state=EntityCfg.InitialStateCfg(
             pos=tuple(map(float, root_q[:3])),
@@ -80,13 +100,7 @@ def _entity_cfg(
             cpu.wrapper_kwargs("SarcopeniaWrapper"),
         ),
         articulation=EntityArticulationInfoCfg(
-            actuators=(
-                XmlActuatorCfg(
-                    target_names_expr=model.muscle_tendon_expr,
-                    transmission_type=TransmissionType.TENDON,
-                    command_field="effort",
-                ),
-            ),
+            actuators=tuple(actuators),
             soft_joint_pos_limit_factor=1.0,
         ),
     )

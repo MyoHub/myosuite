@@ -23,6 +23,7 @@ import warnings
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import mujoco
 from ml_collections import config_dict
@@ -398,13 +399,72 @@ def build_mimic_fullbody_spec(
     return spec, xml_path
 
 
+def _strip_hand_subtree_fingers(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Remove all finger joints, actuators, tendons, and equalities below ``lunate_r/l``."""
+    hand_roots = {
+        b for b in (spec.body("lunate_r"), spec.body("lunate_l")) if b is not None
+    }
+    desc_bodies: set[Any] = set()
+    stack = [child for root in hand_roots for child in root.bodies]
+    while stack:
+        body = stack.pop()
+        desc_bodies.add(body)
+        stack.extend(body.bodies)
+    if not desc_bodies:
+        return spec
+    del_jnames = {j.name for b in desc_bodies for j in b.joints}
+    if not del_jnames:
+        return spec
+    del_snames = {s.name for b in desc_bodies for s in b.sites}
+    del_gnames = {g.name for b in desc_bodies for g in b.geoms}
+    del_bnames = {b.name for b in desc_bodies}
+    del_tnames = set()
+    for tendon in list(spec.tendons):
+        uses_hand = any(
+            (
+                getattr(w, "target", None) is not None
+                and getattr(w.target, "name", "")
+                in (del_jnames | del_snames | del_gnames)
+            )
+            or (
+                getattr(w, "sidesite", None) is not None
+                and getattr(w.sidesite, "name", "") in del_snames
+            )
+            for w in getattr(tendon, "path", ())
+        )
+        if uses_hand:
+            del_tnames.add(tendon.name)
+    all_del = del_jnames | del_tnames | del_bnames | del_snames | del_gnames
+    for eq in list(spec.equalities):
+        if eq.name1 in all_del or eq.name2 in all_del:
+            spec.delete(eq)
+    for actuator in list(spec.actuators):
+        if actuator.target in (del_tnames | del_jnames):
+            spec.delete(actuator)
+    for tendon in list(spec.tendons):
+        if tendon.name in del_tnames:
+            spec.delete(tendon)
+    for body in desc_bodies:
+        for joint in list(body.joints):
+            spec.delete(joint)
+    for key in list(spec.keys):
+        spec.delete(key)
+    return spec
+
+
 @cached_spec(min_uses=1)
 def _native_fullbody_spec(
-    disable_fingers: bool, model_name: str = NATIVE_FULLBODY_MODEL
+    disable_fingers: bool,
+    model_name: str = NATIVE_FULLBODY_MODEL,
+    build_kwargs_items: tuple[tuple[str, Any], ...] = (),
 ) -> mujoco.MjSpec:
-    """Native full-body spec, built once per ``disable_fingers`` and myo_sim model."""
+    """Native full-body spec, built once per ``disable_fingers``, model and build_kwargs."""
     return _build_native_mimic_fullbody_spec(
-        config_dict.create(disable_fingers=disable_fingers, model_name=model_name)
+        config_dict.create(
+            disable_fingers=disable_fingers,
+            model_name=model_name,
+            build_kwargs=dict(build_kwargs_items),
+        )
     )
 
 
@@ -418,63 +478,68 @@ def build_native_mimic_fullbody_spec(config: config_dict.ConfigDict) -> mujoco.M
     Args:
         config: At least ``disable_fingers`` (see
             :func:`default_mimic_fullbody_config`); optionally ``model_name``, the
-            myo_sim model to load (default :data:`NATIVE_FULLBODY_MODEL`).
+            myo_sim model to load (default :data:`NATIVE_FULLBODY_MODEL`), and
+            ``build_kwargs`` forwarded to ``myo_sim.load_spec``.
 
     Returns:
         Edited, uncompiled MjSpec.
     """
+    bkw = dict(config.get("build_kwargs", {}) or {})
     return _native_fullbody_spec(
         bool(config.disable_fingers),
         str(config.get("model_name", NATIVE_FULLBODY_MODEL)),
+        tuple(sorted(bkw.items())),
     )
 
 
 def _build_native_mimic_fullbody_spec(
     config: config_dict.ConfigDict,
 ) -> mujoco.MjSpec:
-    """Build a myo_sim-native Mimic-compatible full-body MjSpec.
-
-    Applies the same edits as :func:`build_mimic_fullbody_spec` (mimic
-    tracking sites, optional finger removal, muscle ctrlrange) to myo_sim's
-    own composed ``myofullbody`` model instead of the external
-    ``musclemimic_models`` MJCF. Every body :data:`FULLBODY_BODY2SITES_FOR_MIMIC`
-    needs (pelvis, lumbar1, head, and the 7 limb-segment pairs) already
-    exists in myo_sim's ``myofullbody`` under the same names.
-
-    This is NOT bit-exact parity with the external MuscleMimic codebase's
-    model (different muscle/mesh calibration) — checkpoints trained against
-    the real ``musclemimic_models`` MJCF are not guaranteed to transfer.
-    It exists so Mimic full-body envs remain usable without the optional
-    ``musclemimic_models`` dependency installed.
-
-    Args:
-        config: At least ``disable_fingers`` (see
-            :func:`default_mimic_fullbody_config`).
-
-    Returns:
-        Edited, uncompiled MjSpec.
-    """
+    """Build a myo_sim-native Mimic-compatible full-body MjSpec."""
+    import inspect
     import myo_sim
+    from myosuite.physics.compliant_plant import prepare_spec_for_plant
 
-    spec = myo_sim.load_spec(str(config.get("model_name", NATIVE_FULLBODY_MODEL)))
+    model_name = str(config.get("model_name", NATIVE_FULLBODY_MODEL))
+    bkw = dict(config.get("build_kwargs", {}) or {})
+    sig = inspect.signature(myo_sim.load_spec)
+    if bkw and "build_kwargs" in sig.parameters:
+        spec = myo_sim.load_spec(model_name, build_kwargs=bkw)
+    else:
+        spec = myo_sim.load_spec(model_name)
+
     if config.disable_fingers:
-        # From the spec: compiling here would leave its sizes stale after the deletions,
-        # and MjSpec.attach checks keyframes against those.
         joint_pool = frozenset(joint.name for joint in spec.joints)
         actuator_pool = frozenset(actuator.name for actuator in spec.actuators)
-        joint_tokens = tuple(
-            _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
-        )
-        muscle_tokens = tuple(
-            _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
-        )
+        try:
+            joint_tokens = tuple(
+                _translate_finger_token(t, joint_pool) for t in FINGER_JOINT_TOKENS
+            )
+            muscle_tokens = tuple(
+                _translate_finger_token(t, actuator_pool) for t in FINGER_MUSCLE_TOKENS
+            )
+            has_v1_hand_equalities = any(
+                "cmc_pronation" in eq.name or "node_" in eq.name
+                for eq in spec.equalities
+            )
+            if has_v1_hand_equalities:
+                _strip_hand_subtree_fingers(spec)
+                spec = _apply_mimic_fullbody_spec_changes(spec, False, (), ())
+                return prepare_spec_for_plant(spec)
+        except KeyError:
+            # Welded-hand (e.g. myofullbody_simple) or revised v0.3+ hand topology:
+            # prune any remaining joints/muscles/ligaments under lunate_r/l by topology.
+            _strip_hand_subtree_fingers(spec)
+            spec = _apply_mimic_fullbody_spec_changes(spec, False, (), ())
+            return prepare_spec_for_plant(spec)
     else:
         joint_tokens = FINGER_JOINT_TOKENS
         muscle_tokens = FINGER_MUSCLE_TOKENS
 
-    return _apply_mimic_fullbody_spec_changes(
+    spec = _apply_mimic_fullbody_spec_changes(
         spec, bool(config.disable_fingers), joint_tokens, muscle_tokens
     )
+    return prepare_spec_for_plant(spec)
 
 
 def compile_mimic_fullbody_mjmodel(
